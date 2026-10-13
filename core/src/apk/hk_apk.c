@@ -205,6 +205,7 @@ static bool arsc_string(const arsc *a, u32 id, bool want_file, char *out, size_t
 #define ATTR_SCREEN_ORIENTATION 0x0101001eu
 #define ATTR_VALUE 0x01010024u
 #define ATTR_TARGET_ACTIVITY 0x01010202u
+#define ATTR_ENABLED 0x0101000eu
 #define ATTR_MIN_SDK 0x0101020cu
 #define ATTR_VERSION_CODE 0x0101021bu
 #define ATTR_VERSION_NAME 0x0101021cu
@@ -228,6 +229,9 @@ typedef struct manifest_ctx {
     bool in_application, in_activity, in_filter;
     char cur_activity[200], cur_lib[96], cur_func[96];
     bool cur_main, cur_launcher, found_launcher;
+    bool cur_disabled;                 /* android:enabled="false": the launcher does not show it, so it is not how the app starts */
+    char disabled_activity[200];       /* ...unless every launcher entry is: then the first of them is taken after all */
+    int disabled_orientation;
     int cur_orientation;
     /* How each activity seen so far asks to be held, for an alias that comes after its target and has no say of its own. */
     struct {
@@ -314,11 +318,17 @@ static void start_element(manifest_ctx *c, const char *tag, const attr *attrs, i
         c->act_nmeta = 0;
         c->cur_activity[0] = 0;
         c->cur_orientation = HK_APK_UNSPECIFIED;
+        c->cur_disabled = false;
         if (name) full_class_name(info, name->text, c->cur_activity, sizeof(c->cur_activity));
         for (i = 0; i < nattrs; i++) {
             if (attrs[i].id == ATTR_SCREEN_ORIENTATION) c->cur_orientation = orientation_of((i32)attrs[i].data);
+            if (attrs[i].id == ATTR_ENABLED && attrs[i].type == 0x12) c->cur_disabled = attrs[i].data == 0;
             if (attrs[i].id == ATTR_TARGET_ACTIVITY && !strcmp(tag, "activity-alias")) {
-                /* An alias is held as the activity it stands for is. */
+                /*
+                 * An alias is another name for an activity, with intent filters of its own: an app with a choice of
+                 * launcher icons has one for each, all but one disabled. No class has the alias's name. What is started
+                 * is the activity it stands for, held as that one is.
+                 */
                 char target[200];
                 u32 h;
                 int k;
@@ -326,6 +336,7 @@ static void start_element(manifest_ctx *c, const char *tag, const attr *attrs, i
                 h = name_hash(target);
                 for (k = 0; k < c->nseen; k++)
                     if (c->seen[k].name_hash == h) c->cur_orientation = c->seen[k].orientation;
+                hk_strlcpy(c->cur_activity, target, sizeof(c->cur_activity));
             }
         }
         if (!strcmp(tag, "activity") && c->nseen < (int)HK_COUNT(c->seen)) {
@@ -359,10 +370,19 @@ static void end_element(manifest_ctx *c, const char *tag)
     hk_apk_info *info = c->info;
     int i;
     if (!strcmp(tag, "intent-filter")) c->in_filter = false;
-    else if (!strcmp(tag, "application")) c->in_application = false;
-    else if (!strcmp(tag, "activity") || !strcmp(tag, "activity-alias")) {
+    else if (!strcmp(tag, "application")) {
+        c->in_application = false;
+        if (!info->activity[0] && c->disabled_activity[0]) {
+            hk_strlcpy(info->activity, c->disabled_activity, sizeof(info->activity));
+            info->orientation = c->disabled_orientation;
+        }
+    } else if (!strcmp(tag, "activity") || !strcmp(tag, "activity-alias")) {
+        if (c->cur_main && c->cur_launcher && c->cur_disabled && !c->disabled_activity[0]) {
+            hk_strlcpy(c->disabled_activity, c->cur_activity, sizeof(c->disabled_activity));
+            c->disabled_orientation = c->cur_orientation;
+        }
         /* The first activity that is both MAIN and LAUNCHER is the app; failing that, the first MAIN one. */
-        if (c->cur_main && (!c->found_launcher) && (c->cur_launcher || !info->activity[0])) {
+        if (c->cur_main && !c->cur_disabled && (!c->found_launcher) && (c->cur_launcher || !info->activity[0])) {
             hk_strlcpy(info->activity, c->cur_activity, sizeof(info->activity));
             info->orientation = c->cur_orientation;
             hk_strlcpy(info->native_library, c->cur_lib, sizeof(info->native_library));
