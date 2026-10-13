@@ -243,6 +243,34 @@ static void tap(int x, int y)
     megler_touch(2, 1, (float)x, (float)y);
 }
 
+/*
+ * The shell's keyboard, played by the test: what the app asked of it is counted and kept, and the test types by calling
+ * what a shell calls (megler_text_commit, megler_text_key, megler_keyboard_closed, megler_keyboard_height). Both of the host's
+ * functions are called on the app's main thread.
+ */
+static struct {
+    volatile i32 shown, hidden;        /* how many times each was asked */
+    volatile i32 kind, flags, enter;   /* of the last show */
+    u32 thread;                        /* the thread the last request came on */
+} K;
+
+static void keyboard_show(void *user, int kind, int flags, int enter)
+{
+    (void)user;
+    K.kind = kind;
+    K.flags = flags;
+    K.enter = enter;
+    K.thread = hk_thread_self_id();
+    hk_atomic_add(&K.shown, 1);
+}
+
+static void keyboard_hide(void *user)
+{
+    (void)user;
+    K.thread = hk_thread_self_id();
+    hk_atomic_add(&K.hidden, 1);
+}
+
 static int g_screen_w = 480, g_screen_h = 800, g_screen_dpi = 160;
 
 void hk_tests_java_set_screen(int width, int height, int dpi)
@@ -296,6 +324,8 @@ static bool start(const char *apk, const char *android_root)
     cfg.on_exit = on_exit_cb;
     cfg.window.present_pixels = present_pixels;
     cfg.gfx = *hk_gfx_standin();
+    cfg.keyboard.show = keyboard_show;
+    cfg.keyboard.hide = keyboard_hide;
     /* The framework says which window each touch went to when it finds this in the environment: asked for with verbose 2. */
     if (g_verbose >= 2 && hk_bionic_find("setenv")) ((int (*)(const char *, const char *, int))hk_bionic_find("setenv"))("TL_TOUCH_LOG", "1", 1);
     /* And every window's views with their frames, every three seconds while it lays out: verbose 3. */
@@ -525,6 +555,123 @@ static int run_hello(void)
     back_and_end("I/HelloTest: onDestroy presses=12", &at);
     say_app_lines("/HelloTest: ");
     return g_failed;
+}
+
+/* ------------------------------------------------------------- the keyboard */
+
+/* Waits until the app has asked for the keyboard `count` times in all, a few seconds at most. */
+static bool shown_times(i32 count)
+{
+    int tries;
+    for (tries = 0; tries < 1000 && K.shown < count && running(); tries++) hk_sleep_ns(10000000ull);
+    return K.shown == count;
+}
+
+/*
+ * The row "typing" of the demos list opens a screen with four text fields (core/tests/app/demos, Typing). The test is
+ * the keyboard: a touch of a field must ask for it, with the field's kind; what it then sends must arrive in the field,
+ * in order, text and editing keys alike; and the field's own pixels must show it.
+ */
+static void type_into_fields(const int row[4], int *at)
+{
+    int name[4], number[4], secret[4], note[4], layout, typed, fewer;
+    i32 shown, hidden;
+    memset(name, 0, sizeof(name));
+    say("the keyboard: text typed into the demos app's fields");
+    tap(row[0] + row[2] / 2, row[1] + row[3] * 7 + row[3] / 2);
+    expect_line("I/DemoTest: list: clicked row 7 \"typing\"", at, 30);
+    expect_line("I/DemoTest: typing: created", at, 30);
+    layout = wait_line("I/DemoTest: typing: layout name=", *at, 30);
+    CHECK(layout >= 0 && rect_in(line_at(layout), "name", name) && rect_in(line_at(layout), "number", number) && rect_in(line_at(layout), "secret", secret)
+          && rect_in(line_at(layout), "note", note));
+    settle();
+    if (layout < 0) return;
+
+    /* A touch of the first field: the keyboard is asked for, for a line of text whose Enter is Done, on the app's main thread and not on this one. */
+    shown = K.shown;
+    tap(name[0] + 60, name[1] + name[3] / 2);
+    CHECK(shown_times(shown + 1) && K.kind == MEGLER_KEYBOARD_TEXT && K.flags == 0 && K.enter == MEGLER_ENTER_DONE);
+    CHECK(K.thread != 0 && K.thread != hk_thread_self_id());
+    settle();
+    CHECK(count_colour(name, 0x102030) == 0);
+    /* Text, as the keyboard commits it. */
+    megler_text_commit("Hello");
+    expect_line("I/DemoTest: typing: name=\"Hello\" cursor=5", at, 30);
+    settle();
+    write_picture("demos-8-typed");
+    typed = count_colour(name, 0x102030);
+    CHECK(typed > 0);
+    /* Backspace: one letter fewer, in the text and in the picture (the stand-in draws a box a letter). */
+    megler_text_key(MEGLER_TEXT_BACKSPACE);
+    expect_line("I/DemoTest: typing: name=\"Hell\" cursor=4", at, 30);
+    settle();
+    fewer = count_colour(name, 0x102030);
+    say("  the field's own pixels: %d of the text's colour for \"Hello\", %d for \"Hell\"", typed, fewer);
+    CHECK(fewer > 0 && fewer * 5 == typed * 4);
+    /* The cursor keys, which go as keys, between two pieces of text: everything arrives in the order it was sent. */
+    megler_text_key(MEGLER_TEXT_LEFT);
+    megler_text_key(MEGLER_TEXT_LEFT);
+    megler_text_commit("X");
+    expect_line("I/DemoTest: typing: name=\"HeXll\" cursor=3", at, 30);
+    megler_text_key(MEGLER_TEXT_HOME);
+    megler_text_commit("\xD0\x81\xD0\xB6");                     /* two Cyrillic letters, UTF-8 */
+    expect_line("I/DemoTest: typing: name=\"\xD0\x81\xD0\xB6HeXll\" cursor=2", at, 30);
+    megler_text_key(MEGLER_TEXT_END);
+    megler_text_key(MEGLER_TEXT_DELETE);                              /* nothing after the end to delete */
+    megler_text_commit("!");
+    expect_line("I/DemoTest: typing: name=\"\xD0\x81\xD0\xB6HeXll!\" cursor=8", at, 30);
+    megler_text_key(MEGLER_TEXT_HOME);
+    megler_text_key(MEGLER_TEXT_DELETE);
+    expect_line("I/DemoTest: typing: name=\"\xD0\xB6HeXll!\" cursor=0", at, 30);
+    /* Enter in a field of one line is the field's action: IME_ACTION_DONE, 6. */
+    megler_text_key(MEGLER_TEXT_ENTER);
+    expect_line("I/DemoTest: typing: action name 6", at, 30);
+    settle();
+
+    /* Another field: asked again, for a number with a decimal point, whose Enter is Next. */
+    shown = K.shown;
+    tap(number[0] + 60, number[1] + number[3] / 2);
+    CHECK(shown_times(shown + 1) && K.kind == MEGLER_KEYBOARD_NUMBER && K.flags == MEGLER_KEYBOARD_F_DECIMAL && K.enter == MEGLER_ENTER_NEXT);
+    megler_text_commit("4");
+    megler_text_commit("2.5");
+    expect_line("I/DemoTest: typing: number=\"42.5\"", at, 30);
+    /* A password. */
+    shown = K.shown;
+    tap(secret[0] + 60, secret[1] + secret[3] / 2);
+    CHECK(shown_times(shown + 1) && K.kind == MEGLER_KEYBOARD_PASSWORD);
+    megler_text_commit("pw");
+    expect_line("I/DemoTest: typing: secret=\"pw\"", at, 30);
+    /* A note of several lines: Enter is a new line there, and the keyboard is told so. */
+    shown = K.shown;
+    tap(note[0] + 60, note[1] + 30);
+    CHECK(shown_times(shown + 1) && K.kind == MEGLER_KEYBOARD_TEXT && K.flags == (MEGLER_KEYBOARD_F_MULTILINE | MEGLER_KEYBOARD_F_CAP_SENTENCES) && K.enter == MEGLER_ENTER_NEWLINE);
+    megler_text_commit("one");
+    megler_text_key(MEGLER_TEXT_ENTER);
+    megler_text_commit("two");
+    expect_line("I/DemoTest: typing: note=\"one|two\" cursor=7", at, 30);
+    settle();
+    write_picture("demos-9-fields");
+
+    /* The keyboard says how much of the surface it covers, then that the user put it away: the app goes on, and the next touch of a field asks again. */
+    hidden = K.hidden;
+    megler_keyboard_height(g_screen_h * 2 / 5);
+    hk_sleep_ns(300000000ull);
+    megler_keyboard_closed();
+    megler_keyboard_height(0);
+    hk_sleep_ns(300000000ull);
+    settle();
+    CHECK(running() && K.hidden == hidden);
+    shown = K.shown;
+    tap(name[0] + 60, name[1] + name[3] / 2);
+    CHECK(shown_times(shown + 1) && K.kind == MEGLER_KEYBOARD_TEXT);
+    settle();
+    /* Back: the screen goes, and with it the field that wanted the keyboard. */
+    megler_key(4, true);
+    megler_key(4, false);
+    expect_line("I/DemoTest: typing: destroyed name=\"\xD0\xB6HeXll!\"", at, 30);
+    settle();
+    CHECK(K.hidden > hidden);
+    say("  the keyboard was asked for %d times and sent away %d times", (int)K.shown, (int)K.hidden);
 }
 
 /* ------------------------------------------------------------------ demos */
@@ -813,6 +960,7 @@ static int run_demos(void)
         settle();
     }
     free(list);
+    type_into_fields(row, &at);
     back_and_end("I/DemoTest: list: destroyed", &at);
     say_app_lines("/DemoTest: ");
     return g_failed;

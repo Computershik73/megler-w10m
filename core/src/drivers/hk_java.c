@@ -41,7 +41,9 @@
 #define MAX_APKS 12
 
 /* The phases of an event as megler.AppRunner.deliver reads them. */
-enum { EV_DOWN = 0, EV_MOVE = 1, EV_UP = 2, EV_CANCEL = 3, EV_KEY = 4, EV_BACK = 5, EV_HOST_PAUSE = 6 };
+enum { EV_DOWN = 0, EV_MOVE = 1, EV_UP = 2, EV_CANCEL = 3, EV_KEY = 4, EV_BACK = 5, EV_HOST_PAUSE = 6, EV_TEXT = 7, EV_INSETS = 8 };
+
+#define MAX_TEXT 512
 
 static struct {
     const megler_run_config *config;
@@ -61,6 +63,15 @@ static struct {
     char end_reason[1600];
     hk_jobj *clipboard;
     hk_java_stats stats;
+    /*
+     * What the shell's keyboard has sent and the app has not taken yet, oldest first: "t<text>" typed text, "d" Backspace,
+     * "e" Enter, "h" the keyboard was put away -- the letters megler.InputMethods reads. One EV_TEXT event is queued for
+     * each, and each such event takes one, so that text and the keys that go as key events stay in the order they were sent.
+     */
+    char *text[MAX_TEXT];
+    int ntext;
+    volatile i32 keyboard_height;      /* pixels of the surface's bottom the keyboard covers */
+    volatile i32 enter_newline;        /* the field the keyboard was last shown for takes Enter as a new line */
 } J;
 
 static i32 bits_of(float f)
@@ -286,13 +297,79 @@ N(Native_getClipboard) { c->ret.l = J.clipboard; }
 
 N(Native_insets)
 {
-    /* Left, top, right, bottom of the screen the app must keep clear: the shell gives the app a surface that is all its own. */
-    c->ret.l = hk_dvm_new_array("[I", 4);
+    /* Left, top, right, bottom of the screen the app must keep clear -- none: the shell gives the app a surface that is all its own -- and what the keyboard covers of its bottom. */
+    hk_jobj *a = hk_dvm_new_array("[I", 5);
+    if (a) ((i32 *)a->u.arr.data)[4] = J.keyboard_height;
+    c->ret.l = a;
+}
+
+/* ----------------------------------------------------------- the keyboard */
+
+/*
+ * showKeyboard(show, inputType, imeOptions): the framework wants the shell's keyboard for the field being edited, or wants
+ * it gone. Android's two words about the field are turned into the shell's three (megler.h): what is typed there, more
+ * about it, and what Enter does. Called on the app's main thread; the shell's function returns at once.
+ */
+N(Native_showKeyboard)
+{
+    const megler_keyboard_host *k = &J.config->keyboard;
+    i32 type = c->args[1].i, ime = c->args[2].i;
+    int cls = type & 0xF, variation = type & 0xFF0, action = ime & 0xFF, kind, flags = 0, enter;
+    if (!c->args[0].z) {
+        if (k->hide) k->hide(k->user);
+        return;
+    }
+    if (cls == 2) {
+        /* TYPE_CLASS_NUMBER; its variation 0x10 is a PIN. */
+        kind = variation == 0x10 ? MEGLER_KEYBOARD_NUMBER_PASSWORD : MEGLER_KEYBOARD_NUMBER;
+        if (type & 0x1000) flags |= MEGLER_KEYBOARD_F_SIGNED;
+        if (type & 0x2000) flags |= MEGLER_KEYBOARD_F_DECIMAL;
+    } else if (cls == 3) {
+        kind = MEGLER_KEYBOARD_PHONE;
+    } else if (cls == 4) {
+        kind = MEGLER_KEYBOARD_DATETIME;
+    } else {
+        /* TYPE_CLASS_TEXT: passwords (0x80, visible 0x90, web 0xE0), e-mail addresses (0x20, web 0xD0), URIs (0x10). */
+        kind = variation == 0x80 || variation == 0x90 || variation == 0xE0 ? MEGLER_KEYBOARD_PASSWORD
+               : variation == 0x20 || variation == 0xD0 ? MEGLER_KEYBOARD_EMAIL : variation == 0x10 ? MEGLER_KEYBOARD_URL : MEGLER_KEYBOARD_TEXT;
+        if (type & 0x20000) flags |= MEGLER_KEYBOARD_F_MULTILINE;
+        if (type & 0x80000) flags |= MEGLER_KEYBOARD_F_NO_SUGGESTIONS;
+        if (type & 0x4000) flags |= MEGLER_KEYBOARD_F_CAP_SENTENCES;
+        if (type & 0x2000) flags |= MEGLER_KEYBOARD_F_CAP_WORDS;
+        if (type & 0x1000) flags |= MEGLER_KEYBOARD_F_CAP_ALL;
+    }
+    /*
+     * What Enter does. IME_FLAG_NO_ENTER_ACTION (0x40000000) is the field saying that Enter is no action there but a new
+     * line; a TextView of several lines sets it, on Android and in this framework. Otherwise Enter is the editor's action.
+     */
+    if (ime & 0x40000000) enter = MEGLER_ENTER_NEWLINE;
+    else enter = action == 2 ? MEGLER_ENTER_GO : action == 3 ? MEGLER_ENTER_SEARCH : action == 4 ? MEGLER_ENTER_SEND : action == 5 ? MEGLER_ENTER_NEXT : action == 7 ? MEGLER_ENTER_PREVIOUS : MEGLER_ENTER_DONE;
+    hk_atomic_xchg(&J.enter_newline, enter == MEGLER_ENTER_NEWLINE);
+    if (k->show) k->show(k->user, kind, flags, enter);
+    else hk_note_once("java: the app asked for the keyboard, and the shell gave the layer none to ask (megler_run_config.keyboard)");
+}
+
+/* pollText(): the oldest thing the keyboard sent, as a String[1], or null. Asked once for each EV_TEXT event. */
+N(Native_pollText)
+{
+    char *item = NULL;
+    hk_jobj *a;
+    hk_lock_acquire(&J.lock);
+    if (J.ntext) {
+        item = J.text[0];
+        memmove(&J.text[0], &J.text[1], sizeof(char *) * (size_t)--J.ntext);
+    }
+    hk_lock_release(&J.lock);
+    c->ret.l = NULL;
+    if (!item) return;
+    a = hk_dvm_new_array("[Ljava/lang/String;", 1);
+    if (a) a->u.oarr.v[0] = hk_dvm_new_string(item);
+    free(item);
+    c->ret.l = a;
 }
 
 /* What the shell would have to do and cannot be asked yet: said once, and the app goes on. */
 N(Native_startGL) { (void)c; hk_note_once("java: a GLSurfaceView's renderer is not started (OpenGL from Java is not there yet)"); }
-N(Native_showKeyboard) { (void)c; hk_note_once("java: the app asked for the keyboard, which the shell cannot be asked for yet"); }
 N(Native_share) { hk_info("java: the app shares \"%s\" (nothing here to share it with)", text_of(c->args[0].l)); }
 N(Native_openUrl) { hk_info("java: the app opens %s (nothing here to open it)", text_of(c->args[0].l)); }
 N(Native_setOrientation) { hk_note_once("java: the app asked for orientation %d; the surface stays as the shell made it", (int)c->args[0].i); }
@@ -334,7 +411,7 @@ static const hk_jhle k_native[] = {
     { "megler/Native", "requestRender", NULL, Native_nothing },
     { "megler/Native", "setContentView", NULL, Native_nothing },
     { "megler/Native", "pollInput", NULL, Native_pollInput },
-    { "megler/Native", "pollText", NULL, Native_nothing },
+    { "megler/Native", "pollText", NULL, Native_pollText },
     { "megler/Native", "showKeyboard", NULL, Native_showKeyboard },
     { "megler/Native", "setClipboard", NULL, Native_setClipboard },
     { "megler/Native", "getClipboard", NULL, Native_getClipboard },
@@ -667,6 +744,57 @@ static void java_key(int android_keycode, bool down)
 }
 
 static void java_set_paused(bool paused) { push_event(EV_HOST_PAUSE, paused ? 1 : 0, 0, 0); }
+
+/* Whether there is a Java app for the keyboard to talk to. */
+static bool java_runs(void) { return J.config && J.main && !J.ended; }
+
+static void push_text(const char *kind, const char *utf8)
+{
+    char *item;
+    bool queued = false;
+    if (!java_runs()) return;
+    item = hk_sprintf("%s%s", kind, utf8 ? utf8 : "");
+    hk_lock_acquire(&J.lock);
+    if (J.ntext < MAX_TEXT) {
+        J.text[J.ntext++] = item;
+        queued = true;
+    }
+    hk_lock_release(&J.lock);
+    if (queued) push_event(EV_TEXT, 0, 0, 0);
+    else free(item);                   /* the app has not taken five hundred of them: it is not listening */
+}
+
+void hk_java_text(const char *utf8)
+{
+    if (utf8 && utf8[0]) push_text("t", utf8);
+}
+
+void hk_java_text_key(int key)
+{
+    /* Android's key codes for the keys that go to the field as a hardware keyboard's would. */
+    static const int codes[] = { 0, 0, 0, 112 /* FORWARD_DEL */, 21, 22, 19, 20 /* DPAD_LEFT, RIGHT, UP, DOWN */, 122, 123 /* MOVE_HOME, MOVE_END */ };
+    if (key == MEGLER_TEXT_BACKSPACE) push_text("d", NULL);
+    /*
+     * Enter is a new line where the field said so when the keyboard was shown for it, and typed as one. (The framework's
+     * own "e" would decide it again, and decides it the wrong way round: megler.InputMethods makes a new line only where
+     * IME_FLAG_NO_ENTER_ACTION is not set, which is never in a field of several lines. The original's shell on iOS sends
+     * the line end as text too.) Anywhere else it is the editor's action.
+     */
+    else if (key == MEGLER_TEXT_ENTER) push_text(J.enter_newline ? "t\n" : "e", NULL);
+    else if (key >= MEGLER_TEXT_DELETE && key <= MEGLER_TEXT_END && java_runs()) {
+        push_event(EV_KEY, codes[key], 1, 0);
+        push_event(EV_KEY, codes[key], 0, 0);
+    }
+}
+
+void hk_java_keyboard_closed(void) { push_text("h", NULL); }
+
+void hk_java_keyboard_height(int pixels)
+{
+    if (!java_runs()) return;
+    hk_atomic_xchg(&J.keyboard_height, pixels > 0 ? pixels : 0);
+    push_event(EV_INSETS, 0, 0, 0);
+}
 
 static void java_stop(void)
 {

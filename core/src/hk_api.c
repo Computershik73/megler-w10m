@@ -5,6 +5,7 @@
 
 #include "hk_core.h"
 #include "host/hk_host.h"
+#include "drivers/hk_java.h"
 #include "run/hk_run.h"
 
 static megler_log_fn g_log;
@@ -72,6 +73,11 @@ bool megler_running(void) { return hk_run_active(); }
 const char *megler_last_error(void) { return hk_run_last_error(); }
 void megler_touch(int phase, int pointer_id, float x, float y) { hk_run_touch(phase, pointer_id, x, y); }
 void megler_key(int android_keycode, bool down) { hk_run_key(android_keycode, down); }
+/* Text entry is the Java driver's alone: its framework has the text fields. For any other app these do nothing. */
+void megler_text_commit(const char *utf8) { hk_java_text(utf8); }
+void megler_text_key(int key) { hk_java_text_key(key); }
+void megler_keyboard_closed(void) { hk_java_keyboard_closed(); }
+void megler_keyboard_height(int pixels) { hk_java_keyboard_height(pixels); }
 void megler_set_paused(bool paused) { hk_run_set_paused(paused); }
 void megler_set_focused(bool focused) { hk_run_set_focused(focused); }
 void megler_stop(void) { hk_run_stop(); }

@@ -3,6 +3,7 @@
     <string name="app_name">Demos</string>
     <string name="second">Second</string>
     <string name="back">Go back</string>
+    <string name="typing">Typing</string>
     <string-array name="rows">
         <item>dialog</item>
         <item>preferences</item>
@@ -11,7 +12,7 @@
         <item>second activity</item>
         <item>toast</item>
         <item>seven</item>
-        <item>eight</item>
+        <item>typing</item>
         <!-- more rows than a screen holds, so that the list has somewhere to scroll -->
         <item>row 9</item>
         <item>row 10</item>

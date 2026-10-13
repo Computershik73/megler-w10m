@@ -91,7 +91,7 @@ bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-f
     3677 checks, 0 failed          on the built-in java.lang
     3716 checks, 0 failed          on libcore with its native libraries
       36 checks, 0 failed          the Java test app hello, through megler_run
-      47 checks, 0 failed          the Java test app demos
+      72 checks, 0 failed          the Java test app demos, the keyboard's 25 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
       11 checks, 0 failed          the Java test app crash: an exception nothing catches, and launcher aliases
       25 checks, 0 failed          the Java test app data: a database, the first run
@@ -1223,6 +1223,59 @@ where the original leaned on CoreGraphics without saying.
   for each letter with fixed metrics (advance 0.6 of the size, ascent 0.8,
   descent 0.2), images are PNG only. It is deterministic on every machine,
   which is what the tests want of it.
+
+### The keyboard
+
+A Java app's text fields are edited with the shell's touch keyboard. The
+contract is in `megler.h` (`megler_keyboard_host` and the four `megler_text_*` /
+`megler_keyboard_*` functions); the core's half is in `hk_java.c`, onto the
+framework's own input-method glue (`megler.InputMethods`, which talks to the
+focused view's `InputConnection`), as the original does on iOS.
+
+- **The app asks.** `megler.Native.showKeyboard(show, inputType, imeOptions)`
+  becomes `keyboard.show(kind, flags, enter)` or `keyboard.hide()`. Android's
+  two words about the field are turned into three the shell can use: what is
+  typed (text, number, phone, e-mail, URL, password, numeric password, date),
+  flags (several lines, no suggestions, capitals, signed, decimal), and what
+  Enter does (a new line, Done, Go, Search, Send, Next, Previous). **Both are
+  called on the app's main thread**, from inside the framework, and must
+  return at once. `show` comes again for the same field (the framework asks
+  when a field takes the focus and again when it is touched): ten times for
+  five touched fields in the test.
+- **The shell tells**, from any thread: `megler_text_commit` (typed text),
+  `megler_text_key` (Backspace, Enter, Delete, the arrows, Home, End),
+  `megler_keyboard_closed`, `megler_keyboard_height`. Each is queued and reaches
+  the app on its main thread with the next turn of its message loop
+  (`Native.pollInput`, 8 ms at most), in the order of the calls. Text,
+  Backspace and Enter go to the framework as the strings its
+  `InputMethods.deliverPending` reads (`t<text>`, `d`, `e`, `h` for "put
+  away"), one for each "text is waiting" event, so that they stay in order
+  with the keys that go as key events (Delete, arrows, Home, End: Android's
+  `FORWARD_DEL`, `DPAD_*`, `MOVE_HOME`, `MOVE_END`, which the framework's
+  `ArrowKeyMovementMethod` and key listener handle). The height is the fifth
+  number of `Native.insets()`, the framework's keyboard inset.
+- **Enter in a field of several lines** is sent as the text "\n". The
+  framework's own `e` decides it the wrong way round: `InputMethods` makes a
+  new line only where `IME_FLAG_NO_ENTER_ACTION` is *not* set, and a
+  `TextView` of several lines always sets it, as Android's does (the flag
+  means "Enter is no action here"). The core knows from `showKeyboard` what
+  Enter is for the field and does not ask the framework twice. That is the
+  original's fault to take back; its iOS shell sends line ends as text too.
+
+Tested in the demos app (`Typing`: four fields; 25 checks): a touch of a field
+asks for the keyboard with the right kind, flags and Enter for each of the
+four, on the app's main thread; "Hello" arrives; Backspace takes one letter
+from the text and a fifth of the text-coloured pixels from the field (585 to
+468: the stand-in draws a box a letter); two arrows left, then "X": "HeXll"
+with the cursor at 3; Home and two Cyrillic letters; End, Delete (nothing),
+"!"; Home, Delete; Enter is the field's action 6 (`IME_ACTION_DONE`); "4" and
+"2.5" in the number field; a password; "one", Enter, "two" in the note is
+"one\ntwo"; the keyboard's height and "put away" leave the app running and a
+touch asks again; Back takes the screen away and `hide` is called.
+
+**Not there:** composing text (a keyboard that composes sends each piece when
+it is final), the selection handles and the copy and paste bar (the
+framework's), and telling the shell where the cursor is on the screen.
 
 ### Databases: `megler.Sqlite` and the SQLite in the core
 

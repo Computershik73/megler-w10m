@@ -56,6 +56,11 @@ public class ListDemo extends Activity implements AdapterView.OnItemClickListene
     @Override
     public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
         say("list: clicked row " + position + " \"" + parent.getItemAtPosition(position) + "\"");
+        if (position == 7) {
+            /* The screen with the text fields: the keyboard's part of the test. */
+            startActivity(new Intent(this, Typing.class));
+            return;
+        }
         step = position;
         run();
     }

@@ -23,6 +23,15 @@ void hk_java_get_stats(hk_java_stats *out);
  */
 bool hk_java_ended(int *status, const char **reason);
 
+/*
+ * The shell's keyboard (megler.h, megler_keyboard_host): text, editing keys, the keyboard put away by the user, and how much of
+ * the surface it covers. From any thread; queued for the app's main thread. Nothing happens when no Java app runs.
+ */
+void hk_java_text(const char *utf8);
+void hk_java_text_key(int key);
+void hk_java_keyboard_closed(void);
+void hk_java_keyboard_height(int pixels);
+
 /* hk_java_sqlite.c: megler.Sqlite's native methods, on the SQLite compiled into the core -- or, in a build without it, their refusal. */
 const hk_jhle *hk_java_sqlite_natives(void);
 

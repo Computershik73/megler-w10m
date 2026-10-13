@@ -748,6 +748,66 @@ typedef struct megler_gfx_host {
     void (*bitmap_gone)(void *user, uint32_t id);
 } megler_gfx_host;
 
+/*
+ * The touch keyboard, for an app whose user interface is Java (any other app draws a keyboard of its own or has none).
+ *
+ * Such an app has text fields, and on Android the system's keyboard comes up for the one that is being edited. Here the
+ * shell's keyboard is that keyboard. There are two directions, and they are separate.
+ *
+ * The app asks, through megler_keyboard_host in megler_run_config:
+ *
+ *   show   A text field wants the keyboard: the user touched it, or the app asked for it. `kind` is what is typed there
+ *          (MEGLER_KEYBOARD_*), `flags` more about it (MEGLER_KEYBOARD_F_*), `enter` what the Enter key does there
+ *          (MEGLER_ENTER_*), for the key's label and so that the shell knows whether Enter can mean a new line. `show` while
+ *          the keyboard is already up means that another field is being edited now -- the three may differ, the keyboard
+ *          stays up -- or the same field once more (the framework asks when a field takes the focus and again when it is
+ *          touched): a repeated `show` must be harmless.
+ *   hide   No field wants it any more: the field lost the focus, its screen went away, or the app asked.
+ *
+ *   Both are called on the app's main thread -- the thread megler_run made for the app, on which its views live -- from
+ *   inside the framework, in the middle of whatever the app was doing. They must return at once: hand the request to the
+ *   UI thread and do not wait for it. Neither is called after on_exit. Left NULL, the app runs and no keyboard comes.
+ *
+ * The shell tells, with the four functions below (after megler_touch). Any thread may call them; each returns at once. What
+ * they say is queued and reaches the app on its main thread with the next turn of its message loop, at most 8 ms later,
+ * in the order of the calls, also among each other and with megler_key. They do nothing for an app that is not Java.
+ *
+ *   megler_text_commit      Text the user typed, pasted or chose from the suggestions, UTF-8: put at the cursor of the field
+ *                         being edited, in place of its selection. There is no composing text: a keyboard that composes
+ *                         (as for Chinese or Japanese) sends each piece when it is final.
+ *   megler_text_key         An editing key (MEGLER_TEXT_*). Backspace deletes the selection, or what is before the cursor (a
+ *                         surrogate pair whole). Enter does what `enter` said: a new line, or the field's action (Done
+ *                         closes the keyboard, Next moves on, Search and Go and Send are the app's). The others -- Delete,
+ *                         the four arrows, Home, End -- act as those keys of a hardware keyboard do.
+ *   megler_keyboard_closed  The user put the keyboard away, with its own hide key or with Back. The app is told, and does not
+ *                         call `hide` for it. The next touch of a field calls `show` again.
+ *   megler_keyboard_height  How much of the bottom of the surface the keyboard covers, in pixels; 0 when it is gone. The
+ *                         framework keeps the field being edited above it. Call it when the keyboard has come up, when its
+ *                         height changes, and when it has gone.
+ *
+ * While the keyboard is up the Back key is the keyboard's, as on Android: the shell hides the keyboard and calls
+ * megler_keyboard_closed, and does not send megler_key(4).
+ */
+enum { MEGLER_KEYBOARD_TEXT = 0, MEGLER_KEYBOARD_NUMBER, MEGLER_KEYBOARD_PHONE, MEGLER_KEYBOARD_EMAIL, MEGLER_KEYBOARD_URL, MEGLER_KEYBOARD_PASSWORD,
+       MEGLER_KEYBOARD_NUMBER_PASSWORD, MEGLER_KEYBOARD_DATETIME };
+enum {
+    MEGLER_KEYBOARD_F_MULTILINE = 1,         /* the field has lines: Enter may be a new line (see `enter`) */
+    MEGLER_KEYBOARD_F_NO_SUGGESTIONS = 2,    /* no corrections, no suggestions */
+    MEGLER_KEYBOARD_F_CAP_SENTENCES = 4,     /* capitals at the start of a sentence, of every word, everywhere */
+    MEGLER_KEYBOARD_F_CAP_WORDS = 8,
+    MEGLER_KEYBOARD_F_CAP_ALL = 16,
+    MEGLER_KEYBOARD_F_SIGNED = 32,           /* a number that may have a sign, a decimal point */
+    MEGLER_KEYBOARD_F_DECIMAL = 64,
+};
+enum { MEGLER_ENTER_DONE = 0, MEGLER_ENTER_NEWLINE, MEGLER_ENTER_GO, MEGLER_ENTER_SEARCH, MEGLER_ENTER_SEND, MEGLER_ENTER_NEXT, MEGLER_ENTER_PREVIOUS };
+enum { MEGLER_TEXT_BACKSPACE = 1, MEGLER_TEXT_ENTER, MEGLER_TEXT_DELETE, MEGLER_TEXT_LEFT, MEGLER_TEXT_RIGHT, MEGLER_TEXT_UP, MEGLER_TEXT_DOWN, MEGLER_TEXT_HOME, MEGLER_TEXT_END };
+
+typedef struct megler_keyboard_host {
+    void *user;
+    void (*show)(void *user, int kind, int flags, int enter);
+    void (*hide)(void *user);
+} megler_keyboard_host;
+
 typedef struct megler_run_config {
     const char *apk_path;
     /* Split APKs of the same app (config.armeabi_v7a.apk and the like), if any. */
@@ -773,6 +833,8 @@ typedef struct megler_run_config {
      * a Java app started without it is refused, and megler_last_error says what is missing.
      */
     const char *android_root;
+    /* The touch keyboard for a Java app's text fields (see megler_keyboard_host). May be left NULL. */
+    megler_keyboard_host keyboard;
     /* The app has ended: by its own exit (status), by a crash (reason names it), or by megler_stop. Called once, from any thread. */
     void (*on_exit)(void *user, int status, const char *reason);
     void *user;
@@ -790,6 +852,11 @@ const char *megler_last_error(void);
 void megler_touch(int phase, int pointer_id, float x, float y);
 /* An Android key code (AKEYCODE_BACK is 4), pressed or released. */
 void megler_key(int android_keycode, bool down);
+/* The touch keyboard's half of text entry, for a Java app: see megler_keyboard_host. Any thread. */
+void megler_text_commit(const char *utf8);
+void megler_text_key(int key);
+void megler_keyboard_closed(void);
+void megler_keyboard_height(int pixels);
 /* The app went to the background or came back; lost or gained input focus. */
 void megler_set_paused(bool paused);
 void megler_set_focused(bool focused);
