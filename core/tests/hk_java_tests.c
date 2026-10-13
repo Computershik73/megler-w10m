@@ -256,6 +256,7 @@ void hk_tests_java_set_screen(int width, int height, int dpi)
 static bool g_portrait;
 /* Not one of the test apps: nothing is known of what its manifest says. */
 static bool g_any_app;
+static bool g_crash_app;
 static volatile i32 g_exited;
 static int g_status;
 static char g_reason[1600];
@@ -297,11 +298,15 @@ static bool start(const char *apk, const char *android_root)
     cfg.gfx = *hk_gfx_standin();
     /* The framework says which window each touch went to when it finds this in the environment: asked for with verbose 2. */
     if (g_verbose >= 2 && hk_bionic_find("setenv")) ((int (*)(const char *, const char *, int))hk_bionic_find("setenv"))("TL_TOUCH_LOG", "1", 1);
+    /* And every window's views with their frames, every three seconds while it lays out: verbose 3. */
+    if (g_verbose >= 3 && hk_bionic_find("setenv")) ((int (*)(const char *, const char *, int))hk_bionic_find("setenv"))("TL_VIEW_DUMP", "1", 1);
     say("a Java app through megler_run (%s on the Android root %s)", apk, android_root);
     {
         /* What the shell reads before it starts an app: this is a Java app it can run, and how it asks to be held. */
         char *report = megler_apk_report(apk);
         CHECK(report && strstr(report, "\"engine\":\"java\"") && strstr(report, "\"runnable\":true"));
+        /* The app whose launcher entries are aliases, the first one disabled: what is started is what the enabled one stands for. */
+        if (g_crash_app) CHECK(report && strstr(report, "\"activity\":\"megler.test.crash.First\""));
         if (!g_any_app) CHECK(report && strstr(report, g_portrait ? "\"orientation\":\"portrait\"" : "\"orientation\":\"unspecified\""));
         megler_free(report);
     }
@@ -852,6 +857,29 @@ static int run_natives(void)
     return g_failed;
 }
 
+/* ------------------------------------------------------------------ crash */
+
+/*
+ * `crash`: an activity whose onCreate throws and nothing catches it. The app ends, as it would on Android; what is
+ * checked is that the shell is told why in one sentence, the same one in on_exit's reason and in megler_last_error.
+ */
+static int run_crash(void)
+{
+    int at = -1, tries;
+    expect_line("I/CrashTest: first onCreate", &at, 120);
+    expect_line("I/CrashTest: second onCreate, about to throw", &at, 60);
+    for (tries = 0; tries < 3000 && running(); tries++) hk_sleep_ns(10000000ull);
+    CHECK(g_exited && g_status == -1);
+    say("  the app's end, as the shell is told it: %s", g_reason);
+    CHECK(strstr(g_reason, "java.lang.IllegalStateException: thrown in onCreate") && strstr(g_reason, "(in megler.test.crash.Second.onCreate)"));
+    CHECK(!strchr(g_reason, '\n') && strlen(g_reason) < 300);
+    CHECK(!strcmp(megler_last_error(), g_reason));
+    /* The framework's own word for it, as Android's log has it, and the stack. */
+    CHECK(find_line("E/Looper: uncaught exception on main", 0) >= 0 && find_line("\tat megler.test.crash.Second.onCreate(Second.java:13)", 0) >= 0);
+    CHECK(find_line("java: the main thread ended with java.lang.IllegalStateException: thrown in onCreate", 0) >= 0);
+    return g_failed;
+}
+
 /* -------------------------------------------------------------- any app */
 
 static int g_script_count;
@@ -864,13 +892,13 @@ void hk_tests_java_set_script(int count, char **steps)
 }
 
 /*
- * The script: "tap:X,Y", "wait:MILLISECONDS", "back", "key:CODE", in the order given. After each the app is waited for
+ * The script: "tap:X,Y", "drag:X,Y,X2,Y2", "wait:MILLISECONDS", "back", "key:CODE", in the order given. After each the app is waited for
  * until it is still (a minute at most) and its picture written as app-N.
  */
 static int run_app(void)
 {
     char name[40];
-    int i, n = 1, x, y, ms, code, tries;
+    int i, n = 1, x, y, x2, y2, k, ms, code, tries;
     i32 pictures = W.pictures;
     /* The first picture can be long in coming: a real app's start under qemu is minutes of class linking. */
     for (tries = 0; tries < 60000 && W.pictures == pictures && running(); tries++) hk_sleep_ns(10000000ull);
@@ -881,6 +909,16 @@ static int run_app(void)
         const char *s = g_script[i];
         if (sscanf(s, "tap:%d,%d", &x, &y) == 2) {
             tap(x, y);
+            hk_sleep_ns(300000000ull);
+        } else if (sscanf(s, "drag:%d,%d,%d,%d", &x, &y, &x2, &y2) == 4) {
+            /* A finger put down, moved in twelve steps and held a moment before it is lifted, so that what it dragged is not flung on. */
+            megler_touch(0, 1, (float)x, (float)y);
+            for (k = 1; k <= 12; k++) {
+                hk_sleep_ns(30000000ull);
+                megler_touch(1, 1, (float)(x + (x2 - x) * k / 12), (float)(y + (y2 - y) * k / 12));
+            }
+            hk_sleep_ns(400000000ull);
+            megler_touch(2, 1, (float)x2, (float)y2);
             hk_sleep_ns(300000000ull);
         } else if (sscanf(s, "wait:%d", &ms) == 1) {
             hk_sleep_ns((u64)ms * 1000000ull);
@@ -914,9 +952,11 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
     if (picture_dir) hk_path_mkdirs(picture_dir);
     g_portrait = !strcmp(which, "demos");
     g_any_app = !strcmp(which, "app");
+    g_crash_app = !strcmp(which, "crash");
     if (start(apk, android_root)) {
         if (!strcmp(which, "demos")) run_demos();
         else if (!strcmp(which, "natives")) run_natives();
+        else if (!strcmp(which, "crash")) run_crash();
         else if (g_any_app) run_app();
         else run_hello();
         if (running()) {

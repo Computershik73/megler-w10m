@@ -34,7 +34,8 @@
 # are there to build the framework and the apps (tools/build-framework.sh,
 # tools/build-test-app.sh; said and left out where they are not), and
 # `natives`, the one with a native library of its own, where there is an NDK
-# as well to build that (said and left out where there is none). Their
+# as well to build that (said and left out where there is none), and `crash`,
+# which ends on an exception nothing catches. Their
 # pictures are written to build/java-pictures as BMP files. Each is then run
 # once more with its calls of the shell's drawing recorded
 # (build/gfx-records/<app>.rec), for the Windows build to draw again.
@@ -111,7 +112,7 @@ EOF
       MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "mkdir -p ~/megler-w10m-build/android-root && cp -ru '$WROOT/build/android9/root/.' ~/megler-w10m-build/android-root/ && rm -rf ~/megler-w10m-build/scratch && qemu-arm -L /usr/arm-linux-gnueabihf ~/megler-w10m-build/hk_tests '$WROOT/build/guest/armeabi-v7a' ~/megler-w10m-build/scratch --dvm-android ~/megler-w10m-build/android-root \$([ -f ~/megler-w10m-build/hk.apk ] && echo --dvm-apk ~/megler-w10m-build/hk.apk) ${EXTRA[*]:-} 2>&1" || STATUS=1
     fi
     if [ "$JAVA" = 1 ]; then
-      for app in hello demos natives; do
+      for app in hello demos natives crash; do
         if [ ! -f "$ROOT/build/guest/java/$app.apk" ]; then
           echo "(the Java test app $app is not run: build/guest/java/$app.apk was not built -- its native library needs the NDK, see tools/build-test-app.sh)"
           continue

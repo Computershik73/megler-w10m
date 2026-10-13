@@ -485,6 +485,43 @@ static void place_libraries(void)
     free(guest);
 }
 
+/*
+ * Where an exception came from, for a person: the innermost method on its stack trace that is the app's own
+ * ("com.example.Main.onCreate"), or, when none of the app's is on it, the innermost of all. Asked of the exception itself
+ * (Throwable.getStackTrace), which still has its trace after the framework has logged it. Empty when it has none.
+ */
+static void thrown_in(hk_jobj *e, char *out, size_t n)
+{
+    hk_jvalue trace, cls, method;
+    u32 i;
+    int pass;
+    out[0] = 0;
+    trace.j = 0;
+    if (!e || !hk_dvm_call_virtual(e, "getStackTrace", "()[Ljava/lang/StackTraceElement;", NULL, &trace) || !trace.l) {
+        hk_dvm_clear_pending();
+        return;
+    }
+    for (pass = 0; pass < 2 && !out[0]; pass++) {
+        for (i = 0; i < trace.l->u.oarr.len && !out[0]; i++) {
+            hk_jobj *el = trace.l->u.oarr.v[i];
+            char slashed[300];
+            const char *name;
+            size_t k;
+            cls.j = method.j = 0;
+            if (!el || !hk_dvm_call_virtual(el, "getClassName", "()Ljava/lang/String;", NULL, &cls) || !hk_dvm_call_virtual(el, "getMethodName", "()Ljava/lang/String;", NULL, &method)) {
+                hk_dvm_clear_pending();
+                continue;
+            }
+            name = text_of(cls.l);
+            for (k = 0; name[k] && k + 1 < sizeof(slashed); k++) slashed[k] = name[k] == '.' ? '/' : name[k];
+            slashed[k] = 0;
+            if (pass == 0 && !(hk_dvm_class_exists(slashed) && hk_dvm_class_is_app(hk_dvm_find_class(slashed)))) continue;
+            snprintf(out, n, "%s.%s", name, text_of(method.l));
+        }
+    }
+    hk_dvm_clear_pending();
+}
+
 static void main_thread(void *arg)
 {
     char *framework = hk_sprintf("%s/framework/megler-framework.dex", J.root), *res = hk_sprintf("%s/framework/framework-res.apk", J.root);
@@ -529,11 +566,22 @@ static void main_thread(void *arg)
         args[1].l = J.application[0] ? hk_dvm_new_string(J.application) : NULL;
         hk_info("java: starting %s%s%s", J.activity, J.application[0] ? " in " : "", J.application);
         if (!hk_dvm_call_static("megler/AppRunner", "run", "(Ljava/lang/String;Ljava/lang/String;)V", args, NULL)) {
+            /*
+             * An exception nothing caught came all the way up the main thread: thrown in an activity's onCreate, a
+             * listener, a message. Android ends the app there as well -- its default handler logs "FATAL EXCEPTION: main",
+             * kills the process and tells the user that the app has stopped -- so there is nothing to carry on with. What is
+             * left to do is to say why, once, in a sentence a person can be shown: the exception, and the method of the
+             * app's that threw it. The whole stack is in the log.
+             */
+            char what[700], where[300];
+            hk_jobj *thrown = hk_dvm_pending();
             stack[0] = 0;
             hk_dvm_pending_stack(stack, sizeof(stack));
-            if (!hk_dvm_describe_pending(why, sizeof(why) - sizeof(stack) - 2)) hk_strlcpy(why, "the app's main thread ended with an exception", sizeof(why));
+            if (!hk_dvm_describe_pending(what, sizeof(what))) hk_strlcpy(what, "an exception", sizeof(what));
             hk_dvm_clear_pending();
-            hk_err("java: the main thread ended with %s\n%s", why, stack);
+            hk_err("java: the main thread ended with %s%s%s", what, stack[0] ? "\n" : "", stack);
+            thrown_in(thrown, where, sizeof(where));
+            snprintf(why, sizeof(why), "the app stopped because nothing caught %s%s%s%s, which ends an app on Android too", what, where[0] ? " (in " : "", where, where[0] ? ")" : "");
         }
     }
     free(framework);
@@ -541,6 +589,8 @@ static void main_thread(void *arg)
     J.end_status = why[0] ? -1 : 0;
     hk_strlcpy(J.end_reason, why[0] ? why : J.stop ? "stopped" : "", sizeof(J.end_reason));
     hk_atomic_xchg(&J.ended, 1);
+    /* The reason is megler_last_error's too: the shell may ask after the app is gone. */
+    if (why[0]) hk_run_set_error("%s", why);
     if (why[0]) hk_run_ended(-1, why);
     else hk_run_ended(0, J.stop ? "stopped" : NULL);
 }
