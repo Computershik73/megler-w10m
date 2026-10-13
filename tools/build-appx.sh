@@ -241,6 +241,15 @@ TESTS="$ROOT/core/tests"
 # (hk_diag.c the tests' header, the tests the core's).
 CORE_HEADERS="$(newest_mtime "$ROOT/core" '*.h')"
 CORE_FLAGS=(/TC /std:c11 /W3 "/I$(w "$ZLIB")")
+# SQLite is compiled into the core where its amalgamation is (build/sqlite/sqlite3.c: tools/sqlite-fetch.sh fetches it;
+# core/src/sqlite/hk_sqlite3.c includes it). Without it the package is built all the same, and a Java app that asks for
+# a database is told, once and in a sentence, that this build has none.
+if [ -f "$ROOT/build/sqlite/sqlite3.c" ] && [ -f "$ROOT/build/sqlite/sqlite3.h" ]; then
+  CORE_FLAGS+=(/DHK_HAVE_SQLITE=1 "/I$(w "$ROOT/build/sqlite")")
+  echo "    with SQLite ($(cut -d, -f1 "$ROOT/build/sqlite/FROM" 2> /dev/null || echo "build/sqlite"))"
+else
+  echo "    WITHOUT SQLite: no build/sqlite/sqlite3.c (tools/sqlite-fetch.sh)"
+fi
 # The Dalvik runtime's generated sources and its tests' DEX files, before anything is compiled.
 bash "$ROOT/tools/build-dvm-fixtures.sh"
 mapfile -t CORE_DIRS < <(find "$CORE" -type f -name '*.c' -printf '%h\n' | sort -u)
