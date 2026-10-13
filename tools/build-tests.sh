@@ -44,9 +44,14 @@
 # --no-java leaves these out.
 #
 # Objects go to ~/megler-w10m-build inside WSL (the Windows drive is slow from
-# there) and to build/tests-win here.
+# there) and to build/tests-win here. MEGLER_WSL_BUILD names another folder
+# in WSL, as WSL's own shell reads it (quoted here, so that this shell leaves
+# the ~ alone: MEGLER_WSL_BUILD='~/megler-w10m-build-two'): two checkouts
+# building at once must not share one.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+WB="${MEGLER_WSL_BUILD:-}"
+[ -n "$WB" ] || WB='~/megler-w10m-build'
 MODE="${1:-arm}"
 shift || true
 RUN=1
@@ -96,7 +101,7 @@ if [ "$MODE" = arm ]; then
   WROOT="/mnt/${ROOT:1:1}${ROOT:2}"
   cat > "$ROOT/build/tests-arm.sh" <<EOF
 set -e
-OUT=\$HOME/megler-w10m-build
+OUT=$WB
 mkdir -p \$OUT/obj
 cd "$WROOT"
 CFLAGS="-std=gnu11 -O1 -g -mthumb -march=armv7-a -mfpu=neon -mfloat-abi=hard -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -Wno-format-truncation -Icore/third_party/zlib -D_GNU_SOURCE $SQLITE_GCC"
@@ -120,12 +125,12 @@ EOF
   MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash "$WROOT/build/tests-arm.sh"
   if [ "$RUN" = 1 ]; then
     # (The layer's log is the program's standard error; the two are joined inside WSL, where lines stay whole.)
-    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf ~/megler-w10m-build/scratch && qemu-arm -L /usr/arm-linux-gnueabihf ~/megler-w10m-build/hk_tests '$WROOT/build/guest/armeabi-v7a' ~/megler-w10m-build/scratch \$([ -f ~/megler-w10m-build/hk.apk ] && echo --dvm-apk ~/megler-w10m-build/hk.apk) ${EXTRA[*]:-} 2>&1" || STATUS=1
+    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/scratch && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests '$WROOT/build/guest/armeabi-v7a' $WB/scratch \$([ -f $WB/hk.apk ] && echo --dvm-apk $WB/hk.apk) ${EXTRA[*]:-} 2>&1" || STATUS=1
     if [ "$LIBCORE" = 1 ]; then
       bash "$ROOT/tools/dvm-android-root.sh"
       echo "$AGAIN"
       # The folder is copied into WSL's own disk: the Windows drive is slow from there, and ICU maps 24 MB of it.
-      MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "mkdir -p ~/megler-w10m-build/android-root && cp -ru '$WROOT/build/android9/root/.' ~/megler-w10m-build/android-root/ && rm -rf ~/megler-w10m-build/scratch && qemu-arm -L /usr/arm-linux-gnueabihf ~/megler-w10m-build/hk_tests '$WROOT/build/guest/armeabi-v7a' ~/megler-w10m-build/scratch --dvm-android ~/megler-w10m-build/android-root \$([ -f ~/megler-w10m-build/hk.apk ] && echo --dvm-apk ~/megler-w10m-build/hk.apk) ${EXTRA[*]:-} 2>&1" || STATUS=1
+      MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "mkdir -p $WB/android-root && cp -ru '$WROOT/build/android9/root/.' $WB/android-root/ && rm -rf $WB/scratch && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests '$WROOT/build/guest/armeabi-v7a' $WB/scratch --dvm-android $WB/android-root \$([ -f $WB/hk.apk ] && echo --dvm-apk $WB/hk.apk) ${EXTRA[*]:-} 2>&1" || STATUS=1
     fi
     if [ "$JAVA" = 1 ]; then
       for app in hello demos natives crash; do
@@ -134,31 +139,31 @@ EOF
           continue
         fi
         echo "the Java test app $app (build/guest/java/$app.apk), through megler_run"
-        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/$app.apk' ~/megler-w10m-build/$app.apk && rm -rf ~/megler-w10m-build/java-data-$app && qemu-arm -L /usr/arm-linux-gnueabihf ~/megler-w10m-build/hk_tests --java $app ~/megler-w10m-build/$app.apk ~/megler-w10m-build/java-data-$app ~/megler-w10m-build/android-root '$WROOT/build/java-pictures' 2>&1" || STATUS=1
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/$app.apk' $WB/$app.apk && rm -rf $WB/java-data-$app && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --java $app $WB/$app.apk $WB/java-data-$app $WB/android-root '$WROOT/build/java-pictures' 2>&1" || STATUS=1
       done
       # The database app, twice: the second run on the data folder the first left, to find what it wrote. Only where the core has SQLite in it.
       if [ -n "$SQLITE_GCC" ] && [ -f "$ROOT/build/guest/java/data.apk" ]; then
         for run in 1 2; do
           echo "the Java test app data (build/guest/java/data.apk), through megler_run: run $run on its database"
           CLEAN=""
-          [ "$run" = 1 ] && CLEAN="rm -rf ~/megler-w10m-build/java-data-data &&"
-          MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/data.apk' ~/megler-w10m-build/data.apk && $CLEAN qemu-arm -L /usr/arm-linux-gnueabihf ~/megler-w10m-build/hk_tests --java data ~/megler-w10m-build/data.apk ~/megler-w10m-build/java-data-data ~/megler-w10m-build/android-root '$WROOT/build/java-pictures' 0 480x800@160 run:$run 2>&1" || STATUS=1
+          [ "$run" = 1 ] && CLEAN="rm -rf $WB/java-data-data &&"
+          MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/data.apk' $WB/data.apk && $CLEAN qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --java data $WB/data.apk $WB/java-data-data $WB/android-root '$WROOT/build/java-pictures' 0 480x800@160 run:$run 2>&1" || STATUS=1
         done
       else
         echo "(the Java test app data is not run: the core was built without SQLite)"
       fi
       # And an upright surface, as a phone held upright gives an app that does not ask for landscape: the same app, the same checks.
       echo "the Java test app hello again, on an upright surface (720 x 1280 at 320 dpi)"
-      MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/hello.apk' ~/megler-w10m-build/hello.apk && rm -rf ~/megler-w10m-build/java-data-hello && qemu-arm -L /usr/arm-linux-gnueabihf ~/megler-w10m-build/hk_tests --java hello ~/megler-w10m-build/hello.apk ~/megler-w10m-build/java-data-hello ~/megler-w10m-build/android-root '$WROOT/build/java-pictures-upright' 0 720x1280@320 2>&1" || STATUS=1
+      MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/hello.apk' $WB/hello.apk && rm -rf $WB/java-data-hello && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --java hello $WB/hello.apk $WB/java-data-hello $WB/android-root '$WROOT/build/java-pictures-upright' 0 720x1280@320 2>&1" || STATUS=1
       # Each of them once more, with every call it makes of the shell's drawing written to build/gfx-records/<app>.rec
       # (core/tests/hk_gfx_record.c): what `tools/build-tests.sh win` draws again with Direct2D and DirectWrite.
       mkdir -p "$ROOT/build/gfx-records"
       for app in hello demos; do
-        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf ~/megler-w10m-build/java-data-$app && qemu-arm -L /usr/arm-linux-gnueabihf ~/megler-w10m-build/hk_tests --gfx-record $app ~/megler-w10m-build/$app.apk ~/megler-w10m-build/java-data-$app ~/megler-w10m-build/android-root ~/megler-w10m-build/$app.rec 2>/dev/null && cp ~/megler-w10m-build/$app.rec '$WROOT/build/gfx-records/$app.rec'" || STATUS=1
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/java-data-$app && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --gfx-record $app $WB/$app.apk $WB/java-data-$app $WB/android-root $WB/$app.rec 2>/dev/null && cp $WB/$app.rec '$WROOT/build/gfx-records/$app.rec'" || STATUS=1
       done
     fi
     # The shell's drawing (Direct2D, DirectWrite, WIC) is only in the Windows build: this one has the mode and says so.
-    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "qemu-arm -L /usr/arm-linux-gnueabihf ~/megler-w10m-build/hk_tests --gfx-windows - 2>&1" || STATUS=1
+    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --gfx-windows - 2>&1" || STATUS=1
   fi
 elif [ "$MODE" = win ]; then
   for cl in "/c/Program Files/Microsoft Visual Studio/2022/"*/VC/Tools/MSVC/*/bin/Hostx64/x64/cl.exe; do
