@@ -20,6 +20,8 @@
 
 #include "AutoConfig.h"
 
+#include <cctype>
+
 #ifndef MEGLER_AUTO_PROBE
 #define MEGLER_AUTO_PROBE 0
 #endif
@@ -211,7 +213,10 @@ void tick(ui::AppShell& shell) {
             return;
         }
         // The flag "app-NAME": NAME.apk is what is played -- the package's own copy of it (a --java package has
-        // hello.apk and demos.apk), put into the library afresh, or else whatever the library has by that name.
+        // hello.apk and demos.apk), put into the library afresh, or else whatever the library has by that name,
+        // or, failing that, the one APK of the library whose name begins with NAME whatever the case of its
+        // letters ("app-apktool" for Apktool_M_v2.4.0-....apk: a file an owner added has a name nobody wants to
+        // type into a flag, and some of its characters do not survive the Device Portal).
         static std::string wantedApp;
         static bool wantedRead = false;
         if (!wantedRead) {
@@ -229,6 +234,18 @@ void tick(ui::AppShell& shell) {
         for (const auto& entry : entries)
             if (!entry.analysed || entry.analysing) return;
         const ApkEntry* pick = nullptr;
+        bool wantedExact = false;
+        int wantedMatches = 0;
+        (void)wantedExact;
+        (void)wantedMatches;
+        // Whether `name` begins with `start`, letters compared without their case.
+        auto beginsWith = [](const std::string& name, const std::string& start) {
+            if (start.empty() || name.size() < start.size()) return false;
+            for (size_t i = 0; i < start.size(); i++)
+                if (tolower(static_cast<unsigned char>(name[i])) != tolower(static_cast<unsigned char>(start[i]))) return false;
+            return true;
+        };
+        (void)beginsWith;
 #if MEGLER_AUTO_JAVA
         for (const auto& entry : entries)
             if (entry.id == "hello.apk") pick = &entry;
@@ -242,14 +259,20 @@ void tick(ui::AppShell& shell) {
         for (const auto& entry : entries) {
             if (!entry.report.runnable) continue;
             if (!wantedApp.empty()) {
-                if (entry.id == wantedApp) pick = &entry;
+                if (entry.id == wantedApp) {
+                    pick = &entry;
+                    wantedExact = true;
+                } else if (!wantedExact && beginsWith(entry.id, wantedApp.substr(0, wantedApp.size() - 4))) {
+                    pick = wantedMatches++ ? nullptr : &entry;
+                }
                 continue;
             }
             const bool demo = entry.id == "megler-demo.apk";
             if (!pick || (demo == demoWanted && (pick->id == "megler-demo.apk") != demoWanted)) pick = &entry;
         }
         if (!pick && !wantedApp.empty()) {
-            autoLine("play: " + wantedApp + " (the flag app-...) is not in the library or cannot run here");
+            autoLine("play: " + wantedApp + " (the flag app-...) is not in the library, or cannot run here, or " +
+                     format("%d APKs there begin with that name", wantedMatches));
             finish();
             stage = Stage::done;
             return;
