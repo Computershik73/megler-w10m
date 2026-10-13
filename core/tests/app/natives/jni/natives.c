@@ -225,6 +225,38 @@ JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_total(JNIEnv *env, jclass cl
     return total;
 }
 
+/* A region outside an array, an element outside one, a region outside a string: each an exception and nothing copied. A bit for each that was. */
+JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_bounds(JNIEnv *env, jclass cls, jintArray ints, jobjectArray objects, jstring s)
+{
+    jclass aioobe = (*env)->FindClass(env, "java/lang/ArrayIndexOutOfBoundsException"), sioobe = (*env)->FindClass(env, "java/lang/StringIndexOutOfBoundsException");
+    jint v[8] = { 7, 7, 7, 7, 7, 7, 7, 7 }, bits = 0;
+    jchar units[8] = { 9, 9, 9, 9, 9, 9, 9, 9 };
+    jthrowable t;
+    (void)cls;
+    (*env)->GetIntArrayRegion(env, ints, 2, 5, v);
+    t = (*env)->ExceptionOccurred(env);
+    (*env)->ExceptionClear(env);
+    if (t && (*env)->IsInstanceOf(env, t, aioobe) && v[0] == 7) bits |= 1;
+    (*env)->SetIntArrayRegion(env, ints, -1, 2, v);
+    t = (*env)->ExceptionOccurred(env);
+    (*env)->ExceptionClear(env);
+    if (t && (*env)->IsInstanceOf(env, t, aioobe)) bits |= 2;
+    if (!(*env)->GetObjectArrayElement(env, objects, (*env)->GetArrayLength(env, objects)) && (*env)->ExceptionCheck(env)) {
+        t = (*env)->ExceptionOccurred(env);
+        (*env)->ExceptionClear(env);
+        if ((*env)->IsInstanceOf(env, t, aioobe)) bits |= 4;
+    }
+    (*env)->GetStringRegion(env, s, 1, (*env)->GetStringLength(env, s), units);
+    t = (*env)->ExceptionOccurred(env);
+    (*env)->ExceptionClear(env);
+    if (t && (*env)->IsInstanceOf(env, t, sioobe) && units[0] == 9) bits |= 8;
+    /* And the last region that is inside each, to its end, is no exception. */
+    (*env)->GetIntArrayRegion(env, ints, 2, (*env)->GetArrayLength(env, ints) - 2, v);
+    (*env)->GetStringRegion(env, s, 1, (*env)->GetStringLength(env, s) - 1, units);
+    if (!(*env)->ExceptionCheck(env)) bits |= 16;
+    return bits;
+}
+
 /* ----------------------------------------------------------------- strings */
 
 JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_greet(JNIEnv *env, jclass cls, jstring name)
@@ -324,6 +356,22 @@ JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_catchIt(JNIEnv *env, jcla
     (*env)->ExceptionClear(env);
     message = (jstring)(*env)->CallObjectMethod(env, t, (*env)->GetMethodID(env, (*env)->FindClass(env, "java/lang/Throwable"), "getMessage", "()Ljava/lang/String;"));
     return (*env)->ExceptionCheck(env) ? NULL : message;
+}
+
+/* "found", or the name of the class of what FindClass threw: a class that is not there is an exception, not a class. */
+JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_find(JNIEnv *env, jclass cls, jstring name)
+{
+    const char *n = (*env)->GetStringUTFChars(env, name, NULL);
+    jclass found = (*env)->FindClass(env, n);
+    jthrowable t;
+    (void)cls;
+    (*env)->ReleaseStringUTFChars(env, name, n);
+    if (found) return (*env)->NewStringUTF(env, "found");
+    t = (*env)->ExceptionOccurred(env);
+    (*env)->ExceptionClear(env);
+    if (!t) return (*env)->NewStringUTF(env, "null and no exception");
+    return (jstring)(*env)->CallObjectMethod(env, (*env)->GetObjectClass(env, t),
+                                             (*env)->GetMethodID(env, (*env)->FindClass(env, "java/lang/Class"), "getName", "()Ljava/lang/String;"));
 }
 
 /* ------------------------------------------------------------- references */

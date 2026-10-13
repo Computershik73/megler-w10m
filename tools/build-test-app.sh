@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
-# Builds the test apps of the Java driver: ordinary Android apps with no
-# native code, made the way an app is made -- aapt2 for the manifest and the
-# resources, javac against the SDK's android.jar, d8 -- and not signed (the
-# layer asks no signature of an APK).
+# Builds the test apps of the Java driver: ordinary Android apps, made the way
+# an app is made -- aapt2 for the manifest, the resources and the assets,
+# javac against the SDK's android.jar, d8, and the NDK for the one that has
+# native code -- and not signed (the layer asks no signature of an APK).
 #
 #   tools/build-test-app.sh [--force]
 #
-#   core/tests/app/<name>/AndroidManifest.xml, res/, src/   ->   build/guest/java/<name>.apk
+#   core/tests/app/<name>/AndroidManifest.xml, res/, src/, assets/, jni/   ->   build/guest/java/<name>.apk
+#
+# An app with a jni/ folder has native libraries, built by the NDK's clang
+# against the NDK's own headers and libraries, as an app's are: armeabi-v7a,
+# Thumb-2, softfp. Each jni/<x>.c becomes lib/armeabi-v7a/lib<x>.so; those
+# named <x>_dep.c are built first, and every other library is linked against
+# them (so that it needs them: DT_NEEDED). Where there is no NDK such an app is
+# not built, which is said, and its APK is not there for the tests to run.
 #
 # The one picture among the resources (res/drawable/mark.png of `hello`) is
 # written by this script the first time, so that the tests know every pixel of
@@ -20,11 +27,15 @@
 #   MEGLER_ANDROID_SDK  an Android SDK with build-tools 29.0.3 (aapt2, d8)
 #                          and platforms/android-29 (the user's Documents
 #                          folder). The apps use nothing newer than API 28.
+#   MEGLER_NDK          an Android NDK (android-ndk-r21e in the user's
+#                          Documents folder), for the apps with jni/.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 JDK="${MEGLER_JDK:-/c/Program Files/Java/jdk1.8.0_202}"
 SDK="${MEGLER_ANDROID_SDK:-$USERPROFILE/Documents}"
 BT="$SDK/build-tools/29.0.3"
+NDK="${MEGLER_NDK:-$USERPROFILE/Documents/android-ndk-r21e}"
+NDKCC="$NDK/toolchains/llvm/prebuilt/windows-x86_64/bin/clang.exe"
 JAR="$SDK/platforms/android-29/android.jar"
 APPS="$ROOT/core/tests/app"
 OUT="$ROOT/build/guest/java"
@@ -63,12 +74,37 @@ for app in "$APPS"/*/; do
     echo "build/guest/java/$name.apk is newer than its sources"
     continue
   fi
+  if [ -d "$app/jni" ] && [ ! -f "$NDKCC" ]; then
+    echo "(no NDK at $NDK (MEGLER_NDK): the test app $name, which has native code, is not built)"
+    rm -f "$apk"
+    continue
+  fi
   W="$OUT/$name.tmp"
-  rm -rf "$W" && mkdir -p "$W/gen" "$W/classes" "$W/dex"
+  rm -rf "$W" && mkdir -p "$W/gen" "$W/classes" "$W/dex" "$W/lib"
+  if [ -d "$app/jni" ]; then
+    # The libraries first: a failure here should not leave an APK without them.
+    NDKFLAGS=(--target=armv7a-linux-androideabi21 -mthumb -O2 -fPIC -shared -Wall -Wextra -Werror=implicit-function-declaration)
+    DEPS=()
+    for src in "$app"/jni/*_dep.c; do
+      [ -f "$src" ] || continue
+      lib="$(basename "$src" .c)"
+      "$NDKCC" "${NDKFLAGS[@]}" "-Wl,-soname,lib$lib.so" -o "$(m "$W/lib/lib$lib.so")" "$(m "$src")" 2> "$W/ndk.log" \
+        || { head -40 "$W/ndk.log" >&2; echo "the NDK failed for $name ($lib)" >&2; exit 1; }
+      DEPS+=("-l$lib")
+    done
+    for src in "$app"/jni/*.c; do
+      case "$src" in *_dep.c) continue ;; esac
+      lib="$(basename "$src" .c)"
+      "$NDKCC" "${NDKFLAGS[@]}" "-Wl,-soname,lib$lib.so" -o "$(m "$W/lib/lib$lib.so")" "$(m "$src")" "-L$(m "$W/lib")" "${DEPS[@]}" -llog -landroid -ljnigraphics 2> "$W/ndk.log" \
+        || { head -40 "$W/ndk.log" >&2; echo "the NDK failed for $name ($lib)" >&2; exit 1; }
+    done
+  fi
+  ASSETS=()
+  [ -d "$app/assets" ] && ASSETS=(-A "$(m "$app/assets")")
   "$BT/aapt2.exe" compile --dir "$(m "$app/res")" -o "$(m "$W/res.zip")"
   # (aapt2 leaves PNGs as they are with --no-crunch-like care only when asked; a 16 x 16 one comes out a valid PNG either way.)
   "$BT/aapt2.exe" link -o "$(m "$W/base.apk")" -I "$(m "$JAR")" --manifest "$(m "$app/AndroidManifest.xml")" --java "$(m "$W/gen")" \
-    --min-sdk-version 21 --target-sdk-version 28 "$(m "$W/res.zip")" 2>&1 | { grep -v "is compressed" || true; }
+    --min-sdk-version 21 --target-sdk-version 28 "${ASSETS[@]}" "$(m "$W/res.zip")" 2>&1 | { grep -v "is compressed" || true; }
   # (android.jar has no java.lang.invoke.LambdaMetafactory, which javac wants to see before it will compile a lambda; the build tools carry it apart.)
   find "$app/src" "$W/gen" -name '*.java' | sed -E 's|^/([a-zA-Z])/|\1:/|; s|.*|"&"|' > "$W/sources.arg"
   "$JDK/bin/javac" -nowarn -source 8 -target 8 -encoding UTF-8 -bootclasspath "$(m "$JAR");$(m "$BT/core-lambda-stubs.jar")" -d "$(m "$W/classes")" "@$(m "$W/sources.arg")" 2> "$W/javac.log" \
@@ -76,12 +112,14 @@ for app in "$APPS"/*/; do
   (cd "$W/classes" && "$JDK/bin/jar" cf ../classes.jar .)
   "$JDK/bin/java" -cp "$(m "$BT/lib/d8.jar")" com.android.tools.r8.D8 --release --min-api 26 --lib "$(m "$JAR")" --output "$(m "$W/dex")" "$(m "$W/classes.jar")" 2> "$W/d8.log" \
     || { head -40 "$W/d8.log" >&2; echo "d8 failed for $name" >&2; exit 1; }
-  python - "$(m "$W/base.apk")" "$(m "$W/dex/classes.dex")" "$(m "$apk")" <<'EOF'
-import shutil, sys, zipfile
-base, dex, out = sys.argv[1:4]
+  python - "$(m "$W/base.apk")" "$(m "$W/dex/classes.dex")" "$(m "$apk")" "$(m "$W/lib")" <<'EOF'
+import os, shutil, sys, zipfile
+base, dex, out, libs = sys.argv[1:5]
 shutil.copyfile(base, out)
 with zipfile.ZipFile(out, 'a', zipfile.ZIP_DEFLATED) as z:
     z.write(dex, 'classes.dex')
+    for name in sorted(os.listdir(libs)):
+        z.write(os.path.join(libs, name), 'lib/armeabi-v7a/' + name)
 EOF
   rm -rf "$W"
   echo "built build/guest/java/$name.apk ($(stat -c%s "$apk") bytes: $(python -c "import zipfile,sys; print(' '.join(sorted(zipfile.ZipFile(sys.argv[1]).namelist())))" "$(m "$apk")"))"

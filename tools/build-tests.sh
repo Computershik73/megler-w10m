@@ -32,7 +32,9 @@
 # through megler_run on that same folder with the Java framework in it, a process
 # for each: `hello` and `demos`, where a JDK and the Android SDK's build tools
 # are there to build the framework and the apps (tools/build-framework.sh,
-# tools/build-test-app.sh; said and left out where they are not). Their
+# tools/build-test-app.sh; said and left out where they are not), and
+# `natives`, the one with a native library of its own, where there is an NDK
+# as well to build that (said and left out where there is none). Their
 # pictures are written to build/java-pictures as BMP files. Each is then run
 # once more with its calls of the shell's drawing recorded
 # (build/gfx-records/<app>.rec), for the Windows build to draw again.
@@ -76,7 +78,8 @@ mapfile -t SRCS < <(cd "$ROOT" && find core/src core/tests -maxdepth 3 -name '*.
 mapfile -t ZSRCS < <(cd "$ROOT" && find core/third_party/zlib -maxdepth 1 -name '*.c' ! -name 'gz*.c' | sort)
 
 if [ "$MODE" = arm ]; then
-  { [ -f "$ROOT/build/guest/armeabi-v7a/libt_basic.so" ] && [ "$ROOT/build/guest/armeabi-v7a/libt_jni.so" -nt "$ROOT/core/tests/guest/t_jni.c" ]; } || bash "$ROOT/tools/build-guest.sh" > /dev/null
+  { [ -f "$ROOT/build/guest/armeabi-v7a/libt_basic.so" ] && [ "$ROOT/build/guest/armeabi-v7a/libt_jni.so" -nt "$ROOT/core/tests/guest/t_jni.c" ] \
+    && [ "$ROOT/build/guest/armeabi-v7a/runtime/libt_ruser.so" -nt "$ROOT/core/tests/guest/t_user.c" ]; } || bash "$ROOT/tools/build-guest.sh" > /dev/null
   WROOT="/mnt/${ROOT:1:1}${ROOT:2}"
   cat > "$ROOT/build/tests-arm.sh" <<EOF
 set -e
@@ -108,7 +111,11 @@ EOF
       MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "mkdir -p ~/megler-w10m-build/android-root && cp -ru '$WROOT/build/android9/root/.' ~/megler-w10m-build/android-root/ && rm -rf ~/megler-w10m-build/scratch && qemu-arm -L /usr/arm-linux-gnueabihf ~/megler-w10m-build/hk_tests '$WROOT/build/guest/armeabi-v7a' ~/megler-w10m-build/scratch --dvm-android ~/megler-w10m-build/android-root \$([ -f ~/megler-w10m-build/hk.apk ] && echo --dvm-apk ~/megler-w10m-build/hk.apk) ${EXTRA[*]:-} 2>&1" || STATUS=1
     fi
     if [ "$JAVA" = 1 ]; then
-      for app in hello demos; do
+      for app in hello demos natives; do
+        if [ ! -f "$ROOT/build/guest/java/$app.apk" ]; then
+          echo "(the Java test app $app is not run: build/guest/java/$app.apk was not built -- its native library needs the NDK, see tools/build-test-app.sh)"
+          continue
+        fi
         echo "the Java test app $app (build/guest/java/$app.apk), through megler_run"
         MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/$app.apk' ~/megler-w10m-build/$app.apk && rm -rf ~/megler-w10m-build/java-data-$app && qemu-arm -L /usr/arm-linux-gnueabihf ~/megler-w10m-build/hk_tests --java $app ~/megler-w10m-build/$app.apk ~/megler-w10m-build/java-data-$app ~/megler-w10m-build/android-root '$WROOT/build/java-pictures' 2>&1" || STATUS=1
       done

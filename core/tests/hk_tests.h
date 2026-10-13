@@ -60,6 +60,8 @@ int hk_tests_smoke_run(const char *apk, int milliseconds);
 int hk_tests_java_run(const char *which, const char *apk, const char *android_root, const char *picture_dir, int verbose);
 /* The screen the app is given, before hk_tests_java_run: 480 x 800 at 160 dpi unless this says otherwise (a density that is a multiple of 160). */
 void hk_tests_java_set_screen(int width, int height, int dpi);
+/* For `app`: what to do to it once it is still ("tap:X,Y", "wait:MS", "back", "key:CODE"); the strings are kept, not copied. */
+void hk_tests_java_set_script(int count, char **steps);
 void hk_java_tests_log(int level, const char *line, void *user);
 
 #ifdef __cplusplus

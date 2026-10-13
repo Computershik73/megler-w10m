@@ -100,6 +100,7 @@ public class Lib {
     static native int others(boolean[] z, char[] c, short[] s, float[] f);
     static native String[] words(String sentence);
     static native int total(String[] strings);
+    static native int bounds(int[] ints, Object[] objects, String s);
 
     static native String greet(String name);
     static native String reverse(String s);
@@ -111,6 +112,7 @@ public class Lib {
     static native void throwIt(String message);
     static native void throwOwn(int code);
     static native String catchIt(Runnable runnable);
+    static native String find(String jniName);
 
     static native int refs(Object o);
     static native Object reflect(Method method, Field field, int[] out);

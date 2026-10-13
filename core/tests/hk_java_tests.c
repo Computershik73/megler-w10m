@@ -23,6 +23,18 @@
  * started for a result, a Toast. The test touches the first row; the app goes
  * down its list by itself and says in the log how each went.
  *
+ * `natives` is the one with native code: a library of its own, built by the
+ * NDK, which a second library of the APK's is needed by. The app goes through
+ * JNI and the NDK step by step (core/tests/app/natives) and says how each
+ * went; the test reads that, and looks at the bitmap the library painted
+ * where the app drew it. Only where guest code can run.
+ *
+ * `app` is any APK at all: started, left to itself until it is still, its
+ * picture written, then whatever the script on the command line says -- a
+ * touch, a wait, Back, each followed by another picture -- and a summary of
+ * how it stands. Nothing is checked but that it started: it is for looking
+ * at what a real app does here (docs/JAVA.md, "Real apps").
+ *
  * A process runs one app, so each is a run of its own. Each picture is also
  * written out as a BMP when a folder is named, to be looked at.
  */
@@ -242,6 +254,8 @@ void hk_tests_java_set_screen(int width, int height, int dpi)
 
 /* Whether the app's manifest asks for portrait (demos does; hello does not say). */
 static bool g_portrait;
+/* Not one of the test apps: nothing is known of what its manifest says. */
+static bool g_any_app;
 static volatile i32 g_exited;
 static int g_status;
 static char g_reason[1600];
@@ -288,7 +302,7 @@ static bool start(const char *apk, const char *android_root)
         /* What the shell reads before it starts an app: this is a Java app it can run, and how it asks to be held. */
         char *report = megler_apk_report(apk);
         CHECK(report && strstr(report, "\"engine\":\"java\"") && strstr(report, "\"runnable\":true"));
-        CHECK(report && strstr(report, g_portrait ? "\"orientation\":\"portrait\"" : "\"orientation\":\"unspecified\""));
+        if (!g_any_app) CHECK(report && strstr(report, g_portrait ? "\"orientation\":\"portrait\"" : "\"orientation\":\"unspecified\""));
         megler_free(report);
     }
     if (megler_run(&cfg)) return true;
@@ -799,6 +813,98 @@ static int run_demos(void)
     return g_failed;
 }
 
+/* ---------------------------------------------------------------- natives */
+
+static int run_natives(void)
+{
+    static const char *const steps[] = { "load", "registered", "primitives", "stack-mix", "overloads", "arrays", "bounds", "strings", "callback", "throw-native",
+                                         "throw-java", "find-class", "references", "reflection", "monitor", "thread", "thread-daemon", "needed-library", "asset",
+                                         "bitmap", "direct-buffer", "configuration", "library-folder", "loaded-once", "own-file", "missing-library",
+                                         "missing-method", "looper-watched" };
+    int at = -1, layout, pic[4], i;
+    char want[120];
+    memset(pic, 0, sizeof(pic));
+    expect_line("I/NativesTest: onCreate", &at, 120);
+    /* The library's own line (__android_log_print), from its JNI_OnLoad: run when the class that loads it is first used. */
+    expect_line("I/NativesLib: JNI_OnLoad call 1", &at, 60);
+    for (i = 0; i < (int)HK_COUNT(steps); i++) {
+        snprintf(want, sizeof(want), "I/NativesTest: %s ok", steps[i]);
+        expect_line(want, &at, 60);
+    }
+    snprintf(want, sizeof(want), "I/NativesTest: done ok=%d failed=0", (int)HK_COUNT(steps));
+    expect_line(want, &at, 60);
+    /* The descriptor the library watches on the main thread's looper: its callback comes with a later turn of the message loop. */
+    expect_line("I/NativesTest: looper ok", &at, 30);
+    /* Loaded three times over by the app, loaded once. */
+    CHECK(find_line("JNI_OnLoad call 2", 0) < 0);
+    layout = wait_line("I/NativesTest: layout focus=true", 0, 30);
+    CHECK(layout >= 0 && rect_in(line_at(layout), "picture", pic));
+    settle();
+    write_picture("natives-1");
+    /* The bitmap the library painted through libjnigraphics, drawn pixel for pixel 16 in from its view's corner: green corner, red left, blue right, the dark field around. */
+    CHECK(pixel(pic[0] + 16 + 4, pic[1] + 16 + 4) == 0x00FF00 && pixel(pic[0] + 16 + 20, pic[1] + 16 + 40) == 0xFF0000 && pixel(pic[0] + 16 + 40, pic[1] + 16 + 4) == 0x0000FF);
+    CHECK(pixel(pic[0] + 16 + 15, pic[1] + 16 + 15) == 0x00FF00 && pixel(pic[0] + 16 + 16, pic[1] + 16 + 16) == 0xFF0000 && pixel(pic[0] + 16 + 62, pic[1] + 16 + 30) == 0x0000FF);
+    CHECK(pixel(pic[0] + 8, pic[1] + 8) == 0x202020 && pixel(pic[0] + 16 + 70, pic[1] + 40) == 0x202020);
+    for (i = 0; i < g_nlines; i++)
+        if (strstr(g_lines[i], "/NativesTest: ") && strstr(g_lines[i], " FAILED")) say("  %s", g_lines[i]);
+    back_and_end("I/NativesTest: onDestroy", &at);
+    say_app_lines("/NativesTest: ");
+    return g_failed;
+}
+
+/* -------------------------------------------------------------- any app */
+
+static int g_script_count;
+static char **g_script;
+
+void hk_tests_java_set_script(int count, char **steps)
+{
+    g_script_count = count;
+    g_script = steps;
+}
+
+/*
+ * The script: "tap:X,Y", "wait:MILLISECONDS", "back", "key:CODE", in the order given. After each the app is waited for
+ * until it is still (a minute at most) and its picture written as app-N.
+ */
+static int run_app(void)
+{
+    char name[40];
+    int i, n = 1, x, y, ms, code, tries;
+    i32 pictures = W.pictures;
+    /* The first picture can be long in coming: a real app's start under qemu is minutes of class linking. */
+    for (tries = 0; tries < 60000 && W.pictures == pictures && running(); tries++) hk_sleep_ns(10000000ull);
+    settle();
+    say("  started: %d pictures so far, the app %s", (int)W.pictures, running() ? "runs" : "has ended");
+    write_picture("app-1");
+    for (i = 0; i < g_script_count && running(); i++) {
+        const char *s = g_script[i];
+        if (sscanf(s, "tap:%d,%d", &x, &y) == 2) {
+            tap(x, y);
+            hk_sleep_ns(300000000ull);
+        } else if (sscanf(s, "wait:%d", &ms) == 1) {
+            hk_sleep_ns((u64)ms * 1000000ull);
+        } else if (!strcmp(s, "back")) {
+            megler_key(4, true);
+            megler_key(4, false);
+            hk_sleep_ns(300000000ull);
+        } else if (sscanf(s, "key:%d", &code) == 1) {
+            megler_key(code, true);
+            megler_key(code, false);
+            hk_sleep_ns(300000000ull);
+        } else {
+            say("  (the script's \"%s\" is not understood)", s);
+            continue;
+        }
+        settle();
+        snprintf(name, sizeof(name), "app-%d", ++n);
+        say("  after %s: %d pictures, the app %s", s, (int)W.pictures, running() ? "runs" : "has ended");
+        write_picture(name);
+    }
+    if (!running()) say("  the app ended with status %d%s%s", g_status, g_reason[0] ? ": " : "", g_reason);
+    return g_failed;
+}
+
 int hk_tests_java_run(const char *which, const char *apk, const char *android_root, const char *picture_dir, int verbose)
 {
     g_verbose = verbose;
@@ -807,8 +913,11 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
     W.dir = picture_dir;
     if (picture_dir) hk_path_mkdirs(picture_dir);
     g_portrait = !strcmp(which, "demos");
+    g_any_app = !strcmp(which, "app");
     if (start(apk, android_root)) {
         if (!strcmp(which, "demos")) run_demos();
+        else if (!strcmp(which, "natives")) run_natives();
+        else if (g_any_app) run_app();
         else run_hello();
         if (running()) {
             if (g_direct) hk_driver_java.stop();

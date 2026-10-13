@@ -27,9 +27,11 @@
  *       how fast the interpreter is on this machine
  *   hk_tests --apk <file>...
  *       what the layer makes of real APKs: the report the shell shows, and the icon
- *   hk_tests --java <hello | demos> <apk> <data dir> <android root> [picture dir | -] [verbose] [WIDTHxHEIGHT@DPI]
+ *   hk_tests --java <hello | demos | natives> <apk> <data dir> <android root> [picture dir | -] [verbose] [WIDTHxHEIGHT@DPI]
  *       start one of the Java test apps (core/tests/app) through megler_run on that Android root, with a stand-in
  *       for the shell's drawing; check what it logs and draws, touch it, press Back; write each picture as a BMP
+ *   hk_tests --java app <apk> <data dir> <android root> <picture dir | -> <verbose> <WIDTHxHEIGHT@DPI> [tap:X,Y | wait:MS | back | key:CODE]...
+ *       the same for any APK: started, its pictures written (app-1, and one more after each step of the script), nothing checked
  *   hk_tests --gfx-windows <picture dir | -> [copy]
  *       the shell's drawing (app/Megler/player/GfxHost.cpp: Direct2D, DirectWrite, WIC) through megler_gfx_host: scenes drawn,
  *       written as PNG files, compared with the stand-in's and checked (hk_gfx_scenes.c). `copy`: with every canvas copied to a
@@ -498,6 +500,7 @@ int main(int argc, char **argv)
             int w = 0, h = 0, dpi = 0;
             if (sscanf(argv[8], "%dx%d@%d", &w, &h, &dpi) == 3 && w > 0 && h > 0 && dpi >= 160) hk_tests_java_set_screen(w, h, dpi);
         }
+        if (argc > 9) hk_tests_java_set_script(argc - 9, argv + 9);
         return hk_tests_java_run(argv[2], argv[3], argv[5], argc >= 7 && strcmp(argv[6], "-") ? argv[6] : NULL, argc >= 8 ? atoi(argv[7]) : 0) ? 1 : 0;
     }
 #if HK_HOST_ARM32

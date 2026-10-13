@@ -143,6 +143,11 @@ public class Main extends Activity {
             ok &= words.length == 3 && "a".equals(words[0]) && "bc".equals(words[1]) && "def".equals(words[2]) && Lib.total(words) == 6;
             return ok;
         });
+        step("bounds", () -> {
+            int bits = Lib.bounds(new int[] { 1, 2, 3, 4 }, new Object[2], "abcd");
+            detail = "0x" + Integer.toHexString(bits);
+            return bits == 31;
+        });
         step("strings", () -> {
             int[] bytes = new int[1];
             String world = Lib.region("hello wörld", 6, 5, bytes);
@@ -184,6 +189,19 @@ public class Main extends Activity {
         step("throw-java", () -> "thrown in Java".equals(Lib.catchIt(() -> {
             throw new UnsupportedOperationException("thrown in Java");
         })) && "nothing was thrown".equals(Lib.catchIt(() -> { })));
+        step("find-class", () -> {
+            String missing = Lib.find("megler/test/natives/Nothing"), missingArray = Lib.find("[Lno/such/Thing;");
+            boolean stillMissing = false;
+            try {
+                Class.forName("megler.test.natives.Nothing");
+            } catch (ClassNotFoundException e) {
+                stillMissing = true;
+            }
+            detail = missing + " " + missingArray + " " + stillMissing;
+            return "found".equals(Lib.find("megler/test/natives/Lib$Failure")) && "found".equals(Lib.find("[Lmegler/test/natives/Lib;")) && "found".equals(Lib.find("[[I"))
+                    && "found".equals(Lib.find("android/view/View")) && "java.lang.ClassNotFoundException".equals(missing)
+                    && "java.lang.ClassNotFoundException".equals(missingArray) && stillMissing;
+        });
         step("references", () -> {
             int bits = Lib.refs(new Lib(1));
             detail = "0x" + Integer.toHexString(bits);
