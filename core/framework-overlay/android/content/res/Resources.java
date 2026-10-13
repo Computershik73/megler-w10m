@@ -1,6 +1,17 @@
 // megler-w10m overlay of Megler/src/java-framework/src/android/content/res/Resources.java (tools/build-framework.sh).
-// It differs in the class Bag (a style's items): put and indexOf find a key by hashing. Everything else is the original's,
-// unchanged, and so are a bag's contents and their order.
+// It differs in two things. The class Bag (a style's items): put and indexOf find a key by hashing. And updateCfg: resources
+// are chosen for the API level of the platform's own resources (PLATFORM_RESOURCES_SDK), not for Build.VERSION.SDK_INT.
+// Everything else is the original's, unchanged, and so are a bag's contents and their order.
+//
+// Why the second. The framework says it is Android 14 (SDK_INT 34); the platform's resources here are Android 9's
+// framework-res.apk, because libcore is Android 9's (tools/dvm-android-root.sh). An app's resources qualified -v29 to -v34 are
+// written against the platform resources of those versions: Material 3 keeps its dynamic colours in color-v31 and values-v31,
+// where they refer to @android:color/system_neutral2_700 and its like by number. Android 9 has no such resources, and has
+// private ones of its own under the same numbers: 0x01060064, a system colour in Android 12, is the selector
+// control_checkable_material in Android 9, which asks the theme for a colour, which a -v31 theme answers with a colour that
+// refers to 0x01060064. Device Info's first layout with a MaterialCardView recursed 6095 frames deep through that circle
+// and ended the app. On a phone that really has Android 9, -v31 resources are never chosen; choosing as that phone does is
+// the only choice that fits the resources that are here. (The app's Java still sees SDK_INT 34.)
 //
 // Why. The original's Bag.put walks the whole bag for the key before adding it, and a style's bag is built by putting the
 // parent's items in one by one and then its own; indexOf walks it again for every attribute a view asks of its style. A
@@ -56,8 +67,10 @@ public class Resources {
     private void updateCfg() {
         String lang = mConfig.locale != null ? mConfig.locale.getLanguage() : "en", country = mConfig.locale != null ? mConfig.locale.getCountry() : "US";
         mCfg = new ResTable.Config(lang, country, mConfig.screenWidthDp, mConfig.screenHeightDp, mMetrics.densityDpi,
-                                   (mConfig.uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES, android.os.Build.VERSION.SDK_INT);
+                                   (mConfig.uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES, PLATFORM_RESOURCES_SDK);
     }
+    /** The API level of the framework-res.apk in the Android root: Android 9's. It must follow that file (see the head of this file). */
+    static final int PLATFORM_RESOURCES_SDK = 28;
     private static void loadTables() {
         synchronized (sLock) {
             if (sApp == null) {

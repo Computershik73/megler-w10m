@@ -1306,7 +1306,18 @@ seven of them a statement or a method each inside an otherwise untouched copy
 - `android/content/res/ResTable.java`, two methods: a resource is found by
   its name without indexing the whole package ("What an AlertDialog cost").
 - `android/content/res/Resources.java`, the class `Bag`: a style's items are
-  found by hashing (the same section).
+  found by hashing (the same section). And one statement in `updateCfg`:
+  resources are chosen for the API level of the platform's resources, 28
+  (`PLATFORM_RESOURCES_SDK`), not for `Build.VERSION.SDK_INT`, 34. This one is
+  not the original's fault but this port's circumstance: the framework says
+  it is Android 14, and the platform's resources here are Android 9's because
+  libcore is. An app's `-v31` resources refer to Android 12's system colours
+  by number, and under those numbers Android 9 has private resources of its
+  own; Device Info recursed 6095 frames deep through a circle made that way
+  (`control_checkable_material` asks the theme, the `-v31` theme answers with
+  a colour that refers to it). Choosing as a phone with Android 9 chooses is
+  the only choice that fits the resources that are there. The constant must
+  follow the Android root.
 - `android/graphics/drawable/RippleDrawable.java` and `megler/ResInflate.java`,
   a method and a statement: a ripple inflated from XML is told that it has a
   mask. Android's commonest ripple is nothing but a mask (the background of
