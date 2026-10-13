@@ -1,0 +1,10 @@
+# Where Android's libcore, run by this runtime, answers d8t.Lib differently from the JVM that wrote
+# lib-expected.txt. Each line replaces the JVM's answer for the test it names; the reason is above it.
+# A difference that is not here is a failure.
+
+# Three messages of exceptions the runtime itself throws. Java does not say what they are, and Android's
+# are its own: "divide by zero" where the JVM says "/ by zero"; a negative size as a number where JVM 8
+# gives no message at all, and for an array of several dimensions "Dimension n: size"
+# (art/runtime/mirror/array.cc); an index out of bounds with the array's length beside it
+# (art/runtime/common_throws.cc) where the JVM gives the index alone.
+lib_exceptions=java.lang.ArithmeticException:divide by zero java.lang.NullPointerException java.lang.NegativeArraySizeException:Dimension 2: -1 java.lang.ArrayIndexOutOfBoundsException:length=5; index=5 java.lang.ClassCastException java.lang.StringIndexOutOfBoundsException For input string: "12x" java.io.IOException: made|cause|d8t.Lib.lib_exceptions no.such.ClassArrayList[Ijava.util.AbstractList0(3,4)8truetrue

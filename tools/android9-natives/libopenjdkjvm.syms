@@ -1,0 +1,59 @@
+# What Android 9's libopenjdkjvm.so exports (art/openjdkjvm/OpenjdkJvm.cc; the list is
+# the dynamic symbol table of the arm64 library in the emulator image, less the
+# linker's own symbols and one inline function of libc++). libopenjdk.so is linked
+# against a stub made of these names (stub.py): the runtime that loads it answers
+# them. The build prints which of them libopenjdk.so really imports.
+JVM_ArrayCopy
+JVM_Close
+JVM_Connect
+JVM_CurrentThread
+JVM_CurrentTimeMillis
+JVM_Exit
+JVM_FindLibraryEntry
+JVM_FindSignal
+JVM_FreeMemory
+JVM_GC
+JVM_GetHostName
+JVM_GetLastErrorString
+JVM_GetSockName
+JVM_GetSockOpt
+JVM_Halt
+JVM_HoldsLock
+JVM_IHashCode
+JVM_InitializeSocketLibrary
+JVM_InternString
+JVM_Interrupt
+JVM_IsInterrupted
+JVM_IsNaN
+JVM_Listen
+JVM_Lseek
+JVM_MaxMemory
+JVM_NanoTime
+JVM_NativeLoad
+JVM_NativePath
+JVM_Open
+JVM_RaiseSignal
+JVM_RawMonitorCreate
+JVM_RawMonitorDestroy
+JVM_RawMonitorEnter
+JVM_RawMonitorExit
+JVM_Read
+JVM_RegisterSignal
+JVM_Send
+JVM_SetNativeThreadName
+JVM_SetSockOpt
+JVM_SetThreadPriority
+JVM_Sleep
+JVM_Socket
+JVM_SocketAvailable
+JVM_SocketClose
+JVM_SocketShutdown
+JVM_StartThread
+JVM_Sync
+JVM_TotalMemory
+JVM_Write
+JVM_Yield
+jio_fprintf
+jio_snprintf
+jio_vfprintf
+jio_vsnprintf

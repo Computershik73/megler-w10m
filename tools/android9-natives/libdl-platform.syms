@@ -1,0 +1,6 @@
+# Functions of Android 9's libdl.so that only platform code may call; the NDK's
+# libdl.so stub for API 28 leaves them out. Used as libc-platform.syms is.
+#
+# ojluni System.c, the java.library.path property: void android_get_LD_LIBRARY_PATH(char *buffer, size_t size)
+# writes the linker's default library search path. Declared in System.c itself.
+android_get_LD_LIBRARY_PATH

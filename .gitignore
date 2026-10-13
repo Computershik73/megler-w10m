@@ -1,0 +1,7 @@
+/build/
+/app/Megler/AppPackages/
+/app/Megler/*.cer
+*.pfx
+*.user
+.claude/
+__pycache__/

@@ -1,0 +1,8 @@
+# Functions of Android 9's libc.so that only platform code may call: bionic
+# exports them, the NDK's libc.so stub for API 28 leaves them out. The build
+# links against a stub libc.so made of the NDK's names plus these (stub.py), so
+# that the libraries import them from libc.so exactly as Android's do.
+#
+# libcore_io_Linux.cpp, Linux_android_getaddrinfo: getaddrinfo() for one
+# network (netid) and socket mark. Declared in libcore's own Portability.h.
+android_getaddrinfofornet

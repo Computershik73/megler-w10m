@@ -1,0 +1,10 @@
+arith=-2,1,2,-1,14,-2,15,-6,-2147483648,-2147483648,0,5124095576030430,0,2541551405711093504,-2547381487788710623,895,-1985229329,-12817,-17,52719,3,-3,9223372036854775807,0,2147483647,-9223372036854775808,1,2.5,0.25,0.125,1.5,17,d,101,e,-9223372036854775808,true,13
+loops=280,111,2432902008176640000,25
+switches=many one few few four many thousand negative many 123400 warm other cold
+arrays=1235789,1099511627778,75,43,-25529,xyz,375,falsetrue,120,4,11399,refused,outside,negative,truetruefalse
+strings=12o47worldeltruetrue7-1-476288596 0 HELLO, WORLDtruefalse 01234c1.5truenull10 dlrow ,olleH dexfalsetruetrueex 4200135683227946695 -12344ffffffff3.0const1
+objects=rect:12 square:1025 anonymous:42 <rect:12>2 truefalsefalse62-77truetruetruefalse d8t.Main$Square d8t.Main$1 d8t.Main$Rect not-a-square 42
+enums=RED01red GREEN12green BLUE24BLUE! true-2BLUE none falsetrue
+exceptions=bottom772500d8t.Main$Oops: bottom 5 A:java.lang.ArithmeticException A:java.lang.NullPointerException R:java.lang.NegativeArraySizeException R:java.lang.ClassCastException O:mine4 T:java.lang.Error: an error nothing outer<innertrue open one;open two;body;close two;close one;caught in bodyopen three;;body3;close three;caught close three
+lambdas=5,50,10,-4,8,21110,14,016,pear8,s442,42true334359738368qtruetruetrue7,empty
+numbers=21,8388608,9,42,b74574de,1414213562,false,truetruetruetrue,1.6777216E7,false,1.0E10,true,-4433634000243431644,1,1099511627776

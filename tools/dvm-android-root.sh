@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# Puts together the folder the Dalvik runtime starts Android's libcore from
+# (hk_dvm_start_android): laid out like Android's /system, out of what
+# tools/android9-*.sh left in build/android9.
+#
+#   tools/dvm-android-root.sh [--no-res | --full-res] [folder]        (build/android9/root when no folder is named)
+#
+#   framework/<name>.dex    the boot class path's bytecode, one DEX file each:
+#                           core-oj, core-libart, conscrypt, okhttp,
+#                           bouncycastle, apache-xml
+#   framework/core-oj.jar, core-libart.jar
+#                           the jars as the device has them: no bytecode in
+#                           them, but what else libcore opens them for (ICU4J
+#                           reads its configuration out of core-libart.jar)
+#   lib/*.so                libcore's native libraries, 32-bit ARM, where they
+#                           have been built (build/android9/lib); without them
+#                           the runtime still starts, and libcore is its
+#                           bytecode alone
+#   framework/megler-framework.dex
+#                           the Java framework an app with an Activity runs
+#                           on, where tools/build-framework.sh has built it
+#   framework/framework-res.apk
+#                           the platform's own resources, Android 9's: the
+#                           themes, layouts and pictures an app names as
+#                           android.R.*. Cut down to the languages and screen
+#                           densities a phone needs, by the SDK's aapt2
+#                           (`optimize`): Android's own file is 43 MB, with a
+#                           table of 29 MB that an app holds in memory whole,
+#                           for every language it speaks; with English and
+#                           Russian and the two densities round a phone's it
+#                           is 12 MB and its table under 2. --full-res takes
+#                           Android's own as it is, and so does a PC with no
+#                           aapt2 (it says so). --no-res leaves the file out:
+#                           an app then starts bare -- no action bar, no
+#                           button shapes -- and fails where it asks for a
+#                           platform resource by id.
+#   usr/icu/icudt60l.dat    ICU's data
+#   usr/share/zoneinfo/*    the time zones
+#
+# Files are copied only when they are missing or older than their source, and
+# the script says what the folder holds and how large it is.
+#
+#   MEGLER_RES_LANGUAGES  the languages kept in the platform's resources
+#                            besides the default, as aapt2 names them (en,ru)
+#   MEGLER_RES_DENSITIES  the screen densities kept (xhdpi,xxhdpi: 320 and
+#                            480 dpi; a resource for another is scaled)
+#   MEGLER_ANDROID_SDK    an Android SDK with build-tools 29.0.3, for aapt2
+#                            (the user's Documents folder)
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+A9="$ROOT/build/android9"
+RES=cut
+if [ "${1:-}" = --no-res ]; then RES=none; shift; elif [ "${1:-}" = --full-res ]; then RES=full; shift; fi
+OUT="${1:-$A9/root}"
+[ -f "$A9/boot/core-oj.dex" ] || { echo "no build/android9/boot/core-oj.dex: Android 9's boot class path has not been unpacked (tools/android9-*.sh)" >&2; exit 1; }
+mkdir -p "$OUT/framework" "$OUT/lib" "$OUT/usr/icu" "$OUT/usr/share/zoneinfo"
+put() { # source, destination folder
+  if [ -f "$1" ]; then cp -u "$1" "$2/"; else echo "  (not there: ${1#$ROOT/})"; fi
+}
+for name in core-oj core-libart conscrypt okhttp bouncycastle apache-xml; do put "$A9/boot/$name.dex" "$OUT/framework"; done
+for name in core-oj core-libart; do put "$A9/system/framework/$name.jar" "$OUT/framework"; done
+RES_SRC="$A9/system/framework/framework-res.apk"
+RES_SAID="no platform resources"
+if [ "$RES" = cut ]; then
+  AAPT2="${MEGLER_ANDROID_SDK:-$USERPROFILE/Documents}/build-tools/29.0.3/aapt2.exe"
+  LANGS="${MEGLER_RES_LANGUAGES:-en,ru}"
+  DENS="${MEGLER_RES_DENSITIES:-xhdpi,xxhdpi}"
+  CUT="$A9/res-cut/$LANGS-$DENS/framework-res.apk"
+  if [ ! -f "$AAPT2" ]; then
+    echo "  (no aapt2 at $AAPT2: the platform's resources are taken whole)"
+    RES=full
+  elif [ -f "$RES_SRC" ]; then
+    if [ ! -f "$CUT" ] || [ "$RES_SRC" -nt "$CUT" ]; then
+      mkdir -p "$(dirname "$CUT")"
+      "$AAPT2" optimize -o "$(cygpath -m "$CUT")" -c "$LANGS" --target-densities "$DENS" "$(cygpath -m "$RES_SRC")" \
+        || { echo "aapt2 could not cut the platform's resources down" >&2; exit 1; }
+    fi
+    cmp -s "$CUT" "$OUT/framework/framework-res.apk" || cp "$CUT" "$OUT/framework/framework-res.apk"
+    RES_SAID="the platform's resources for $LANGS at $DENS"
+  else
+    echo "  (not there: ${RES_SRC#$ROOT/})"
+  fi
+fi
+if [ "$RES" = full ]; then
+  if [ -f "$RES_SRC" ]; then
+    cmp -s "$RES_SRC" "$OUT/framework/framework-res.apk" || cp "$RES_SRC" "$OUT/framework/framework-res.apk"
+    RES_SAID="the platform's resources, whole"
+  else
+    echo "  (not there: ${RES_SRC#$ROOT/})"
+  fi
+elif [ "$RES" = none ]; then
+  rm -f "$OUT/framework/framework-res.apk"
+fi
+put "$A9/system/usr/icu/icudt60l.dat" "$OUT/usr/icu"
+for f in "$A9/system/usr/share/zoneinfo/"*; do put "$f" "$OUT/usr/share/zoneinfo"; done
+LIBS=0
+for f in "$A9/lib/"*.so; do
+  [ -f "$f" ] || continue
+  cp -u "$f" "$OUT/lib/"
+  LIBS=$((LIBS + 1))
+done
+[ "$LIBS" -gt 0 ] || echo "  (no native libraries in build/android9/lib: libcore will be its bytecode alone)"
+# The Java framework an app with an Activity runs on, where it has been built (tools/build-framework.sh).
+FW="no Java framework"
+if [ -f "$ROOT/build/framework/megler-framework.dex" ]; then
+  cp -u "$ROOT/build/framework/megler-framework.dex" "$OUT/framework/"
+  FW="the Java framework"
+fi
+size() { du -sk "$1" | cut -f1; }
+echo "${OUT#$ROOT/}: $(size "$OUT") KB in all: framework $(size "$OUT/framework") KB ($FW, $RES_SAID), lib $(size "$OUT/lib") KB ($LIBS libraries), usr $(size "$OUT/usr") KB"

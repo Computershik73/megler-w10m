@@ -1,0 +1,467 @@
+/*
+ * malloc and mmap for guest code.
+ *
+ * The guest frees with free() whatever malloc, memalign or posix_memalign gave
+ * it, and the host's allocators do not all agree to that (an aligned block on
+ * Windows has its own free). So every guest block carries a small header that
+ * says where the host's block starts, and free() needs to know nothing else.
+ */
+#include "hk_bionic.h"
+
+#include "../ld/hk_ld.h"
+
+typedef struct ghdr {
+    u32 offset;            /* from the host block's start to the guest pointer */
+    u32 size;              /* what the guest asked for */
+} ghdr;
+
+#define HDR(p) ((ghdr *)((u8 *)(p) - sizeof(ghdr)))
+
+void *hk_g_malloc(size_t n)
+{
+    u8 *raw;
+    if (n > 0x7FFFFF00u) {
+        hk_set_errno(GE_NOMEM);
+        return NULL;
+    }
+    raw = (u8 *)malloc(n + sizeof(ghdr));
+    if (!raw) {
+        hk_set_errno(GE_NOMEM);
+        return NULL;
+    }
+    ((ghdr *)raw)->offset = sizeof(ghdr);
+    ((ghdr *)raw)->size = (u32)n;
+    return raw + sizeof(ghdr);
+}
+
+void *hk_g_calloc(size_t n, size_t m)
+{
+    u64 total = (u64)n * (u64)m;
+    u8 *raw;
+    if (total > 0x7FFFFF00u) {
+        hk_set_errno(GE_NOMEM);
+        return NULL;
+    }
+    raw = (u8 *)calloc(1, (size_t)total + sizeof(ghdr));
+    if (!raw) {
+        hk_set_errno(GE_NOMEM);
+        return NULL;
+    }
+    ((ghdr *)raw)->offset = sizeof(ghdr);
+    ((ghdr *)raw)->size = (u32)total;
+    return raw + sizeof(ghdr);
+}
+
+void hk_g_free(void *p)
+{
+    if (p) free((u8 *)p - HDR(p)->offset);
+}
+
+static void *g_memalign(size_t align, size_t n)
+{
+    u8 *raw, *p;
+    if (align <= 8) return hk_g_malloc(n);
+    if ((align & (align - 1)) || n > 0x7FFFFF00u - align) {
+        hk_set_errno(GE_INVAL);
+        return NULL;
+    }
+    raw = (u8 *)malloc(n + align + sizeof(ghdr));
+    if (!raw) {
+        hk_set_errno(GE_NOMEM);
+        return NULL;
+    }
+    p = (u8 *)HK_ALIGN_UP((hk_addr)raw + sizeof(ghdr), (hk_addr)align);
+    HDR(p)->offset = (u32)(p - raw);
+    HDR(p)->size = (u32)n;
+    return p;
+}
+
+void *hk_g_realloc(void *p, size_t n)
+{
+    void *q;
+    u32 old;
+    if (!p) return hk_g_malloc(n);
+    if (!n) {
+        hk_g_free(p);
+        return NULL;
+    }
+    if (n > 0x7FFFFF00u) {
+        hk_set_errno(GE_NOMEM);
+        return NULL;
+    }
+    if (HDR(p)->offset == sizeof(ghdr)) {
+        u8 *raw = (u8 *)realloc((u8 *)p - sizeof(ghdr), n + sizeof(ghdr));
+        if (!raw) {
+            hk_set_errno(GE_NOMEM);
+            return NULL;
+        }
+        ((ghdr *)raw)->size = (u32)n;
+        return raw + sizeof(ghdr);
+    }
+    /* An aligned block: the host cannot grow it in place and keep the alignment. */
+    old = HDR(p)->size;
+    q = hk_g_malloc(n);
+    if (!q) return NULL;
+    memcpy(q, p, old < n ? old : n);
+    hk_g_free(p);
+    return q;
+}
+
+char *hk_g_strdup(const char *s)
+{
+    size_t n = strlen(s) + 1;
+    char *d = (char *)hk_g_malloc(n);
+    if (d) memcpy(d, s, n);
+    return d;
+}
+
+static int g_posix_memalign(void **out, size_t align, size_t n)
+{
+    void *p;
+    if (align < sizeof(void *) || (align & (align - 1))) return GE_INVAL;
+    p = g_memalign(align, n);
+    if (!p) return GE_NOMEM;
+    *out = p;
+    return 0;
+}
+
+static void *g_aligned_alloc(size_t align, size_t n) { return g_memalign(align, n); }
+static void *g_valloc(size_t n) { return g_memalign(HK_PAGE, n); }
+static void *g_pvalloc(size_t n) { return g_memalign(HK_PAGE, HK_ALIGN_UP(n, HK_PAGE)); }
+static size_t g_malloc_usable_size(const void *p) { return p ? HDR(p)->size : 0; }
+static int g_mallopt(int param, int value) { (void)param; (void)value; return 1; }
+static int g_malloc_trim(size_t pad) { (void)pad; return 0; }
+
+typedef struct g_mallinfo_t {
+    u32 arena, ordblks, smblks, hblks, hblkhd, usmblks, fsmblks, uordblks, fordblks, keepcost;
+} g_mallinfo_t;
+
+static g_mallinfo_t g_mallinfo(void)
+{
+    g_mallinfo_t m;
+    u64 used = hk_mem_usage();
+    memset(&m, 0, sizeof(m));
+    m.uordblks = used > 0xFFFFFFFFu ? 0xFFFFFFFFu : (u32)used;
+    m.arena = m.uordblks;
+    return m;
+}
+
+static void *g_reallocarray(void *p, size_t n, size_t m)
+{
+    u64 total = (u64)n * (u64)m;
+    if (total > 0x7FFFFF00u) {
+        hk_set_errno(GE_NOMEM);
+        return NULL;
+    }
+    return hk_g_realloc(p, (size_t)total);
+}
+
+/* The C++ runtime's allocation functions, for apps that link the system's minimal libstdc++. */
+static void *g_new(size_t n)
+{
+    void *p = hk_g_malloc(n ? n : 1);
+    if (!p) hk_fatal("guest: operator new(%u) failed", (unsigned)n);
+    return p;
+}
+static void *g_new_nothrow(size_t n, const void *tag) { (void)tag; return hk_g_malloc(n ? n : 1); }
+static void g_delete(void *p) { hk_g_free(p); }
+static void g_delete_nothrow(void *p, const void *tag) { (void)tag; hk_g_free(p); }
+static void g_delete_sized(void *p, size_t n) { (void)n; hk_g_free(p); }
+
+/* -------------------------------------------------------------------- mmap
+ *
+ * Anonymous memory and private copies of files. A region asked for as
+ * writable and executable at once -- a JIT's code heap -- cannot exist on the
+ * host, so it is writable until something executes in it and executable until
+ * something writes to it: the fault handler flips the page (hk_mmap_fix_fault).
+ */
+#define G_PROT_READ 1
+#define G_PROT_WRITE 2
+#define G_PROT_EXEC 4
+#define G_MAP_SHARED 1
+#define G_MAP_FIXED 0x10
+#define G_MAP_ANONYMOUS 0x20
+#define G_MAP_FAILED ((void *)(hk_addr)-1)
+
+typedef struct region {
+    u8 *base;
+    size_t size;
+    bool wx;               /* some page was asked for as writable and executable */
+    /*
+     * Which pages the app still has, a bit each. The host gives address
+     * space back only a whole reservation at a time, and apps unmap in
+     * pieces (an allocator maps a little more than it wants, unmaps the end
+     * to line the block up, and unmaps the rest when it is done with it):
+     * the reservation goes when its last page has. Without this count the
+     * second unmapping looked like one more piece, and the addresses of
+     * every big block an engine ever freed stayed taken (755 MB of a 2 GB
+     * process, with Unity, half a minute in).
+     */
+    u8 *live;
+    u32 live_pages;
+    struct region *next;
+} region;
+
+/* Marks the pages of [offset, offset + size) of a region as the app's or not; both are multiples of a page. */
+static void region_mark(region *r, size_t offset, size_t size, bool on)
+{
+    size_t page = offset / HK_PAGE, end = (offset + size) / HK_PAGE;
+    for (; page < end; page++) {
+        u8 bit = (u8)(1u << (page & 7));
+        bool was = (r->live[page >> 3] & bit) != 0;
+        if (was == on) continue;
+        r->live[page >> 3] ^= bit;
+        if (on) r->live_pages++;
+        else r->live_pages--;
+    }
+}
+
+static region *g_regions;
+static hk_lock g_region_lock = HK_LOCK_INIT;
+
+static region *region_of(const void *p)
+{
+    region *r;
+    for (r = g_regions; r; r = r->next)
+        if ((const u8 *)p >= r->base && (const u8 *)p < r->base + r->size) return r;
+    return NULL;
+}
+
+static int host_prot(int prot)
+{
+    if (prot & G_PROT_WRITE) return HK_PROT_RW;
+    if (prot & G_PROT_EXEC) return HK_PROT_RX;
+    if (prot & G_PROT_READ) return HK_PROT_R;
+    return HK_PROT_NONE;
+}
+
+/* fd-backed mappings read the file through the io layer. */
+i32 hk_fd_pread(int fd, void *buf, u32 n, u64 offset);
+
+static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, u64 offset)
+{
+    size_t size = HK_ALIGN_UP(len, HK_PAGE), reserve = HK_ALIGN_UP(len, 65536);
+    region *r;
+    u8 *p;
+    if (!len) {
+        hk_set_errno(GE_INVAL);
+        return G_MAP_FAILED;
+    }
+    if (flags & G_MAP_FIXED) {
+        /* Only over memory this layer already owns: a fresh address cannot be demanded of the host. */
+        hk_lock_acquire(&g_region_lock);
+        r = region_of(addr);
+        if (!r || (u8 *)addr + size > r->base + r->size || ((hk_addr)addr & (HK_PAGE - 1))) {
+            hk_lock_release(&g_region_lock);
+            hk_note_once("mmap(MAP_FIXED) at an address the layer does not own");
+            hk_set_errno(GE_NOMEM);
+            return G_MAP_FAILED;
+        }
+        region_mark(r, (size_t)((u8 *)addr - r->base), size, true);
+        hk_lock_release(&g_region_lock);
+        p = (u8 *)addr;
+        if (!hk_mem_commit(p, size, HK_PROT_RW) || !hk_mem_protect(p, size, HK_PROT_RW)) {
+            hk_set_errno(GE_NOMEM);
+            return G_MAP_FAILED;
+        }
+        memset(p, 0, size);
+    } else {
+        p = (u8 *)hk_mem_reserve(reserve);
+        if (!p || !hk_mem_commit(p, size, HK_PROT_RW)) {
+            if (p) hk_mem_release(p, reserve);
+            hk_set_errno(GE_NOMEM);
+            return G_MAP_FAILED;
+        }
+        r = (region *)hk_alloc(sizeof(*r));
+        r->base = p;
+        r->size = reserve;
+        r->live = (u8 *)hk_alloc(reserve / HK_PAGE / 8 + 1);
+        region_mark(r, 0, size, true);
+        hk_lock_acquire(&g_region_lock);
+        r->next = g_regions;
+        g_regions = r;
+        hk_lock_release(&g_region_lock);
+    }
+    if (!(flags & G_MAP_ANONYMOUS)) {
+        size_t got = 0;
+        while (got < len) {
+            i32 n = hk_fd_pread(fd, p + got, (u32)(len - got), offset + got);
+            if (n <= 0) break;
+            got += (size_t)n;
+        }
+        if ((flags & G_MAP_SHARED) && (prot & G_PROT_WRITE)) hk_note_once("mmap: a shared writable file mapping is a private copy here; writes do not reach the file");
+    }
+    if ((prot & G_PROT_WRITE) && (prot & G_PROT_EXEC)) {
+        hk_lock_acquire(&g_region_lock);
+        r = region_of(p);
+        if (r) r->wx = true;
+        hk_lock_release(&g_region_lock);
+    } else if (host_prot(prot) != HK_PROT_RW) {
+        hk_mem_protect(p, size, host_prot(prot));
+        if (prot & G_PROT_EXEC) hk_icache_flush(p, size);
+    }
+    hk_trace("mmap(%p, %u, prot %d, flags 0x%x, fd %d) -> %p", addr, (unsigned)len, prot, (unsigned)flags, fd, (void *)p);
+    return p;
+}
+
+static void *g_mmap(void *addr, size_t len, int prot, int flags, int fd, i32 offset)
+{
+    return g_mmap_common(addr, len, prot, flags, fd, (u64)(u32)offset);
+}
+
+static void *g_mmap64(void *addr, size_t len, int prot, int flags, int fd, i64 offset)
+{
+    return g_mmap_common(addr, len, prot, flags, fd, (u64)offset);
+}
+
+/* mmap2's offset is in pages. */
+void *hk_g_mmap2(void *addr, size_t len, int prot, int flags, int fd, u32 pgoffset)
+{
+    return g_mmap_common(addr, len, prot, flags, fd, (u64)pgoffset * HK_PAGE);
+}
+
+static int g_munmap(void *addr, size_t len)
+{
+    region *r, **link;
+    size_t size = HK_ALIGN_UP(len, HK_PAGE);
+    hk_trace("munmap(%p, %u)", addr, (unsigned)len);
+    hk_lock_acquire(&g_region_lock);
+    for (link = &g_regions; (r = *link) != NULL; link = &r->next) {
+        size_t offset;
+        if ((u8 *)addr < r->base || (u8 *)addr >= r->base + r->size) continue;
+        offset = (size_t)((u8 *)addr - r->base) & ~(size_t)(HK_PAGE - 1);
+        if (size > r->size - offset) size = r->size - offset;
+        region_mark(r, offset, size, false);
+        if (!r->live_pages) {
+            /* The last of it: the reservation goes back. */
+            *link = r->next;
+            hk_lock_release(&g_region_lock);
+            hk_mem_release(r->base, r->size);
+            free(r->live);
+            free(r);
+            return 0;
+        }
+        /*
+         * Part of a region: the host frees address space only whole, so the
+         * pages go and the addresses stay reserved until the rest has gone
+         * too. (Under the lock: once it is let go another thread may unmap
+         * the rest, and the addresses may be someone else's the moment after.)
+         */
+        hk_mem_decommit(r->base + offset, size);
+        hk_lock_release(&g_region_lock);
+        return 0;
+    }
+    hk_lock_release(&g_region_lock);
+    return 0;
+}
+
+static int g_mprotect(void *addr, size_t len, int prot)
+{
+    size_t size = HK_ALIGN_UP(len + ((hk_addr)addr & (HK_PAGE - 1)), HK_PAGE);
+    u8 *p = (u8 *)HK_ALIGN_DOWN((hk_addr)addr, (hk_addr)HK_PAGE);
+    bool owned;
+    hk_lock_acquire(&g_region_lock);
+    owned = region_of(p) != NULL;
+    hk_lock_release(&g_region_lock);
+    if (!owned) owned = hk_ld_is_guest_code((hk_addr)p);
+    hk_trace("mprotect(%p, %u, prot %d)%s", addr, (unsigned)len, prot, owned ? "" : " -- not the app's memory, left alone");
+    if (!owned) {
+        /*
+         * Memory the app did not get from mmap and that is not one of its
+         * libraries: a thread's stack, where Android code puts a guard page
+         * of its own, or something found by reading the process's map. Those
+         * are the host's -- a Windows stack has its own guard page, and
+         * changing a page of it, or of anything else of the system's, breaks
+         * whoever owns it. The app is told it worked.
+         */
+        static volatile i32 said;
+        if (hk_atomic_add(&said, 1) <= 6)
+            hk_warn("mprotect(%p, %u, prot %d): not memory this layer gave the app; left as it is", addr, (unsigned)len, prot);
+        return 0;
+    }
+    if ((prot & G_PROT_WRITE) && (prot & G_PROT_EXEC)) {
+        region *r;
+        hk_lock_acquire(&g_region_lock);
+        r = region_of(p);
+        if (r) r->wx = true;
+        hk_lock_release(&g_region_lock);
+        if (!r) hk_note_once("mprotect: writable and executable at once, outside mmap'd memory (%p); it stays as it is", addr);
+        else hk_mem_protect(p, size, HK_PROT_RW);
+        return 0;
+    }
+    if (!hk_mem_protect(p, size, host_prot(prot))) {
+        hk_set_errno(GE_ACCES);
+        return -1;
+    }
+    if (prot & G_PROT_EXEC) hk_icache_flush(p, size);
+    return 0;
+}
+
+/* A write-or-execute fault in a region that wants both: give the page what this access needs. */
+bool hk_mmap_fix_fault(hk_addr address, bool write, bool exec)
+{
+    region *r;
+    bool wx;
+    u8 *page = (u8 *)HK_ALIGN_DOWN(address, (hk_addr)HK_PAGE);
+    if (!write && !exec) return false;
+    hk_lock_acquire(&g_region_lock);
+    r = region_of((const void *)address);
+    wx = r && r->wx;
+    hk_lock_release(&g_region_lock);
+    if (!wx) return false;
+    if (exec) {
+        if (!hk_mem_protect(page, HK_PAGE, HK_PROT_RX)) return false;
+        hk_icache_flush(page, HK_PAGE);
+        return true;
+    }
+    return hk_mem_protect(page, HK_PAGE, HK_PROT_RW);
+}
+
+static int g_madvise(void *addr, size_t len, int advice) { (void)addr; (void)len; (void)advice; return 0; }
+static int g_mlock(const void *addr, size_t len) { (void)addr; (void)len; return 0; }
+static int g_msync(void *addr, size_t len, int flags) { (void)addr; (void)len; (void)flags; return 0; }
+static int g_mincore(void *addr, size_t len, u8 *vec)
+{
+    size_t i, n = HK_ALIGN_UP(len, HK_PAGE) / HK_PAGE;
+    (void)addr;
+    for (i = 0; i < n; i++) vec[i] = 1;
+    return 0;
+}
+
+const hk_sym hk_tab_mem[] = {
+    HK_WRAP("malloc", hk_g_malloc),
+    HK_WRAP("calloc", hk_g_calloc),
+    HK_WRAP("realloc", hk_g_realloc),
+    HK_WRAP("free", hk_g_free),
+    HK_WRAP("memalign", g_memalign),
+    HK_WRAP("posix_memalign", g_posix_memalign),
+    HK_WRAP("aligned_alloc", g_aligned_alloc),
+    HK_WRAP("valloc", g_valloc),
+    HK_WRAP("pvalloc", g_pvalloc),
+    HK_WRAP("malloc_usable_size", g_malloc_usable_size),
+    HK_WRAP("mallopt", g_mallopt),
+    HK_WRAP("malloc_trim", g_malloc_trim),
+    HK_WRAP("mallinfo", g_mallinfo),
+    HK_WRAP("reallocarray", g_reallocarray),
+    HK_WRAP("_Znwj", g_new),
+    HK_WRAP("_Znaj", g_new),
+    HK_WRAP("_ZnwjRKSt9nothrow_t", g_new_nothrow),
+    HK_WRAP("_ZnajRKSt9nothrow_t", g_new_nothrow),
+    HK_WRAP("_ZdlPv", g_delete),
+    HK_WRAP("_ZdaPv", g_delete),
+    HK_WRAP("_ZdlPvRKSt9nothrow_t", g_delete_nothrow),
+    HK_WRAP("_ZdaPvRKSt9nothrow_t", g_delete_nothrow),
+    HK_WRAP("_ZdlPvj", g_delete_sized),
+    HK_WRAP("_ZdaPvj", g_delete_sized),
+    HK_WRAP("mmap", g_mmap),
+    HK_WRAP("mmap64", g_mmap64),
+    HK_WRAP("munmap", g_munmap),
+    HK_WRAP("mprotect", g_mprotect),
+    HK_WRAP("madvise", g_madvise),
+    HK_WRAP("posix_madvise", g_madvise),
+    HK_WRAP("mlock", g_mlock),
+    HK_WRAP("munlock", g_mlock),
+    HK_WRAP("msync", g_msync),
+    HK_WRAP("mincore", g_mincore),
+    HK_END
+};

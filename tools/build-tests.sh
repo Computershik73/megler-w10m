@@ -1,0 +1,212 @@
+#!/usr/bin/env bash
+# Builds and runs the core's tests.
+#
+#   tools/build-tests.sh arm [--no-run] [--no-libcore] [--no-java] [-- extra arguments for hk_tests]
+#       The 32-bit ARM build, in WSL with arm-linux-gnueabihf-gcc, run under
+#       qemu-arm: the one that executes guest code. Thumb-2 and hard-float,
+#       like the phone's build. Needs the guest libraries (tools/build-guest.sh).
+#   tools/build-tests.sh win
+#       The x64 build with MSVC, run here: the Win32 host layer and everything
+#       that needs no ARM code. And the shell's drawing for a Java app
+#       (app/Megler/player/GfxHost.cpp: Direct2D, DirectWrite, WIC), which
+#       is built into this test program and run as its --gfx-windows mode:
+#       scenes drawn through megler_gfx_host, written to build/gfx-pictures as
+#       PNG files (sheet.png has all of them) and checked, twice -- the second
+#       time with every canvas copied to a WIC bitmap and back. Each run ends
+#       with its own line of checks and failures. The ARM build has no
+#       Direct2D and says so. And where `tools/build-tests.sh arm` has left
+#       its records of the Java test apps' drawing (build/gfx-records), each
+#       is drawn again here, by the stand-in and by Direct2D:
+#       build/gfx-pictures/app-hello-N.png and app-demos-N.png.
+#
+# The tests are run twice where Android 9's boot class path has been unpacked
+# (build/android9/boot): once with the Dalvik runtime on its built-in
+# java.lang, and once more, the whole of them, with the runtime on Android's
+# own libcore from the folder tools/dvm-android-root.sh puts together -- under
+# qemu-arm with libcore's native libraries, on the PC without. A process has
+# one runtime, so these are two processes; each ends with its own line of
+# checks and failures, and the script fails if either does. --no-libcore
+# leaves the second run out.
+#
+# And, under qemu-arm, each of the Java test apps (core/tests/app) is started
+# through megler_run on that same folder with the Java framework in it, a process
+# for each: `hello` and `demos`, where a JDK and the Android SDK's build tools
+# are there to build the framework and the apps (tools/build-framework.sh,
+# tools/build-test-app.sh; said and left out where they are not). Their
+# pictures are written to build/java-pictures as BMP files. Each is then run
+# once more with its calls of the shell's drawing recorded
+# (build/gfx-records/<app>.rec), for the Windows build to draw again.
+# --no-java leaves these out.
+#
+# Objects go to ~/megler-w10m-build inside WSL (the Windows drive is slow from
+# there) and to build/tests-win here.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+MODE="${1:-arm}"
+shift || true
+RUN=1
+LIBCORE=1
+JAVA=1
+EXTRA=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --no-run) RUN=0 ;;
+    --no-libcore) LIBCORE=0 ;;
+    --no-java) JAVA=0 ;;
+    --) shift; EXTRA=("$@"); break ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+# The Dalvik runtime's generated sources and its tests' DEX files (build/guest/armeabi-v7a/dvm).
+bash "$ROOT/tools/build-dvm-fixtures.sh"
+[ -f "$ROOT/build/android9/boot/core-oj.dex" ] || LIBCORE=0
+[ "$LIBCORE" = 1 ] || JAVA=0
+if [ "$JAVA" = 1 ] && [ "$MODE" = arm ] && [ "$RUN" = 1 ]; then
+  # The framework and the test apps: built only where the tools to build them are, and only when their sources are newer.
+  if ! { bash "$ROOT/tools/build-framework.sh" && bash "$ROOT/tools/build-test-app.sh"; }; then
+    echo "(the Java framework or the test apps could not be built here: the Java apps are not run)"
+    JAVA=0
+  fi
+fi
+STATUS=0
+AGAIN="the tests again, the Dalvik runtime on Android's libcore (build/android9/root)"
+mapfile -t SRCS < <(cd "$ROOT" && find core/src core/tests -maxdepth 3 -name '*.c' ! -path 'core/tests/guest/*' | sort)
+mapfile -t ZSRCS < <(cd "$ROOT" && find core/third_party/zlib -maxdepth 1 -name '*.c' ! -name 'gz*.c' | sort)
+
+if [ "$MODE" = arm ]; then
+  { [ -f "$ROOT/build/guest/armeabi-v7a/libt_basic.so" ] && [ "$ROOT/build/guest/armeabi-v7a/libt_jni.so" -nt "$ROOT/core/tests/guest/t_jni.c" ]; } || bash "$ROOT/tools/build-guest.sh" > /dev/null
+  WROOT="/mnt/${ROOT:1:1}${ROOT:2}"
+  cat > "$ROOT/build/tests-arm.sh" <<EOF
+set -e
+OUT=\$HOME/megler-w10m-build
+mkdir -p \$OUT/obj
+cd "$WROOT"
+CFLAGS="-std=gnu11 -O1 -g -mthumb -march=armv7-a -mfpu=neon -mfloat-abi=hard -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -Wno-format-truncation -Icore/third_party/zlib -D_GNU_SOURCE"
+compile() {
+  src="\$1"; obj="\$OUT/obj/\$(echo "\$src" | tr '/' '_').o"
+  if [ ! -f "\$obj" ] || [ "\$src" -nt "\$obj" ] || [ -n "\$(find core/src core/tests \( -name '*.h' -o -name '*.inc' \) -newer "\$obj" -print -quit)" ]; then
+    arm-linux-gnueabihf-gcc \$CFLAGS \$2 -c "\$src" -o "\$obj" || exit 1
+  fi
+}
+export -f compile
+export OUT CFLAGS
+printf '%s\n' ${SRCS[*]} | xargs -P 8 -I{} bash -c 'compile {} ""'
+printf '%s\n' ${ZSRCS[*]} | xargs -P 8 -I{} bash -c 'compile {} "-w"'
+arm-linux-gnueabihf-gcc -mthumb -o \$OUT/hk_tests \$OUT/obj/*.o -lm -lpthread -ldl
+echo "built \$OUT/hk_tests"
+EOF
+  MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash "$WROOT/build/tests-arm.sh"
+  if [ "$RUN" = 1 ]; then
+    # (The layer's log is the program's standard error; the two are joined inside WSL, where lines stay whole.)
+    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf ~/megler-w10m-build/scratch && qemu-arm -L /usr/arm-linux-gnueabihf ~/megler-w10m-build/hk_tests '$WROOT/build/guest/armeabi-v7a' ~/megler-w10m-build/scratch \$([ -f ~/megler-w10m-build/hk.apk ] && echo --dvm-apk ~/megler-w10m-build/hk.apk) ${EXTRA[*]:-} 2>&1" || STATUS=1
+    if [ "$LIBCORE" = 1 ]; then
+      bash "$ROOT/tools/dvm-android-root.sh"
+      echo "$AGAIN"
+      # The folder is copied into WSL's own disk: the Windows drive is slow from there, and ICU maps 24 MB of it.
+      MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "mkdir -p ~/megler-w10m-build/android-root && cp -ru '$WROOT/build/android9/root/.' ~/megler-w10m-build/android-root/ && rm -rf ~/megler-w10m-build/scratch && qemu-arm -L /usr/arm-linux-gnueabihf ~/megler-w10m-build/hk_tests '$WROOT/build/guest/armeabi-v7a' ~/megler-w10m-build/scratch --dvm-android ~/megler-w10m-build/android-root \$([ -f ~/megler-w10m-build/hk.apk ] && echo --dvm-apk ~/megler-w10m-build/hk.apk) ${EXTRA[*]:-} 2>&1" || STATUS=1
+    fi
+    if [ "$JAVA" = 1 ]; then
+      for app in hello demos; do
+        echo "the Java test app $app (build/guest/java/$app.apk), through megler_run"
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/$app.apk' ~/megler-w10m-build/$app.apk && rm -rf ~/megler-w10m-build/java-data-$app && qemu-arm -L /usr/arm-linux-gnueabihf ~/megler-w10m-build/hk_tests --java $app ~/megler-w10m-build/$app.apk ~/megler-w10m-build/java-data-$app ~/megler-w10m-build/android-root '$WROOT/build/java-pictures' 2>&1" || STATUS=1
+      done
+      # And an upright surface, as a phone held upright gives an app that does not ask for landscape: the same app, the same checks.
+      echo "the Java test app hello again, on an upright surface (720 x 1280 at 320 dpi)"
+      MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/hello.apk' ~/megler-w10m-build/hello.apk && rm -rf ~/megler-w10m-build/java-data-hello && qemu-arm -L /usr/arm-linux-gnueabihf ~/megler-w10m-build/hk_tests --java hello ~/megler-w10m-build/hello.apk ~/megler-w10m-build/java-data-hello ~/megler-w10m-build/android-root '$WROOT/build/java-pictures-upright' 0 720x1280@320 2>&1" || STATUS=1
+      # Each of them once more, with every call it makes of the shell's drawing written to build/gfx-records/<app>.rec
+      # (core/tests/hk_gfx_record.c): what `tools/build-tests.sh win` draws again with Direct2D and DirectWrite.
+      mkdir -p "$ROOT/build/gfx-records"
+      for app in hello demos; do
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf ~/megler-w10m-build/java-data-$app && qemu-arm -L /usr/arm-linux-gnueabihf ~/megler-w10m-build/hk_tests --gfx-record $app ~/megler-w10m-build/$app.apk ~/megler-w10m-build/java-data-$app ~/megler-w10m-build/android-root ~/megler-w10m-build/$app.rec 2>/dev/null && cp ~/megler-w10m-build/$app.rec '$WROOT/build/gfx-records/$app.rec'" || STATUS=1
+      done
+    fi
+    # The shell's drawing (Direct2D, DirectWrite, WIC) is only in the Windows build: this one has the mode and says so.
+    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "qemu-arm -L /usr/arm-linux-gnueabihf ~/megler-w10m-build/hk_tests --gfx-windows - 2>&1" || STATUS=1
+  fi
+elif [ "$MODE" = win ]; then
+  for cl in "/c/Program Files/Microsoft Visual Studio/2022/"*/VC/Tools/MSVC/*/bin/Hostx64/x64/cl.exe; do
+    [ -f "$cl" ] && VC="${cl%/bin/Hostx64/x64/cl.exe}"
+  done
+  [ -n "${VC:-}" ] || { echo "no MSVC found" >&2; exit 1; }
+  SDK="/c/Program Files (x86)/Windows Kits/10"
+  SDKV="${MEGLER_SDK_VERSION:-10.0.22621.0}"
+  w() { cygpath -w "$1"; }
+  export INCLUDE="$(w "$VC/include");$(w "$SDK/Include/$SDKV/ucrt");$(w "$SDK/Include/$SDKV/shared");$(w "$SDK/Include/$SDKV/um")"
+  export LIB="$(w "$VC/lib/x64");$(w "$SDK/Lib/$SDKV/ucrt/x64");$(w "$SDK/Lib/$SDKV/um/x64")"
+  export PATH="$VC/bin/Hostx64/x64:$PATH"
+  export VSLANG=1033 MSYS2_ARG_CONV_EXCL="*"
+  OUT="$ROOT/build/tests-win"
+  mkdir -p "$OUT/obj" "$OUT/zobj"
+  ALL=()
+  for s in "${SRCS[@]}"; do ALL+=("$(w "$ROOT/$s")"); done
+  ZALL=()
+  for s in "${ZSRCS[@]}"; do ZALL+=("$(w "$ROOT/$s")"); done
+  # (HK_GFX_WINDOWS: this build has the shell's drawing in it; hk_tests_main.c's --gfx-windows mode.)
+  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /O1 /MT /W3 /std:c11 /utf-8 /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DHK_GFX_WINDOWS \
+    "/I$(w "$ROOT/core/third_party/zlib")" "/Fo$(w "$OUT/obj")\\" "${ALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
+  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /O1 /MT /w /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS \
+    "/Fo$(w "$OUT/zobj")\\" "${ZALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
+  # The shell's drawing itself, the very file the phone's package is built from (it is plain COM, no WinRT), and the few
+  # lines that hand it to the tests: C++, with the shell's own flags.
+  GFX_SRC=("$(w "$ROOT/app/Megler/player/GfxHost.cpp")" "$(w "$ROOT/core/tests/hk_gfx_windows.cpp")")
+  GFX_FLAGS=(/nologo /c /MT /W3 /EHsc /GR /permissive- /std:c++20 /utf-8 /DUNICODE /D_UNICODE /DNOMINMAX /D_CRT_SECURE_NO_WARNINGS
+             "/I$(w "$ROOT/app/Megler")" "/I$(w "$ROOT/core/include")")
+  mkdir -p "$OUT/gfxobj"
+  rm -f "$OUT/gfxobj/"*.obj
+  "$VC/bin/Hostx64/x64/cl.exe" "${GFX_FLAGS[@]}" /O2 /MP "/Fo$(w "$OUT/gfxobj")\\" "${GFX_SRC[@]}" | grep -v -E '^[A-Za-z0-9_]+\.cpp$' || true
+  for obj in GfxHost hk_gfx_windows; do
+    [ -f "$OUT/gfxobj/$obj.obj" ] || { echo "compile failed: $obj.cpp" >&2; exit 1; }
+  done
+  # The same file against the headers of the SDK whose libraries the phone's package links (10.0.15063, Windows 10
+  # Mobile's last): an interface that only a later Windows has would compile above and fail on the phone.
+  OLD_SDK="${MEGLER_SDK_LIB:-10.0.15063.0}"
+  if [ -f "$SDK/Include/$OLD_SDK/um/d2d1_1.h" ]; then
+    mkdir -p "$OUT/gfxobj-old"
+    rm -f "$OUT/gfxobj-old/GfxHost.obj"
+    INCLUDE="$(w "$VC/include");$(w "$SDK/Include/$OLD_SDK/ucrt");$(w "$SDK/Include/$OLD_SDK/shared");$(w "$SDK/Include/$OLD_SDK/um")" \
+      "$VC/bin/Hostx64/x64/cl.exe" "${GFX_FLAGS[@]}" /Od "/Fo$(w "$OUT/gfxobj-old")\\" "${GFX_SRC[0]}" | grep -v -E '^[A-Za-z0-9_]+\.cpp$' || true
+    [ -f "$OUT/gfxobj-old/GfxHost.obj" ] || { echo "GfxHost.cpp does not compile against the SDK $OLD_SDK headers" >&2; exit 1; }
+    echo "GfxHost.cpp also compiles against the SDK $OLD_SDK headers"
+  else
+    echo "(no SDK $OLD_SDK headers here: GfxHost.cpp was not compiled against them)"
+  fi
+  "$VC/bin/Hostx64/x64/link.exe" /nologo "/OUT:$(w "$OUT/hk_tests.exe")" "$(w "$OUT/obj")\\*.obj" "$(w "$OUT/zobj")\\*.obj" "$(w "$OUT/gfxobj")\\*.obj" \
+    bcrypt.lib synchronization.lib d2d1.lib dwrite.lib ole32.lib
+  echo "built $OUT/hk_tests.exe"
+  if [ "$RUN" = 1 ]; then
+    rm -rf "$OUT/scratch"
+    APK="${MEGLER_TEST_APK:-$USERPROFILE/Downloads/Hollow_Knight_22.10.2022_LQ.apk}"
+    DVM=(--dvm "$(w "$ROOT/build/guest/armeabi-v7a/dvm")")
+    [ -f "$APK" ] && DVM+=(--dvm-apk "$APK")
+    "$OUT/hk_tests.exe" - "$(w "$OUT/scratch")" "${DVM[@]}" "${EXTRA[@]}" || STATUS=1
+    if [ "$LIBCORE" = 1 ]; then
+      bash "$ROOT/tools/dvm-android-root.sh"
+      echo "$AGAIN"
+      rm -rf "$OUT/scratch"
+      "$OUT/hk_tests.exe" - "$(w "$OUT/scratch")" "${DVM[@]}" --dvm-android "$(w "$ROOT/build/android9/root")" "${EXTRA[@]}" || STATUS=1
+    fi
+    # The shell's drawing: its scenes as PNG files in build/gfx-pictures, and once more, without the files, the way it
+    # would draw if Direct2D refused the app's memory.
+    rm -rf "$ROOT/build/gfx-pictures"
+    "$OUT/hk_tests.exe" --gfx-windows "$(w "$ROOT/build/gfx-pictures")" || STATUS=1
+    "$OUT/hk_tests.exe" --gfx-windows - copy || STATUS=1
+    # The Java test apps' own drawing, as `tools/build-tests.sh arm` recorded it under qemu: drawn again by the stand-in,
+    # which must give the recorded pictures back pixel for pixel, and then by the shell's drawing, into
+    # build/gfx-pictures/app-<app>-N.png -- the app's views as a phone's Direct2D and DirectWrite would draw them, laid
+    # out as the stand-in's measures of text had them laid out.
+    for app in hello demos; do
+      if [ -f "$ROOT/build/gfx-records/$app.rec" ]; then
+        "$OUT/hk_tests.exe" --gfx-replay "$(w "$ROOT/build/gfx-records/$app.rec")" - "app-$app" standin || STATUS=1
+        "$OUT/hk_tests.exe" --gfx-replay "$(w "$ROOT/build/gfx-records/$app.rec")" "$(w "$ROOT/build/gfx-pictures")" "app-$app" || STATUS=1
+      else
+        echo "(no record of the Java test app $app's drawing in build/gfx-records: tools/build-tests.sh arm makes one)"
+      fi
+    done
+  fi
+else
+  echo "usage: tools/build-tests.sh arm|win" >&2
+  exit 2
+fi
+exit $STATUS

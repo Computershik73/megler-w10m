@@ -1,0 +1,510 @@
+/*
+ * A guest library for the loader's tests: Android code, built with clang for
+ * armv7a-linux-androideabi (tools/build-guest.sh) once as Thumb and once as
+ * ARM. No NDK is needed -- everything it uses from Android is declared here
+ * and bound by name when the library is loaded.
+ */
+typedef unsigned int size_t;
+typedef int pthread_mutex_t;
+typedef int pthread_cond_t;
+typedef int pthread_key_t;
+typedef int pthread_once_t;
+typedef long pthread_t;
+typedef struct { int flags; void *stack_base; size_t stack_size, guard_size; int sched_policy, sched_priority; } pthread_attr_t;
+typedef long jmp_buf[64];
+
+int printf(const char *, ...);
+int snprintf(char *, size_t, const char *, ...);
+int sscanf(const char *, const char *, ...);
+void *malloc(size_t);
+void *calloc(size_t, size_t);
+void *realloc(void *, size_t);
+void *memalign(size_t, size_t);
+void free(void *);
+size_t strlen(const char *);
+char *strcpy(char *, const char *);
+int strcmp(const char *, const char *);
+void *memcpy(void *, const void *, size_t);
+void *memset(void *, int, size_t);
+char *strdup(const char *);
+double sin(double);
+double pow(double, double);
+float sqrtf(float);
+double strtod(const char *, char **);
+double modf(double, double *);
+long lround(double);
+int *__errno(void);
+int __android_log_print(int, const char *, const char *, ...);
+void qsort(void *, size_t, size_t, int (*)(const void *, const void *));
+int setjmp(jmp_buf);
+void longjmp(jmp_buf, int) __attribute__((noreturn));
+int pthread_create(pthread_t *, const pthread_attr_t *, void *(*)(void *), void *);
+int pthread_join(pthread_t, void **);
+int pthread_mutex_lock(pthread_mutex_t *);
+int pthread_mutex_unlock(pthread_mutex_t *);
+int pthread_cond_wait(pthread_cond_t *, pthread_mutex_t *);
+int pthread_cond_broadcast(pthread_cond_t *);
+int pthread_key_create(pthread_key_t *, void (*)(void *));
+void *pthread_getspecific(pthread_key_t);
+int pthread_setspecific(pthread_key_t, const void *);
+int pthread_once(pthread_once_t *, void (*)(void));
+int gettid(void);
+int open(const char *, int, ...);
+int close(int);
+int read(int, void *, size_t);
+int write(int, const void *, size_t);
+int pipe(int[2]);
+void *fopen(const char *, const char *);
+int fclose(void *);
+size_t fwrite(const void *, size_t, size_t, void *);
+size_t fread(void *, size_t, size_t, void *);
+int fseek(void *, long, int);
+long ftell(void *);
+char *fgets(char *, int, void *);
+int fprintf(void *, const char *, ...);
+int unlink(const char *);
+char *getenv(const char *);
+int __system_property_get(const char *, char *);
+void *dlopen(const char *, int);
+void *dlsym(void *, const char *);
+
+/* ------------------------------------------------- data and relocations */
+
+static int g_counter = 5;
+static const char *const g_names[] = { "zero", "one", "two" };
+int t_exported_value = 0x1234;
+static int g_ctor_ran;
+
+__attribute__((constructor)) static void ctor(void) { g_ctor_ran = 1234; }
+
+int t_add(int a, int b) { return a + b; }
+int *t_counter_ptr(void) { return &g_counter; }
+const char *t_name(int i) { return g_names[i]; }
+int t_ctor_ran(void) { return g_ctor_ran; }
+const char *t_hello(void) { return "hello from guest"; }
+
+/* --------------------------------------------------------- floating point */
+
+/* Arguments and results cross in integer registers (softfp). */
+double t_fmul(double a, float b) { return a * b; }
+float t_mixed(int a, float b, double c, float d, int e, double f) { return (float)(a + b + c + d + e + f); }
+float t_sqrt(float x) { return sqrtf(x); }
+double t_sin(double x) { return sin(x); }
+double t_pow(double x, double y) { return pow(x, y); }
+long t_lround(double x) { return lround(x); }
+double t_modf(double x, double *ip) { return modf(x, ip); }
+double t_strtod(const char *s) { return strtod(s, 0); }
+/* The host's function pointer, called with softfp arguments. */
+double t_call_d(double (*fn)(double, double), double a, double b) { return fn(a, b); }
+
+/* ------------------------------------------------------------- variadics */
+
+int t_format(char *buf, int n) { return snprintf(buf, (size_t)n, "%d %s %.3f %lld %c %x", 42, "str", 3.14159, 1234567890123LL, 'z', 0xBEEF); }
+
+int t_scan(const char *s, int *a, float *f, char *word)
+{
+    return sscanf(s, "%d %f %15s", a, f, word);
+}
+
+static int sum_va(int n, ...)
+{
+    __builtin_va_list ap;
+    int total = 0;
+    __builtin_va_start(ap, n);
+    while (n--) total += __builtin_va_arg(ap, int);
+    __builtin_va_end(ap);
+    return total;
+}
+int t_sum(void) { return sum_va(6, 1, 2, 3, 4, 5, 6); }
+
+void t_log(void) { __android_log_print(4, "t_basic", "logging %d and %s and %.2f", 7, "text", 2.5); }
+
+/* ---------------------------------------------------- integer arithmetic */
+
+long long t_div64(long long a, long long b) { return a / b; }
+long long t_mod64(long long a, long long b) { return a % b; }
+unsigned long long t_udiv64(unsigned long long a, unsigned long long b) { return a / b; }
+unsigned t_udiv(unsigned a, unsigned b) { return a / b; }
+int t_mod(int a, int b) { return a % b; }
+
+/* ---------------------------------------------------------------- memory */
+
+int t_heap(void)
+{
+    char *a = malloc(100), *b, *c;
+    int ok = 1;
+    if (!a) return 0;
+    memset(a, 0x5A, 100);
+    a = realloc(a, 5000);
+    if (!a || a[99] != 0x5A) ok = 0;
+    b = memalign(64, 300);
+    if (!b || ((unsigned)b & 63)) ok = 0;
+    c = calloc(10, 10);
+    if (!c || c[50]) ok = 0;
+    free(a);
+    free(b);
+    free(c);
+    a = strdup("duplicate");
+    if (!a || strcmp(a, "duplicate")) ok = 0;
+    free(a);
+    return ok;
+}
+
+/* ------------------------------------------------------------- callbacks */
+
+static int by_int(const void *a, const void *b) { return *(const int *)a - *(const int *)b; }
+
+int t_sort(void)
+{
+    int v[64], i;
+    unsigned x = 12345;
+    for (i = 0; i < 64; i++) {
+        x = x * 1103515245u + 12345u;
+        v[i] = (int)(x >> 16) % 1000;
+    }
+    qsort(v, 64, sizeof(int), by_int);
+    for (i = 1; i < 64; i++)
+        if (v[i - 1] > v[i]) return 0;
+    return 1;
+}
+
+int t_callback(int (*fn)(int), int v) { return fn(v) + 1; }
+
+/* -------------------------------------------------------- setjmp, errno */
+
+static void jumper(jmp_buf env, int v) { longjmp(env, v); }
+
+int t_setjmp(void)
+{
+    jmp_buf env;
+    volatile int stage = 0;
+    int r = setjmp(env);
+    if (r == 0) {
+        stage = 1;
+        jumper(env, 77);
+        return -1;
+    }
+    return stage == 1 ? r : -2;
+}
+
+int t_errno(void)
+{
+    int fd = open("/data/data/does-not-exist/file", 0);
+    return fd < 0 ? *__errno() : 0;
+}
+
+/* --------------------------------------------------------------- threads */
+
+static pthread_mutex_t g_lock;                 /* PTHREAD_MUTEX_INITIALIZER is all zeros */
+static pthread_mutex_t g_rlock = 0x4000;       /* PTHREAD_RECURSIVE_MUTEX_INITIALIZER */
+static pthread_cond_t g_cond;
+static int g_shared, g_go;
+static pthread_key_t g_key;
+static pthread_once_t g_once;
+static int g_once_runs;
+static __thread int tls_counter = 100;         /* ELF TLS: read through the thread pointer */
+static __thread char tls_text[16] = "tls";
+
+static void once_fn(void) { g_once_runs++; }
+
+static void *worker(void *arg)
+{
+    int i, n = (int)(long)arg;
+    pthread_once(&g_once, once_fn);
+    pthread_setspecific(g_key, (void *)(long)(gettid() + 1));
+    pthread_mutex_lock(&g_lock);
+    while (!g_go) pthread_cond_wait(&g_cond, &g_lock);
+    pthread_mutex_unlock(&g_lock);
+    for (i = 0; i < n; i++) {
+        pthread_mutex_lock(&g_rlock);
+        pthread_mutex_lock(&g_rlock);
+        g_shared++;
+        tls_counter++;
+        pthread_mutex_unlock(&g_rlock);
+        pthread_mutex_unlock(&g_rlock);
+    }
+    /* Each thread has its own copies, starting from the initial values. */
+    if (tls_counter != 100 + n || tls_text[0] != 't') return (void *)-1L;
+    if (pthread_getspecific(g_key) != (void *)(long)(gettid() + 1)) return (void *)-2L;
+    return (void *)(long)tls_counter;
+}
+
+int t_threads(int threads, int n)
+{
+    pthread_t t[16];
+    int i, bad = 0;
+    void *ret;
+    if (threads > 16) threads = 16;
+    g_shared = 0;
+    g_go = 0;
+    pthread_key_create(&g_key, 0);
+    for (i = 0; i < threads; i++)
+        if (pthread_create(&t[i], 0, worker, (void *)(long)n) != 0) return -1;
+    pthread_mutex_lock(&g_lock);
+    g_go = 1;
+    pthread_cond_broadcast(&g_cond);
+    pthread_mutex_unlock(&g_lock);
+    for (i = 0; i < threads; i++) {
+        pthread_join(t[i], &ret);
+        if ((long)ret != 100 + n) bad++;
+    }
+    if (bad || g_once_runs != 1) return -100 - bad;
+    return g_shared;
+}
+
+int t_tls_get(void) { return tls_counter; }
+void t_tls_set(int v) { tls_counter = v; }
+int *t_tls_addr(void) { return &tls_counter; }
+
+/* ----------------------------------------------------------------- files */
+
+/*
+ * Stopping the world, the way a garbage collector does it: a signal to every
+ * thread, whose handler says "stopped" and waits in sigsuspend for the signal
+ * that lets it go on. One thread is in a loop that never calls anything, one
+ * waits on a semaphore, one sleeps: the three places a thread can be found.
+ */
+typedef struct {
+    void (*handler)(int, void *, void *);
+    unsigned mask;
+    int flags;
+    void (*restorer)(void);
+} t_sigaction;
+typedef struct { unsigned count; } t_sem;
+int sigaction(int, const t_sigaction *, t_sigaction *);
+int sigsuspend(const unsigned *);
+int pthread_kill(pthread_t, int);
+int sem_init(t_sem *, int, unsigned);
+int sem_post(t_sem *);
+int sem_wait(t_sem *);
+int usleep(unsigned);
+struct t_timespec { long tv_sec, tv_nsec; };
+int clock_gettime(int, struct t_timespec *);
+
+/* Milliseconds on the monotonic clock: a wait is bounded by this, not by counting sleeps, which may each take a timer tick. */
+static long now_ms(void)
+{
+    struct t_timespec ts;
+    clock_gettime(1, &ts);
+    return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+enum { SIG_STOP = 30, SIG_GO = 24 };              /* SIGPWR and SIGXCPU, the two a collector on Android uses */
+static t_sem g_idle;
+static volatile int g_released, g_spins, g_quit;
+/* For each of the three threads: the round it last stopped in, the round it was last let go from, and whether it has ended. */
+static volatile int g_stopped_in[3], g_left[3], g_ended[3];
+static __thread int tls_stops, tls_index;
+
+static void on_stop(int sig, void *info, void *context)
+{
+    unsigned all_but_go = ~(1u << (SIG_GO - 1));
+    int seen = g_released;
+    (void)sig; (void)info; (void)context;
+    tls_stops++;
+    g_stopped_in[tls_index] = seen + 1;
+    while (g_released == seen) sigsuspend(&all_but_go);
+    g_left[tls_index] = seen + 1;
+}
+static void on_go(int sig, void *info, void *context) { (void)sig; (void)info; (void)context; }
+
+static void *spinner(void *arg)
+{
+    tls_index = (int)(long)arg;
+    while (!g_quit) g_spins++;
+    g_ended[tls_index] = 1;
+    return (void *)(long)tls_stops;
+}
+static void *waiter(void *arg)
+{
+    tls_index = (int)(long)arg;
+    sem_wait(&g_idle);
+    g_ended[tls_index] = 1;
+    return (void *)(long)tls_stops;
+}
+static void *sleeper(void *arg)
+{
+    tls_index = (int)(long)arg;
+    while (!g_quit) usleep(200000);
+    g_ended[tls_index] = 1;
+    return (void *)(long)tls_stops;
+}
+
+/* Which of the three have not reached `value` in `what` after three seconds: bit 0 the running one, bit 1 the waiting one, bit 2 the sleeping one. */
+static int laggards(volatile int *what, int value)
+{
+    long until = now_ms() + 3000;
+    int i, mask = 7;
+    for (;;) {
+        for (i = 0; i < 3; i++)
+            if (what[i] == value) mask &= ~(1 << i);
+        if (!mask || now_ms() > until) return mask;
+        usleep(1000);
+    }
+}
+
+/*
+ * 0, or where it went wrong: 100 + which threads did not stop, 200 + which
+ * did not go on, 300 + which did not end (bits as in laggards), 4 the running
+ * thread ran on while stopped, 6 it did not run again, 10 + the thread that
+ * did not handle every stop itself.
+ */
+int t_signals(int rounds)
+{
+    t_sigaction stop = { on_stop, ~(1u << (SIG_GO - 1)), 4 | 0x10000000, 0 }, go = { on_go, ~0u, 4 | 0x10000000, 0 };
+    pthread_t t[3];
+    void *result;
+    int round, i, spins, late;
+    sem_init(&g_idle, 0, 0);
+    g_quit = g_spins = g_released = 0;
+    for (i = 0; i < 3; i++) g_stopped_in[i] = g_left[i] = g_ended[i] = 0;
+    if (sigaction(SIG_STOP, &stop, 0) || sigaction(SIG_GO, &go, 0)) return 1;
+    if (pthread_create(&t[0], 0, spinner, (void *)0) || pthread_create(&t[1], 0, waiter, (void *)1) || pthread_create(&t[2], 0, sleeper, (void *)2)) return 2;
+    for (i = (int)now_ms() + 3000; g_spins < 1000 && (int)now_ms() < i;) usleep(1000);
+    if (g_spins < 1000) return 3;
+    usleep(20000);                                 /* the other two have reached their waits */
+    for (round = 1; round <= rounds; round++) {
+        for (i = 0; i < 3; i++)
+            if (pthread_kill(t[i], SIG_STOP)) return 5;
+        late = laggards(g_stopped_in, round);
+        if (late) return 100 + late;
+        /* All three have said so; the one that was running must not be. */
+        spins = g_spins;
+        usleep(3000);
+        if (g_spins != spins) return 4;
+        g_released++;
+        for (i = 0; i < 3; i++)
+            if (pthread_kill(t[i], SIG_GO)) return 5;
+        late = laggards(g_left, round);
+        if (late) return 200 + late;
+        for (i = (int)now_ms() + 2000; g_spins == spins && (int)now_ms() < i;) usleep(500);
+        if (g_spins == spins) return 6;
+    }
+    g_quit = 1;
+    sem_post(&g_idle);
+    late = laggards(g_ended, 1);
+    if (late) return 300 + late;
+    for (i = 0; i < 3; i++) {
+        pthread_join(t[i], &result);
+        /* Each handled every stop itself, on its own thread. */
+        if ((long)result != rounds) return 10 + i;
+    }
+    return 0;
+}
+
+int t_files(const char *dir)
+{
+    char path[256], line[64];
+    void *f;
+    int ok = 1, fds[2];
+    long size;
+    snprintf(path, sizeof(path), "%s/t_basic.txt", dir);
+    f = fopen(path, "w");
+    if (!f) return -1;
+    fprintf(f, "line %d\n", 1);
+    fwrite("second\n", 1, 7, f);
+    fclose(f);
+    f = fopen(path, "r");
+    if (!f) return -2;
+    if (!fgets(line, sizeof(line), f) || strcmp(line, "line 1\n")) ok = 0;
+    if (!fgets(line, sizeof(line), f) || strcmp(line, "second\n")) ok = 0;
+    if (fgets(line, sizeof(line), f)) ok = 0;
+    fseek(f, 0, 2);
+    size = ftell(f);
+    fclose(f);
+    if (size != 14) ok = 0;
+    unlink(path);
+    if (fopen(path, "r")) ok = 0;
+    if (pipe(fds) != 0) return -3;
+    if (write(fds[1], "pipe", 4) != 4 || read(fds[0], line, 4) != 4 || line[0] != 'p' || line[3] != 'e') ok = 0;
+    close(fds[0]);
+    close(fds[1]);
+    return ok;
+}
+
+int t_proc(void)
+{
+    char line[256];
+    void *f = fopen("/proc/cpuinfo", "r");
+    int found = 0;
+    if (!f) return -1;
+    while (fgets(line, sizeof(line), f)) {
+        int i;
+        for (i = 0; line[i]; i++)
+            if (line[i] == 'n' && line[i + 1] == 'e' && line[i + 2] == 'o' && line[i + 3] == 'n') found = 1;
+    }
+    fclose(f);
+    return found;
+}
+
+int t_props(void)
+{
+    char value[92];
+    return __system_property_get("ro.build.version.sdk", value) > 0 && getenv("HOME") != 0 ? (value[0] - '0') * 10 + (value[1] - '0') : -1;
+}
+
+int t_dl(void)
+{
+    void *self = dlopen("libc.so", 0);
+    int (*len)(const char *) = self ? dlsym(self, "strlen") : 0;
+    return len ? len("four") : -1;
+}
+
+/*
+ * A frame far bigger than a page, written at its far end first. Nothing in
+ * Android code feels its way down a stack, and a host that hands a stack out
+ * page by page (Windows) must have handed all of it out beforehand.
+ */
+__attribute__((noinline)) static int big_frame(int seed)
+{
+    volatile unsigned char buf[300 * 1024];
+    buf[0] = (unsigned char)seed;
+    buf[sizeof(buf) - 1] = (unsigned char)(seed + 1);
+    buf[150000] = 7;
+    return buf[0] + buf[sizeof(buf) - 1] + buf[150000];
+}
+
+static void *big_frame_thread(void *arg) { return (void *)(long)big_frame((int)(long)arg); }
+
+/* 2 * (seed + seed + 1 + 7): once on the calling thread and once on a new one. */
+int t_big_frame(int seed)
+{
+    pthread_t t;
+    void *result = 0;
+    int here = big_frame(seed);
+    if (pthread_create(&t, 0, big_frame_thread, (void *)(long)seed) != 0) return -1;
+    pthread_join(t, &result);
+    return here + (int)(long)result;
+}
+
+/*
+ * Memory mapped and unmapped the way an allocator does it: a megabyte and a
+ * bit, the end unmapped first to line the block up, the rest when it is done
+ * with. Four thousand times is more than a 32-bit process has addresses for
+ * unless each block's addresses really come back. 0, or the round it failed at.
+ */
+void *mmap(void *, size_t, int, int, int, long);
+int munmap(void *, size_t);
+
+int t_map_pieces(int rounds)
+{
+    const size_t want = 1024 * 1024, extra = 15 * 4096;
+    int i;
+    for (i = 1; i <= rounds; i++) {
+        unsigned char *p = mmap(0, want + extra, 3, 0x22, -1, 0);
+        if (p == (unsigned char *)-1) return i;
+        if (munmap(p + want, extra) != 0) return -i;
+        p[0] = (unsigned char)i;
+        p[want - 1] = (unsigned char)(i + 1);
+        if (p[0] != (unsigned char)i || munmap(p, want) != 0) return -i;
+    }
+    return 0;
+}
+
+/* A deep enough frame to need the stack protector's cookie, when built with it. */
+int t_stack(const char *s)
+{
+    char buf[64];
+    strcpy(buf, s);
+    return (int)strlen(buf);
+}
