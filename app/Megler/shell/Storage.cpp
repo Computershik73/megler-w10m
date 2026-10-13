@@ -5,11 +5,34 @@
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 
-#include <windowsstoragecom.h>
+#include <winrt/Windows.Storage.Search.h>
 
 #include <atomic>
 #include <mutex>
 #include <thread>
+
+// The two interfaces of <windowsstoragecom.h> that hand over file handles,
+// declared here by hand: the SDK's header brings in the shell's (shobjidl),
+// which does not compile for an app container. Identifiers, methods and
+// option values are the header's (Windows 10 SDK 10.0.15063 on).
+namespace {
+
+enum HANDLE_OPTIONS : DWORD { HO_NONE = 0 };
+enum HANDLE_ACCESS_OPTIONS : DWORD { HAO_NONE = 0, HAO_READ_ATTRIBUTES = 0x80, HAO_READ = 0x120089, HAO_WRITE = 0x120116, HAO_DELETE = 0x10000 };
+enum HANDLE_SHARING_OPTIONS : DWORD { HSO_SHARE_NONE = 0, HSO_SHARE_READ = 1, HSO_SHARE_WRITE = 2, HSO_SHARE_DELETE = 4 };
+enum HANDLE_CREATION_OPTIONS : DWORD { HCO_CREATE_NEW = 1, HCO_CREATE_ALWAYS = 2, HCO_OPEN_EXISTING = 3, HCO_OPEN_ALWAYS = 4, HCO_TRUNCATE_EXISTING = 5 };
+
+struct __declspec(uuid("5CA296B2-2C25-4D22-B785-B885C8201E6A")) __declspec(novtable) IStorageItemHandleAccess : ::IUnknown {
+    virtual HRESULT __stdcall Create(HANDLE_ACCESS_OPTIONS access, HANDLE_SHARING_OPTIONS sharing, HANDLE_OPTIONS options, ::IUnknown* oplockBreakingHandler,
+                                     HANDLE* handle) = 0;
+};
+
+struct __declspec(uuid("DF19938F-5462-48A0-BE65-D2A3271A08D6")) __declspec(novtable) IStorageFolderHandleAccess : ::IUnknown {
+    virtual HRESULT __stdcall Create(LPCWSTR fileName, HANDLE_CREATION_OPTIONS creation, HANDLE_ACCESS_OPTIONS access, HANDLE_SHARING_OPTIONS sharing,
+                                     HANDLE_OPTIONS options, ::IUnknown* oplockBreakingHandler, HANDLE* handle) = 0;
+};
+
+} // namespace
 
 namespace megler::app::storage {
 
