@@ -499,6 +499,19 @@ static void main_thread(void *arg)
     else if (!hk_dvm_add_dex_file(framework)) snprintf(why, sizeof(why), "the Java framework is not in the Android root (%s)", framework);
     else if (hk_dvm_app_follows(), hk_dvm_add_apk(J.config->apk_path) < 1) snprintf(why, sizeof(why), "the APK has no classes.dex that can be read");
     if (!why[0]) {
+        hk_jvalue sdk;
+        /*
+         * One process, one answer to "which Android is this": what the framework's Build.VERSION.SDK_INT tells the app's Java
+         * is what its native code is told too (the property, android_get_device_api_level, AConfiguration_getSdkVersion).
+         */
+        sdk.j = 0;
+        if (hk_dvm_get_static("android/os/Build$VERSION", "SDK_INT", &sdk) && sdk.i > 0) {
+            char level[16];
+            snprintf(level, sizeof(level), "%d", (int)sdk.i);
+            hk_sysprop_set("ro.build.version.sdk", level);
+        } else {
+            hk_dvm_clear_pending();
+        }
         for (i = 0; i < J.config->split_count; i++) hk_dvm_add_apk(J.config->split_apks[i]);
         mount_apk();
         place_libraries();
@@ -511,7 +524,6 @@ static void main_thread(void *arg)
         hk_java_gfx_set_host(&J.config->gfx);
         hk_java_gfx_set_present(present, NULL);
         hk_dvm_register(hk_java_gfx_natives());
-        hk_java_ndk_start();
         memset(args, 0, sizeof(args));
         args[0].l = hk_dvm_new_string(J.activity);
         args[1].l = J.application[0] ? hk_dvm_new_string(J.application) : NULL;
@@ -563,6 +575,8 @@ static bool java_start(const megler_run_config *config, const hk_apk_info *info)
         hk_run_set_error("the manifest names no launcher activity");
         return false;
     }
+    /* The device as the NDK describes it to the app's native code (AConfiguration): this surface. */
+    hk_configuration_set(config->width, config->height, config->density_dpi > 0 ? config->density_dpi : 160);
     /* A stack the size Android gives an app's main thread would be 8 MB; bytecode's frames are not on it, and 4 is room for libcore's native code. */
     J.main = hk_thread_start(main_thread, NULL, 4u << 20, "android-main");
     return J.main != NULL;

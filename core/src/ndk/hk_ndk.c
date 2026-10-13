@@ -636,7 +636,7 @@ static int g_cfg_orientation(const g_config *c) { return c->width >= c->height ?
 static int g_cfg_touchscreen(const g_config *c) { (void)c; return 3; }                      /* FINGER */
 static int g_cfg_density(const g_config *c) { return c->density; }
 static int g_cfg_one(const g_config *c) { (void)c; return 1; }                              /* NOKEYS, NONAV, *_NO, UI_MODE_TYPE_NORMAL */
-static int g_cfg_sdk(const g_config *c) { (void)c; return 28; }
+static int g_cfg_sdk(const g_config *c) { (void)c; return hk_sdk_level(); }
 static int g_cfg_screen_size(const g_config *c) { (void)c; return 2; }                      /* NORMAL */
 static int g_cfg_screen_long(const g_config *c) { return (c->width > c->height ? c->width * 3 > c->height * 5 : c->height * 3 > c->width * 5) ? 2 : 1; }
 static int g_cfg_width_dp(const g_config *c) { return c->width * 160 / c->density; }

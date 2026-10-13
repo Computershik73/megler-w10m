@@ -168,7 +168,7 @@ const hk_sym hk_tab_dl[] = {
     HK_WRAP("__tls_get_addr", g_tls_get_addr),
     HK_WRAP("android_get_application_target_sdk_version", g_target_sdk),
     HK_WRAP("android_set_application_target_sdk_version", g_set_target_sdk),
-    HK_WRAP("android_get_device_api_level", g_target_sdk),
+    HK_WRAP("android_get_device_api_level", hk_sdk_level),
     HK_WRAP("android_get_exported_namespace", g_android_get_exported_namespace),
     HK_WRAP("android_update_LD_LIBRARY_PATH", g_android_update_ld_library_path),
     HK_END

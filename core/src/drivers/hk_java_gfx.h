@@ -49,14 +49,6 @@ void hk_java_gfx_bitmap_changed(i64 bm);
 bool hk_java_gfx_lock_rgba(i64 bm, hk_java_gfx_bitmap *out);
 void hk_java_gfx_unlock_rgba(i64 bm);
 
-/*
- * hk_java_ndk.c: the NDK's functions that are about Java objects of the
- * framework's, for the app's native libraries -- libjnigraphics
- * (AndroidBitmap_getInfo, _lockPixels, _unlockPixels). Made known to the
- * linker when the Java driver starts.
- */
-void hk_java_ndk_start(void);
-
 #ifdef __cplusplus
 }
 #endif

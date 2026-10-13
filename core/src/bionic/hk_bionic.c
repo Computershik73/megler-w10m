@@ -177,6 +177,14 @@ const char *hk_sysprop(const char *name)
     return v;
 }
 
+/* The API level the device says it has: one number for the property, the NDK's AConfiguration and android_get_device_api_level. */
+int hk_sdk_level(void)
+{
+    const char *v = hk_sysprop("ro.build.version.sdk");
+    int n = v ? atoi(v) : 0;
+    return n > 0 ? n : 28;
+}
+
 static void default_props(void)
 {
     /* Android 9: the newest release whose devices were still commonly 32-bit. */
@@ -241,4 +249,5 @@ void hk_bionic_init(void)
     hk_bionic_register(hk_tab_native_activity);
     hk_bionic_register(hk_opensles_table());
     hk_bionic_register(hk_media_table());
+    hk_bionic_register(hk_java_ndk_table());
 }

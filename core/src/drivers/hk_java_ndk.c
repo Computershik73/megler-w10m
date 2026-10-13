@@ -1,8 +1,8 @@
 /*
  * The NDK's functions that are about the framework's Java objects, for the
  * native libraries of a Java app. The rest of the NDK is in ndk/ and needs no
- * Java; these need the Java driver and are made known to the linker when it
- * starts (hk_java_ndk_start).
+ * Java; these need the Java driver's framework under them, and answer "bad
+ * parameter" for anything that is not one of its objects.
  *
  * libjnigraphics: AndroidBitmap_getInfo, AndroidBitmap_lockPixels,
  * AndroidBitmap_unlockPixels on an android.graphics.Bitmap. The Bitmap's
@@ -81,10 +81,4 @@ static const hk_sym k_java_ndk[] = {
     HK_END
 };
 
-void hk_java_ndk_start(void)
-{
-    static bool registered;
-    if (registered) return;
-    registered = true;
-    hk_bionic_register(k_java_ndk);
-}
+const hk_sym *hk_java_ndk_table(void) { return k_java_ndk; }
