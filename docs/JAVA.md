@@ -48,7 +48,7 @@ where; **expected** and **not verified** mean what they say.
 | `core/src/drivers/hk_java.c` | the driver for an app that is Java: starts the runtime, the framework and the app; `megler.Native` (the log, the APK's files, the screen, input, the end) |
 | `core/src/drivers/hk_java_gfx.c` | `megler.Gfx`: bitmaps as memory, and `android.graphics` handed to the shell through `megler_gfx_host` |
 | `core/include/megler.h` | `megler_gfx_host`, the contract for the shell's drawing; `megler_window_host.present_pixels`; `megler_run_config.android_root` |
-| `core/framework-overlay/` | what differs here from the original's Java framework: seven files, each saying at its top what differs and why |
+| `core/framework-overlay/` | what differs here from the original's Java framework: eight files, each saying at its top what differs and why |
 | `core/src/dvm/art/*.smali`, `hk_dvm_art_dex.h` | two classes the runtime adds to libcore's: a security provider that stands in for conscrypt's |
 | `tools/build-framework.sh` | builds the framework's DEX from the original's sources and the overlay |
 | `core/tests/app/`, `tools/build-test-app.sh` | two test apps as ordinary Android apps (aapt2, javac, d8), and their build |
@@ -1285,8 +1285,8 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: seven files** in the overlay,
-six of them a statement or a method each inside an otherwise untouched copy
+**What differs from the original's framework: eight files** in the overlay,
+seven of them a statement or a method each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces).
 
 - `android/webkit/MimeTypeMap.java`: the original hands its table to
@@ -1327,7 +1327,16 @@ six of them a statement or a method each inside an otherwise untouched copy
   later. QuickShortcutMaker's About screen ended the app with a
   `NullPointerException` on it.
 
-The original has all six faults; they are its author's to take back.
+- `android/widget/LinearLayout.java`, two statements: a child with a weight
+  and a size of 0, in a layout whose own size is "at most", is given its
+  share of the space left, as Android gives an app written for Android 7 or
+  later; the original has only the rule Android keeps for older apps
+  (measured size plus share), which made the frame under a dialog's title
+  twice the height there was. appcompat's dialog then laid its message out
+  at full length and put the buttons below the screen: Apktool M's first
+  dialog could not be answered.
+
+The original has all seven faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in
