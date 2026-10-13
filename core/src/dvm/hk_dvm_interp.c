@@ -33,6 +33,23 @@ static hk_dvm_frame *push_frame(hk_dvm_thread *t, hk_dvm_method *m, size_t words
             return NULL;
         }
         t->overflowing = true;
+        {
+            /*
+             * A stack this deep is a recursion that does not end, and the error's own trace is too long to be read for which
+             * one: the innermost frames go to the log, where the cycle shows. The first few times only; a program that
+             * catches the error and tries again would otherwise fill the log.
+             */
+            static volatile i32 said;
+            if (hk_atomic_add(&said, 1) <= 3) {
+                char text[1800];
+                size_t k = 0;
+                const hk_dvm_frame *up;
+                int n;
+                for (up = t->top, n = 0; up && n < 28 && k + 160 < sizeof(text); up = up->prev, n++)
+                    k += (size_t)snprintf(text + k, sizeof(text) - k, "%s%s.%s", n ? " < " : "", up->m->cls->name, up->m->name);
+                hk_warn("dvm: the stack is full %d frames deep, calling %s.%s; innermost first: %s", t->depth, m->cls->name, m->name, text);
+            }
+        }
         hk_dvm_throw("java/lang/StackOverflowError", "%d frames deep, calling %s.%s", t->depth, m->cls->name, m->name);
         t->overflowing = false;
         return NULL;
