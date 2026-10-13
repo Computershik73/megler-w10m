@@ -488,6 +488,82 @@ On the phone the proof is QuickShortcutMaker, which opens its database when
 its Favourites or History tab is first shown; under qemu the database opens
 and the tabs show their empty state (`build/java-pictures/qsm/app-4.bmp`).
 
+### Real apps (qemu-arm; nothing here is run by default)
+
+`hk_tests --java app <apk> <data dir> <android root> <picture dir> <verbose>
+<WxH@DPI> [tap:X,Y | drag:X,Y,X2,Y2 | wait:MS | back | key:CODE]...` starts
+any APK through `megler_run` with the stand-in for the shell's drawing (text is
+boxes, PNG is the only picture format), writes a picture when the app is
+still and one more after each step of the script, and checks nothing. Verbose
+2 adds the framework's touch log, 3 its view dump. Three apps of the user's
+(`build/apps`, not in the repository) were run this way at 720 x 1280 and 280
+dpi; each starts in under half a minute.
+
+**QuickShortcutMaker 2.5.0** (no native code; ActionBarSherlock, Flurry).
+Starts to its tabbed main screen; the overflow menu, Settings (a
+`PreferenceActivity`, which scrolls) and About open; its database opens when
+the Favourites tab is shown; a second start on the same data folder works.
+Fixed on the way: `getActionBar()` before `setContentView` (the overlay's
+`Activity`), and `Constructor.newInstanceFromSerialization`, which ended its
+second start (Flurry reads back with `ObjectInputStream` what it saved).
+Still wrong: the overflow menu's popup is 140 pixels high for two rows of 84
+and shows one and a half (it scrolls); its lists of other apps' activities
+are empty because the framework's `PackageManager` knows no other app.
+
+**Apktool M 2.4.0** (AndroidX appcompat views, jadx and apktool inside;
+`libpngquantandroid.so`, `librmdir.so`). Starts through its launcher alias,
+shows its licence dialog with both buttons, and after a tap its main screen:
+a toolbar and an empty file list. Fixed on the way: the launcher
+`<activity-alias>`, and the height of a dialog's content (the overlay's
+`LinearLayout`). Both libraries load with nothing unresolved (the APK
+report's "2 imports not in the system" are weak references of libgcc's
+unwinder to the C++ runtime, null here as on Android without libc++); neither
+is called until the app compresses a PNG or deletes a folder, which the test
+did not reach. Not right: a grey strip 144 pixels wide down the right edge of
+the main screen (a drawer or pane laid out on screen), and the file list is
+empty because the app's shared storage is.
+
+**Device Info 3.4.3.4** (minSdk 24, targetSdk 37; views, not Compose: no
+`androidx.compose` anywhere in its DEX; AndroidX appcompat, fragment,
+recyclerview, viewpager2, constraintlayout, preference, work, datastore,
+room, biometric, browser; Material 3; Kotlin and coroutines; Google's Mobile
+Ads SDK, Play billing and in-app update, Firebase data transport, Facebook,
+okhttp, Chromium classes; all of it renamed by R8 into the default package).
+Its libraries, `libandroidx.graphics.path.so` and
+`libdatastore_shared_counter.so`, are placed and not loaded before it ends.
+Its splash screen and the creation of its main activity work; it ends when
+the first tab is inflated. In the order met:
+
+1. `megler.Sqlite` -- now there. (WorkManager had ended a worker thread with
+   "The file system on the device is in a bad state".)
+2. Resources chosen for API 34 against Android 9's platform resources: 6095
+   frames of recursion. Fixed (the overlay's `Resources`).
+3. **WebP**: `cannot decode res/drawable/android17.webp`, an
+   `InflateException` nothing catches. The stand-in decodes PNG only, and
+   Windows 10 Mobile's WIC has no WebP codec either. This is where it stops.
+4. `Runtime.exec("getenforce")`: `IOException: error=38` (there are no
+   processes to start). The app catches it.
+5. `Class.forName("com.android.internal.os.PowerProfile")`: not there (the
+   battery's capacity by reflection). The app catches it.
+
+and, not blockers: `megler.EGLNative` and `GLES20` answer nothing (the app asks
+an EGL context for the GPU's name), `megler.Sensors` likewise, billing, in-app
+update and the ads SDK find no Play services, which they are written to
+survive.
+
+**What stands between these and working, most apps first:**
+
+| What | Blocks | Size |
+|---|---|---|
+| WebP decoding in front of the shell's `image_decode` (libwebp's decoder) | Device Info now; any app of the last years, whose drawables are WebP by default | a day; the decoder is there (`build/webp`) |
+| The app's shared storage as Android lays it out, and `Environment`, `StorageManager`, runtime permissions to match | Apktool M's lists; every file manager | the layer's mounts and the framework's Java: days |
+| `PackageManager` knowing more than the app itself (installed APKs in the library) | QuickShortcutMaker's whole purpose | small in Java, a decision for the shell |
+| EGL and OpenGL ES from Java (`megler.EGLNative`, `GLES20` over ANGLE) | Device Info's GPU page; any `GLSurfaceView` | large |
+| `megler.Web` (a `WebView`) | ads, licence and help pages in all three | very large; an empty rectangle today |
+| Processes (`Runtime.exec`) | root checkers and file managers probing `su`, `getprop`, `sh` | honest answer is "no such program" (ENOENT), not error 38 |
+| TLS (conscrypt's `libjavacrypto.so`) | anything that talks HTTPS | the two libraries, built like the other seven |
+| `invoke-custom`, method handles | not met in these three (d8 desugared them) | large |
+
 ### The phone's package
 
 `bash tools/build-appx.sh arm --libcore` puts the Android root
