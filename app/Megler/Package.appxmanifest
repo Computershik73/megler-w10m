@@ -75,6 +75,15 @@
   <Capabilities>
     <!-- Android apps' own network access (the layer's sockets). -->
     <Capability Name="internetClient" />
+    <!-- An Android app's "SD card" shows the phone's own libraries and its
+         memory card as folders of it, as far as the phone lets the layer's
+         plain file functions into them (shell/Storage.cpp tries each at
+         start and says in the log what it found). -->
+    <uap:Capability Name="picturesLibrary" />
+    <uap:Capability Name="videosLibrary" />
+    <uap:Capability Name="musicLibrary" />
+    <uap:Capability Name="documentsLibrary" />
+    <uap:Capability Name="removableStorage" />
     <!-- Making an Android library's code executable. -->
     <rescap:Capability Name="codeGeneration" />
   </Capabilities>
