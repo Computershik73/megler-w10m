@@ -79,7 +79,9 @@ static void test_natives(void)
     say("native methods");
     /* Before anything is registered, a native method is an error that says which. */
     call("t/Natives", "callAll", "()J");
-    CHECK_STR(thrown(), "java.lang.UnsatisfiedLinkError: No implementation found for t/Natives.all(ZBCSIJFDLjava/lang/String;)J");
+    /* (ART's sentence: the method as source writes it, and the two names a library could have exported it under.) */
+    CHECK_STR(thrown(), "java.lang.UnsatisfiedLinkError: No implementation found for long t.Natives.all(boolean, byte, char, short, int, long, float, double, java.lang.String) "
+                        "(tried Java_t_Natives_all and Java_t_Natives_all__ZBCSIJFDLjava_lang_String_2)");
     hk_dvm_register(k_test_natives);
 
     /* every kind of argument, from bytecode (by range) and from C */
@@ -144,13 +146,13 @@ static void test_natives(void)
     CHECK(!hk_dvm_monitor_notify(o, false));
 
     call("t/Natives", "missing", "()V");
-    CHECK_STR(thrown(), "java.lang.UnsatisfiedLinkError: No implementation found for t/Natives.missing()V");
+    CHECK_STR(thrown(), "java.lang.UnsatisfiedLinkError: No implementation found for void t.Natives.missing() (tried Java_t_Natives_missing and Java_t_Natives_missing__)");
 
     /* A native method nothing implements, here or in any library. */
     A[0].i = 5;
     A[1].j = (i64)1 << 33;
     call("t/Natives", "viaJni", "(IJ)J");
-    CHECK_STR(thrown(), "java.lang.UnsatisfiedLinkError: No implementation found for t/Natives.viaJni(IJ)J");
+    CHECK_STR(thrown(), "java.lang.UnsatisfiedLinkError: No implementation found for long t.Natives.viaJni(int, long) (tried Java_t_Natives_viaJni and Java_t_Natives_viaJni__IJ)");
 }
 
 /* ----------------------------------------------------------------- monitors */

@@ -935,34 +935,70 @@ static int asker(const hk_dvm_thread *t)
     return hk_dvm_class_is_app(t->top->m->cls) ? ASKER_APP : ASKER_BOOT;
 }
 
+/* Whether a DEX file defines the class a JNI name stands for: the class itself, or what an array of that name is an array of. */
+static bool name_is_defined(const char *name)
+{
+    char inner[300];
+    size_t n;
+    if (name[0] != '[') return hk_dvm_class_exists(name);
+    while (*name == '[') name++;
+    if (*name != 'L') return name[0] && !name[1];               /* an array of a primitive type */
+    n = strlen(name);
+    if (n < 3 || n - 2 >= sizeof(inner)) return false;
+    memcpy(inner, name + 1, n - 2);
+    inner[n - 2] = 0;
+    return hk_dvm_class_exists(inner);
+}
+
+/* What ART leaves when a class is not found: the boot class path's own error for a caller that is one of the runtime's classes, a class loader's for every other. */
+static void throw_not_found(const char *name, int who, bool hidden)
+{
+    char dotted[300];
+    size_t i;
+    for (i = 0; name[i] && i + 1 < sizeof(dotted); i++) dotted[i] = name[i] == '/' ? '.' : name[i];
+    dotted[i] = 0;
+    if (who == ASKER_BOOT) {
+        hk_dvm_throw("java/lang/NoClassDefFoundError", "%s", name);
+    } else if (who == ASKER_NOBODY) {
+        hk_dvm_throw("java/lang/ClassNotFoundException", "Didn't find class \"%s\" on path: DexPathList[[directory \".\"],nativeLibraryDirectories=[/system/lib]]%s", dotted,
+                     hidden ? " (FindClass on a thread with no Java method under it asks the system class loader, which has none of the app's classes)" : "");
+    } else {
+        hk_dvm_throw("java/lang/ClassNotFoundException", "Didn't find class \"%s\"", dotted);
+    }
+}
+
 static hk_jobj *j_FindClass(JNIEnvP e, const char *name)
 {
     hk_jclass *c;
     const hk_dvm_class *k;
-    char dotted[300];
-    size_t i;
-    int who;
+    int who = ASKER_APP;
     (void)e;
     if (!g_dvm.running) return hk_jni_class_object(name);
     /* With the runtime up, a class a DEX file defines is found as Android finds it: linked, or not found and an exception. (It is initialised when a method or field of it is asked for.) */
     hk_dvm_clear_pending();
-    who = g_dvm.app_loader ? asker(hk_dvm_self()) : ASKER_APP;
+    if (g_dvm.app_loader) {
+        /*
+         * A Java app: a class is one a DEX file defines, or it is not there. (Elsewhere a name nothing defines is a class
+         * of this layer's own, made by being asked for: the Java parts the other drivers play in C.)
+         */
+        who = asker(hk_dvm_self());
+        if (!name_is_defined(name)) {
+            throw_not_found(name, who, false);
+            return NULL;
+        }
+    }
     c = hk_jni_class(name, NULL);
-    for (k = c->dvm; k && k->component; k = k->component) { }
-    if (c->dvm && !hk_dvm_pending() && (who == ASKER_APP || !hk_dvm_class_is_app(k))) return mirror_of(c);
-    if (c->dvm && hk_dvm_pending()) return NULL;                /* found, and its linking failed: that exception is the answer */
-    hk_dvm_clear_pending();
-    for (i = 0; name[i] && i + 1 < sizeof(dotted); i++) dotted[i] = name[i] == '/' ? '.' : name[i];
-    dotted[i] = 0;
-    /* What ART leaves: the boot class path's own error for a caller that is one of the runtime's classes, a class loader's for every other. */
-    if (!g_dvm.app_loader || who == ASKER_BOOT)
-        hk_dvm_throw("java/lang/NoClassDefFoundError", "%s", name);
-    else if (who == ASKER_NOBODY && c->dvm)
-        hk_dvm_throw("java/lang/ClassNotFoundException", "Didn't find class \"%s\" on path: DexPathList[[directory \".\"],nativeLibraryDirectories=[/system/lib]] "
-                     "(FindClass on a thread with no Java method under it asks the system class loader, which has none of the app's classes)", dotted);
-    else
-        hk_dvm_throw("java/lang/ClassNotFoundException", "Didn't find class \"%s\"", dotted);
-    return NULL;
+    if (!c->dvm || hk_dvm_pending()) {
+        /* Found, and its linking failed: that exception is the answer. */
+        if (!hk_dvm_pending()) hk_dvm_throw("java/lang/NoClassDefFoundError", "%s", name);
+        return NULL;
+    }
+    for (k = c->dvm; k->component; k = k->component) { }
+    if (who != ASKER_APP && hk_dvm_class_is_app(k)) {
+        throw_not_found(name, who, true);
+        return NULL;
+    }
+    return mirror_of(c);
 }
 
 /* A method or field identifier of a Method, Constructor or Field object: libcore's real ones while the runtime runs. */
@@ -1319,21 +1355,26 @@ static const char *j_GetStringUTFChars(JNIEnvP e, hk_jobj *s, u8 *is_copy)
     return hk_jni_string(s);
 }
 static void j_ReleaseStringUTFChars(JNIEnvP e, hk_jobj *s, const char *chars) { (void)e; (void)s; (void)chars; }
+/* A region that is not inside the string: nothing is copied, and with the runtime up it is the exception Android throws for it. */
+static bool string_region(hk_jobj *s, i32 start, i32 len)
+{
+    if (!s || s->kind != HK_J_STRING) return false;
+    need_utf16(s);
+    if (start >= 0 && len >= 0 && (i64)start + len <= s->u.str.len16) return true;
+    if (g_dvm.running) hk_dvm_throw("java/lang/StringIndexOutOfBoundsException", "offset=%d length=%d string.length()=%d", (int)start, (int)len, (int)s->u.str.len16);
+    return false;
+}
 static void j_GetStringRegion(JNIEnvP e, hk_jobj *s, i32 start, i32 len, u16 *buf)
 {
     (void)e;
-    if (!s || s->kind != HK_J_STRING) return;
-    need_utf16(s);
-    if (start < 0 || len < 0 || start + len > s->u.str.len16) return;
+    if (!string_region(s, start, len)) return;
     memcpy(buf, s->u.str.u16 + start, (size_t)len * 2);
 }
 static void j_GetStringUTFRegion(JNIEnvP e, hk_jobj *s, i32 start, i32 len, char *buf)
 {
     char *part;
     (void)e;
-    if (!s || s->kind != HK_J_STRING) return;
-    need_utf16(s);
-    if (start < 0 || len < 0 || start + len > s->u.str.len16) return;
+    if (!string_region(s, start, len)) return;
     part = from_utf16(s->u.str.u16 + start, len);
     strcpy(buf, part);
     free(part);
@@ -1371,7 +1412,10 @@ static hk_jobj *j_NewObjectArray(JNIEnvP e, i32 len, hk_jobj *cls, hk_jobj *init
 static hk_jobj *j_GetObjectArrayElement(JNIEnvP e, hk_jobj *a, i32 i)
 {
     (void)e;
-    if (!a || a->kind != HK_J_OBJ_ARRAY || i < 0 || (u32)i >= a->u.oarr.len) return NULL;
+    if (!a || a->kind != HK_J_OBJ_ARRAY || i < 0 || (u32)i >= a->u.oarr.len) {
+        if (a && a->dvm && a->kind == HK_J_OBJ_ARRAY) hk_dvm_throw("java/lang/ArrayIndexOutOfBoundsException", "length=%d; index=%d", (int)a->u.oarr.len, (int)i);
+        return NULL;
+    }
     return hk_jni_ref(a->u.oarr.v[i]);
 }
 static void j_SetObjectArrayElement(JNIEnvP e, hk_jobj *a, i32 i, hk_jobj *v)
@@ -1408,16 +1452,24 @@ static void *j_GetArrayElements(JNIEnvP e, hk_jobj *a, u8 *is_copy)
     return a && a->kind == HK_J_PRIM_ARRAY ? a->u.arr.data : NULL;
 }
 static void j_ReleaseArrayElements(JNIEnvP e, hk_jobj *a, void *elems, i32 mode) { (void)e; (void)a; (void)elems; (void)mode; }
+/* A region that is not inside the array: nothing is copied, and with the runtime up it is the exception Android throws for it. */
+static bool array_region(hk_jobj *a, i32 start, i32 len)
+{
+    if (!a || a->kind != HK_J_PRIM_ARRAY) return false;
+    if (start >= 0 && len >= 0 && (u64)(u32)start + (u32)len <= a->u.arr.len) return true;
+    if (a->dvm) hk_dvm_throw("java/lang/ArrayIndexOutOfBoundsException", "offset=%d length=%d array.length=%d", (int)start, (int)len, (int)a->u.arr.len);
+    return false;
+}
 static void j_GetArrayRegion(JNIEnvP e, hk_jobj *a, i32 start, i32 len, void *buf)
 {
     (void)e;
-    if (!a || a->kind != HK_J_PRIM_ARRAY || start < 0 || len < 0 || (u32)start + (u32)len > a->u.arr.len) return;
+    if (!array_region(a, start, len)) return;
     memcpy(buf, (u8 *)a->u.arr.data + (size_t)start * a->u.arr.esz, (size_t)len * a->u.arr.esz);
 }
 static void j_SetArrayRegion(JNIEnvP e, hk_jobj *a, i32 start, i32 len, const void *buf)
 {
     (void)e;
-    if (!a || a->kind != HK_J_PRIM_ARRAY || start < 0 || len < 0 || (u32)start + (u32)len > a->u.arr.len) return;
+    if (!array_region(a, start, len)) return;
     memcpy((u8 *)a->u.arr.data + (size_t)start * a->u.arr.esz, buf, (size_t)len * a->u.arr.esz);
 }
 
