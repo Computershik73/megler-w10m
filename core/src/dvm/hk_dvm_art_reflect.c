@@ -503,6 +503,40 @@ N(Constructor_newInstance0)
     if (o && invoke_boxed(m, m, o, c->args[0].l, NULL)) c->ret.l = o;
 }
 
+/*
+ * Constructor.newInstanceFromSerialization(ctorClass, allocClass): what ObjectInputStream makes an object with. An
+ * object of allocClass, on which the constructor without arguments of ctorClass has run and no other: ctorClass is the
+ * nearest superclass that is not Serializable, whose part of the object nothing will read from the stream. ART's is two
+ * lines of JNI (art/runtime/native/java_lang_reflect_Constructor.cc): GetMethodID(ctorClass, "<init>", "()V") and
+ * NewObject(allocClass, that).
+ */
+N(Constructor_newInstanceFromSerialization)
+{
+    hk_dvm_class *ctor_class = c->args[0].l ? hk_dvm_mirror_class(c->args[0].l) : NULL, *alloc_class = c->args[1].l ? hk_dvm_mirror_class(c->args[1].l) : NULL;
+    hk_dvm_method *init;
+    hk_jobj *o;
+    int i;
+    if (!ctor_class || !alloc_class) {
+        hk_dvm_throw("java/lang/NullPointerException", "newInstanceFromSerialization with no class");
+        return;
+    }
+    if (alloc_class->flags & (DVM_ACC_ABSTRACT | DVM_ACC_INTERFACE)) {
+        hk_dvm_throw("java/lang/InstantiationException", "Can't instantiate abstract class %s", alloc_class->name);
+        return;
+    }
+    if (!hk_dvm_ensure_init(alloc_class)) return;
+    /* The class's own constructor, not one a superclass has. */
+    init = NULL;
+    for (i = 0; i < ctor_class->ndirect && !init; i++)
+        if (!strcmp(ctor_class->direct[i].name, "<init>") && !strcmp(ctor_class->direct[i].sig, "()V")) init = &ctor_class->direct[i];
+    if (!init) {
+        hk_dvm_throw("java/lang/NoSuchMethodError", "no non-static method \"%s.<init>()V\"", ctor_class->name);
+        return;
+    }
+    o = hk_dvm_alloc_object(alloc_class);
+    if (o && hk_dvm_invoke(init, o, NULL, NULL)) c->ret.l = o;
+}
+
 /* For hk_dvm_art_annot.c, which hands out the same objects. */
 hk_jobj *hk_dvm_reflect_box(char kind, hk_jvalue v) { return box(kind, v); }
 hk_jobj *hk_dvm_reflect_method(hk_dvm_method *m) { return make_executable(m); }
@@ -690,6 +724,7 @@ static const hk_jhle k_reflect[] = {
     { "java/lang/reflect/Method", "getExceptionTypes", NULL, Executable_noClasses },
     { "java/lang/reflect/Method", "getDefaultValue", NULL, reflect_null },
     { "java/lang/reflect/Constructor", "newInstance0", NULL, Constructor_newInstance0 },
+    { "java/lang/reflect/Constructor", "newInstanceFromSerialization", NULL, Constructor_newInstanceFromSerialization },
     { "java/lang/reflect/Constructor", "getExceptionTypes", NULL, Executable_noClasses },
     { "java/lang/reflect/Parameter", "getAnnotationNative", NULL, reflect_null },
     { NULL, NULL, NULL, NULL },

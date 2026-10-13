@@ -237,8 +237,8 @@ void test_libcore(const hk_dvm_test_config *config, u64 started_ns, const hk_dvm
     }
     t0 = hk_time_monotonic_ns();
     run_expected(fixtures, "lib-expected.txt", "lib-android.txt", "d8t/Lib", natives ? NULL : "lib_", &ran, &skipped);
-    CHECK_INT(ran + skipped, 17);
-    if (skipped) say("  (%d of its 17 tests left out: they need libcore's native libraries)", skipped);
+    CHECK_INT(ran + skipped, 18);
+    if (skipped) say("  (%d of its 18 tests left out: they need libcore's native libraries)", skipped);
     if (natives) {
         /* java.nio.file's native half is in no table: libopenjdk exports it as Java_sun_nio_fs_... and it is found by those names. */
         hk_jni_native_counts(&registered, &unknown, &by_name);

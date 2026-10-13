@@ -913,6 +913,16 @@ N(Class_getInnerClassFlags) { c->ret.i = c->args[0].i; }      /* what the class 
 N(Class_false) { c->ret.z = 0; }
 N(Class_null) { c->ret.l = NULL; }
 
+/*
+ * Natives libcore declares and Android's own libraries do not have either: on Android they are an UnsatisfiedLinkError
+ * for whoever reaches them. Two can be reached by ordinary code, and get the answer that is true here instead.
+ * Runtime.runFinalization0: nothing is collected, so no finalizer waits. Package.getSystemPackage0 and
+ * getSystemPackages0, which Package.getPackage and getPackages ask when the caller is a class of the boot class path:
+ * no package of the system's is known by a file it came from.
+ */
+N(Runtime_runFinalization0) { (void)c; }
+N(Package_getSystemPackages0) { c->ret.l = hk_dvm_new_array("[Ljava/lang/String;", 0); }
+
 /* ---------------------------------------------------------------- the rest */
 
 N(AtomicLong_VMSupportsCS8) { c->ret.z = 1; }
@@ -1130,6 +1140,9 @@ static const hk_jhle k_art[] = {
     { "dalvik/system/VMStack", "getStackClass2", NULL, VMStack_getStackClass2 },
     { "dalvik/system/VMStack", "getThreadStackTrace", NULL, VMStack_getThreadStackTrace },
     { "dalvik/system/VMStack", "getCallingClassLoader", NULL, VMStack_getCallingClassLoader },
+    { "java/lang/Runtime", "runFinalization0", NULL, Runtime_runFinalization0 },
+    { "java/lang/Package", "getSystemPackage0", NULL, Class_null },
+    { "java/lang/Package", "getSystemPackages0", NULL, Package_getSystemPackages0 },
     { "dalvik/system/VMStack", "getClosestUserClassLoader", NULL, VMStack_getClosestUserClassLoader },
     { "dalvik/system/VMStack", "fillStackTraceElements", NULL, nothing },
     { "dalvik/system/VMStack", "getAnnotatedThreadStackTrace", NULL, Class_null },

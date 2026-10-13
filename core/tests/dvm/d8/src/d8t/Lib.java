@@ -905,6 +905,150 @@ public class Lib {
         return sb.toString();
     }
 
+    /* Java serialization: what ObjectOutputStream writes and ObjectInputStream makes of it again, the stream itself included. */
+
+    /** Not Serializable: its part of an object is not in the stream, and its constructor without arguments runs when one is read. */
+    static class SerialBase {
+        int baseValue = 7;
+        String baseText;
+
+        SerialBase() {
+            baseText = "from the constructor";
+        }
+    }
+
+    enum SerialKind { ROUND, SQUARE }
+
+    static class SerialShape extends SerialBase implements java.io.Serializable {
+        private static final long serialVersionUID = 42L;
+        int id;
+        double area;
+        String name;
+        transient int cache = 99;
+        int[] sides;
+        Object[] mixed;
+        SerialKind kind;
+        SerialShape next;
+
+        SerialShape(int id, String name) {
+            this.id = id;
+            this.name = name;
+            baseValue = 1000;
+            baseText = "set by the subclass";
+        }
+    }
+
+    /** No serialVersionUID of its own (one is computed from the class), and hooks that write and read more than the fields. */
+    static class SerialHooked implements java.io.Serializable {
+        int kept;
+        long wide = 1L << 40;
+        transient String derived;
+        static int statics = 5;
+
+        private void writeObject(java.io.ObjectOutputStream out) throws IOException {
+            out.defaultWriteObject();
+            out.writeInt(kept * 2);
+            out.writeUTF("extra");
+        }
+
+        private void readObject(java.io.ObjectInputStream in) throws IOException, ClassNotFoundException {
+            in.defaultReadObject();
+            derived = in.readInt() + in.readUTF();
+        }
+    }
+
+    public static class SerialExternal implements java.io.Externalizable {
+        int a;
+        String b;
+
+        public SerialExternal() {
+            a = -1;
+        }
+
+        @Override
+        public void writeExternal(java.io.ObjectOutput out) throws IOException {
+            out.writeInt(a);
+            out.writeObject(b);
+        }
+
+        @Override
+        public void readExternal(java.io.ObjectInput in) throws IOException, ClassNotFoundException {
+            a = in.readInt() + 100;
+            b = (String) in.readObject();
+        }
+    }
+
+    public static String lib_serialization() throws Exception {
+        StringBuilder sb = new StringBuilder();
+        SerialShape s = new SerialShape(3, "tri");
+        s.area = 1.5;
+        s.sides = new int[] { 3, 4, 5 };
+        s.mixed = new Object[] { "x", 5, null, 2.5, SerialKind.SQUARE };
+        s.kind = SerialKind.ROUND;
+        s.next = new SerialShape(4, "quad");
+        s.next.next = s;
+        SerialHooked h = new SerialHooked();
+        h.kept = 21;
+        SerialExternal e = new SerialExternal();
+        e.a = 9;
+        e.b = "ext";
+        HashMap<String, Integer> map = new HashMap<>();
+        map.put("one", 1);
+        map.put("two", 2);
+        map.put("three", 3);
+        ArrayList<Object> list = new ArrayList<>();
+        list.add("first");
+        list.add(2);
+        list.add(new ArrayList<>(Arrays.asList(3L, 'c', true)));
+        list.add(map);
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        java.io.ObjectOutputStream out = new java.io.ObjectOutputStream(bytes);
+        out.writeObject(s);
+        out.writeObject(h);
+        out.writeObject(e);
+        out.writeObject(map);
+        out.writeObject(list);
+        out.writeObject(new String[] { "a", null, "c" });
+        out.writeObject(new long[][] { { 1, 2 }, { 3 } });
+        out.writeObject(SerialKind.SQUARE);
+        out.writeObject("a string \u20ac");
+        out.writeInt(123456);
+        out.writeUTF("utf");
+        out.writeDouble(0.1);
+        out.writeObject(new float[] { 1.5f, -2f });
+        out.close();
+        byte[] data = bytes.toByteArray();
+        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+        crc.update(data);
+        /* The stream itself, byte for byte what the JVM writes: its length and its checksum. */
+        sb.append(data.length).append(':').append(Long.toHexString(crc.getValue()));
+
+        java.io.ObjectInputStream in = new java.io.ObjectInputStream(new ByteArrayInputStream(data));
+        SerialShape r = (SerialShape) in.readObject();
+        sb.append(' ').append(r.id).append(r.name).append(r.area).append(Arrays.toString(r.sides)).append(Arrays.toString(r.mixed)).append(r.kind).append(r.kind == SerialKind.ROUND);
+        /* A transient field is not read, and the superclass that is not Serializable was constructed, not read. */
+        sb.append(' ').append(r.cache).append(r.baseValue).append(r.baseText).append(' ').append(r.next.name).append(r.next.next == r).append(r.mixed[4] == SerialKind.SQUARE);
+        SerialHooked rh = (SerialHooked) in.readObject();
+        sb.append(' ').append(rh.kept).append(rh.wide).append(rh.derived);
+        SerialExternal re = (SerialExternal) in.readObject();
+        sb.append(' ').append(re.a).append(re.b);
+        Object rm = in.readObject(), rl = in.readObject();
+        sb.append(' ').append(rm).append(rl).append(rm instanceof HashMap).append(((ArrayList<?>) rl).get(3).equals(rm));
+        sb.append(' ').append(Arrays.toString((String[]) in.readObject())).append(Arrays.deepToString((long[][]) in.readObject())).append(in.readObject() == SerialKind.SQUARE);
+        sb.append(in.readObject()).append(in.readInt()).append(in.readUTF()).append(in.readDouble()).append(Arrays.toString((float[]) in.readObject()));
+        in.close();
+        /* The version of a class: declared, computed from the class where it is not, an enum's, a platform class's. */
+        sb.append(' ').append(java.io.ObjectStreamClass.lookup(SerialShape.class).getSerialVersionUID()).append(',').append(java.io.ObjectStreamClass.lookup(SerialHooked.class).getSerialVersionUID());
+        sb.append(',').append(java.io.ObjectStreamClass.lookup(SerialKind.class).getSerialVersionUID()).append(',').append(java.io.ObjectStreamClass.lookup(String.class).getSerialVersionUID());
+        sb.append(',').append(java.io.ObjectStreamClass.lookup(SerialBase.class) == null);
+        try {
+            new java.io.ObjectOutputStream(new ByteArrayOutputStream()).writeObject(new SerialBase());
+        } catch (java.io.NotSerializableException x) {
+            sb.append(' ').append(x.getMessage());
+        }
+        return sb.toString();
+    }
+
     public static void main(String[] args) throws Exception {
         System.out.println("pure_lists=" + pure_lists());
         System.out.println("pure_maps=" + pure_maps());
@@ -923,5 +1067,6 @@ public class Lib {
         System.out.println("lib_threads=" + lib_threads());
         System.out.println("lib_exceptions=" + lib_exceptions());
         System.out.println("lib_system=" + lib_system());
+        System.out.println("lib_serialization=" + lib_serialization());
     }
 }

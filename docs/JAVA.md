@@ -89,7 +89,7 @@ bash tools/build-tests.sh win      (MSVC x64, run on the PC; libcore's native li
 
 bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-float, under qemu-arm)
     3677 checks, 0 failed          on the built-in java.lang
-    3716 checks, 0 failed          on libcore with its native libraries
+    3717 checks, 0 failed          on libcore with its native libraries
       36 checks, 0 failed          the Java test app hello, through megler_run
       72 checks, 0 failed          the Java test app demos, the keyboard's 25 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
