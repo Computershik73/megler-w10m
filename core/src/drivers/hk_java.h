@@ -3,6 +3,7 @@
 #define HK_JAVA_H
 
 #include "../hk_base.h"
+#include "../jni/hk_jni.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -21,6 +22,9 @@ void hk_java_get_stats(hk_java_stats *out);
  * there -- which a Java app without native libraries does not need.
  */
 bool hk_java_ended(int *status, const char **reason);
+
+/* hk_java_sqlite.c: megler.Sqlite's native methods, on the SQLite compiled into the core -- or, in a build without it, their refusal. */
+const hk_jhle *hk_java_sqlite_natives(void);
 
 #ifdef __cplusplus
 }

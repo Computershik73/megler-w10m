@@ -352,14 +352,14 @@ static const hk_jhle k_native[] = {
 /* ------------------------------------------- what is not answered yet */
 
 /*
- * The framework's other native classes: databases, sound, web views, sensors,
- * video decoding, and OpenGL ES from Java. None is written here yet. Each of
- * their methods answers zero, false or null, said once in the log for the
- * class, and the framework's own Java makes of that what an app can live
- * with: a database that cannot be opened is SQLiteCantOpenDatabaseException,
- * a sound that did not load is id 0, a sensor is not available, a codec not
+ * The framework's other native classes: sound, web views, sensors, video
+ * decoding, and OpenGL ES from Java. None is written here yet. Each of their
+ * methods answers zero, false or null, said once in the log for the class,
+ * and the framework's own Java makes of that what an app can live with: a
+ * sound that did not load is id 0, a sensor is not available, a codec not
  * supported, an EGL context EGL_NO_CONTEXT, a web view an empty rectangle.
- * The two that need another answer than zero to say "no" are below.
+ * The one that needs another answer than zero to say "no" is below.
+ * (Databases, megler.Sqlite, are hk_java_sqlite.c.)
  */
 N(Absent)
 {
@@ -370,12 +370,9 @@ N(Absent)
 }
 /* An AudioTrack is initialised when its id is not negative. */
 N(Absent_minus_one) { Absent(c); c->ret.j = 0; c->ret.i = -1; }
-N(Sqlite_errmsg) { c->ret.l = hk_dvm_new_string("there is no SQLite here yet"); }
 
 static const hk_jhle k_absent[] = {
     { "megler/Audio", "trackOpen", NULL, Absent_minus_one },
-    { "megler/Sqlite", "errmsg", NULL, Sqlite_errmsg },
-    { "megler/Sqlite", NULL, NULL, Absent },
     { "megler/Audio", NULL, NULL, Absent },
     { "megler/Web", NULL, NULL, Absent },
     { "megler/Sensors", NULL, NULL, Absent },
@@ -558,6 +555,7 @@ static void main_thread(void *arg)
         if (!J.apk_open[1]) hk_info("java: no framework-res.apk in the Android root: the platform's own resources (themes, widgets' pictures) are not there");
         hk_dvm_register(k_native);
         hk_dvm_register(k_absent);
+        hk_dvm_register(hk_java_sqlite_natives());
         hk_java_gfx_set_host(&J.config->gfx);
         hk_java_gfx_set_present(present, NULL);
         hk_dvm_register(hk_java_gfx_natives());

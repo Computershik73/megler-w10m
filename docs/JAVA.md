@@ -47,6 +47,9 @@ where; **expected** and **not verified** mean what they say.
 | `core/src/jni/hk_jni.c` | the JNI layer, which is now also the runtime's JNI: see "One Java world" below |
 | `core/src/drivers/hk_java.c` | the driver for an app that is Java: starts the runtime, the framework and the app; `megler.Native` (the log, the APK's files, the screen, input, the end) |
 | `core/src/drivers/hk_java_gfx.c` | `megler.Gfx`: bitmaps as memory, and `android.graphics` handed to the shell through `megler_gfx_host` |
+| `core/src/drivers/hk_java_ndk.c` | the NDK's functions that are about the framework's objects: libjnigraphics on its `Bitmap` |
+| `core/src/drivers/hk_java_sqlite.c` | `megler.Sqlite`: an app's databases |
+| `core/src/sqlite/hk_sqlite3.c`, `hk_sqlite.c` | SQLite's amalgamation compiled in where it is there, and its files, locks and mutexes on the host layer |
 | `core/include/megler.h` | `megler_gfx_host`, the contract for the shell's drawing; `megler_window_host.present_pixels`; `megler_run_config.android_root` |
 | `core/framework-overlay/` | what differs here from the original's Java framework: eight files, each saying at its top what differs and why |
 | `core/src/dvm/art/*.smali`, `hk_dvm_art_dex.h` | two classes the runtime adds to libcore's: a security provider that stands in for conscrypt's |
@@ -73,20 +76,26 @@ Two commands. Each runs the whole of the core's tests twice, in two processes
 (a process has one runtime and one boot class path): once with the runtime on
 its built-in `java.lang`, and once on Android 9's libcore from
 `build/android9/root`. Under qemu-arm the second command then starts each of the
-three Java test apps through `megler_run`, a process each.
+five Java test apps through `megler_run`, a process each (one of them twice).
+These numbers are with SQLite compiled in (`build/sqlite/sqlite3.c` there);
+without it each of the first two pairs is 38 checks fewer and the app `data`
+is not run, which the script says.
 
 ```
 bash tools/build-tests.sh win      (MSVC x64, run on the PC; libcore's native libraries cannot run there)
-    3414 checks, 0 failed          on the built-in java.lang
-    3428 checks, 0 failed          on libcore, its bytecode alone
+    3453 checks, 0 failed          on the built-in java.lang
+    3467 checks, 0 failed          on libcore, its bytecode alone
     (then the shell's own drawing, which is not this document's: 263, 263, 14, 9, 8 and 6 checks)
 
 bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-float, under qemu-arm)
-    3638 checks, 0 failed          on the built-in java.lang
-    3677 checks, 0 failed          on libcore with its native libraries
+    3677 checks, 0 failed          on the built-in java.lang
+    3716 checks, 0 failed          on libcore with its native libraries
       36 checks, 0 failed          the Java test app hello, through megler_run
       47 checks, 0 failed          the Java test app demos
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
+      11 checks, 0 failed          the Java test app crash: an exception nothing catches, and launcher aliases
+      25 checks, 0 failed          the Java test app data: a database, the first run
+      25 checks, 0 failed          data again, on what the first run left
       36 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
     (then each app once more, its drawing recorded for the PC's run to draw again)
 ```
@@ -433,6 +442,51 @@ that stands for the Android root's, and a library of each kind that needs
 kind; a weak import of a name that only the other kind exports stays unbound on
 both sides; `dlsym(RTLD_DEFAULT)` sees the app's only; neither kind can be
 loaded from the other's place.
+
+### A database (both hosts; the app under qemu-arm)
+
+SQLite is compiled into the core where its amalgamation is
+(`build/sqlite/sqlite3.c`, SQLite 3.54.0, which `tools/sqlite-fetch.sh` puts
+there; it is not part of the repository). See "Databases" below for how.
+
+**The core's own test** (`test_sqlite` in `core/tests/hk_tests.c`, 39 checks,
+in every run of the core's tests on both hosts, and so in the phone's
+self-test) uses SQLite's C API on a file in the scratch folder: the file is
+made only when asked; it is a file of the host's with SQLite's header and no
+journal left beside it; a statement with an argument; a transaction rolled
+back, whose journal is there while it is open and gone after; a second
+connection to the same file, which reads beside a writer that has not written
+yet, is refused (`SQLITE_BUSY`) while that one holds its lock, and writes
+after; a reader in the middle of its rows keeps a writer from committing;
+`PRAGMA journal_mode=WAL` answers `delete`; closed and opened again read-only,
+what was committed is there and a write is `SQLITE_READONLY`; a database in
+memory with a full-text table (FTS4); the clock.
+
+**The app** `core/tests/app/data` goes through `android.database.sqlite` as an
+app does, 16 steps, each a line in the log; what each expects is what
+Android's SQLite gives. `open`: a `SQLiteOpenHelper` whose `onCreate` runs on
+the first start and not again, the file in `/data/data/<package>/databases`.
+`insert` with `ContentValues` (text, a null, an integer, a real, a blob), row
+ids from `AUTOINCREMENT`. `query` with a selection and arguments, ordered,
+read through a `Cursor`. `types`: `Cursor.getType` for each of the five, a
+blob byte for byte, an integer read as a string and a real as an int.
+`update` and `delete` with their counts. `rollback`: a transaction ended
+without `setTransactionSuccessful` leaves nothing. `commit`. `constraint`:
+`insertOrThrow` of a duplicate is `SQLiteConstraintException`, `insert`
+answers -1. `statement`: `compileStatement`, `simpleQueryForLong`,
+`executeUpdateDelete`. `text`: Cyrillic, a euro sign and an emoji go in and
+come out, `length()` counts characters, `COLLATE LOCALIZED` exists. `bad-sql`:
+`SQLiteException` with SQLite's "syntax error". `memory`:
+`SQLiteDatabase.create(null)`. `upgrade`: a second database made at version 1
+and opened at version 2, `onUpgrade` once, the column it adds there. `left`
+and `kept`: the app leaves three rows and counts its runs; `tools/build-tests.sh`
+runs it twice, the second time on the data folder of the first, and the
+second run must find the rows of the first and say that it is run 2.
+25 checks each.
+
+On the phone the proof is QuickShortcutMaker, which opens its database when
+its Favourites or History tab is first shown; under qemu the database opens
+and the tabs show their empty state (`build/java-pictures/qsm/app-4.bmp`).
 
 ### The phone's package
 
@@ -961,8 +1015,7 @@ no native code or has it for 32-bit ARM.
   the root, when it is there) and the split APKs (2 and up) through
   `zip/hk_zip.c`; a stored file can also be had as a descriptor and an offset.
 - **What is not answered yet** answers "no" in a way the framework's Java
-  already handles, said once in the log for each class: `megler.Sqlite` (a
-  database that cannot be opened: `SQLiteCantOpenDatabaseException`),
+  already handles, said once in the log for each class:
   `megler.Audio` (an `AudioTrack` that is not initialised, a sound that did not
   load), `megler.Web` (an empty rectangle), `megler.Sensors` (not available),
   `megler.MediaCodecNative` (not supported), `megler.EGLNative` (no context) and
@@ -1171,6 +1224,68 @@ where the original leaned on CoreGraphics without saying.
   descent 0.2), images are PNG only. It is deterministic on every machine,
   which is what the tests want of it.
 
+### Databases: `megler.Sqlite` and the SQLite in the core
+
+The framework's `android.database.sqlite` is Java over 29 native methods of
+`megler.Sqlite` that are SQLite's C API almost one for one: a database is its
+`sqlite3 *`, a statement its `sqlite3_stmt *`, held by Java as longs.
+`core/src/drivers/hk_java_sqlite.c` is those methods, as the original has them
+(`megler-tl-dvm-sqlite.c`, on the SQLite that iOS carries): `sqlite3_open_v2`
+with Android's two open flags, `sqlite3_extended_result_codes`, a busy timeout
+of 2.5 s, the collations `LOCALIZED` (ASCII case ignored) and `UNICODE` (byte
+order) that Android registers on every connection, strings bound and read as
+the UTF-16 Java keeps them in. An app's path
+(`/data/data/<package>/databases/x.db`) is turned into the host's.
+
+**Which SQLite.** The original is written against whatever SQLite the system
+has (iOS's), and uses 35 functions of its API, none of them new: `open_v2`,
+`close`, `close_v2`, `errmsg`, `errstr` (the newest: SQLite 3.7.15, of 2012),
+`extended_errcode`, `extended_result_codes`, `exec`, `changes`,
+`last_insert_rowid`, `get_autocommit`, `busy_timeout`, `create_collation`,
+`prepare_v2`, `finalize`, `reset`, `clear_bindings`, `bind_parameter_count`,
+`stmt_readonly`, five `bind_*`, nine `column_*`, `step`, `libversion`. Any
+SQLite of the last ten years has them, so Windows' own `winsqlite3.dll`
+would do as far as the API goes (*its exports were not looked at*). It is
+still not used: whether an app container on Windows 10 Mobile may load it was
+never verified, its version is whatever the phone's Windows has, and it would
+open files by itself, past the host layer. The amalgamation is compiled in
+instead, by `core/src/sqlite/hk_sqlite3.c`, which is nothing but its build
+options and `#include "sqlite3.c"`:
+
+- `SQLITE_OS_OTHER=1`: no operating system layer of SQLite's own, neither
+  Unix's nor Windows' -- so no `windows.h`, no `LoadLibrary`, nothing an app
+  container forbids. What SQLite then asks for is in
+  `core/src/sqlite/hk_sqlite.c`: **a VFS over the host layer's files**
+  (`hk_file`: positioned reads and writes, truncate, sync, size, delete,
+  exists), the same code on the phone, on the PC and under qemu; **its locks
+  kept inside the process**, a table by path with SQLite's own protocol
+  (SHARED, RESERVED, PENDING, EXCLUSIVE), since an app is one process here and
+  its connections to one file must still exclude each other; **its mutexes on
+  the host layer's locks** (`SQLITE_THREADSAFE=1`, serialized, named to SQLite
+  with `SQLITE_CONFIG_MUTEX` before its first use); the clock and random
+  numbers from the host layer.
+- `SQLITE_OMIT_LOAD_EXTENSION`, `SQLITE_TEMP_STORE=3` (temporary tables in
+  memory), and what Android's own build has where a schema or a query would
+  notice: `SQLITE_ENABLE_FTS3`, `_FTS3_PARENTHESIS`, `_FTS4`, `_FTS5`,
+  `SQLITE_DEFAULT_AUTOVACUUM=1`.
+- No write-ahead log. It needs memory shared between connections
+  (`xShmMap`), which the VFS does not give; a database asked for WAL
+  (`enableWriteAheadLogging`) keeps its rollback journal, which is what SQLite
+  does on any file system without shared memory.
+- Not `SQLITE_DEFAULT_MEMSTATUS=0`, common as it is: with it, this version's
+  full-text search corrupted the heap on 32-bit ARM the second time a
+  connection used it (glibc: "double free or corruption"; x64 with the address
+  sanitizer was clean). Found by building SQLite with one option at a time.
+
+The build scripts define `HK_HAVE_SQLITE=1` and add `build/sqlite` to the
+include path when `build/sqlite/sqlite3.c` is there; without that everything
+compiles to nothing, `megler.Sqlite.open` answers 0 with
+`SQLiteCantOpenDatabaseException` in the app, and the log says once, in a
+sentence, that this build has no SQLite and what would give it one. The same
+two flags are all `tools/build-appx.sh` needs; the three files compile with
+MSVC for ARM at `/W3` without a warning (SQLite's own are silenced inside
+`hk_sqlite3.c`), an object of 3.4 MB before linking.
+
 ### Monitors and threads
 
 A monitor is a lock with its owner and a count, made the first time an object is
@@ -1362,7 +1477,7 @@ test apps are that file's layouts, styles and nine-patches.
 
 | The original's file | What it is | Here |
 |---|---|---|
-| `megler-tl-dvm-sqlite.c` | the system's SQLite | SQLite built in, or the system's `winsqlite3.dll` (*not verified* to be usable from the app container on a phone) |
+| `megler-tl-dvm-sqlite.c` | the system's SQLite | (done) `drivers/hk_java_sqlite.c` on SQLite's amalgamation compiled into the core, with a VFS over the host layer: "Databases" |
 | `megler-tl-dvm-audio.c`, `-media.c` | `AudioTrack`, `SoundPool`, `MediaPlayer`, `MediaCodec` | onto `ndk/hk_audio.c`; decoding on Media Foundation |
 | `megler-tl-dvm-gles*.c`, `EGLNative` | generated calls into ANGLE | regenerated with this port's native signature; ANGLE is already here. With it comes a picture over OpenGL, which `present_pixels` does not provide for |
 | `megler-tl-dvm-web.m`, `-sensors.m` | `WebView`; sensors | the shell's XAML WebView; `Windows.Devices.Sensors` |
@@ -1570,7 +1685,7 @@ Not there:
 |---|---|
 | `libjavacrypto.so` and `libssl.so` for 32-bit ARM | conscrypt: TLS, `SecureRandom`, message digests through the provider. Built from the same sources as the rest, not downloaded. |
 | R8 8.5 or later (Google's Maven, `com.android.tools:r8`, 10 to 15 MB) | only if the local d8's output of the framework proves unusable |
-| SQLite's source (sqlite.org, the amalgamation, 2.5 MB) | only if `winsqlite3.dll` cannot be used |
+| SQLite's source (sqlite.org, `sqlite-amalgamation-3540000.zip`) | (there: `build/sqlite`, fetched by `tools/sqlite-fetch.sh`) |
 
 ## On this PC
 

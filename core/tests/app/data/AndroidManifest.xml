@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The test app for databases (tools/build-test-app.sh): one Activity that goes through android.database.sqlite as an app does and says in the
+     log how each step went. The test runs it twice: what the first run left in its database must be there for the second. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="megler.test.data" android:versionCode="1" android:versionName="1.0">
+    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />
+    <application android:label="@string/app_name">
+        <activity android:name=".Main" android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

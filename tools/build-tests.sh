@@ -35,7 +35,9 @@
 # tools/build-test-app.sh; said and left out where they are not), and
 # `natives`, the one with a native library of its own, where there is an NDK
 # as well to build that (said and left out where there is none), and `crash`,
-# which ends on an exception nothing catches. Their
+# which ends on an exception nothing catches. And `data`, a database through
+# the framework's android.database.sqlite, twice, the second run on what the
+# first left, where the core has SQLite in it (build/sqlite). Their
 # pictures are written to build/java-pictures as BMP files. Each is then run
 # once more with its calls of the shell's drawing recorded
 # (build/gfx-records/<app>.rec), for the Windows build to draw again.
@@ -74,6 +76,16 @@ if [ "$JAVA" = 1 ] && [ "$MODE" = arm ] && [ "$RUN" = 1 ]; then
   fi
 fi
 STATUS=0
+# SQLite is compiled into the core where its amalgamation is (build/sqlite/sqlite3.c, tools/sqlite-fetch.sh): core/src/sqlite/hk_sqlite3.c
+# includes it. Without it the core builds as before and says, when an app asks for a database, that it has none.
+SQLITE_GCC=""
+SQLITE_CL=()
+if [ -f "$ROOT/build/sqlite/sqlite3.c" ] && [ -f "$ROOT/build/sqlite/sqlite3.h" ]; then
+  SQLITE_GCC="-DHK_HAVE_SQLITE=1 -Ibuild/sqlite"
+  SQLITE_CL=(/DHK_HAVE_SQLITE=1 "/I$(cygpath -w "$ROOT/build/sqlite")")
+else
+  echo "(no build/sqlite/sqlite3.c: the core is built without SQLite, and the tests that need it are left out)"
+fi
 AGAIN="the tests again, the Dalvik runtime on Android's libcore (build/android9/root)"
 mapfile -t SRCS < <(cd "$ROOT" && find core/src core/tests -maxdepth 3 -name '*.c' ! -path 'core/tests/guest/*' | sort)
 mapfile -t ZSRCS < <(cd "$ROOT" && find core/third_party/zlib -maxdepth 1 -name '*.c' ! -name 'gz*.c' | sort)
@@ -87,13 +99,17 @@ set -e
 OUT=\$HOME/megler-w10m-build
 mkdir -p \$OUT/obj
 cd "$WROOT"
-CFLAGS="-std=gnu11 -O1 -g -mthumb -march=armv7-a -mfpu=neon -mfloat-abi=hard -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -Wno-format-truncation -Icore/third_party/zlib -D_GNU_SOURCE"
+CFLAGS="-std=gnu11 -O1 -g -mthumb -march=armv7-a -mfpu=neon -mfloat-abi=hard -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -Wno-format-truncation -Icore/third_party/zlib -D_GNU_SOURCE $SQLITE_GCC"
 compile() {
   src="\$1"; obj="\$OUT/obj/\$(echo "\$src" | tr '/' '_').o"
-  if [ ! -f "\$obj" ] || [ "\$src" -nt "\$obj" ] || [ -n "\$(find core/src core/tests \( -name '*.h' -o -name '*.inc' \) -newer "\$obj" -print -quit)" ]; then
+  if [ ! -f "\$obj" ] || [ "\$src" -nt "\$obj" ] || [ -n "\$(find core/src core/tests \( -name '*.h' -o -name '*.inc' \) -newer "\$obj" -print -quit)" ] \\
+     || { [ "\$src" = core/src/sqlite/hk_sqlite3.c ] && [ -f build/sqlite/sqlite3.c ] && [ build/sqlite/sqlite3.c -nt "\$obj" ]; }; then
     arm-linux-gnueabihf-gcc \$CFLAGS \$2 -c "\$src" -o "\$obj" || exit 1
   fi
 }
+# (With SQLite or without is a matter of flags, which no object file remembers: when they change, everything is compiled again.)
+[ "\$(cat \$OUT/sqlite.flags 2>/dev/null)" = "$SQLITE_GCC" ] || rm -f \$OUT/obj/*.o
+echo "$SQLITE_GCC" > \$OUT/sqlite.flags
 export -f compile
 export OUT CFLAGS
 printf '%s\n' ${SRCS[*]} | xargs -P 8 -I{} bash -c 'compile {} ""'
@@ -120,6 +136,17 @@ EOF
         echo "the Java test app $app (build/guest/java/$app.apk), through megler_run"
         MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/$app.apk' ~/megler-w10m-build/$app.apk && rm -rf ~/megler-w10m-build/java-data-$app && qemu-arm -L /usr/arm-linux-gnueabihf ~/megler-w10m-build/hk_tests --java $app ~/megler-w10m-build/$app.apk ~/megler-w10m-build/java-data-$app ~/megler-w10m-build/android-root '$WROOT/build/java-pictures' 2>&1" || STATUS=1
       done
+      # The database app, twice: the second run on the data folder the first left, to find what it wrote. Only where the core has SQLite in it.
+      if [ -n "$SQLITE_GCC" ] && [ -f "$ROOT/build/guest/java/data.apk" ]; then
+        for run in 1 2; do
+          echo "the Java test app data (build/guest/java/data.apk), through megler_run: run $run on its database"
+          CLEAN=""
+          [ "$run" = 1 ] && CLEAN="rm -rf ~/megler-w10m-build/java-data-data &&"
+          MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/data.apk' ~/megler-w10m-build/data.apk && $CLEAN qemu-arm -L /usr/arm-linux-gnueabihf ~/megler-w10m-build/hk_tests --java data ~/megler-w10m-build/data.apk ~/megler-w10m-build/java-data-data ~/megler-w10m-build/android-root '$WROOT/build/java-pictures' 0 480x800@160 run:$run 2>&1" || STATUS=1
+        done
+      else
+        echo "(the Java test app data is not run: the core was built without SQLite)"
+      fi
       # And an upright surface, as a phone held upright gives an app that does not ask for landscape: the same app, the same checks.
       echo "the Java test app hello again, on an upright surface (720 x 1280 at 320 dpi)"
       MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/hello.apk' ~/megler-w10m-build/hello.apk && rm -rf ~/megler-w10m-build/java-data-hello && qemu-arm -L /usr/arm-linux-gnueabihf ~/megler-w10m-build/hk_tests --java hello ~/megler-w10m-build/hello.apk ~/megler-w10m-build/java-data-hello ~/megler-w10m-build/android-root '$WROOT/build/java-pictures-upright' 0 720x1280@320 2>&1" || STATUS=1
@@ -152,7 +179,7 @@ elif [ "$MODE" = win ]; then
   ZALL=()
   for s in "${ZSRCS[@]}"; do ZALL+=("$(w "$ROOT/$s")"); done
   # (HK_GFX_WINDOWS: this build has the shell's drawing in it; hk_tests_main.c's --gfx-windows mode.)
-  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /O1 /MT /W3 /std:c11 /utf-8 /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DHK_GFX_WINDOWS \
+  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /O1 /MT /W3 /std:c11 /utf-8 /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DHK_GFX_WINDOWS "${SQLITE_CL[@]}" \
     "/I$(w "$ROOT/core/third_party/zlib")" "/Fo$(w "$OUT/obj")\\" "${ALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
   "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /O1 /MT /w /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS \
     "/Fo$(w "$OUT/zobj")\\" "${ZALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true

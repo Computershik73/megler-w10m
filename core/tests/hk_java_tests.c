@@ -857,6 +857,51 @@ static int run_natives(void)
     return g_failed;
 }
 
+/* What the command line says after the screen's size: for `app` the steps of its script, for `data` the run it is to be. */
+static int g_script_count;
+static char **g_script;
+
+void hk_tests_java_set_script(int count, char **steps)
+{
+    g_script_count = count;
+    g_script = steps;
+}
+
+/* ------------------------------------------------------------------- data */
+
+/*
+ * `data`: a database through the framework's android.database.sqlite, on the SQLite compiled into the core. The app
+ * says how each step went. It is run twice by the script, the second time on the data folder the first left: the
+ * script names the run it expects ("run:2") and the app says which run its own database makes it.
+ */
+static int run_data(void)
+{
+    static const char *const steps[] = { "open", "kept", "insert", "query", "types", "update", "delete", "rollback", "commit", "constraint", "statement", "text",
+                                         "bad-sql", "memory", "upgrade", "left" };
+    int at = -1, want = 0, run = 0, line, i;
+    char text[120];
+    if (g_script_count) sscanf(g_script[0], "run:%d", &want);
+    expect_line("I/DataTest: onCreate", &at, 120);
+    line = wait_line("I/DataTest: run ", at, 60);
+    CHECK(line >= 0 && sscanf(strstr(line_at(line), ": run ") ? strstr(line_at(line), ": run ") : "", ": run %d", &run) == 1 && run >= 1 && (!want || run == want));
+    say("  this is run %d of the app on its database", run);
+    for (i = 0; i < (int)HK_COUNT(steps); i++) {
+        snprintf(text, sizeof(text), "I/DataTest: %s ok", steps[i]);
+        expect_line(text, &at, 60);
+    }
+    snprintf(text, sizeof(text), "I/DataTest: done ok=%d failed=0", (int)HK_COUNT(steps));
+    expect_line(text, &at, 60);
+    /* The core's own word that it is its SQLite, on its files. */
+    CHECK(find_line("sqlite: SQLite 3.", 0) >= 0);
+    for (i = 0; i < g_nlines; i++)
+        if (strstr(g_lines[i], "/DataTest: ") && strstr(g_lines[i], " FAILED")) say("  %s", g_lines[i]);
+    settle();
+    write_picture(run == 1 ? "data-1" : "data-2");
+    back_and_end("I/DataTest: onDestroy", &at);
+    say_app_lines("/DataTest: ");
+    return g_failed;
+}
+
 /* ------------------------------------------------------------------ crash */
 
 /*
@@ -881,15 +926,6 @@ static int run_crash(void)
 }
 
 /* -------------------------------------------------------------- any app */
-
-static int g_script_count;
-static char **g_script;
-
-void hk_tests_java_set_script(int count, char **steps)
-{
-    g_script_count = count;
-    g_script = steps;
-}
 
 /*
  * The script: "tap:X,Y", "drag:X,Y,X2,Y2", "wait:MILLISECONDS", "back", "key:CODE", in the order given. After each the app is waited for
@@ -957,6 +993,7 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
         if (!strcmp(which, "demos")) run_demos();
         else if (!strcmp(which, "natives")) run_natives();
         else if (!strcmp(which, "crash")) run_crash();
+        else if (!strcmp(which, "data")) run_data();
         else if (g_any_app) run_app();
         else run_hello();
         if (running()) {

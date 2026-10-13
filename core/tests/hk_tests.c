@@ -28,6 +28,10 @@
 #include "../src/ld/hk_ld.h"
 #include "../src/ndk/hk_egl.h"
 #include "../src/ndk/hk_media.h"
+#include "../src/sqlite/hk_sqlite.h"
+#if defined(HK_HAVE_SQLITE) && HK_HAVE_SQLITE
+#include "sqlite3.h"
+#endif
 #include "../src/ndk/hk_ndk.h"
 #include "../src/run/hk_run.h"
 #include "../src/zip/hk_zip.h"
@@ -1079,6 +1083,106 @@ static void test_dvm(const char *libdir, const char *scratch, bool guest_code)
     free(beside);
 }
 
+/*
+ * SQLite as the core has it (sqlite/hk_sqlite.c): its files through the host
+ * layer, its locks kept in the process, its mutexes the host's. On every host,
+ * since the file layer under it is each host's own. Where the core was built
+ * without SQLite this says so and checks only that it knows.
+ */
+#if defined(HK_HAVE_SQLITE) && HK_HAVE_SQLITE
+static int sq_int(sqlite3 *db, const char *sql)
+{
+    sqlite3_stmt *st = NULL;
+    int v = -999;
+    if (sqlite3_prepare_v2(db, sql, -1, &st, NULL) == SQLITE_OK && sqlite3_step(st) == SQLITE_ROW) v = sqlite3_column_int(st, 0);
+    sqlite3_finalize(st);
+    return v;
+}
+
+static void test_sqlite(const char *scratch)
+{
+    char *path = hk_sprintf("%s/sqlite-test.db", scratch), *journal = hk_sprintf("%s/sqlite-test.db-journal", scratch);
+    sqlite3 *a = NULL, *b = NULL, *m = NULL;
+    sqlite3_stmt *st = NULL;
+    hk_stat fs;
+    say("SQLite %s, compiled into the core, on the host layer's files", sqlite3_libversion());
+    CHECK(hk_sqlite_available() && hk_sqlite_start() && hk_sqlite_start());
+    CHECK(sqlite3_vfs_find(NULL) && !strcmp(sqlite3_vfs_find(NULL)->zName, "megler") && sqlite3_threadsafe() == 1);
+    hk_path_remove(path, NULL);
+    hk_path_remove(journal, NULL);
+    /* A database that is not there is not made unless asked. */
+    CHECK(sqlite3_open_v2(path, &a, SQLITE_OPEN_READWRITE, NULL) == SQLITE_CANTOPEN);
+    sqlite3_close(a);
+    a = NULL;
+    CHECK_INT(sqlite3_open_v2(path, &a, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL), SQLITE_OK);
+    CHECK_INT(sqlite3_exec(a, "CREATE TABLE t(id INTEGER PRIMARY KEY, name TEXT, v REAL); INSERT INTO t(name, v) VALUES('one', 1.5), ('two', 2.5), ('three', 3.5);", NULL, NULL, NULL), SQLITE_OK);
+    CHECK_INT(sqlite3_changes(a), 3);
+    CHECK(sqlite3_last_insert_rowid(a) == 3);
+    /* It is a file of the host's, with SQLite's header, and no journal is left beside it. */
+    CHECK(hk_path_stat(path, &fs, NULL) && fs.size >= 1024 && !hk_path_stat(journal, &fs, NULL));
+    {
+        size_t n = 0;
+        u8 *head = hk_file_read_all(path, &n);
+        CHECK(head && n >= 16 && !memcmp(head, "SQLite format 3", 16));
+        free(head);
+    }
+    /* A statement with an argument, stepped. */
+    CHECK_INT(sqlite3_prepare_v2(a, "SELECT name, v FROM t WHERE v > ?1 ORDER BY id", -1, &st, NULL), SQLITE_OK);
+    CHECK_INT(sqlite3_bind_double(st, 1, 2.0), SQLITE_OK);
+    CHECK(sqlite3_step(st) == SQLITE_ROW && !strcmp((const char *)sqlite3_column_text(st, 0), "two") && sqlite3_column_double(st, 1) == 2.5);
+    CHECK(sqlite3_step(st) == SQLITE_ROW && !strcmp((const char *)sqlite3_column_text(st, 0), "three") && sqlite3_step(st) == SQLITE_DONE);
+    sqlite3_finalize(st);
+    /* A transaction rolled back: its journal is there while it is open and gone after, and so is what it did. */
+    CHECK_INT(sqlite3_exec(a, "BEGIN; DELETE FROM t WHERE id > 1;", NULL, NULL, NULL), SQLITE_OK);
+    CHECK(sq_int(a, "SELECT count(*) FROM t") == 1 && hk_path_stat(journal, &fs, NULL));
+    CHECK_INT(sqlite3_exec(a, "ROLLBACK", NULL, NULL, NULL), SQLITE_OK);
+    CHECK(sq_int(a, "SELECT count(*) FROM t") == 3 && !hk_path_stat(journal, &fs, NULL));
+    /* A second connection to the same file: it reads beside a writer that has not written yet, cannot write while that one means to, and can after. */
+    CHECK_INT(sqlite3_open_v2(path, &b, SQLITE_OPEN_READWRITE, NULL), SQLITE_OK);
+    sqlite3_busy_timeout(b, 0);
+    CHECK_INT(sqlite3_exec(a, "BEGIN IMMEDIATE", NULL, NULL, NULL), SQLITE_OK);
+    CHECK_INT(sq_int(b, "SELECT count(*) FROM t"), 3);
+    CHECK_INT(sqlite3_exec(b, "INSERT INTO t(name) VALUES('refused')", NULL, NULL, NULL), SQLITE_BUSY);
+    CHECK_INT(sqlite3_exec(a, "INSERT INTO t(name, v) VALUES('four', 4.5); COMMIT", NULL, NULL, NULL), SQLITE_OK);
+    CHECK_INT(sqlite3_exec(b, "INSERT INTO t(name) VALUES('five')", NULL, NULL, NULL), SQLITE_OK);
+    CHECK_INT(sq_int(a, "SELECT count(*) FROM t"), 5);
+    /* A reader in the middle of its rows keeps a writer from committing, and lets it once it is done. */
+    CHECK_INT(sqlite3_prepare_v2(b, "SELECT id FROM t", -1, &st, NULL), SQLITE_OK);
+    CHECK_INT(sqlite3_step(st), SQLITE_ROW);
+    sqlite3_busy_timeout(a, 0);
+    CHECK_INT(sqlite3_exec(a, "UPDATE t SET v = 0 WHERE id = 1", NULL, NULL, NULL), SQLITE_BUSY);
+    sqlite3_finalize(st);
+    CHECK_INT(sqlite3_exec(a, "UPDATE t SET v = 0 WHERE id = 1", NULL, NULL, NULL), SQLITE_OK);
+    /* No write-ahead log (it needs memory shared between connections): asked for, the journal stays what it was. */
+    CHECK_INT(sqlite3_prepare_v2(a, "PRAGMA journal_mode=WAL", -1, &st, NULL), SQLITE_OK);
+    CHECK(sqlite3_step(st) == SQLITE_ROW && !strcmp((const char *)sqlite3_column_text(st, 0), "delete"));
+    sqlite3_finalize(st);
+    CHECK(sqlite3_close(a) == SQLITE_OK && sqlite3_close(b) == SQLITE_OK);
+    /* Closed and opened again: what was committed is there. */
+    a = NULL;
+    CHECK_INT(sqlite3_open_v2(path, &a, SQLITE_OPEN_READONLY, NULL), SQLITE_OK);
+    CHECK(sq_int(a, "SELECT count(*) FROM t") == 5 && sq_int(a, "SELECT v FROM t WHERE id = 1") == 0);
+    CHECK_INT(sqlite3_exec(a, "DELETE FROM t", NULL, NULL, NULL), SQLITE_READONLY);
+    sqlite3_close(a);
+    /* A database in memory, with a full-text table, as Android's build has them; and the clock. */
+    CHECK_INT(sqlite3_open_v2(":memory:", &m, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL), SQLITE_OK);
+    CHECK_INT(sqlite3_exec(m, "CREATE VIRTUAL TABLE f USING fts4(body); INSERT INTO f VALUES('a quick brown fox'), ('a lazy dog'), ('quick, quick');", NULL, NULL, NULL), SQLITE_OK);
+    CHECK_INT(sq_int(m, "SELECT count(*) FROM f WHERE body MATCH 'quick'"), 2);
+    CHECK(sq_int(m, "SELECT CAST(strftime('%Y', 'now') AS INTEGER)") >= 2024);
+    CHECK(sq_int(m, "SELECT abs(random()) >= 0") == 1);
+    sqlite3_close(m);
+    free(path);
+    free(journal);
+}
+#else
+static void test_sqlite(const char *scratch)
+{
+    (void)scratch;
+    say("(this build has no SQLite in it: build/sqlite/sqlite3.c was not there)");
+    CHECK(!hk_sqlite_available() && !hk_sqlite_start());
+}
+#endif
+
 int hk_tests_run(const char *libdir, const char *scratch, hk_test_sink sink, void *user)
 {
     bool can_run;
@@ -1089,6 +1193,7 @@ int hk_tests_run(const char *libdir, const char *scratch, hk_test_sink sink, voi
     hk_path_mkdirs(scratch);
     test_host(scratch);
     test_zip(scratch);
+    test_sqlite(scratch);
     test_textures();
     test_media(scratch);
     test_input();
