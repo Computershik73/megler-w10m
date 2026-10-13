@@ -211,7 +211,8 @@ typedef struct hk_file hk_file;
 enum {
     HK_O_READ = 1, HK_O_WRITE = 2, HK_O_CREATE = 4, HK_O_TRUNC = 8, HK_O_APPEND = 16, HK_O_EXCL = 32,
 };
-enum { HK_E_OK = 0, HK_E_NOENT, HK_E_ACCESS, HK_E_EXIST, HK_E_NOTDIR, HK_E_ISDIR, HK_E_NOSPC, HK_E_IO, HK_E_INVAL, HK_E_NOTEMPTY, HK_E_BUSY };
+enum { HK_E_OK = 0, HK_E_NOENT, HK_E_ACCESS, HK_E_EXIST, HK_E_NOTDIR, HK_E_ISDIR, HK_E_NOSPC, HK_E_IO, HK_E_INVAL, HK_E_NOTEMPTY, HK_E_BUSY,
+       HK_E_XDEV };                        /* a rename from one file system to another */
 
 typedef struct hk_stat {
     bool is_dir;
@@ -253,6 +254,70 @@ typedef struct hk_map {
 } hk_map;
 bool hk_map_open(hk_map *m, const char *path);
 void hk_map_close(hk_map *m);
+
+/* ---------------------------------------------------------- foreign paths
+ *
+ * Files the operating system will not open by path for this process but
+ * hands over as handles some other way. On a phone that is the user's music,
+ * pictures and videos: an app container may not name them to CreateFile2, and
+ * Windows.Storage's broker gives out real file handles for them.
+ *
+ * Such a file has a host path all the same: HK_FOREIGN_PREFIX, the number of
+ * a root, and a path below it. "megler-link:/2/Camera Roll/a.jpg" is a file of
+ * root 2, and "megler-link:/2" that root itself. Every function above that
+ * takes a path takes one of these. Instead of opening by path it asks
+ * whoever was registered here for the operating system's own handle and goes
+ * on with that, so reading, writing, mapping and listing are the same code
+ * as for any other file. Making, removing and renaming have no handle to go
+ * through, and are asked for as such.
+ *
+ * What follows the root's number reaches the callbacks with forward slashes
+ * and none at either end; "" is the root itself. A path with an empty part,
+ * a "." or ".." part, a backslash or a colon after the root's number is
+ * refused here (HK_E_INVAL) and never reaches them. A root itself cannot be
+ * made (HK_E_EXIST), removed or renamed (HK_E_BUSY), and that too is answered
+ * here.
+ *
+ * A rename between a foreign path and an ordinary one, either way, is
+ * HK_E_XDEV: two file systems, as far as anything above can tell.
+ */
+#define HK_FOREIGN_PREFIX "megler-link:/"
+
+enum {
+    HK_FOREIGN_FILE = 0,               /* a file, to read and write: HK_E_ISDIR for a directory */
+    HK_FOREIGN_DIR,                    /* a directory, to list it: HK_E_NOTDIR for a file */
+    HK_FOREIGN_ANY,                    /* whichever it is, for its size, kind and times only */
+};
+
+typedef struct hk_foreign {
+    void *user;
+    /*
+     * The operating system's own handle, the caller's to close: a HANDLE on
+     * Win32, the file descriptor plus one on POSIX. NULL with *err one of
+     * HK_E_*. `flags` are HK_O_* (HK_O_APPEND may be ignored on Win32, where
+     * the host layer seeks before each write itself); `kind` HK_FOREIGN_*.
+     */
+    void *(*open)(void *user, int root, const char *rel, int flags, int kind, int *err);
+    bool (*mkdir)(void *user, int root, const char *rel, int *err);
+    /* `dir`: a directory, which must be empty (HK_E_NOTEMPTY); else a file (HK_E_ISDIR for a directory). */
+    bool (*remove)(void *user, int root, const char *rel, bool dir, int *err);
+    /* As rename(2): onto an existing file it replaces it. Roots may differ. HK_E_XDEV when it cannot be done as a rename. */
+    bool (*rename)(void *user, int from_root, const char *from, int to_root, const char *to, int *err);
+} hk_foreign;
+
+/* Who answers for foreign paths from now on; the structure is copied. NULL: nobody, and every foreign path is HK_E_NOENT. */
+void hk_foreign_set(const hk_foreign *f);
+bool hk_path_is_foreign(const char *path);
+
+/*
+ * For the two host files, which are otherwise the same for a foreign path as
+ * for any other: the handle of one (NULL with *err set), and the three
+ * things done by name.
+ */
+void *hk_foreign_open(const char *path, int flags, int kind, int *err);
+bool hk_foreign_mkdir(const char *path, int *err);
+bool hk_foreign_remove(const char *path, bool dir, int *err);
+bool hk_foreign_rename(const char *from, const char *to, int *err);
 
 /* ------------------------------------------------------ host shared libraries */
 
