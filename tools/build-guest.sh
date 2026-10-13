@@ -14,6 +14,9 @@
 #   libt_basic_arm.so  the same source in ARM mode, GNU hash only, packed (APS2) and RELR relocations
 #   libt_dep.so        Thumb-2, needs libt_basic.so: its calls go through a PLT
 #   libt_jni.so        native methods of a class the Dalvik runtime's tests have in DEX
+#   libt_same.so, libt_user.so, and in runtime/ another libt_same.so and libt_ruser.so:
+#                      two libraries of one name, the app's and the runtime's, and one
+#                      of each kind that needs "libt_same.so" (t_same.c, t_user.c)
 # and an app: native-test.apk, a NativeActivity "game" (t_native.c) with a
 # manifest and an asset, put together by tools/make-test-apk.py.
 # And the demo, build/guest/demo/megler-demo.apk (t_demo.c): the app the package
@@ -49,6 +52,13 @@ SYS=("-L$(w "$STUBS")" -lc -lm -ldl -llog)
   -Wl,-soname,libt_dep.so -o "$(w "$OUT/libt_dep.so")" "$(w "$SRC/t_dep.c")" "-L$(w "$OUT")" -lt_basic "${SYS[@]}"
 # Native methods for the Dalvik runtime's tests: softfp, as an app's library is.
 "$CLANG" "${COMMON[@]}" -mthumb -Wl,--hash-style=both   -Wl,-soname,libt_jni.so -o "$(w "$OUT/libt_jni.so")" "$(w "$SRC/t_jni.c")" "${SYS[@]}"
+
+# One file name twice: the app's, and the one that stands for a library of the Android root's.
+mkdir -p "$OUT/runtime"
+"$CLANG" "${COMMON[@]}" -mthumb -Wl,--hash-style=both -DWHICH=1 -Wl,-soname,libt_same.so -o "$(w "$OUT/libt_same.so")" "$(w "$SRC/t_same.c")" "${SYS[@]}"
+"$CLANG" "${COMMON[@]}" -mthumb -Wl,--hash-style=both -DWHICH=2 -Wl,-soname,libt_same.so -o "$(w "$OUT/runtime/libt_same.so")" "$(w "$SRC/t_same.c")" "${SYS[@]}"
+"$CLANG" "${COMMON[@]}" -mthumb -Wl,--hash-style=both -Wl,-soname,libt_user.so -o "$(w "$OUT/libt_user.so")" "$(w "$SRC/t_user.c")" "-L$(w "$OUT")" -lt_same "${SYS[@]}"
+"$CLANG" "${COMMON[@]}" -mthumb -Wl,--hash-style=both -DRUNTIME -Wl,-soname,libt_ruser.so -o "$(w "$OUT/runtime/libt_ruser.so")" "$(w "$SRC/t_user.c")" "-L$(w "$OUT/runtime")" -lt_same "${SYS[@]}"
 
 APKLIBS="$ROOT/build/guest/apk"
 mkdir -p "$APKLIBS"

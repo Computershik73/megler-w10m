@@ -888,6 +888,48 @@ static void test_library(hk_lib *lib, const char *what, const char *scratch)
     CHECK_INT(FN(lib, int (*)(const char *), "t_stack")("a string that fits"), 18);
 }
 
+/*
+ * The app's libraries and the runtime's, kept apart (ld/hk_ld.h): there is a
+ * libt_same.so of each kind, and a library of each kind that needs
+ * "libt_same.so". The runtime's are loaded first, so that anything that
+ * looked for a library or a symbol by name alone would find the wrong one.
+ */
+static void test_guest_kinds(const char *libdir)
+{
+    char *runtime_dir = hk_sprintf("%s/runtime", libdir);
+    hk_lib *ruser, *user, *rsame, *same, *in = NULL;
+    say("guest libraries: the app's and the runtime's of one name");
+    hk_ld_add_runtime_dir(runtime_dir);
+    free(runtime_dir);
+    /* Each kind is looked for only where it is kept. */
+    CHECK(hk_ld_load_runtime("libt_basic.so") == NULL && hk_ld_load("libt_ruser.so") == NULL);
+    ruser = hk_ld_load_runtime("libt_ruser.so");
+    CHECK(ruser && hk_ld_init(ruser) && hk_ld_lib_is_runtime(ruser));
+    /* What it needs was loaded with it, as the runtime's; the app has no library of that name yet. */
+    rsame = hk_ld_find_runtime_lib("libt_same.so");
+    CHECK(rsame && hk_ld_lib_is_runtime(rsame) && hk_ld_find_lib("libt_same.so") == NULL);
+    user = hk_ld_load("libt_user.so");
+    CHECK(user && hk_ld_init(user) && !hk_ld_lib_is_runtime(user));
+    same = hk_ld_find_lib("libt_same.so");
+    CHECK(same && same != rsame && !hk_ld_lib_is_runtime(same) && hk_ld_find_runtime_lib("libt_same.so") == rsame);
+    if (!ruser || !user || !same || !rsame) return;
+    /* Each got the libt_same.so of its own kind. */
+    CHECK_INT(FN(ruser, int (*)(void), "t_ruser_which")(), 202);
+    CHECK_INT(FN(user, int (*)(void), "t_user_which")(), 101);
+    /* A name only the other kind exports is not bound across: the weak import stays zero on both sides. */
+    CHECK_INT(FN(ruser, int (*)(void), "t_ruser_stray")(), -1);
+    CHECK_INT(FN(user, int (*)(void), "t_user_stray")(), -1);
+    /* dlsym(RTLD_DEFAULT), which is the app's: its own libraries, never the runtime's. */
+    CHECK(hk_ld_sym(NULL, "t_same_app_only") != NULL && hk_ld_sym(NULL, "t_same_runtime_only") == NULL && hk_ld_sym(NULL, "t_ruser_which") == NULL);
+    CHECK(hk_ld_lib_of(hk_ld_sym(NULL, "t_same_which")) == same);
+    /* And by kind: where the runtime looks for its classes' native methods, and the app for its own. */
+    CHECK(hk_ld_sym_among(true, "t_same_which", &in) != NULL && in == rsame);
+    CHECK(hk_ld_sym_among(false, "t_same_which", &in) != NULL && in == same);
+    CHECK(hk_ld_sym_among(true, "t_user_which", &in) == NULL && in == NULL && hk_ld_sym_among(false, "t_ruser_which", NULL) == NULL);
+    /* Loading either again by name gives the one already there. */
+    CHECK(hk_ld_load("libt_same.so") == same && hk_ld_load_runtime("libt_same.so") == rsame);
+}
+
 static void test_guest(const char *libdir, const char *scratch)
 {
     hk_lib *basic, *dep;
@@ -925,6 +967,7 @@ static void test_guest(const char *libdir, const char *scratch)
 
     CHECK(hk_ld_find_lib("libt_basic.so") == basic && hk_ld_lib_of(SYM(basic, "t_add")) == basic);
     CHECK(hk_ld_load("libc.so") == NULL && hk_ld_load("libnothere.so") == NULL);
+    test_guest_kinds(libdir);
 }
 
 /*
