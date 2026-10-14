@@ -222,6 +222,12 @@ int hk_dvm_tests_run(const hk_dvm_test_config *config, hk_test_sink sink, void *
         return 0;
     }
     ran = true;
+    /*
+     * The collector runs all through the tests, often (a budget of 1 MB), with its poison on: an object freed while something
+     * still used it would read as 0xDB.
+     */
+    hk_dvm_gc_set_poison(true);
+    hk_dvm_gc_set_min_budget(1u << 20);
     /* Much of what is tested is refusal, and each refusal is a warning in the log: only errors are shown unless tracing is asked for. */
     hk_log_set_level(config->trace ? HK_LOG_INFO : HK_LOG_ERROR);
     say("dalvik runtime (%s, %u-bit registers, %u bytes of header to an object, %u registers to a frame)", hk_host_name(), (unsigned)(sizeof(hk_dvm_reg) * 8),

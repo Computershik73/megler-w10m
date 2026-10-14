@@ -113,7 +113,14 @@ static hk_jobj *alloc_raw(hk_dvm_class *c, int kind, u64 body)
     self->allocs++;
     /* What the collector will follow in objects of the class, known before the first of them exists (it may allocate nothing). */
     if (kind != HK_J_PRIM_ARRAY && kind != HK_J_OBJ_ARRAY && kind != HK_J_STRING && !c->ref_slots_ready) hk_dvm_gc_class_ready(c);
+    /* A collection, when enough has been made since the last one (hk_dvm_gc.c), before this one is. */
+    hk_dvm_gc_allocating(size);
     if (body <= 0x7FFF0000u) o = (hk_dvm_obj *)hk_dvm_heap_alloc(size);
+    if (!o && body <= 0x7FFF0000u) {
+        /* Nothing more to be had: a collection that clears soft references, and once more. */
+        hk_dvm_gc("out of memory", NULL);
+        o = (hk_dvm_obj *)hk_dvm_heap_alloc(size);
+    }
     if (started) self->alloc_ns += hk_time_monotonic_ns() - started;
     if (!o) {
         if (!g_out_of_memory) hk_fatal("dvm: out of memory (%u bytes for a %s)", (unsigned)body, c->name);
@@ -479,6 +486,18 @@ typedef struct monitor {
     int count;
     u32 notified;                      /* counts notify and notifyAll, under mu: how a waiter tells being woken from waking by itself */
 } monitor;
+
+void hk_dvm_object_dying(void *p)
+{
+    hk_dvm_obj *o = (hk_dvm_obj *)p;
+    int i;
+    if (o->monitor) free(o->monitor);
+    if (o->j.kind == HK_J_STRING && o->j.u.str.utf8) free(o->j.u.str.utf8);
+    if (o->j.fields) {
+        for (i = 0; i < o->j.nfields; i++) free(o->j.fields[i].name);
+        free(o->j.fields);
+    }
+}
 
 static monitor *monitor_of(hk_jobj *o)
 {

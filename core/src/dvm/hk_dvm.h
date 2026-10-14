@@ -176,15 +176,28 @@ int hk_dvm_pending_stack(char *buf, size_t n);
 void hk_dvm_add_root(hk_jobj **slot);
 typedef struct hk_dvm_gc_result {
     u64 objects, live_objects, live_bytes;   /* in the heap; reachable, and their bytes */
-    u64 conservative;                        /* reached first through a conservative root: a stack or a frame's register */
+    u64 conservative, conservative_bytes;    /* reached first through a conservative root: a stack or a frame's register */
     u64 freed_objects, freed_bytes;
     u32 threads_stopped;
     u64 stop_ns, mark_ns, sweep_ns;
 } hk_dvm_gc_result;
 /* A collection that marks only: what is reachable, counted, nothing freed. False when not every thread could be stopped. */
 bool hk_dvm_gc_census(hk_dvm_gc_result *out);
-/* Whether the last collection found the object reachable (for the tests). */
+/* Whether the last census found the object reachable (for the tests). */
 bool hk_dvm_gc_marked(const hk_jobj *o);
+/* A collection: what is not reachable is freed, and a line in the log says what it took and found. `out` may be NULL. */
+bool hk_dvm_gc(const char *reason, hk_dvm_gc_result *out);
+/* Collections as allocation calls for them: off until the runtime's start has turned them on (hk_dvm_start*). */
+void hk_dvm_gc_enable(bool on);
+/* For the tests: freed memory filled with 0xDB and never used again, so that an object freed too early shows; and a smaller budget. */
+void hk_dvm_gc_set_poison(bool on);
+void hk_dvm_gc_set_min_budget(u64 bytes);
+/* Native memory an object keeps alive (VMRuntime.registerNativeAllocation, a bitmap's pixels): it counts toward the next collection. */
+void hk_dvm_gc_native(i64 bytes);
+/* Collections made so far and the time they took, for the frame meter. */
+void hk_dvm_gc_totals(u64 *collections, u64 *pause_ns);
+/* Bytes of the objects in the heap now (live since the last collection, and what was made after it). */
+u64 hk_dvm_live_bytes(void);
 
 /* ------------------------------------------------------------ diagnostics */
 

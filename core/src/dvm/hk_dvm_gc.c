@@ -1,7 +1,9 @@
 /*
- * The collector: a non-moving mark and sweep that stops the world (docs/JAVA.md, "The collector"). This part marks: it
- * stops every other thread of the runtime's where it is, follows references from the roots, and says what it found. The
- * sweep is the next step; until it is written, a collection frees nothing (hk_dvm_gc_census).
+ * The collector: a non-moving mark and sweep that stops the world (docs/JAVA.md, "The collector"). It stops every other
+ * thread of the runtime's where it is, follows references from the roots, lets the threads go on, and frees what it did
+ * not reach (hk_dvm_gc); or only counts it (hk_dvm_gc_census). It runs on the allocating thread when enough has been made
+ * since the last collection (the larger of 8 MB and three quarters of what lived after it, native memory registered
+ * counted in), on System.gc(), and before an allocation fails.
  *
  * Roots, and how each is read:
  *  - exactly: every linked class's static fields of reference type, its Class object and the error its initialisation
@@ -72,28 +74,31 @@ typedef struct gc_state {
     void **stack;
     u32 n, cap;
     bool overflow;
-    u64 marked, marked_bytes, conservative;   /* objects marked; their bytes; marked first by a conservative root */
+    u64 marked, marked_bytes, conservative, conservative_bytes;   /* objects marked; their bytes; marked first by a conservative root */
     bool counting_conservative;
 } gc_state;
 
 static gc_state G;
 
-/* An object reached: marked, and its references to follow later. `o` is an object's start, or anything else (ignored). */
+/* An object reached: marked, and its references to follow later. `o` is an object's start, or anything else (ignored: nothing is read of it before the heap has said it is an object). */
 static void reach(void *o)
 {
     if (!o || !hk_dvm_heap_set_mark(o)) return;
     G.marked++;
     G.marked_bytes += HK_DVM_OBJ(o)->size;
-    if (G.counting_conservative) G.conservative++;
+    if (G.counting_conservative) {
+        G.conservative++;
+        G.conservative_bytes += HK_DVM_OBJ(o)->size;
+    }
     if (G.n < G.cap) G.stack[G.n++] = o;
     else G.overflow = true;
 }
 
-/* A precise reference: an object of the runtime's (a pointer to one that is not in the heap, from before it started, is not). */
+/* A precise reference: an object of the runtime's, when the heap has it (one from before it started, or a C object, is not). */
 static void reach_ref(hk_jobj *o, void *user)
 {
     (void)user;
-    if (o && o->dvm) reach(o);
+    reach(o);
 }
 
 /* A word that may point into an object. */
@@ -253,16 +258,72 @@ void hk_dvm_gc_thread_gone(hk_dvm_thread *t) { (void)t; }
 /* ---------------------------------------------------------- a collection */
 
 static hk_lock g_gc_lock = HK_LOCK_INIT;
+static HK_THREAD_LOCAL bool t_collecting;
+static bool g_enabled, g_poison;
+/*
+ * When the next collection is due: bytes made since the last one, and native bytes registered since (VMRuntime, bitmaps).
+ * Bytes, not rounded: most objects are a few dozen of them. A sum stops short of 2 GB, which no budget comes near.
+ */
+#define MIN_BUDGET (8u << 20)
+static volatile i32 g_since, g_native_since;
+static u64 g_budget = MIN_BUDGET, g_min_budget = MIN_BUDGET;
+/* For the frame meter and the log: collections made, and the time the world stood still in them. */
+static volatile i32 g_collections;
+static u64 g_pause_ns;
 
-bool hk_dvm_gc_census(hk_dvm_gc_result *out)
+void hk_dvm_gc_enable(bool on) { g_enabled = on; }
+void hk_dvm_gc_set_poison(bool on) { g_poison = on; }
+
+void hk_dvm_gc_set_min_budget(u64 bytes)
 {
-    u64 t0, t1, t2;
+    g_min_budget = bytes;
+    g_budget = bytes;
+}
+
+void hk_dvm_gc_totals(u64 *collections, u64 *pause_ns)
+{
+    if (collections) *collections = (u64)(u32)g_collections;
+    if (pause_ns) *pause_ns = g_pause_ns;
+}
+
+static void count(volatile i32 *sum, u64 bytes)
+{
+    if (bytes > 0x40000000u) bytes = 0x40000000u;
+    if (hk_atomic_add(sum, (i32)bytes) < 0) hk_atomic_xchg(sum, 0x7FFFFFFF);
+}
+
+void hk_dvm_gc_native(i64 bytes)
+{
+    /* Only what grows counts toward the next collection; what is freed is freed. */
+    if (bytes > 0) count(&g_native_since, (u64)bytes);
+}
+
+static bool due(void) { return (u64)(u32)g_since + (u64)(u32)g_native_since >= g_budget; }
+
+void hk_dvm_gc_allocating(size_t bytes)
+{
+    if (!g_enabled || !g_dvm.running || t_collecting) return;
+    count(&g_since, bytes);
+    if (due()) hk_dvm_gc("allocation", NULL);
+}
+
+/* The world stopped, everything reachable marked; `sweep`: and what is not, freed. False when not every thread could be stopped. */
+static bool collect(const char *reason, bool sweep, hk_dvm_gc_result *out)
+{
+    u64 t0, t1 = 0, t2 = 0, t3;
     u32 objects;
     void **stack;
     int i;
+    bool ok;
     memset(out, 0, sizeof(*out));
-    if (!g_dvm.running) return false;
+    if (!g_dvm.running || t_collecting) return false;
     hk_lock_acquire(&g_gc_lock);
+    /* Two threads that found it due at once: the second has nothing left to do. */
+    if (sweep && !strcmp(reason, "allocation") && !due()) {
+        hk_lock_release(&g_gc_lock);
+        return true;
+    }
+    t_collecting = true;
     t0 = hk_time_monotonic_ns();
     g_collector = hk_dvm_self();
     hk_dvm_lock();
@@ -271,40 +332,72 @@ bool hk_dvm_gc_census(hk_dvm_gc_result *out)
     /* The mark stack, before anything is stopped: one entry for every object there is. */
     objects = hk_dvm_heap_objects();
     stack = (void **)malloc(sizeof(void *) * ((size_t)objects + 64));
-    if (!stack) {
-        hk_dvm_heap_unlock();
-        hk_jni_gc_lock(false);
-        hk_dvm_unlock();
-        hk_lock_release(&g_gc_lock);
-        return false;
+    ok = stack != NULL;
+    if (ok) {
+        memset(&G, 0, sizeof(G));
+        G.stack = stack;
+        G.cap = objects + 64;
+        g_nstopped = 0;
+        g_stop_failed = false;
+        hk_dvm_threads_each(stop_thread, NULL);
+        t1 = hk_time_monotonic_ns();
+        ok = !g_stop_failed;
+        if (ok) {
+            hk_dvm_heap_clear_marks();
+            mark();
+        }
+        for (i = 0; i < g_nstopped; i++) hk_thread_resume(g_stopped[i].t->host);
+        t2 = hk_time_monotonic_ns();
+        out->objects = objects;
+        out->live_objects = G.marked;
+        out->live_bytes = G.marked_bytes;
+        out->conservative = G.conservative;
+        out->conservative_bytes = G.conservative_bytes;
+        out->threads_stopped = (u32)g_nstopped;
+        out->stop_ns = t1 - t0;
+        out->mark_ns = t2 - t1;
     }
-    memset(&G, 0, sizeof(G));
-    G.stack = stack;
-    G.cap = objects + 64;
-    g_nstopped = 0;
-    g_stop_failed = false;
-    hk_dvm_threads_each(stop_thread, NULL);
-    t1 = hk_time_monotonic_ns();
-    if (!g_stop_failed) {
-        hk_dvm_heap_clear_marks();
-        mark();
-    }
-    for (i = 0; i < g_nstopped; i++) hk_thread_resume(g_stopped[i].t->host);
-    t2 = hk_time_monotonic_ns();
-    out->objects = objects;
-    out->live_objects = G.marked;
-    out->live_bytes = G.marked_bytes;
-    out->conservative = G.conservative;
-    out->threads_stopped = (u32)g_nstopped;
-    out->stop_ns = t1 - t0;
-    out->mark_ns = t2 - t1;
-    hk_dvm_heap_unlock();
     hk_jni_gc_lock(false);
     hk_dvm_unlock();
+    /* The others go on; the heap stays locked while what nothing reached is freed, so nothing is made meanwhile. */
+    if (ok && sweep) {
+        hk_dvm_heap_sweep(hk_dvm_object_dying, g_poison, &out->freed_objects, &out->freed_bytes);
+        t3 = hk_time_monotonic_ns();
+        out->sweep_ns = t3 - t2;
+        g_budget = out->live_bytes * 3 / 4 > g_min_budget ? out->live_bytes * 3 / 4 : g_min_budget;
+        hk_atomic_xchg(&g_since, 0);
+        hk_atomic_xchg(&g_native_since, 0);
+    }
+    hk_dvm_heap_unlock();
+    if (ok) {
+        hk_atomic_add(&g_collections, 1);
+        g_pause_ns += out->stop_ns + out->mark_ns + out->sweep_ns;
+    }
     g_collector = NULL;
+    t_collecting = false;
     free(stack);
     hk_lock_release(&g_gc_lock);
-    return !g_stop_failed;
+    return ok;
+}
+
+bool hk_dvm_gc_census(hk_dvm_gc_result *out) { return collect("census", false, out); }
+
+bool hk_dvm_gc(const char *reason, hk_dvm_gc_result *out)
+{
+    hk_dvm_gc_result r;
+    bool ok = collect(reason, true, &r);
+    if (out) *out = r;
+    if (!ok) {
+        hk_warn("gc: %s: not collected (a thread of the runtime's could not be stopped, or there was no memory for the mark stack)", reason);
+        return false;
+    }
+    if (!r.objects) return true;
+    hk_info("gc: %s: %.1f ms (stop %.1f, mark %.1f, sweep %.1f); freed %.1f MB (%u objects), live %.1f MB (%u objects); %u threads stopped; "
+            "%.2f MB (%u objects) found only through a conservative root",
+            reason, (double)(r.stop_ns + r.mark_ns + r.sweep_ns) / 1e6, (double)r.stop_ns / 1e6, (double)r.mark_ns / 1e6, (double)r.sweep_ns / 1e6,
+            (double)r.freed_bytes / 1048576.0, (unsigned)r.freed_objects, (double)r.live_bytes / 1048576.0, (unsigned)r.live_objects,
+            (unsigned)r.threads_stopped, (double)r.conservative_bytes / 1048576.0, (unsigned)r.conservative);
+    return true;
 }
 
 bool hk_dvm_gc_marked(const hk_jobj *o)

@@ -620,6 +620,7 @@ typedef struct {
 
 typedef struct {
     u64 started, all_executed, object_bytes; /* at the beginning: the clock, every thread's instructions, the objects made */
+    u64 collections, collecting_ns;          /* and the collector's count and time (hk_dvm_gc_totals) */
     u32 frames, drawn;
     u64 longest, redrawn;                    /* the longest frame from mark 1 to mark 3; pixels drawn */
     meter_sum part[PARTS];
@@ -659,6 +660,7 @@ static void meter_start(meter_window *w, u64 now)
     w->started = now;
     w->all_executed = hk_dvm_executed_all();
     w->object_bytes = s.object_bytes;
+    hk_dvm_gc_totals(&w->collections, &w->collecting_ns);
 }
 
 /* What has passed since the last mark, to the part it was spent in, in the window and in the run. */
@@ -690,10 +692,10 @@ static void meter_line(const char *what, const meter_window *w, u64 now)
 {
     hk_dvm_stats s;
     u64 busy[PARTS], java = 0, host = 0, present = 0, waited = 0, executed = 0, elapsed = now - w->started, screen;
-    u64 native = 0, natives = 0, alloc = 0, allocs = 0, blocked = 0, wall = 0, other, interpreted;
-    u64 bitmap_bytes = 0, process = hk_mem_usage();
+    u64 native = 0, natives = 0, alloc = 0, allocs = 0, blocked = 0, wall = 0, other, interpreted, live_bytes;
+    u64 bitmap_bytes = 0, process = hk_mem_usage(), collections = 0, collecting_ns = 0;
     u32 bitmaps = 0, n = w->frames;
-    char of[40], redrawn[60], rates[300], mem[40];
+    char of[40], redrawn[60], rates[300], mem[40], gc[120];
     int i;
     for (i = 0; i < PARTS; i++) {
         const meter_sum *p = &w->part[i];
@@ -712,6 +714,7 @@ static void meter_line(const char *what, const meter_window *w, u64 now)
         wall += p->wall;
     }
     hk_dvm_get_stats(&s);
+    live_bytes = hk_dvm_live_bytes();
     hk_java_gfx_stats(&bitmap_bytes, &bitmaps);
     screen = (u64)(J.config->width > 0 ? J.config->width : 0) * (u64)(J.config->height > 0 ? J.config->height : 0);
     of[0] = 0;
@@ -735,14 +738,17 @@ static void meter_line(const char *what, const meter_window *w, u64 now)
              (double)(hk_dvm_executed_all() - w->all_executed) / 1e6);
     mem[0] = 0;
     if (process) snprintf(mem, sizeof(mem), "; the process %u MB", (unsigned)(process >> 20));
+    /* The collector, as its own part: what it took in the time the line covers, every thread of the runtime's stopped for most of it. */
+    hk_dvm_gc_totals(&collections, &collecting_ns);
+    snprintf(gc, sizeof(gc), "collecting %.1f ms in %u collections", (double)(collecting_ns - w->collecting_ns) / 1e6, (unsigned)(collections - w->collections));
     hk_info("java: frames %s%.1f s: %u drawn%s, %.1f ms of work each on average (the longest frame %.1f without input and messages): Java %.1f "
             "(input and messages %.1f, measure and layout %.1f, "
-            "draw traversal %.1f), of it in the shell's drawing %.1f, %s; present %.1f; idle %u%%; heap %u MB (objects %u, nothing collected, %u "
-            "more in these %.1f s; bitmaps %u)%s; %s",
+            "draw traversal %.1f), of it in the shell's drawing %.1f, %s; present %.1f; idle %u%%; %s; heap %u MB (objects %u live, %u "
+            "made in these %.1f s; bitmaps %u)%s; %s",
             what, (double)elapsed / 1e9, (unsigned)w->drawn, of, per_frame_ms(java + present, n), per_frame_ms(w->longest, 1), per_frame_ms(java, n),
             per_frame_ms(busy[PART_BETWEEN], n), per_frame_ms(busy[PART_LAYOUT], n), per_frame_ms(busy[PART_DRAW], n), per_frame_ms(host, n), rates,
-            per_frame_ms(present, n), (unsigned)(elapsed ? waited * 100 / elapsed : 0),
-            (unsigned)((s.object_bytes + bitmap_bytes) >> 20), (unsigned)(s.object_bytes >> 20), (unsigned)((s.object_bytes - w->object_bytes) >> 20),
+            per_frame_ms(present, n), (unsigned)(elapsed ? waited * 100 / elapsed : 0), gc,
+            (unsigned)((live_bytes + bitmap_bytes) >> 20), (unsigned)(live_bytes >> 20), (unsigned)((s.object_bytes - w->object_bytes) >> 20),
             (double)elapsed / 1e9, (unsigned)(bitmap_bytes >> 20), mem, redrawn);
 }
 

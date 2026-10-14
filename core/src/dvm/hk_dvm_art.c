@@ -1030,6 +1030,15 @@ N(Class_null) { c->ret.l = NULL; }
  * no package of the system's is known by a file it came from.
  */
 N(Runtime_runFinalization0) { (void)c; }
+/* Runtime.gc(), which System.gc() calls: a collection, as ART does one. */
+N(Runtime_gc)
+{
+    (void)c;
+    hk_dvm_gc("System.gc", NULL);
+}
+/* Native memory a Java object keeps alive (NativeAllocationRegistry registers it so): it counts toward the next collection. */
+N(VMRuntime_registerNativeAllocation) { hk_dvm_gc_native(c->args[0].i); }
+N(VMRuntime_registerNativeFree) { hk_dvm_gc_native(-(i64)c->args[0].i); }
 
 /*
  * UNIXProcess.forkAndExec, which is Runtime.exec and ProcessBuilder.start. An app's process cannot start another here,
@@ -1263,6 +1272,9 @@ static const hk_jhle k_art[] = {
     { "dalvik/system/VMStack", "getThreadStackTrace", NULL, VMStack_getThreadStackTrace },
     { "dalvik/system/VMStack", "getCallingClassLoader", NULL, VMStack_getCallingClassLoader },
     { "java/lang/Runtime", "runFinalization0", NULL, Runtime_runFinalization0 },
+    { "java/lang/Runtime", "gc", NULL, Runtime_gc },
+    { "dalvik/system/VMRuntime", "registerNativeAllocation", NULL, VMRuntime_registerNativeAllocation },
+    { "dalvik/system/VMRuntime", "registerNativeFree", NULL, VMRuntime_registerNativeFree },
     { "java/lang/UNIXProcess", "forkAndExec", NULL, UNIXProcess_forkAndExec },
     { "java/lang/Package", "getSystemPackage0", NULL, Class_null },
     { "java/lang/Package", "getSystemPackages0", NULL, Package_getSystemPackages0 },

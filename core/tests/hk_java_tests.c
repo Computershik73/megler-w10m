@@ -1340,6 +1340,14 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
     if (!strcmp(which, "app") && getenv("HK_JAVA_TIMEZONE")) megler_set_timezone(getenv("HK_JAVA_TIMEZONE"));
     /* The test apps' frames drawn in part are each checked against the whole screen drawn again (megler.ViewRoot.checkPart). */
     hk_java_check_partial(!g_any_app);
+    /*
+     * And the collector runs often under the test apps (every 2 MB made) with its poison on: an object freed while something
+     * still used it would read as 0xDB. An app that is not a test's runs as on the phone.
+     */
+    if (!g_any_app) {
+        hk_dvm_gc_set_poison(true);
+        hk_dvm_gc_set_min_budget(2u << 20);
+    }
     if (start(apk, android_root)) {
         if (!strcmp(which, "demos")) run_demos();
         else if (!strcmp(which, "natives")) run_natives();

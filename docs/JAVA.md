@@ -2006,12 +2006,12 @@ exception.
 
 ### Memory
 
-**Nothing is collected yet.** Every object is a zeroed allocation from the
-runtime's own heap (`hk_dvm_heap.c`, the first step of the collector below)
-and lives as long as the process. (The original does not collect either.)
-Allocation goes through one function, `alloc_raw` in `hk_dvm_object.c`.
+**Objects are collected** (`hk_dvm_gc.c`, the next section). Every object is
+a zeroed allocation from the runtime's own heap (`hk_dvm_heap.c`). Allocation
+goes through one function, `alloc_raw` in `hk_dvm_object.c`, which also asks
+for a collection when enough has been made. (The original does not collect.)
 
-### The collector (design, round 7; being built)
+### The collector (design, round 7; built in steps)
 
 Why now: the frame meter's first lines from the phone. Apktool M's heap grew by
 about 5 MB a second, 239 MB at the start and 1227 MB after three and a half
@@ -2252,7 +2252,32 @@ cached UTF-8, the `fields` array of a stand-in object.
    interior pointer. It also checks that 100 arrays nothing holds are not
    found. On libcore under qemu: 94,142 objects, 16,204 reachable (1.5 MB), 9
    found first by a conservative root; 8.6 ms to mark.)
-3. The audit of C roots, the sweep, the trigger and `System.gc()`.
+3. The audit of C roots, the sweep, the trigger and `System.gc()`. (Done.
+   The sweep frees the cells and large objects nothing reached, and what
+   they own besides themselves: the monitor, a string's UTF-8, the JNI
+   fields. An empty block becomes a spare for any class.
+   - `alloc_raw` collects when the bytes made since the last collection pass
+     the budget: the larger of 8 MB and three quarters of what lived after
+     the last one. Native memory registered since counts too
+     (`VMRuntime.registerNativeAllocation`, and every bitmap's pixels from
+     `hk_java_gfx.c`). It collects once more before an allocation fails.
+   - `Runtime.gc()` collects.
+   - Each collection is a line in the log: reason, pause split into stop,
+     mark and sweep, freed, live, threads stopped, and what only the
+     conservative scans found.
+   - The frame meter has "collecting N ms in M collections".
+   - The audit of C roots found the Java driver's clipboard (registered) and
+     the tables the collector reads itself; Unity's and NativeActivity's
+     stand-ins run without the runtime.
+   - Marking reads nothing of a reference until the heap has said it is an
+     object's start in use (`hk_dvm_heap_set_mark`). The first runs found
+     why: a JNI stand-in's static held the number 0x6B in an object-typed
+     field.
+   - All the tests run with collections on and poisoned (1 MB budget in the
+     runtime's tests, 2 MB under the test apps): freed memory is 0xDB and
+     never reused. Every test still passes. The libcore run alone collected
+     about a hundred times, 10 to 14 ms each under qemu for 20,000 live
+     objects.)
 4. References and the reference thread.
 5. Finalizers, and bitmaps with them.
 6. The `gc` app and the stress tests.

@@ -463,6 +463,11 @@ bool hk_dvm_heap_set_mark(void *o);
 bool hk_dvm_heap_is_marked(const void *o);
 void hk_dvm_heap_clear_marks(void);
 void hk_dvm_heap_each_marked(void (*fn)(void *o));
+void hk_dvm_heap_sweep(void (*dying)(void *o), bool poison, u64 *freed_objects, u64 *freed_bytes);
+/* hk_dvm_object.c: what an object the collector frees owns besides itself (its monitor, a string's UTF-8, JNI fields), freed. */
+void hk_dvm_object_dying(void *o);
+/* Whether the collector may run now: the allocation that asks has its size counted. */
+void hk_dvm_gc_allocating(size_t bytes);
 
 /* ---------------------------------------------------------- hk_dvm_boot.c */
 

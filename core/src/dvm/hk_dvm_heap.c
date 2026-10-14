@@ -269,12 +269,18 @@ static large *large_at(const void *p)
     return NULL;
 }
 
+/* Only an object's start in use is marked: anything else (a stale or made-up reference) is not an object, and false. */
 bool hk_dvm_heap_set_mark(void *o)
 {
-    block *b = block_of((hk_addr)o);
+    block *b;
+    if ((hk_addr)o < g_lo || (hk_addr)o >= g_hi) return false;
+    b = block_of((hk_addr)o);
     if (b) {
-        u32 index = (u32)((size_t)((u8 *)o - b->first) / b->cell), bit = 1u << (index & 31);
-        if (b->mark[index >> 5] & bit) return false;
+        u32 index, bit;
+        if ((u8 *)o < b->first || (size_t)((u8 *)o - b->first) % b->cell) return false;
+        index = (u32)((size_t)((u8 *)o - b->first) / b->cell);
+        bit = 1u << (index & 31);
+        if (index >= b->bump || !(b->inuse[index >> 5] & bit) || (b->mark[index >> 5] & bit)) return false;
         b->mark[index >> 5] |= bit;
         return true;
     } else {
@@ -310,6 +316,74 @@ void hk_dvm_heap_clear_marks(void)
 
 u32 hk_dvm_heap_objects(void) { return g_objects; }
 
+/*
+ * The sweep, with the heap's lock held: every object in use and not marked is handed to `dying` (which frees what it owns
+ * besides itself) and its memory is freed -- a cell to its block's free list, a large object to the C heap -- and every
+ * mark is cleared for the next collection. Then the lists of blocks with room are made again, and a block left empty
+ * becomes a spare one, for any class. `poison`: freed memory is filled with 0xDB and never handed out again, so that a use
+ * after it is freed shows (the tests' way to find a root the collector missed).
+ */
+void hk_dvm_heap_sweep(void (*dying)(void *o), bool poison, u64 *freed_objects, u64 *freed_bytes)
+{
+    u32 i, k, c, kept = 0;
+    int cl;
+    *freed_objects = *freed_bytes = 0;
+    for (cl = 0; cl < NCLASSES; cl++) g_room[cl] = NULL;
+    for (i = 0; i < g_narenas; i++)
+        for (k = 0; k < ARENA_BLOCKS; k++) {
+            block *b = (block *)(void *)(g_arenas[i] + (size_t)k * BLOCK_SIZE);
+            if (b->cls < 0) continue;
+            for (c = 0; c < b->bump; c++) {
+                u32 w = c >> 5, bit = 1u << (c & 31);
+                u8 *cell;
+                if (!(b->inuse[w] & bit) || (b->mark[w] & bit)) continue;
+                cell = b->first + (size_t)c * b->cell;
+                dying(cell);
+                b->inuse[w] &= ~bit;
+                b->used--;
+                g_objects--;
+                g_small_bytes -= b->cell;
+                (*freed_objects)++;
+                *freed_bytes += b->cell;
+                if (poison) {
+                    /* Not in use, and not on the free list: never handed out again. */
+                    memset(cell, 0xDB, b->cell);
+                } else {
+                    ((free_cell *)(void *)cell)->next = b->free;
+                    b->free = (free_cell *)(void *)cell;
+                }
+            }
+            memset(b->mark, 0, sizeof(b->mark));
+            if (b->used == 0 && !poison) {
+                /* Empty: any class may have it. */
+                b->cls = -1;
+                b->next = g_spare;
+                g_spare = b;
+            } else if (b->free || b->bump < b->ncells) {
+                b->next = g_room[b->cls];
+                g_room[b->cls] = b;
+            } else {
+                b->next = NULL;
+            }
+        }
+    for (i = 0; i < g_nlarge; i++) {
+        large *l = &g_large[i];
+        if (l->mark) {
+            l->mark = false;
+            g_large[kept++] = *l;
+            continue;
+        }
+        dying(l->start);
+        g_objects--;
+        g_large_bytes -= l->size;
+        (*freed_objects)++;
+        *freed_bytes += l->size;
+        if (poison) memset(l->start, 0xDB, l->size);
+        else free(l->start);
+    }
+    g_nlarge = kept;
+}
+
 void hk_dvm_heap_each_marked(void (*fn)(void *o))
 {
     u32 i, k, c;
@@ -323,6 +397,8 @@ void hk_dvm_heap_each_marked(void (*fn)(void *o))
     for (i = 0; i < g_nlarge; i++)
         if (g_large[i].mark) fn(g_large[i].start);
 }
+
+u64 hk_dvm_live_bytes(void) { return g_small_bytes + g_large_bytes; }
 
 void hk_dvm_heap_stats(hk_dvm_heap_info *out)
 {

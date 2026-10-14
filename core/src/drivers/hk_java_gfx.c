@@ -303,6 +303,8 @@ static gbitmap *bm_new(i64 w, i64 h)
     g_bytes += (u64)b->stride * (u64)b->h;
     g_count++;
     hk_lock_release(&g_lock);
+    /* Pixels a Bitmap object keeps alive: the collector counts them toward its next collection, as Android counts a bitmap's. */
+    hk_dvm_gc_native((i64)b->stride * (i64)b->h);
     return b;
 }
 

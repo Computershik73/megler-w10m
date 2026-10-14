@@ -80,6 +80,38 @@ static void test_gc_census(void)
     if (t) hk_thread_join(t);
 }
 
+/*
+ * A collection: what nothing holds is freed, what something holds is not -- a string only a C local holds, one a registered
+ * root holds -- and both read as they were. (The tests run with the collector's poison on: freed memory is filled with 0xDB
+ * and never used again, so an object freed too early would read as that.)
+ */
+static hk_jobj *g_rooted;
+
+static void test_gc_collect(void)
+{
+    hk_dvm_gc_result r;
+    hk_jobj *volatile kept = hk_dvm_new_string("kept on the stack");
+    int i;
+    say("the collector: a collection frees what nothing holds");
+    g_rooted = hk_dvm_new_string("kept by a root");
+    hk_dvm_add_root(&g_rooted);
+    /* (No collection of the tests' own budget among these: the one below is to find them all.) */
+    hk_dvm_gc_set_min_budget(64u << 20);
+    for (i = 0; i < 2000; i++) hk_dvm_new_array("[B", 100);
+    CHECK(hk_dvm_gc("test", &r));
+    hk_dvm_gc_set_min_budget(1u << 20);
+    say("  freed %u objects (%u KB), %u live (%u KB), %u found first through a conservative root; %.1f ms in all",
+        (unsigned)r.freed_objects, (unsigned)(r.freed_bytes >> 10), (unsigned)r.live_objects, (unsigned)(r.live_bytes >> 10), (unsigned)r.conservative,
+        (double)(r.stop_ns + r.mark_ns + r.sweep_ns) / 1e6);
+    CHECK(r.freed_objects >= 1900);
+    CHECK(!strcmp(hk_dvm_string_utf8(kept), "kept on the stack"));
+    CHECK(!strcmp(hk_dvm_string_utf8(g_rooted), "kept by a root"));
+    /* Nothing more to free a moment later, and what is held is still there. */
+    CHECK(hk_dvm_gc("test again", &r));
+    CHECK(r.freed_objects < 100);
+    CHECK(!strcmp(hk_dvm_string_utf8(kept), "kept on the stack"));
+}
+
 void test_gc(void)
 {
     hk_jobj *small = hk_dvm_new_array("[B", 10), *mid = hk_dvm_new_array("[I", 300), *big = hk_dvm_new_array("[J", 2000);
@@ -100,4 +132,5 @@ void test_gc(void)
     CHECK(hk_dvm_heap_find(0) == NULL);
     hk_dvm_heap_unlock();
     test_gc_census();
+    test_gc_collect();
 }
