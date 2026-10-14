@@ -93,8 +93,10 @@
 //                           and a constant), OVERLAY, DARKEN and LIGHTEN as
 //                           the Blend effect with a Flood; then cut by the
 //                           shape's coverage. On a bitmap's pixels: a copy of
-//                           the part made in memory, as in memory, and
-//                           uploaded for the drawing.
+//                           the bitmap made in memory, as in memory, and kept
+//                           on the processor under the bitmap's id and
+//                           version and the tint (a tinted icon is tinted and
+//                           uploaded once).
 //       sweep gradients     their colours over the box worked out in memory
 //                           (Direct2D has no such brush) and uploaded, then
 //                           as a shader's colours.
@@ -300,9 +302,23 @@ struct State {
     std::vector<GpuContext*> freeContexts;
     std::vector<Ref<ID2D1Bitmap1>> freeTargets, freeReadables;
     uint64_t freeBytes = 0;
-    // Bitmaps of the core's kept on the processor (keptMutex), and how many bytes of them there are.
+    // Bitmaps of the core's kept on the processor (keptMutex), and how many bytes of them there are; and the same through
+    // a colour filter at a paint's alpha (a tinted icon), under the bitmap's id and what tinted it.
     std::mutex keptMutex;
     std::unordered_map<uint32_t, Kept> kept;
+    struct TintKey {
+        uint32_t id, colour;
+        int mode;
+        uint32_t alpha;
+        bool operator==(const TintKey& o) const { return id == o.id && colour == o.colour && mode == o.mode && alpha == o.alpha; }
+    };
+    struct TintHash {
+        size_t operator()(const TintKey& k) const {
+            uint64_t h = (uint64_t(k.id) << 32 | k.colour) * 0x9E3779B97F4A7C15ull;
+            return size_t(h ^ (h >> 29) ^ (uint64_t(k.mode) << 8 | k.alpha));
+        }
+    };
+    std::unordered_map<TintKey, Kept, TintHash> tinted;
     uint64_t keptBytes = 0, keptClock = 0;
     // Where a window's picture is shown without the memory (GfxHost::setWindow, present), and the target bitmap over
     // its texture, made for the texture it last gave (windowMutex).
@@ -2934,7 +2950,7 @@ void noteDrawing() {
         uint64_t keptBytes;
         {
             std::lock_guard<std::mutex> lock(s.keptMutex);
-            keptCount = s.kept.size();
+            keptCount = s.kept.size() + s.tinted.size();
             keptBytes = s.keptBytes;
         }
         const uint64_t windowBacks = t.windowReadBacks - l.windowReadBacks;
@@ -3441,6 +3457,79 @@ constexpr int64_t sharedFromPixels = 256 * 256;
 /// is copied for each drawing, as in memory.
 constexpr uint64_t keptBudget = 48ull << 20;
 
+/// Room for `bytes` more among the kept bitmaps, plain and tinted: the least
+/// recently drawn go. Under keptMutex.
+void makeRoomForKept(uint64_t bytes) {
+    State& s = G();
+    while (s.keptBytes + bytes > keptBudget && (!s.kept.empty() || !s.tinted.empty())) {
+        auto oldest = s.kept.begin();
+        for (auto it = s.kept.begin(); it != s.kept.end(); ++it)
+            if (it->second.used < oldest->second.used) oldest = it;
+        auto oldestTint = s.tinted.begin();
+        for (auto it = s.tinted.begin(); it != s.tinted.end(); ++it)
+            if (it->second.used < oldestTint->second.used) oldestTint = it;
+        if (oldest != s.kept.end() && (oldestTint == s.tinted.end() || oldest->second.used <= oldestTint->second.used)) {
+            s.keptBytes -= oldest->second.bytes;
+            s.kept.erase(oldest);
+        } else {
+            s.keptBytes -= oldestTint->second.bytes;
+            s.tinted.erase(oldestTint);
+        }
+    }
+}
+
+/// The core's bitmap through a paint's colour filter at the paint's alpha
+/// (each pixel what megler.h's filter makes of it, as bitmapCopy makes it), on
+/// the graphics processor and kept like the bitmap itself, under its id and
+/// what tinted it: an app's tinted icons, drawn every frame, are tinted and
+/// uploaded once. Null when it is not to be kept.
+Ref<ID2D1Bitmap1> keptTinted(const megler_gfx_image& image, const megler_gfx_paint& paint) {
+    State& s = G();
+    Ref<ID2D1Bitmap1> out;
+    const uint64_t bytes = uint64_t(image.width) * uint64_t(image.height) * 4;
+    if (!s.gpuResource || gpuGone() || !image.id || !image.pixels || bytes > keptBudget / 8 || UINT32(image.width) > s.gpuMaxSize ||
+        UINT32(image.height) > s.gpuMaxSize)
+        return out;
+    State::TintKey key = {image.id, paint.filter_color, paint.filter_mode, paint.color >> 24};
+    std::lock_guard<std::mutex> lock(s.keptMutex);
+    auto found = s.tinted.find(key);
+    if (found != s.tinted.end()) {
+        if (found->second.version == image.version) {
+            found->second.used = ++s.keptClock;
+            ++s.keptReused;
+            return found->second.bitmap;
+        }
+        s.keptBytes -= found->second.bytes;
+        s.tinted.erase(found);
+    }
+    const uint64_t from = ticksNow();
+    std::vector<uint32_t> pixels(size_t(image.width) * size_t(image.height));
+    const uint32_t alpha = paint.color >> 24, filter = premultiplied(paint.filter_color);
+    for (int y = 0; y < image.height; y++) {
+        const uint32_t* in = reinterpret_cast<const uint32_t*>(static_cast<const uint8_t*>(image.pixels) + size_t(y) * size_t(image.stride));
+        uint32_t* to = pixels.data() + size_t(y) * size_t(image.width);
+        for (int x = 0; x < image.width; x++) to[x] = blended(paint.filter_mode, filter, faded(in[x], alpha));
+    }
+    const HRESULT hr = s.gpuResource->CreateBitmap(
+        D2D1::SizeU(UINT32(image.width), UINT32(image.height)), pixels.data(), UINT32(image.width) * 4,
+        D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE, D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96.0f, 96.0f), out.put());
+    s.uploadTicks += ticksNow() - from;
+    if (FAILED(hr)) {
+        gpuFailed("ID2D1DeviceContext::CreateBitmap", hr);
+        out.reset();
+        return out;
+    }
+    ++s.keptMade;
+    makeRoomForKept(bytes);
+    Kept& entry = s.tinted[key];
+    entry.version = image.version;
+    entry.bitmap = out;
+    entry.bytes = bytes;
+    entry.used = ++s.keptClock;
+    s.keptBytes += bytes;
+    return out;
+}
+
 /// The core's bitmap on the graphics processor, kept under its id: the one
 /// kept if its version is the image's, else uploaded now and kept, the least
 /// recently drawn going while the kept are over the budget. Null when it is
@@ -3474,13 +3563,7 @@ Ref<ID2D1Bitmap1> keptBitmap(const megler_gfx_image& image) {
         return out;
     }
     ++s.keptMade;
-    while (s.keptBytes + bytes > keptBudget && !s.kept.empty()) {
-        auto oldest = s.kept.begin();
-        for (auto it = s.kept.begin(); it != s.kept.end(); ++it)
-            if (it->second.used < oldest->second.used) oldest = it;
-        s.keptBytes -= oldest->second.bytes;
-        s.kept.erase(oldest);
-    }
+    makeRoomForKept(bytes);
     Kept& entry = s.kept[image.id];
     entry.version = image.version;
     entry.bitmap = out;
@@ -3505,8 +3588,9 @@ bool gpuBitmapOn(Surface& s, Canvas& cv, const megler_gfx_image& image, const Bo
     s.useClip(cv.clip());
     s.setMatrix(cv.matrix);
     s.rt->SetAntialiasMode((paint.flags & MEGLER_GFX_ANTI_ALIAS) ? D2D1_ANTIALIAS_MODE_PER_PRIMITIVE : D2D1_ANTIALIAS_MODE_ALIASED);
+    // (Through a filter the kept copy is the tinted one, the paint's alpha in it already.)
     const float opacity = filtered ? 1.0f : float(paint.color >> 24) / 255.0f;
-    Ref<ID2D1Bitmap1> kept = filtered ? Ref<ID2D1Bitmap1>() : keptBitmap(image);
+    Ref<ID2D1Bitmap1> kept = filtered ? keptTinted(image, paint) : keptBitmap(image);
     const bool whole = part.l == 0 && part.t == 0 && part.r == image.width && part.b == image.height;
     if (kept && whole) {
         s.rt->DrawBitmap(kept.get(), &onto, opacity, sampling, &from);
@@ -5184,9 +5268,18 @@ void bitmapGone(void*, uint32_t id) {
     State& s = G();
     std::lock_guard<std::mutex> lock(s.keptMutex);
     auto found = s.kept.find(id);
-    if (found == s.kept.end()) return;
-    s.keptBytes -= found->second.bytes;
-    s.kept.erase(found);
+    if (found != s.kept.end()) {
+        s.keptBytes -= found->second.bytes;
+        s.kept.erase(found);
+    }
+    for (auto it = s.tinted.begin(); it != s.tinted.end();) {
+        if (it->first.id != id) {
+            ++it;
+            continue;
+        }
+        s.keptBytes -= it->second.bytes;
+        it = s.tinted.erase(it);
+    }
 }
 
 // MARK: Starting, in full
