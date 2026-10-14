@@ -96,6 +96,18 @@ public class Main extends Activity {
         anchor = new android.view.View(this);
         column.addView(anchor, new android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, 2));
         column.addView(text);
+        /* The frame the window's insets are relative to (WindowInsets.getFrame, API 36, by reflection): the window's size. */
+        column.setOnApplyWindowInsetsListener((v, insets) -> {
+            Object frame;
+            try {
+                frame = insets.getClass().getMethod("getFrame").invoke(insets);
+            } catch (Exception e) {
+                frame = e;
+            }
+            if (!insetsLogged) Log.i("DataTest", "insets-frame " + frame);
+            insetsLogged = true;
+            return v.onApplyWindowInsets(insets);
+        });
         setContentView(column);
         Log.i("DataTest", "onCreate");
         final Notes helper = new Notes(this, "notes.db", 1);
@@ -867,7 +879,7 @@ public class Main extends Activity {
         Log.i("DataTest", "permission-result " + (all && android.os.Looper.myLooper() == android.os.Looper.getMainLooper() ? "ok" : "FAILED") + " after done=" + doneLogged);
     }
 
-    private boolean doneLogged;
+    private boolean doneLogged, insetsLogged;
 
     @Override
     protected void onDestroy() {

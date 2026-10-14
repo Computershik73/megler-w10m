@@ -13,6 +13,9 @@
 // region only (ViewRootImpl.mDirty), and so a blinking cursor cost a whole screen here. For the tests (Native.checkPartial),
 // checkPart draws each partial frame again whole into a second bitmap and says what differs outside the part.
 //
+// And in the frame the window's insets give (computeInsets; WindowInsets.getFrame, overlaid): the screen's size for an
+// activity's window, a dialog's or popup's own size once laid out.
+//
 // And in keyFocus(), which the original does not have: the focused view of the window keys go to, which the overlay's
 // megler.InputMethods names in the log when typed text arrives.
 //
@@ -112,9 +115,13 @@ public final class ViewRoot implements ViewParent {
         mAdjust = adjustMode();
         boolean resize = mAdjust == WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
         /* A dialog lies above the keyboard when it is resized and is moved, not shrunk, when it is panned: no part of it is an inset. */
-        if (floatingAppWindow()) return WindowInsets.meglerOf(0, 0, 0, 0, 0, null);
-        if (full) return WindowInsets.meglerOf(sInsets[0], sInsets[1], sInsets[2], sInsets[3], resize ? sImeBottom : 0, cutout());
-        return WindowInsets.meglerOf(0, 0, 0, 0, Math.max(0, sImeBottom - (screenH() - mY - mH)), null);
+        WindowInsets i;
+        if (floatingAppWindow()) i = WindowInsets.meglerOf(0, 0, 0, 0, 0, null);
+        else if (full) i = WindowInsets.meglerOf(sInsets[0], sInsets[1], sInsets[2], sInsets[3], resize ? sImeBottom : 0, cutout());
+        else i = WindowInsets.meglerOf(0, 0, 0, 0, Math.max(0, sImeBottom - (screenH() - mY - mH)), null);
+        /* The frame they are relative to (WindowInsets.getFrame): the screen for an activity's window, which fills it; another
+           window's own size once it has been laid out, the screen's before. */
+        return full || mW <= 0 || mH <= 0 ? i.meglerFrame(screenW(), screenH()) : i.meglerFrame(mW, mH);
     }
 
     /** An application's window that does not fill the screen: a dialog (Android lays these out in the space the keyboard leaves). */

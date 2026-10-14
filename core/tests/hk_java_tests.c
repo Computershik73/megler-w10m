@@ -1451,6 +1451,12 @@ static int run_data(void)
     expect_line("I/DataTest: permission-result ok after done=true", &at, 30);
     /* So does the battery's sticky broadcast to a receiver registered for it, once. */
     expect_line("I/DataTest: battery-received ok", &at, 30);
+    /* The window's insets, when its views are first laid out, say the frame they are relative to: the screen, which the window fills. */
+    {
+        int frame = wait_line("I/DataTest: insets-frame ", 0, 30), fw = 0, fh = 0;
+        CHECK(frame >= 0 && sscanf(strstr(line_at(frame), "insets-frame ") + 13, "%dx%d", &fw, &fh) == 2 && fw > 0 && fh > 0);
+        if (frame >= 0) say("  %s", strstr(line_at(frame), "insets-frame "));
+    }
     /*
      * The time zone the app has is the one the shell named before the start (megler_set_timezone, below): in the first run a zone with
      * summer time, whose winter's noon by Greenwich is 13:00 and whose summer's is 14:00; in the second a name no tzdata has, which is

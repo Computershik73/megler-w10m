@@ -2902,7 +2902,7 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: thirty-six files** in the overlay,
+**What differs from the original's framework: thirty-seven files** in the overlay,
 most of them a statement or a few methods each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and eight files of members added** to classes of the original's.
@@ -3199,7 +3199,9 @@ had only the top.
   `softInputMode` decides, as on Android ("The keyboard"). The original
   placed every dialog by gravity in the part above the keyboard without
   fitting it there, gave dialogs the keyboard as an inset, and resized every
-  activity.
+  activity. And the frame of the insets it makes (`computeInsets`), for
+  `WindowInsets.getFrame` (below): the screen's size for an activity's
+  window, a dialog's or popup's own once laid out.
 - `megler/InputMethods.java`: only what `deliverPending` writes in the log.
   What it does with the keyboard's text is the original's, unchanged
   ("The keyboard": where typed text went). This is for diagnosis; the
@@ -3293,7 +3295,22 @@ had only the top.
   fields it names and the framework lacks. The data app's step "tasks" reads
   its own task so.
 
-The original has all twenty-four faults; they are its author's to take back.
+- `android/view/WindowInsets.java`, `getFrame()` (Android 16): the size of
+  the window the insets are relative to, which `megler/ViewRoot.java` gives the
+  insets it makes. The insets carry it through copies, consuming, replacing
+  and the `Builder` (whose `setFrame` the generated stub ignored); insets
+  nobody gave one have 0 x 0. The original's generated stub returned null.
+  Chromium asks every `WindowInsets` for its frame and catches the
+  `NoSuchMethodError` an Android before 16 gives; here the method was there,
+  returned null, and the `NullPointerException` that followed in a listener
+  of `onApplyWindowInsets` ended Brave 1.97 at its first layout. The data
+  app's content view logs the frame of the first insets it is given (by
+  reflection: the app is built against API 29), and the test wants a size
+  there (480x800 under qemu). A stub of a later API that returns null where
+  the platform never does is a fault of this kind wherever an app calls it
+  without asking the version first; this is the one a run has met.
+
+The original has all twenty-five faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in
