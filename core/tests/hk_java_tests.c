@@ -472,6 +472,8 @@ static int run_hello(void)
     CHECK(layout >= 0);
     /* ... and the copy, sent, arrives at the first one's handler saying what the first said. */
     CHECK(wait_line("I/HelloTest: message what=7 arg=1,2 obj=word when=true", 0, 30) >= 0);
+    /* A row of no fixed width shares what its weighted, widthless children asked for equally among them, as Android does for an app written for Android 7 or later. */
+    CHECK(find_line("I/HelloTest: row unlimited=140:70+70 exact=200:100+100", 0) >= 0);
     {
         /* A switch is two thumbs and its track's padding wide, as Android measures it, and wider than high; the track's picture is a few pixels that are stretched. */
         int sw = 0, sh = 0, thumb = 0, trackpad = 0, track = 0, line = find_line("I/HelloTest: switch width=", 0);
@@ -1110,6 +1112,8 @@ static int run_crash(void)
 {
     int at = -1, tries;
     expect_line("I/CrashTest: first onCreate", &at, 120);
+    /* The app is written for Android 6: a row of no fixed width leaves its weighted, widthless children what they asked for, the rule Android keeps for apps that old. */
+    expect_line("I/CrashTest: row unlimited=140:40+100 exact=200:100+100", &at, 30);
     expect_line("I/CrashTest: second onCreate, about to throw", &at, 60);
     for (tries = 0; tries < 3000 && running(); tries++) hk_sleep_ns(10000000ull);
     CHECK(g_exited && g_status == -1);

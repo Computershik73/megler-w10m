@@ -92,13 +92,13 @@ bash tools/build-tests.sh win      (MSVC x64, run on the PC; libcore's native li
 bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-float, under qemu-arm)
     3719 checks, 0 failed          on the built-in java.lang
     3759 checks, 0 failed          on libcore with its native libraries
-      42 checks, 0 failed          the Java test app hello, through megler_run
+      43 checks, 0 failed          the Java test app hello, through megler_run
       72 checks, 0 failed          the Java test app demos, the keyboard's 25 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
-      12 checks, 0 failed          the Java test app crash: an exception nothing catches, and launcher aliases
+      13 checks, 0 failed          the Java test app crash: an exception nothing catches, launcher aliases, an app written for Android 6
       37 checks, 0 failed          the Java test app data: a database, the storage and the battery, the first run
       37 checks, 0 failed          data again, on what the first run left, with another battery
-      42 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
+      43 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
     (then each app once more, its drawing recorded for the PC's run to draw again)
 ```
 
@@ -290,7 +290,7 @@ its resources (a `LinearLayout` with a `TextView`, a `Button`, a view of its own
 that draws with `Canvas`, and an `ImageView` of a PNG), strings and colours. It
 has no native library. `hk_tests --java hello ...` starts it through
 `megler_run`, on a 480 x 800 screen at 160 dpi so that a dp is a pixel, with a
-stand-in for the shell's drawing, and checks (42 checks):
+stand-in for the shell's drawing, and checks (43 checks):
 
 - **What the shell reads first**, `megler_apk_report`: the engine is `java`, the
   APK is runnable, and how its launcher activity asks to be held
@@ -307,6 +307,11 @@ stand-in for the shell's drawing, and checks (42 checks):
   `sendToTarget`): the copy is another message for the same handler, and
   arrives there saying what the first said. A dialog of the support library
   sends its buttons' messages this way.
+- **A row with no limit on its width** whose two children have no width and a
+  weight each and ask for 40 and for 100: they are given 70 each, Android's
+  rule for an app written for Android 7 or later, which this app is. (The
+  crash app says it is written for Android 6, and there they keep 40 and
+  100.) With an exact 200 they have 100 each in both.
 - **A switch measured by itself**: two thumbs and the track's padding wide, as
   Android's `Switch.onMeasure` has it, wider than it is high and wider than
   the picture of its track (38 x 27 with a thumb of 19 at 160 dpi; the track
@@ -1892,14 +1897,24 @@ the context that knows.
   later. QuickShortcutMaker's About screen ended the app with a
   `NullPointerException` on it.
 
-- `android/widget/LinearLayout.java`, two statements: a child with a weight
-  and a size of 0, in a layout whose own size is "at most", is given its
-  share of the space left, as Android gives an app written for Android 7 or
-  later; the original has only the rule Android keeps for older apps
-  (measured size plus share), which made the frame under a dialog's title
-  twice the height there was. appcompat's dialog then laid its message out
-  at full length and put the buttons below the screen: Apktool M's first
-  dialog could not be answered.
+- `android/widget/LinearLayout.java`, four statements: what a child with a
+  weight and a size of 0 is given when the layout's own size is not exact.
+  Android has two rules. For an app written for Android 7 or later the space
+  to share is what is left plus what those children took when first
+  measured, and each gets its share alone. For an older app
+  (`mAllowInconsistentMeasurement`, targetSdkVersion 23 or less) the space to
+  share is what is left, and each gets what it measured plus its share. The
+  original shared the first rule's space by the second rule's sum, so such a
+  child got what it measured twice over: the frame under a dialog's title was
+  twice the height there was, appcompat's dialog laid its message out at
+  full length and put the buttons below the screen, and Apktool M's first
+  dialog could not be answered. Both rules are Android's now, chosen by the
+  app's targetSdkVersion. They differ visibly in a row of tabs with no limit
+  on its width (a tab strip in a `HorizontalScrollView`): the old rule leaves
+  each tab as wide as its label needs, the new one makes them all the
+  average. QuickShortcutMaker 2.5.0 says it is written for Android 10, so its
+  four tabs are each a quarter of what the four labels need, and the longest
+  label is cut; by Android's code that is what Android does with this APK.
 
 - `android/preference/PreferenceActivity.java`, the largest: the activity's
   content and preference headers. Android's `onCreate` sets a layout in which

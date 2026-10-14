@@ -2,9 +2,10 @@
 <!-- The test app that ends badly (tools/build-test-app.sh): its first Activity starts a second one whose onCreate throws, and nothing catches it.
      What the test wants to see is how the layer says so.
      It is also the app whose launcher entries are aliases, as an app with a choice of icons has them: two names for the first Activity, the
-     first of them disabled. No class has an alias's name; the layer must start the activity the enabled one stands for. -->
+     first of them disabled. No class has an alias's name; the layer must start the activity the enabled one stands for.
+     And it is the one test app written for an old Android (targetSdkVersion 23): what Android keeps as it was for apps of that age is tested here. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="megler.test.crash" android:versionCode="1" android:versionName="1.0">
-    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />
+    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="23" />
     <application android:label="@string/app_name">
         <activity android:name=".First" android:label="@string/app_name" />
         <activity-alias android:name=".IconDark" android:enabled="false" android:targetActivity=".Second">

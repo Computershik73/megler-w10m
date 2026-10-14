@@ -43,6 +43,20 @@ public class MainActivity extends Activity {
         Message copy = Message.obtain(first);
         Log.i("HelloTest", "message copy=" + (copy != null && copy != first && copy.getTarget() == handler));
         if (copy != null) copy.sendToTarget();
+        /*
+         * Two views with no width and a weight each, asking for 40 and for 100, in a row with no limit on its width: this app is written for
+         * Android 9, and Android gives such an app's two the same width, half of the 140. With an exact 200 they have 100 each.
+         */
+        android.widget.LinearLayout row = new android.widget.LinearLayout(this);
+        android.view.View narrow = new android.view.View(this), wide = new android.view.View(this);
+        narrow.setMinimumWidth(40);
+        wide.setMinimumWidth(100);
+        row.addView(narrow, new android.widget.LinearLayout.LayoutParams(0, 10, 1));
+        row.addView(wide, new android.widget.LinearLayout.LayoutParams(0, 10, 1));
+        row.measure(0, 0);
+        String unlimited = row.getMeasuredWidth() + ":" + narrow.getMeasuredWidth() + "+" + wide.getMeasuredWidth();
+        row.measure(android.view.View.MeasureSpec.makeMeasureSpec(200, android.view.View.MeasureSpec.EXACTLY), 0);
+        Log.i("HelloTest", "row unlimited=" + unlimited + " exact=" + row.getMeasuredWidth() + ":" + narrow.getMeasuredWidth() + "+" + wide.getMeasuredWidth());
         /* A switch of the theme's, measured with nothing to constrain it: its width is made of its thumb and its track's padding, not of the track picture's own width. */
         android.widget.Switch sw = new android.widget.Switch(this);
         sw.measure(0, 0);

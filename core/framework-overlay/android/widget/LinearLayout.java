@@ -1,18 +1,25 @@
 // megler-w10m overlay of Megler/src/java-framework/src/android/widget/LinearLayout.java (tools/build-framework.sh).
-// It differs in what a child with a weight and a size of 0 is given when the layout's own size is not exact: its share of
-// the space that is left, as Android gives an app written for Android 7 or later, and not its share added to what it
-// measured the first time. Two statements, one in measureVertical and one in measureHorizontal, and the method that says
-// which kind of app this is (allowInconsistentMeasurement).
+// It differs in what a child with a weight and a size of 0 is given when the layout's own size is not exact. Android has two
+// rules for it, one for an app written for Android 7 or later and one kept for older apps (mAllowInconsistentMeasurement:
+// targetSdkVersion 23 or less); the original had a mixture that is neither. Four statements, two in measureVertical and two
+// in measureHorizontal, and the method that says which kind of app this is (allowInconsistentMeasurement).
 //
-// Why. Android's LinearLayout measures such a child twice. With an exact size it skips the first measure and the second
-// gives the child its share. With "at most" it measures the child first as if it wrapped its content, and then -- this is
-// the difference -- an app whose targetSdkVersion is 23 or less gets measured size plus share (mAllowInconsistentMeasurement,
-// kept for old apps), every other app the share alone. The original has only the old rule. A dialog's content is such a
-// child: the frame under the title, with height 0 and weight 1, in a window that is "at most" the screen. Measured first
-// at the 1224 pixels there were, then given 1224 + 1224. So appcompat's AlertDialogLayout inside it was told it had 2448
-// pixels, laid its message out at full length, and put the buttons at the bottom of that, 1100 pixels below the screen:
-// Apktool M's first dialog, which asks a question, could not be answered. With the share alone the frame is 1224 high, the
-// message scrolls and the buttons are on the screen. Everything else is the original's, unchanged.
+// Android's LinearLayout measures such a child twice. With an exact size it skips the first measure and the second gives the
+// child its share. With "at most" or no limit it measures the child first as if it wrapped its content, and then:
+//
+//   an app for Android 7 or later   the space to share is what is left plus what those children took the first time,
+//                                   and each gets its share alone;
+//   an older app                    the space to share is what is left, and each gets what it measured plus its share.
+//
+// The original shared the first rule's space by the second rule's sum, so that such a child got what it measured twice
+// over. A dialog's content is such a child: the frame under the title, with height 0 and weight 1, in a window that is "at
+// most" the screen. Measured first at the 1224 pixels there were, then given 1224 + 1224. So appcompat's AlertDialogLayout
+// inside it was told it had 2448 pixels, laid its message out at full length, and put the buttons at the bottom of that,
+// 1100 pixels below the screen: Apktool M's first dialog, which asks a question, could not be answered. With the first rule
+// the frame is 1224 high, the message scrolls and the buttons are on the screen. The second rule is here because old apps
+// are what this layer mostly runs: a row of tabs with no limit on its width (a tab strip in a HorizontalScrollView) keeps
+// each tab as wide as its label under it, where the first rule gives every tab the same width, the average.
+// Everything else is the original's, unchanged.
 package android.widget;
 
 import android.content.Context;
@@ -200,7 +207,7 @@ public class LinearLayout extends ViewGroup {
         int heightSize = Math.max(mTotalLength, getSuggestedMinimumHeight());
         int heightSizeAndState = resolveSizeAndState(heightSize, hs, 0);
         heightSize = heightSizeAndState & MEASURED_SIZE_MASK;
-        int remainingExcess = heightSize - mTotalLength + consumedExcessSpace;
+        int remainingExcess = heightSize - mTotalLength + (allowInconsistentMeasurement() ? 0 : consumedExcessSpace);
         if (skippedMeasure || (remainingExcess != 0 && totalWeight > 0.0f)) {
             float remainingWeightSum = mWeightSum > 0.0f ? mWeightSum : totalWeight;
             mTotalLength = 0;
@@ -334,7 +341,7 @@ public class LinearLayout extends ViewGroup {
         int widthSize = Math.max(mTotalLength, getSuggestedMinimumWidth());
         int widthSizeAndState = resolveSizeAndState(widthSize, ws, 0);
         widthSize = widthSizeAndState & MEASURED_SIZE_MASK;
-        int remainingExcess = widthSize - mTotalLength + usedExcessSpace;
+        int remainingExcess = widthSize - mTotalLength + (allowInconsistentMeasurement() ? 0 : usedExcessSpace);
         if (skippedMeasure || (remainingExcess != 0 && totalWeight > 0.0f)) {
             float remainingWeightSum = mWeightSum > 0.0f ? mWeightSum : totalWeight;
             maxAscent[0] = maxAscent[1] = maxAscent[2] = maxAscent[3] = -1;
