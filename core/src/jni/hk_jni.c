@@ -823,7 +823,6 @@ static hk_jvalue call_native(void *fn, hk_jobj *self_or_class, const char *sig, 
     u64 r;
     hk_jvalue ret;
     ret.j = 0;
-    memset(w, 0, sizeof(w));
     parse_sig(sig, argk, (int)sizeof(argk), &nargs, &retk);
     if (!bare) {
         w[n++] = (u32)(hk_addr)hk_jni_env();
@@ -833,7 +832,7 @@ static hk_jvalue call_native(void *fn, hk_jobj *self_or_class, const char *sig, 
     for (i = 0; i < nargs; i++) {
         if (argk[i] == 'J' || argk[i] == 'D') {
             u64 v;
-            if (n & 1) n++;
+            if (n & 1) w[n++] = 0;
             if (n + 2 > NATIVE_WORDS) break;
             memcpy(&v, &args[i], 8);
             w[n++] = (u32)v;
@@ -851,6 +850,14 @@ static hk_jvalue call_native(void *fn, hk_jobj *self_or_class, const char *sig, 
     if (i < nargs) {
         hk_err("jni: a native method with more arguments than can be passed (%s)", sig);
         return ret;
+    }
+    /*
+     * The words past the arguments that call_words passes too, zero (the function does not read them). Only those: the
+     * whole array, 480 bytes, was cleared on every call before, and most calls pass 24 words.
+     */
+    {
+        int pass = n <= 24 ? 24 : n <= 56 ? 56 : NATIVE_WORDS;
+        while (n < pass) w[n++] = 0;
     }
     r = call_words(fn, w, n);
     switch (retk) {

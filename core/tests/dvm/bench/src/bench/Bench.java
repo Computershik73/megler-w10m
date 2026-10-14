@@ -261,6 +261,13 @@ public final class Bench {
         return b[20];
     }
 
+    /** Math.sin: a native method of libcore's own libraries, called through JNI where they run (the phone, qemu). */
+    public static int nativeSin(int n) {
+        double s = 0;
+        for (int i = 0; i < n; i++) s += Math.sin(i & 1023);
+        return (int) s;
+    }
+
     /** Integer.valueOf of small and of larger numbers, and intValue. */
     public static int boxing(int n) {
         int s = 0;

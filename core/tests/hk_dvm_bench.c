@@ -46,6 +46,7 @@ static const bench_item k_items[] = {
     { "throwPremade", "exception thrown and caught" },
     { "math", "Math.min, max, abs" },
     { "arraycopy", "System.arraycopy of 16 ints" },
+    { "nativeSin", "Math.sin, a native method by JNI" },
     { "boxing", "Integer.valueOf and intValue" },
     { "classes", "getClass, instance-of, check-cast" },
 };
