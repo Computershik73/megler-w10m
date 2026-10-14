@@ -1083,6 +1083,8 @@ static int run_data(void)
     expect_line("I/DataTest: permission-result ok after done=true", &at, 30);
     /* So does the battery's sticky broadcast to a receiver registered for it, once. */
     expect_line("I/DataTest: battery-received ok", &at, 30);
+    /* A popup list that wraps its content has room for all its rows, inside what the list and the popup's background keep clear. */
+    expect_line("I/DataTest: popup ok rows=3", &at, 30);
     /* And the battery an app reads is the core's (hk_battery_read): a full one on mains when nothing was set, in the second run the one set before it. */
     CHECK(find_line(run == 2 && want == 2 ? "I/DataTest: battery is level=37/100 status=3 plugged=0 health=2 voltage=3712 temperature=301 present=true technology=Li-poly capacity=37 charging=false"
                                            : "I/DataTest: battery is level=100/100 status=5 plugged=1 health=2 voltage=4200 temperature=250 present=true technology=Li-ion capacity=100 charging=true",

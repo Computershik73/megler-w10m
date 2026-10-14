@@ -96,8 +96,8 @@ bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-f
       72 checks, 0 failed          the Java test app demos, the keyboard's 25 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
       12 checks, 0 failed          the Java test app crash: an exception nothing catches, and launcher aliases
-      36 checks, 0 failed          the Java test app data: a database, the storage and the battery, the first run
-      36 checks, 0 failed          data again, on what the first run left, with another battery
+      37 checks, 0 failed          the Java test app data: a database, the storage and the battery, the first run
+      37 checks, 0 failed          data again, on what the first run left, with another battery
       42 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
     (then each app once more, its drawing recorded for the PC's run to draw again)
 ```
@@ -496,7 +496,11 @@ and opened at version 2, `onUpgrade` once, the column it adds there. `left`
 and `kept`: the app leaves three rows and counts its runs; `tools/build-tests.sh`
 runs it twice, the second time on the data folder of the first, and the
 second run must find the rows of the first and say that it is run 2.
-With the storage's and the battery's steps (below), 36 checks each.
+With the storage's and the battery's steps (below) and one for a popup list,
+37 checks each. The popup: a `ListPopupWindow` of three rows that wraps its
+content, shown under a strip at the top of the window, has all three rows
+inside its list and clear of the list's padding (160 high: three rows of 48
+and 8 above and below).
 
 On the phone the proof is QuickShortcutMaker, which opens its database when
 its Favourites or History tab is first shown; under qemu the database opens
@@ -603,9 +607,16 @@ the Favourites tab is shown; a second start on the same data folder works.
 Fixed on the way: `getActionBar()` before `setContentView` (the overlay's
 `Activity`), and `Constructor.newInstanceFromSerialization`, which ended its
 second start (Flurry reads back with `ObjectInputStream` what it saved).
-Still wrong: the overflow menu's popup is 140 pixels high for two rows of 84
-and shows one and a half (it scrolls); its lists of other apps' activities
-are empty because the framework's `PackageManager` knows no other app.
+The overflow menu's popup, which showed a row and a half of its two, shows
+both (the overlay's `ListPopupWindow`). Its lists of other apps' activities
+are empty because the framework's `PackageManager` knows no other app. Its
+four tabs (ViewPagerIndicator's `TabPageIndicator`, a `HorizontalScrollView`
+over a `LinearLayout` of tabs with no width and a weight each) are all the
+same width, a quarter of what the four labels need together, and
+"APPLICATIONS", the longest, is cut at both ends: that is Android's rule for
+an app written for Android 7 or later, which this build of the app says it
+is (targetSdkVersion 29), and it is left so. See the overlay's
+`LinearLayout`.
 
 **Apktool M 2.4.0** (AndroidX appcompat views, jadx and apktool inside;
 `libpngquantandroid.so`, `librmdir.so`). Starts through its launcher alias,
@@ -1703,8 +1714,8 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: eighteen files** in the overlay,
-sixteen of them a statement or a method each inside an otherwise untouched copy
+**What differs from the original's framework: nineteen files** in the overlay,
+seventeen of them a statement or a method each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and five files of members added** to classes of the original's.
 
@@ -1838,6 +1849,14 @@ the context that knows.
   text's size and drawn at 2.25 times, every line running out of the dialog
   on the right. Bold had nothing to do with it: the stand-in, whose bold is
   as wide as its regular, cut the heading off exactly as the phone did.
+- `android/widget/ListPopupWindow.java`, one statement of `show`: a popup
+  that wraps its content is as high as its rows and, around them, what the
+  list and the popup's background keep clear (Android's `buildDropDown`:
+  "listContent + otherHeights"). The original made the window as high as the
+  rows alone. The platform's popup background is a nine-patch with a shadow
+  around the panel, 14 pixels above and below at 280 dpi, and this class
+  gives its list 8 dp of padding at either end: QuickShortcutMaker's overflow
+  menu, two rows of 84 pixels, got a panel 140 high.
 - `android/content/res/ResTable.java`, two methods: a resource is found by
   its name without indexing the whole package ("What an AlertDialog cost").
 - `android/content/res/Resources.java`, the class `Bag`: a style's items are
@@ -1895,7 +1914,7 @@ the context that knows.
   was empty on the second; it shows its seven headers and their screens.
   Not done: two panes, bread crumbs.
 
-The original has all sixteen faults; they are its author's to take back.
+The original has all seventeen faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in

@@ -90,7 +90,13 @@ public class Main extends Activity {
         super.onCreate(state);
         text = new TextView(this);
         text.setTextSize(10);
-        setContentView(text);
+        /* Above the text, a strip two pixels high for a popup to hang from (popup(), at the end). */
+        android.widget.LinearLayout column = new android.widget.LinearLayout(this);
+        column.setOrientation(android.widget.LinearLayout.VERTICAL);
+        anchor = new android.view.View(this);
+        column.addView(anchor, new android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, 2));
+        column.addView(text);
+        setContentView(column);
         Log.i("DataTest", "onCreate");
         final Notes helper = new Notes(this, "notes.db", 1);
         final SQLiteDatabase db = helper.getWritableDatabase();
@@ -264,6 +270,30 @@ public class Main extends Activity {
         battery();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
+        new android.os.Handler().postDelayed(this::popup, 700);
+    }
+
+    private android.view.View anchor;
+
+    /**
+     * A popup list that wraps its content, shown under the strip once the window is there: all its rows are inside it, clear of the
+     * list's own padding. (Its window must be as high as the rows and what the list and the popup's background keep clear around them.)
+     */
+    private void popup() {
+        final android.widget.ListPopupWindow popup = new android.widget.ListPopupWindow(this);
+        popup.setAdapter(new android.widget.ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, new String[] { "one", "two", "three" }));
+        popup.setAnchorView(anchor);
+        popup.setWidth(300);
+        popup.show();
+        new android.os.Handler().postDelayed(() -> {
+            android.widget.ListView list = popup.getListView();
+            int rows = list == null ? -1 : list.getChildCount();
+            android.view.View last = rows > 0 ? list.getChildAt(rows - 1) : null;
+            boolean fits = rows == 3 && list.getChildAt(0).getTop() >= list.getPaddingTop() && last.getBottom() <= list.getHeight() - list.getPaddingBottom() && last.getHeight() > 0;
+            Log.i("DataTest", "popup " + (fits ? "ok" : "FAILED") + " rows=" + rows + (list == null ? "" : " list=" + list.getWidth() + "x" + list.getHeight() + " padding=" + list.getPaddingTop()
+                    + "+" + list.getPaddingBottom()) + (last == null ? "" : " row=" + last.getHeight() + " last-bottom=" + last.getBottom()));
+            popup.dismiss();
+        }, 700);
     }
 
     /**
