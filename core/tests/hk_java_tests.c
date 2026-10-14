@@ -472,6 +472,13 @@ static int run_hello(void)
     CHECK(layout >= 0);
     /* ... and the copy, sent, arrives at the first one's handler saying what the first said. */
     CHECK(wait_line("I/HelloTest: message what=7 arg=1,2 obj=word when=true", 0, 30) >= 0);
+    {
+        /* A switch is two thumbs and its track's padding wide, as Android measures it, and wider than high; the track's picture is a few pixels that are stretched. */
+        int sw = 0, sh = 0, thumb = 0, trackpad = 0, track = 0, line = find_line("I/HelloTest: switch width=", 0);
+        CHECK(line >= 0 && sscanf(strstr(line_at(line), "switch width="), "switch width=%d height=%d thumb=%d trackpad=%d track=%d", &sw, &sh, &thumb, &trackpad, &track) == 5);
+        CHECK(thumb > 0 && sw == 2 * thumb + trackpad && sw > sh && sw > track);
+        say("  a switch: %d x %d, its thumb %d, its track's padding %d, the track's picture %d wide", sw, sh, thumb, trackpad, track);
+    }
     wait_line("I/HelloTest: layout text=", layout, 10);
     CHECK(rect_in(line_at(layout), "button", button) && rect_in(line_at(find_line("layout swatch=", layout)), "swatch", swatch));
     CHECK(rect_in(line_at(find_line("layout mark=", layout)), "mark", mark) && rect_in(line_at(find_line("layout text=", layout)), "text", text));

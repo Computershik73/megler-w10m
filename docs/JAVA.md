@@ -92,13 +92,13 @@ bash tools/build-tests.sh win      (MSVC x64, run on the PC; libcore's native li
 bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-float, under qemu-arm)
     3719 checks, 0 failed          on the built-in java.lang
     3759 checks, 0 failed          on libcore with its native libraries
-      39 checks, 0 failed          the Java test app hello, through megler_run
+      41 checks, 0 failed          the Java test app hello, through megler_run
       72 checks, 0 failed          the Java test app demos, the keyboard's 25 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
       12 checks, 0 failed          the Java test app crash: an exception nothing catches, and launcher aliases
       36 checks, 0 failed          the Java test app data: a database, the storage and the battery, the first run
       36 checks, 0 failed          data again, on what the first run left, with another battery
-      39 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
+      41 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
     (then each app once more, its drawing recorded for the PC's run to draw again)
 ```
 
@@ -290,7 +290,7 @@ its resources (a `LinearLayout` with a `TextView`, a `Button`, a view of its own
 that draws with `Canvas`, and an `ImageView` of a PNG), strings and colours. It
 has no native library. `hk_tests --java hello ...` starts it through
 `megler_run`, on a 480 x 800 screen at 160 dpi so that a dp is a pixel, with a
-stand-in for the shell's drawing, and checks (39 checks):
+stand-in for the shell's drawing, and checks (41 checks):
 
 - **What the shell reads first**, `megler_apk_report`: the engine is `java`, the
   APK is runnable, and how its launcher activity asks to be held
@@ -307,6 +307,10 @@ stand-in for the shell's drawing, and checks (39 checks):
   `sendToTarget`): the copy is another message for the same handler, and
   arrives there saying what the first said. A dialog of the support library
   sends its buttons' messages this way.
+- **A switch measured by itself**: two thumbs and the track's padding wide, as
+  Android's `Switch.onMeasure` has it, wider than it is high and wider than
+  the picture of its track (38 x 27 with a thumb of 19 at 160 dpi; the track
+  is a nine-patch 7 pixels wide).
 - **The layout**, as the app reads it back: every view the full 480 wide, the
   button 64 high, the drawn view 100, the picture 64 square, one under the
   other.
@@ -1697,8 +1701,8 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: sixteen files** in the overlay,
-fourteen of them a statement or a method each inside an otherwise untouched copy
+**What differs from the original's framework: seventeen files** in the overlay,
+fifteen of them a statement or a method each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and five files of members added** to classes of the original's.
 
@@ -1808,6 +1812,17 @@ the context that knows.
   the list of receivers. Device Info's card read "Battery 0%, Voltage: 0 mV,
   Temperature: 0C" on the phone because it shows what its receiver is told.
   (Counted as one fault of the original's: the battery nobody could set.)
+- `android/widget/Switch.java`, `onMeasure` and the first branch of `onDraw`:
+  a switch with a thumb and a track drawable is as wide as two thumbs and the
+  track's padding, and as high as the taller of the two, and the thumb moves
+  inside the track's padding -- Android's sums. The original took the track
+  drawable's own width, and Android's track is a nine-patch a few pixels wide
+  that is meant to be stretched: a switch measured 13 pixels wide at 280 dpi,
+  and its thumb, drawn at its own size from the left of those 13, hung out
+  over the edge. In a preference row the switch is the last thing, so it hung
+  off the screen: Apktool M's preference screens showed a sliver of each
+  (half of each on the phone). They are 70 x 47 now, off and on as Material
+  draws them.
 - `android/content/res/ResTable.java`, two methods: a resource is found by
   its name without indexing the whole package ("What an AlertDialog cost").
 - `android/content/res/Resources.java`, the class `Bag`: a style's items are
@@ -1865,7 +1880,7 @@ the context that knows.
   was empty on the second; it shows its seven headers and their screens.
   Not done: two panes, bread crumbs.
 
-The original has all fourteen faults; they are its author's to take back.
+The original has all fifteen faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in

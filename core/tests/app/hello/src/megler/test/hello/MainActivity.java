@@ -43,6 +43,15 @@ public class MainActivity extends Activity {
         Message copy = Message.obtain(first);
         Log.i("HelloTest", "message copy=" + (copy != null && copy != first && copy.getTarget() == handler));
         if (copy != null) copy.sendToTarget();
+        /* A switch of the theme's, measured with nothing to constrain it: its width is made of its thumb and its track's padding, not of the track picture's own width. */
+        android.widget.Switch sw = new android.widget.Switch(this);
+        sw.measure(0, 0);
+        android.graphics.Rect thumbPad = new android.graphics.Rect(), trackPad = new android.graphics.Rect();
+        android.graphics.drawable.Drawable thumb = sw.getThumbDrawable(), track = sw.getTrackDrawable();
+        if (thumb != null) thumb.getPadding(thumbPad);
+        if (track != null) track.getPadding(trackPad);
+        Log.i("HelloTest", "switch width=" + sw.getMeasuredWidth() + " height=" + sw.getMeasuredHeight() + " thumb=" + (thumb == null ? -1 : thumb.getIntrinsicWidth() - thumbPad.left - thumbPad.right)
+                + " trackpad=" + (trackPad.left + trackPad.right) + " track=" + (track == null ? -1 : track.getIntrinsicWidth()));
     }
 
     @Override
