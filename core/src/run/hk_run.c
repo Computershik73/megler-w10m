@@ -53,6 +53,7 @@ void hk_run_ended(int status, const char *reason)
 static const hk_battery k_battery_default = { 100, 100, 5, 1, 2, 4200, 250, true, "Li-ion" };
 static hk_battery g_battery;
 static bool g_battery_set;
+static volatile i32 g_battery_changes;
 static hk_lock g_battery_lock = HK_LOCK_INIT;
 
 void hk_battery_read(hk_battery *out)
@@ -64,7 +65,10 @@ void hk_battery_read(hk_battery *out)
 
 void hk_battery_set(const hk_battery *now)
 {
+    hk_battery was;
+    const hk_battery *is;
     hk_lock_acquire(&g_battery_lock);
+    was = g_battery_set ? g_battery : k_battery_default;
     g_battery_set = now != NULL;
     if (now) {
         g_battery = *now;
@@ -72,8 +76,13 @@ void hk_battery_set(const hk_battery *now)
         if (g_battery.scale <= 0) g_battery.scale = 100;
         g_battery.technology[sizeof(g_battery.technology) - 1] = 0;
     }
+    is = g_battery_set ? &g_battery : &k_battery_default;
+    /* What an app is told of when it changes (hk_run.h). Being set to what it is already is no change, however often. */
+    if (is->level != was.level || is->scale != was.scale || is->status != was.status || is->plugged != was.plugged) hk_atomic_add(&g_battery_changes, 1);
     hk_lock_release(&g_battery_lock);
 }
+
+u32 hk_battery_changes(void) { return (u32)g_battery_changes; }
 
 static void on_guest_exit(int status) { hk_run_ended(status, NULL); }
 static void on_crash(const char *report) { hk_run_ended(-1, report); }

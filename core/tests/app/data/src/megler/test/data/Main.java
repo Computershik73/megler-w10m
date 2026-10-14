@@ -443,6 +443,23 @@ public class Main extends Activity {
                     && manager.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_STATUS) == sticky.getIntExtra("status", -1)
                     && manager.isCharging() == (sticky.getIntExtra("plugged", -1) != 0 && (sticky.getIntExtra("status", -1) == 2 || sticky.getIntExtra("status", -1) == 5));
         });
+        /*
+         * And a receiver that stays, for what the test does to the battery once the steps are through (megler_set_battery): every broadcast
+         * it hears is a line, numbered for the battery's own, and each says whether it came where a broadcast comes, on the main thread.
+         */
+        android.content.IntentFilter news = new android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED);
+        news.addAction(android.content.Intent.ACTION_POWER_CONNECTED);
+        news.addAction(android.content.Intent.ACTION_POWER_DISCONNECTED);
+        registerReceiver(new android.content.BroadcastReceiver() {
+            private int heard;
+
+            @Override
+            public void onReceive(Context context, android.content.Intent intent) {
+                String where = android.os.Looper.myLooper() == android.os.Looper.getMainLooper() ? "" : " OFF THE MAIN THREAD";
+                if (android.content.Intent.ACTION_BATTERY_CHANGED.equals(intent.getAction())) Log.i("DataTest", "battery-heard " + (++heard) + where + " " + describe(intent));
+                else Log.i("DataTest", "power-heard" + where + " " + intent.getAction());
+            }
+        }, news);
     }
 
     /**

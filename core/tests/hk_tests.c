@@ -609,6 +609,47 @@ static void test_battery(void)
     hk_battery_set(NULL);
     hk_battery_read(&b);
     CHECK(b.level == 100 && b.plugged == 1 && !strcmp(b.technology, "Li-ion"));
+    {
+        /*
+         * The shell's battery (megler.h): what a phone with Windows says, and the rest filled in. And the count of changes an app is
+         * told of: one for each time the level, the status or the plug became another, none for the same again or for the
+         * voltage alone.
+         */
+        megler_battery phone;
+        u32 changes = hk_battery_changes();
+        memset(&phone, 0, sizeof(phone));
+        phone.level = 50;
+        phone.status = 3;
+        phone.temperature = INT_MIN;
+        phone.present = true;
+        megler_set_battery(&phone);
+        hk_battery_read(&b);
+        CHECK(b.level == 50 && b.scale == 100 && b.status == 3 && b.plugged == 0 && b.health == 2 && b.voltage_mv == 3800 && b.temperature == 250 && b.present
+              && !strcmp(b.technology, "Li-ion"));
+        CHECK(hk_battery_changes() == changes + 1);
+        megler_set_battery(&phone);
+        CHECK(hk_battery_changes() == changes + 1);
+        phone.voltage_mv = 3777;
+        phone.temperature = -15;
+        megler_set_battery(&phone);
+        hk_battery_read(&b);
+        CHECK(b.voltage_mv == 3777 && b.temperature == -15 && hk_battery_changes() == changes + 1);
+        phone.plugged = 2;
+        phone.status = 2;
+        megler_set_battery(&phone);
+        CHECK(hk_battery_changes() == changes + 2);
+        /* What cannot be is brought to what can. */
+        phone.level = 140;
+        phone.status = 9;
+        phone.plugged = -1;
+        phone.present = false;
+        megler_set_battery(&phone);
+        hk_battery_read(&b);
+        CHECK(b.level == 100 && b.status == 1 && b.plugged == 0 && b.health == 1 && !b.present);
+        megler_set_battery(NULL);
+        hk_battery_read(&b);
+        CHECK(b.level == 100 && b.status == 5 && b.plugged == 1 && b.voltage_mv == 4200);
+    }
 }
 
 static void test_input(void)

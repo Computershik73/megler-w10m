@@ -90,3 +90,28 @@ void megler_set_timezone(const char *id)
     hk_timezone_set(id);
     if (id && id[0]) hk_info("phone: the time zone is %s", hk_timezone_id());
 }
+
+/*
+ * The battery is the core's hk_battery (run/hk_run.h), which has all that Android's intent says; the shell's has what a
+ * phone with Windows can say, and the rest is made up here, plausibly: a lithium cell's voltage runs from about 3.4 V
+ * empty to 4.2 V full, and an app that shows it wants a number in that range more than it wants the truth of the curve.
+ */
+void megler_set_battery(const megler_battery *now)
+{
+    hk_battery b;
+    if (!now) {
+        hk_battery_set(NULL);
+        return;
+    }
+    memset(&b, 0, sizeof(b));
+    b.level = now->level < 0 ? 0 : now->level > 100 ? 100 : now->level;
+    b.scale = 100;
+    b.status = now->status >= 1 && now->status <= 5 ? now->status : 1;
+    b.plugged = now->plugged > 0 ? now->plugged : 0;
+    b.present = now->present;
+    b.health = now->present ? 2 : 1;
+    b.voltage_mv = now->voltage_mv > 0 ? now->voltage_mv : 3400 + 8 * b.level;
+    b.temperature = now->temperature == INT_MIN ? 250 : now->temperature;
+    hk_strlcpy(b.technology, "Li-ion", sizeof(b.technology));
+    hk_battery_set(&b);
+}

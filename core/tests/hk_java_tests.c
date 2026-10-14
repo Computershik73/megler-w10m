@@ -1060,6 +1060,48 @@ void hk_tests_java_set_script(int count, char **steps)
 /* A battery nobody would take for the default: 37 of 100 and going down, off the charger, 3.712 V, 30.1 degrees. */
 static const hk_battery k_battery_run2 = { 37, 100, 3, 0, 2, 3712, 301, true, "Li-poly" };
 
+static int count_lines(const char *text)
+{
+    int i, n = 0;
+    hk_lock_acquire(&g_log_lock);
+    for (i = 0; i < g_nlines; i++)
+        if (strstr(g_lines[i], text)) n++;
+    hk_lock_release(&g_log_lock);
+    return n;
+}
+
+/*
+ * The battery changing under the app, as the shell reports it (megler_set_battery). The app has a receiver registered for the
+ * battery's broadcasts, which has heard the battery once already, when it was registered. It must hear each change once, on the
+ * main thread: not the same battery reported again, not a voltage or a temperature that changed alone; and that the charger was
+ * connected or taken away when it was, before the battery's own news, which is Android's order. `on_battery`: the app was
+ * started on its battery (the second run), so that the first change here is also a charger connected.
+ */
+static void battery_changes(bool on_battery)
+{
+    static const megler_battery charging = { 80, 2, 2, 0, INT_MIN, true }, discharging = { 79, 3, 0, 3900, 312, true }, warmer = { 79, 3, 0, 3890, 320, true },
+                              lower = { 78, 3, 0, 3890, 320, true };
+    int heard, power;
+    CHECK(wait_line("I/DataTest: battery-heard 1 ", 0, 30) >= 0);
+    /* On a USB charger at 80: the voltage is not said and is made of the level, the temperature is not said and is 25.0. */
+    megler_set_battery(&charging);
+    heard = wait_line("I/DataTest: battery-heard 2 level=80/100 status=2 plugged=2 health=2 voltage=4040 temperature=250 present=true technology=Li-ion", 0, 30);
+    power = find_line("I/DataTest: power-heard android.intent.action.ACTION_POWER_CONNECTED", 0);
+    CHECK(heard >= 0 && (on_battery ? power >= 0 && power < heard : power < 0));
+    /* The same again is no news; off the charger and one lower is, and so is the charger's going. */
+    megler_set_battery(&charging);
+    megler_set_battery(&discharging);
+    heard = wait_line("I/DataTest: battery-heard 3 level=79/100 status=3 plugged=0 health=2 voltage=3900 temperature=312 present=true technology=Li-ion", 0, 30);
+    power = find_line("I/DataTest: power-heard android.intent.action.ACTION_POWER_DISCONNECTED", 0);
+    CHECK(heard >= 0 && power >= 0 && power < heard);
+    /* Warmer and a little less voltage at the same level is not broadcast; the next change carries both. */
+    megler_set_battery(&warmer);
+    megler_set_battery(&lower);
+    CHECK(wait_line("I/DataTest: battery-heard 4 level=78/100 status=3 plugged=0 health=2 voltage=3890 temperature=320 present=true technology=Li-ion", 0, 30) >= 0);
+    /* Four in all, the first being the one every receiver gets when it registers, and nothing came anywhere but on the main thread. */
+    CHECK(count_lines("I/DataTest: battery-heard ") == 4 && count_lines("I/DataTest: power-heard ") == (on_battery ? 2 : 1) && count_lines("OFF THE MAIN THREAD") == 0);
+}
+
 static int run_data(void)
 {
     static const char *const steps[] = { "open", "kept", "insert", "query", "types", "update", "delete", "rollback", "commit", "constraint", "statement", "text",
@@ -1099,6 +1141,7 @@ static int run_data(void)
     CHECK(find_line(run == 2 && want == 2 ? "I/DataTest: battery is level=37/100 status=3 plugged=0 health=2 voltage=3712 temperature=301 present=true technology=Li-poly capacity=37 charging=false"
                                            : "I/DataTest: battery is level=100/100 status=5 plugged=1 health=2 voltage=4200 temperature=250 present=true technology=Li-ion capacity=100 charging=true",
                     0) >= 0);
+    battery_changes(run == 2 && want == 2);
     /* The core's own word that it is its SQLite, on its files. */
     CHECK(find_line("sqlite: SQLite 3.", 0) >= 0);
     for (i = 0; i < g_nlines; i++)

@@ -72,6 +72,9 @@ static struct {
     int ntext;
     volatile i32 keyboard_height;      /* pixels of the surface's bottom the keyboard covers */
     volatile i32 enter_newline;        /* the field the keyboard was last shown for takes Enter as a new line */
+    /* The battery as the app was last told of it by a broadcast (at the start: as it was then), and the core's count of its changes at that time. */
+    hk_battery battery;
+    u32 battery_changes;
 } J;
 
 static i32 bits_of(float f)
@@ -262,10 +265,35 @@ N(Native_density) { c->ret.f = (float)(J.config->density_dpi > 0 ? J.config->den
 N(Native_uptimeNanos) { c->ret.j = (i64)hk_time_monotonic_ns(); }
 
 /*
+ * The battery has been set to something else since the app was last told (hk_battery_set, from any thread; this is the
+ * app's main thread). Android broadcasts ACTION_BATTERY_CHANGED to whoever is registered for it, and before that
+ * ACTION_POWER_CONNECTED or ACTION_POWER_DISCONNECTED when it went between running on its battery and not; the
+ * framework's megler.Broadcasts sends them (the overlay's batteryChanged). What is compared is what the app was told last
+ * with what is there now, so a battery that changed and changed back between two looks is no news, and nothing is sent
+ * more often than the charge, the status or the plug changes.
+ */
+static void battery_news(void)
+{
+    hk_battery now;
+    hk_jvalue power;
+    J.battery_changes = hk_battery_changes();
+    hk_battery_read(&now);
+    if (now.level == J.battery.level && now.scale == J.battery.scale && now.status == J.battery.status && now.plugged == J.battery.plugged) return;
+    power.j = 0;
+    power.i = (now.plugged != 0) == (J.battery.plugged != 0) ? 0 : now.plugged ? 1 : 2;
+    J.battery = now;
+    if (!hk_dvm_call_static("megler/Broadcasts", "batteryChanged", "(I)V", &power, NULL)) {
+        hk_note_once("java: the battery changed and the app was not told: %s", hk_dvm_pending() ? hk_dvm_class_of(hk_dvm_pending())->name : "megler.Broadcasts.batteryChanged did not run");
+        hk_dvm_clear_pending();
+    }
+}
+
+/*
  * pollInput(): what has happened since the last call, as int[1 + 4n] --
  * n, then (phase, id, x bits, y bits) for each -- or null. Called by the main
  * loop between messages, so this is also where a stop asked from outside
  * reaches the app: every activity is finished, on the thread they live on.
+ * And where news of the battery does.
  */
 N(Native_pollInput)
 {
@@ -275,6 +303,7 @@ N(Native_pollInput)
         hk_dvm_call_static("megler/AppRunner", "finishAll", "()V", NULL, NULL);
         if (hk_dvm_pending()) return;
     }
+    if (hk_battery_changes() != J.battery_changes) battery_news();
     hk_lock_acquire(&J.lock);
     n = J.nevents;
     if (n) {
@@ -772,6 +801,9 @@ static bool java_start(const megler_run_config *config, const hk_apk_info *info)
     hk_strlcpy(J.activity, info->activity, sizeof(J.activity));
     hk_strlcpy(J.application, info->application, sizeof(J.application));
     hk_strlcpy(J.package, info->package, sizeof(J.package));
+    /* The battery the app starts with is not news to it; what it becomes afterwards is (battery_news). */
+    J.battery_changes = hk_battery_changes();
+    hk_battery_read(&J.battery);
     probe = hk_sprintf("%s/framework/core-oj.dex", J.root);
     if (!hk_path_stat(probe, &st, NULL)) {
         hk_run_set_error("this app is Java, and the files to run Java (Android's libcore and the framework) are not in %s", J.root);

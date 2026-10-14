@@ -10,6 +10,7 @@
 #ifndef MEGLER_H
 #define MEGLER_H
 
+#include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -978,6 +979,35 @@ uint32_t megler_frames(void);
  * changed by this; it already follows the host's clock.
  */
 void megler_set_timezone(const char *id);
+
+/*
+ * The battery, in Android's own numbers. Any thread, any time, also while an
+ * app runs. Until the first call an app has a full, healthy battery on mains
+ * power (4.2 V, 25.0 degrees); NULL is that battery again.
+ *
+ * An app reads it when it asks (the sticky ACTION_BATTERY_CHANGED intent,
+ * BatteryManager), and a Java app is told when it changes: a receiver
+ * registered for ACTION_BATTERY_CHANGED is called again when the level, the
+ * status or `plugged` is no longer what the app was last told, and
+ * ACTION_POWER_CONNECTED or ACTION_POWER_DISCONNECTED is sent when `plugged`
+ * goes between 0 and not 0 -- on the app's main thread, and no more often
+ * than those three change: calling this with what is already there sends
+ * nothing. A change of the voltage or the temperature alone is not sent; the
+ * app has it when it next asks.
+ *
+ * What is not in here is filled in: the scale is 100, the health good (while
+ * there is a battery), the technology "Li-ion". A level outside 0..100 is
+ * brought inside, a status outside 1..5 is "unknown".
+ */
+typedef struct megler_battery {
+    int level;        /* 0..100 */
+    int status;       /* 1 unknown, 2 charging, 3 discharging, 4 not charging, 5 full */
+    int plugged;      /* 0 on battery, 1 mains, 2 USB, 4 wireless */
+    int voltage_mv;   /* 0: the phone does not say (Windows does not) -- the app is given a plausible one for the level, 3.4 V empty to 4.2 V full */
+    int temperature;  /* tenths of a degree Celsius; INT_MIN: the phone does not say -- then 25.0 */
+    bool present;
+} megler_battery;
+void megler_set_battery(const megler_battery *now);
 
 /* ------------------------------------------------------------ diagnostics */
 

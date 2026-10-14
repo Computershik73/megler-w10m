@@ -38,8 +38,10 @@ void hk_run_storage(const char *data_dir, const megler_storage_host *storage);
  * The phone's battery, in the words of Android's ACTION_BATTERY_CHANGED. hk_battery_read is the one place the layer's
  * Android side asks (today the Java driver, for the sticky battery intent and BatteryManager); nothing else in the core
  * holds a level or a voltage. Until hk_battery_set says otherwise the answer is a full, healthy battery on mains power:
- * the shell knows the real one (Windows.Devices.Power) and can set it whenever it changes, from any thread. An app sees
- * a new state when it next asks; nothing is broadcast to it.
+ * the shell knows the real one (Windows.Devices.Power) and sets it whenever it changes, from any thread (megler.h's
+ * megler_set_battery, which fills in what a phone with Windows does not say). An app sees a new state when it next asks,
+ * and is told of one: hk_battery_changes counts the times the charge, the status or what it is plugged into became
+ * another, and a driver that watches the count sends Android's broadcasts (the Java driver does, on the app's main thread).
  */
 typedef struct hk_battery {
     int level, scale;    /* the charge, level out of scale; Android's own scale is 100 */
@@ -54,6 +56,7 @@ typedef struct hk_battery {
 void hk_battery_read(hk_battery *out);
 /* NULL: back to the answer before any call. */
 void hk_battery_set(const hk_battery *now);
+u32 hk_battery_changes(void);
 
 /* The running app's configuration and window host, for the layers below (EGL presents through the host). */
 const megler_run_config *hk_run_config(void);

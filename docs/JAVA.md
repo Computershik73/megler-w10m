@@ -85,19 +85,19 @@ the decoder 40 fewer, and the script says which is missing.
 
 ```
 bash tools/build-tests.sh win      (MSVC x64, run on the PC; libcore's native libraries cannot run there)
-    3923 checks, 0 failed          on the built-in java.lang
-    3937 checks, 0 failed          on libcore, its bytecode alone
+    3930 checks, 0 failed          on the built-in java.lang
+    3944 checks, 0 failed          on libcore, its bytecode alone
     (then the shell's own drawing and the storage on Windows' own folders, which are not this document's: 263, 263, 263, 425, 14, 9, 8 and 6 checks)
 
 bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-float, under qemu-arm)
-    4147 checks, 0 failed          on the built-in java.lang
-    4197 checks, 0 failed          on libcore with its native libraries
+    4154 checks, 0 failed          on the built-in java.lang
+    4204 checks, 0 failed          on libcore with its native libraries
       43 checks, 0 failed          the Java test app hello, through megler_run
       72 checks, 0 failed          the Java test app demos, the keyboard's 25 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
       13 checks, 0 failed          the Java test app crash: an exception nothing catches, launcher aliases, an app written for Android 6
-      39 checks, 0 failed          the Java test app data: a database, the storage, the battery and the time zone, the first run
-      40 checks, 0 failed          data again, on what the first run left, with another battery and a time zone that is none
+      44 checks, 0 failed          the Java test app data: a database, the storage, the battery and the time zone, the first run
+      45 checks, 0 failed          data again, on what the first run left, with another battery and a time zone that is none
       43 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
     (then each app once more, its drawing recorded for the PC's run to draw again)
 ```
@@ -502,7 +502,7 @@ and `kept`: the app leaves three rows and counts its runs; `tools/build-tests.sh
 runs it twice, the second time on the data folder of the first, and the
 second run must find the rows of the first and say that it is run 2.
 With the storage's, the battery's and the time zone's steps (below) and one
-for a popup list, 39 checks in the first run and 40 in the second. The popup:
+for a popup list, 44 checks in the first run and 45 in the second. The popup:
 a `ListPopupWindow` of three rows that wraps its
 content, shown under a strip at the top of the window, has all three rows
 inside its list and clear of the list's padding (160 high: three rows of 48
@@ -568,10 +568,17 @@ The core answers for the battery in one place, `hk_battery_read`
 health, millivolts, tenths of a degree, whether there is one, and its kind --
 the numbers of Android's `ACTION_BATTERY_CHANGED`. Until `hk_battery_set` is
 called it is a full, healthy Li-ion battery on mains power (100 of 100, 4200
-mV, 25.0 degrees); the shell can set the real one whenever it changes. The
-core's own test (`test_battery`, 4 checks, both hosts) reads the default,
+mV, 25.0 degrees). The shell sets the real one whenever it changes, from any
+thread, with `megler_set_battery` (megler.h), whose `megler_battery` has what a
+phone with Windows can say -- level, status, plug, whether there is one --
+and two that it may leave unsaid: a voltage of 0 becomes one plausible for
+the level (3.4 V empty to 4.2 V full), a temperature of `INT_MIN` 25.0
+degrees. The scale is 100, the health good, the technology "Li-ion". The
+core's own test (`test_battery`, 11 checks, both hosts) reads the default,
 sets another, reads it back made safe (a scale of 0 is 100, the text ends),
-and sets none again.
+sets none again; then the shell's battery with what is filled in, a level and
+a status that cannot be brought to ones that can, and the count of changes
+below.
 
 An app reads it two ways, and the `battery` step of the data app reads both:
 the sticky intent (`registerReceiver(null, filter)`) with its nine extras, and
@@ -583,6 +590,32 @@ which is the usual way, heard nothing before. The harness leaves the first
 run on the default and sets another battery before the second (37 of 100,
 discharging, unplugged, 3712 mV, 30.1 degrees, "Li-poly"), and checks the
 line the app logs in each: what the app reads is what the core has.
+
+**A change is broadcast.** The core counts the times the battery was set to
+another level, status or plug (`hk_battery_changes`; set to what it is
+already, or to another voltage alone, is not counted). The Java driver looks
+at the count where it already looks for a stop asked from outside, in
+`Native.pollInput`, which the main loop calls between messages: so it is on
+the app's main thread, and no thread of the shell's runs Java. When what is
+there differs from what the app was last told, it calls
+`megler.Broadcasts.batteryChanged` (the overlay's), which sends Android's
+broadcasts in Android's order: `ACTION_POWER_CONNECTED` or
+`ACTION_POWER_DISCONNECTED` if the phone went on or off a charger, then
+`ACTION_BATTERY_CHANGED` to the receivers registered for it while the app
+runs (not to one in the manifest, as on Android). A battery that changed and
+changed back between two looks is no news. Not sent: `ACTION_BATTERY_LOW`
+and `ACTION_BATTERY_OKAY`; a change of voltage or temperature alone, which
+Android does send and an app here has when it next asks.
+
+The data app keeps a second receiver registered for the three actions, and
+after its steps the harness does what a shell does: sets a battery on a USB
+charger at 80, the same again, one off the charger at 79, one that is only
+warmer, one at 78. The receiver must have heard the battery four times in
+all -- once when it registered, then 80, 79 and 78, each with the voltage
+and the temperature of its own setting -- the charger's going once, its
+coming once in the run that started on the battery and not at all in the one
+that started on mains, each before the battery's own news, and all of it on
+the main thread (5 checks).
 
 ### The time zone (the runtime on libcore and the app, under qemu-arm)
 
@@ -1878,6 +1911,9 @@ the context that knows.
   delivered, and `registerReceiver(null, filter)` no longer leaves a null in
   the list of receivers. Device Info's card read "Battery 0%, Voltage: 0 mV,
   Temperature: 0C" on the phone because it shows what its receiver is told.
+  And `Broadcasts.batteryChanged`, which the driver calls when the battery
+  has become another, sends `ACTION_BATTERY_CHANGED` again and the charger's
+  coming or going ("The battery", above).
   (Counted as one fault of the original's: the battery nobody could set.)
 - `android/widget/Switch.java`, `onMeasure` and the first branch of `onDraw`:
   a switch with a thumb and a track drawable is as wide as two thumbs and the
