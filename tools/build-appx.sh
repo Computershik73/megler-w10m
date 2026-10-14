@@ -424,13 +424,20 @@ cp "$APP/Assets/"*.png "$STAGE/Assets/"
 GUEST="$ROOT/build/guest/armeabi-v7a"
 DEMO="$ROOT/build/guest/demo/megler-demo.apk"
 if ! ls "$GUEST"/*.so > /dev/null 2>&1 || [ ! -f "$DEMO" ] || [ "$ROOT/core/tests/guest/t_demo.c" -nt "$DEMO" ] \
-   || [ ! -f "$GUEST/libt_jni.so" ] || [ "$ROOT/core/tests/guest/t_jni.c" -nt "$GUEST/libt_jni.so" ]; then
+   || [ ! -f "$GUEST/libt_jni.so" ] || [ "$ROOT/core/tests/guest/t_jni.c" -nt "$GUEST/libt_jni.so" ] \
+   || [ ! -f "$GUEST/runtime/libt_ruser.so" ]; then
   echo "    building the guest test libraries (tools/build-guest.sh)"
   bash "$ROOT/tools/build-guest.sh" > "$BUILD/build-guest.log" 2>&1 || echo "    WARNING: tools/build-guest.sh failed (build/appx-$ARCH/build-guest.log)" >&2
 fi
 if ls "$GUEST"/*.so > /dev/null 2>&1; then
   mkdir -p "$STAGE/selftest"
   cp "$GUEST"/*.so "$STAGE/selftest/"
+  # The runtime's libt_same.so and libt_ruser.so, in a folder of their own as on the PC (test_guest_kinds in core/tests/hk_tests.c).
+  if [ -d "$GUEST/runtime" ]; then mkdir -p "$STAGE/selftest/runtime" && cp "$GUEST"/runtime/*.so "$STAGE/selftest/runtime/"; fi
+  # Every library tools/build-guest.sh made is where the Self-test looks for it: one left out fails on the phone alone.
+  MISSING=""
+  for f in $(cd "$GUEST" && find . -name '*.so' | sed 's|^\./||'); do [ -f "$STAGE/selftest/$f" ] || MISSING="$MISSING $f"; done
+  [ -z "$MISSING" ] || { echo "the self-test's libraries left out of the package:$MISSING" >&2; exit 1; }
   # The Dalvik runtime's tests read their DEX files from selftest/dvm (tools/build-dvm-fixtures.sh made them).
   if [ -d "$GUEST/dvm" ]; then mkdir -p "$STAGE/selftest/dvm" && cp "$GUEST"/dvm/* "$STAGE/selftest/dvm/"; fi
   ls "$GUEST"/*.apk > /dev/null 2>&1 && cp "$GUEST"/*.apk "$STAGE/selftest/"

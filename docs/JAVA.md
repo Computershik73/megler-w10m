@@ -472,6 +472,20 @@ kind; a weak import of a name that only the other kind exports stays unbound on
 both sides; `dlsym(RTLD_DEFAULT)` sees the app's only; neither kind can be
 loaded from the other's place.
 
+On the phone (0.1.0.138's Self-test) two of its checks failed, and only there.
+The linker was not at fault: whether a library is the app's or the runtime's
+is a flag set by whoever asked for it, and libraries are found by file name,
+never by comparing paths. The package left the runtime's two out:
+`tools/build-appx.sh` copied `build/guest/armeabi-v7a/*.so` into `selftest`
+but not the folder `runtime` beside them. It now copies that folder too and
+stops if any library `tools/build-guest.sh` made is missing from the package.
+The test checks first that the runtime's folder has its library and says so
+when it does not. A dlopen of the system's ICU (MX Player) does not depend
+on this. It finds the copies libcore's start loaded from the package's
+`android/lib`, as `libjavacore.so` needs them, and that folder was in the
+package. The same Self-test shows libcore's native libraries loaded on the
+phone.
+
 ### A database (both hosts; the app under qemu-arm)
 
 SQLite is compiled into the core where its amalgamation is

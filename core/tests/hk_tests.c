@@ -978,14 +978,26 @@ static void test_library(hk_lib *lib, const char *what, const char *scratch)
  * libt_same.so of each kind, and a library of each kind that needs
  * "libt_same.so". The runtime's are loaded first, so that anything that
  * looked for a library or a symbol by name alone would find the wrong one.
+ *
+ * The runtime's two are in the folder runtime/ beside the others: on a phone
+ * <package>/selftest/runtime, which tools/build-appx.sh packs. A package
+ * without it once failed here as if the linker mixed the two kinds; it is now
+ * said as what it is.
  */
 static void test_guest_kinds(const char *libdir)
 {
-    char *runtime_dir = hk_sprintf("%s/runtime", libdir);
+    char *runtime_dir = hk_sprintf("%s/runtime", libdir), *probe = hk_sprintf("%s/libt_ruser.so", runtime_dir);
     hk_lib *ruser, *user, *rsame, *same, *in = NULL;
+    hk_stat st;
+    bool there;
     say("guest libraries: the app's and the runtime's of one name");
+    there = hk_path_stat(probe, &st, NULL) && !st.is_dir;
+    if (!there) say("  %s is not there: the runtime's test libraries were not packed with the others", probe);
+    CHECK(there);
+    free(probe);
     hk_ld_add_runtime_dir(runtime_dir);
     free(runtime_dir);
+    if (!there) return;
     /* Each kind is looked for only where it is kept. */
     CHECK(hk_ld_load_runtime("libt_basic.so") == NULL && hk_ld_load("libt_ruser.so") == NULL);
     ruser = hk_ld_load_runtime("libt_ruser.so");
