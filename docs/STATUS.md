@@ -358,11 +358,47 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   does not have. The platform's resources are now cut to two languages and
   two densities when the Android root is made (`tools/dvm-android-root.sh`:
   43 MB to 12, and 28 MB less held by every app).
-  Not there: garbage collection (an app that animates lasts minutes); SQLite,
-  sound, WebView and OpenGL from Java; apps with both bytecode and native
-  libraries; method handles; conscrypt's native half (no TLS, no
-  `SecureRandom`); the network; WebP pictures (Windows 10 Mobile has no
-  decoder); Kotlin untried for want of a compiler here.
+
+  **Real apps** (2026-10-14, the phone's owner added three; builds 0.1.0.110
+  to 0.1.0.121). An app with bytecode *and* native libraries is an ordinary
+  Java app now: `System.loadLibrary` loads the library out of the APK with
+  the layer's linker and its native methods are bound to the bytecode
+  (`core/tests/app/natives`, a test app with a library built by the NDK,
+  goes through 28 steps of JNI and the NDK); the app's libraries and the
+  runtime's own never see each other.
+  - *QuickShortcutMaker 2.5.0* (Java only, ActionBarSherlock): runs on the
+    phone -- its tabs, its settings; its second start, which ended on a
+    missing native of Java serialization, works again. Its lists of other
+    apps are empty: there are no other apps.
+  - *Apktool M 2.4.0* (two native libraries): starts on the phone, shows its
+    licence dialog and its main screen. Its Settings end it; its drawer of
+    folders is empty, storage being the next thing.
+  - *Device Info 3.4.3.4* (Kotlin, AndroidX, Material, two native libraries;
+    its target is Android 15): starts on the phone and ended at its first
+    WebP picture, which nothing decoded; a decoder is in the core since
+    0.1.0.121 and what comes after is not known yet.
+  Also since then: databases (`android.database.sqlite` on SQLite compiled
+  into the core over the host layer's files, `tools/sqlite-fetch.sh`); WebP
+  (libwebp's decoder in the core, `tools/webp-fetch.sh`: Windows 10 Mobile
+  has none); the touch keyboard (asked for by the app through
+  `megler_keyboard_host`; the shell brings Windows' keyboard up over a text box
+  nobody sees and tells the app what was typed -- the request has been seen
+  to arrive on the phone, the keyboard itself and typing have not, the phone
+  having been locked); an app that ends on an uncaught exception says which,
+  in one sentence.
+  **Storage**, measured on the phone: with the library capabilities declared,
+  the plain file functions are still refused in every library folder, but
+  Windows.Storage's broker hands out real file and folder handles in Music,
+  Pictures and Videos (`app/Megler/shell/Storage.cpp` tries each at start
+  and says so in the log); Documents, Downloads and a memory card can only be
+  given by the user picking a folder. Links from an Android app's `/sdcard`
+  to those folders are being built on that; until then each app has its own
+  `/sdcard` in Megler's folder and sees nothing of the phone's.
+  Not there: garbage collection (an app that animates lasts minutes); sound,
+  WebView and OpenGL from Java; a `SurfaceView` drawn by native code; method
+  handles; conscrypt's native half (no TLS); the network; other apps (the
+  package manager knows only the one running); Kotlin has run only as part of
+  Device Info.
 - **Sound from files.** OpenSL ES players fed PCM through a buffer queue are mixed; a player given a file or a URL (which would need MP3/Ogg decoding here) is refused. AAudio is not there.
 - **Network.** Sockets fail as if there were no network.
 - **ETC1 textures** (see above).

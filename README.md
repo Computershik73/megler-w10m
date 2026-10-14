@@ -31,10 +31,12 @@ has to answer.
   One is under way ([docs/JAVA.md](docs/JAVA.md)): a Dalvik interpreter joined to
   the JNI layer, Android 9's own class library under it (libcore, with its
   native libraries built here for ARMv7), the original Java framework
-  on top, and drawing by the shell with Direct2D. Two small test apps written
-  in Java run on a phone with it -- views, lists, dialogs, a second Activity,
-  preferences, background tasks; real apps wait for garbage collection,
-  SQLite, sound and the network.
+  on top, and drawing by the shell with Direct2D. Small test apps written in
+  Java run on a phone with it -- views, lists, dialogs, a second Activity,
+  preferences, background tasks, databases, a native library of their own --
+  and the first real apps start there (docs/STATUS.md says how far each
+  gets); what they still wait for is garbage collection, the phone's
+  folders, sound and the network.
 - OpenGL ES 2.0 on any phone; 3.0 where the GPU's driver gives Direct3D feature
   level 10 or more. No Vulkan.
 - Sound through OpenSL ES buffer queues (what FMOD, OpenAL Soft and SDL sit on).
