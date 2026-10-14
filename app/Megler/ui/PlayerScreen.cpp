@@ -109,8 +109,13 @@ public:
 
         // What Windows gives its touch keyboard to: a text box. Nobody sees
         // this one or can touch it; it has the focus while an Android text
-        // field is being edited (see "The keyboard" below).
+        // field is being edited (see "The keyboard" below), and is switched
+        // off the rest of the time: Windows hands the focus back to the box
+        // that had it last when Megler comes back from the background, and on
+        // a phone a text box with the focus brings the keyboard up.
         keyboardField_ = TextBox();
+        keyboardField_.IsEnabled(false);
+        keyboardField_.IsTabStop(false);
         keyboardField_.Width(1);
         keyboardField_.Height(1);
         keyboardField_.MinWidth(1);
@@ -354,7 +359,10 @@ private:
     void showMenu(bool show) {
         if (show == menuShown_) return;
         menuShown_ = show;
-        if (show) releaseAllTouches();
+        if (show) {
+            releaseAllTouches();
+            if (keyboardWanted_ || keyboardUp_) putKeyboardAway(true);
+        }
         setVisible(menuOverlay_, show);
         shellLog::write(show ? "player: menu opened" : "player: menu closed");
     }
@@ -470,11 +478,19 @@ private:
                 // The app's own layout keeps the field in view (it is told the height); Windows is not to push the page up.
                 e.EnsuredFocusedElementInView(true);
                 keyboardUp_ = true;
+                if (!keyboardWanted_) {
+                    // Nobody asked for it: it goes again, or it would hide the navigation bar with nothing to put it away.
+                    shellLog::write("player: the keyboard came up though the app had not asked for it: put away again");
+                    putKeyboardAwayLater();
+                    return;
+                }
                 tellKeyboardHeight(e.OccludedRect().Height);
+                showNavigationBar(true);
             });
             paneHiding_ = pane.Hiding([this](auto&&, winrt::Windows::UI::ViewManagement::InputPaneVisibilityEventArgs const& e) {
                 e.EnsuredFocusedElementInView(true);
                 keyboardUp_ = false;
+                showNavigationBar(false);
                 session::keyboardHeight(0);
                 // Put away by the user (its own key, or Back, which Windows gives the keyboard first): the app did not ask.
                 if (keyboardWanted_) {
@@ -503,6 +519,44 @@ private:
         paneShowing_ = {};
         paneHiding_ = {};
         keyboardWanted_ = keyboardUp_ = false;
+        showNavigationBar(false);
+        dropKeyboardFocus();
+    }
+
+    /// The navigation bar while the app has the keyboard up, and away again
+    /// after. In full-screen mode the bar comes only by a swipe up from the
+    /// bottom edge, which the keyboard covers; without the bar's Back a phone
+    /// with no keys of its own has nothing that puts the keyboard away. The
+    /// window keeps its size: the bar lies over the picture, as in full
+    /// screen.
+    void showNavigationBar(bool show) {
+        if (show == navigationBarShown_) return;
+        navigationBarShown_ = show;
+        try {
+            auto view = winrt::Windows::UI::ViewManagement::ApplicationView::GetForCurrentView();
+            if (show)
+                view.ExitFullScreenMode();
+            else
+                view.TryEnterFullScreenMode();
+        } catch (const hresult_error& e) {
+            shellLog::write("player: the navigation bar cannot be shown or hidden: " + narrow(e.message()));
+        }
+    }
+
+    /// putKeyboardAway, once the event that is being answered is over.
+    void putKeyboardAwayLater() {
+        try {
+            std::weak_ptr<Page> alive = weak_from_this();
+            keyboardField_.Dispatcher().RunAsync(winrt::Windows::UI::Core::CoreDispatcherPriority::Normal, [this, alive] {
+                if (alive.expired() || keyboardWanted_) return; // gone, or asked for meanwhile
+                try {
+                    winrt::Windows::UI::ViewManagement::InputPane::GetForCurrentView().TryHide();
+                } catch (const hresult_error&) {
+                }
+                dropKeyboardFocus();
+            });
+        } catch (const hresult_error&) {
+        }
     }
 
     /// The app asked for the keyboard (UI thread). Asked again for the same
@@ -535,6 +589,8 @@ private:
             shellLog::write(format("player: the app asks for the keyboard (kind %d, flags 0x%X, Enter %d)", kind, unsigned(flags), enter));
         keyboardWanted_ = true;
         startKeyboardText();
+        keyboardField_.IsEnabled(true);
+        keyboardField_.IsTabStop(true);
         keyboardField_.Focus(FocusState::Programmatic);
         try {
             winrt::Windows::UI::ViewManagement::InputPane::GetForCurrentView().TryShow();
@@ -554,11 +610,13 @@ private:
         dropKeyboardFocus();
     }
 
-    /// The hidden box gives the focus up (a control that is switched off cannot keep it), and with it the keyboard.
+    /// The hidden box gives the focus up (a control that is switched off
+    /// cannot keep it), and with it the keyboard; and it stays off, so that
+    /// nothing gives it the focus back until the app asks again.
     void dropKeyboardFocus() {
         if (!keyboardField_) return;
+        keyboardField_.IsTabStop(false);
         keyboardField_.IsEnabled(false);
-        keyboardField_.IsEnabled(true);
     }
 
     void startKeyboardText() {
@@ -729,6 +787,7 @@ private:
     bool keyboardAttached_ = false;
     bool keyboardWanted_ = false; // the app asked for the keyboard and has not been told it is gone
     bool keyboardUp_ = false;     // Windows says it is on the screen
+    bool navigationBarShown_ = false; // out of full-screen mode while the keyboard is up
     winrt::event_token paneShowing_{}, paneHiding_{};
 
     std::map<uint32_t, int> touches_;
