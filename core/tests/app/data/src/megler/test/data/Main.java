@@ -288,6 +288,7 @@ public class Main extends Activity {
         assetFd();
         tasks();
         wrapperReceiver();
+        viewGroupFlag();
         network();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
@@ -690,6 +691,23 @@ public class Main extends Activity {
             w.unregisterReceiver(r);
             detail = "registered and unregistered through the wrapper";
             return true;
+        });
+    }
+
+    /** A FrameLayout whose setWillNotDraw needs what its own constructor makes, as Chromium's CompositorView does. */
+    private static final class WillNotDrawProbe extends android.widget.FrameLayout {
+        private final Object made = new Object();
+        int calls;
+        WillNotDrawProbe(android.content.Context c) { super(c); }
+        @Override public void setWillNotDraw(boolean w) { made.hashCode(); calls++; super.setWillNotDraw(w); }
+    }
+
+    /** A ViewGroup's constructor marks it as not drawing itself without calling setWillNotDraw, which a subclass may override. */
+    private void viewGroupFlag() {
+        step("viewgroup-flag", () -> {
+            WillNotDrawProbe p = new WillNotDrawProbe(this);
+            detail = "willNotDraw=" + p.willNotDraw() + " calls=" + p.calls;
+            return p.willNotDraw() && p.calls == 0;
         });
     }
 

@@ -2918,7 +2918,7 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: thirty-seven files** in the overlay,
+**What differs from the original's framework: thirty-eight files** in the overlay,
 most of them a statement or a few methods each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and eight files of members added** to classes of the original's.
@@ -3333,7 +3333,20 @@ had only the top.
   the platform never does is a fault of this kind wherever an app calls it
   without asking the version first; this is the one a run has met.
 
-The original has all twenty-five faults; they are its author's to take back.
+- `android/view/ViewGroup.java`, one statement of the constructors' `init()`:
+  the flag that says a group does not draw itself is set directly
+  (`View.meglerWillNotDraw`, which the overlay's `View` adds), as Android's
+  `ViewGroup` sets it, where the original called `setWillNotDraw(true)`.
+  That method is public and not final; called from the constructor it runs a
+  subclass's override before the subclass's own constructor has set
+  anything up. Chromium's `CompositorView` (Brave 1.97) overrides it to pass
+  the call on to its surfaces, made later in its constructor, and the
+  browser's main activity ended inflating its layout with a
+  `NullPointerException` there. The data app's step "viewgroup-flag" makes a
+  `FrameLayout` whose override needs a field of its own: it is not called,
+  and the group does not draw itself.
+
+The original has all twenty-six faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in
