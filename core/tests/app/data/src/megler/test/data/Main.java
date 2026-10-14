@@ -270,6 +270,7 @@ public class Main extends Activity {
         battery();
         timezone();
         tls();
+        keystore(run);
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
         new android.os.Handler().postDelayed(this::popup, 700);
@@ -530,6 +531,50 @@ public class Main extends Activity {
             return there && "no TLS on this phone yet".equals(direct) && "IOException".equals(https) && managers.length == 1
                     && managers[0] instanceof javax.net.ssl.X509TrustManager && "no TLS on this phone yet".equals(trusts)
                     && ((javax.net.ssl.X509TrustManager) managers[0]).getAcceptedIssuers().length == 0;
+        });
+    }
+
+    /**
+     * Android's key store as Amazon's sign-in library (in MX Player) uses it: an RSA pair made under an alias by
+     * KeyPairGenerator.getInstance("RSA", "AndroidKeyStore"), a key of sixteen bytes wrapped with its public key and unwrapped with
+     * its private one, both found again through KeyStore.getInstance("AndroidKeyStore"); an EC pair the same way, which signs; and
+     * the RSA pair is there for the next run, which finds it before it makes it again.
+     */
+    private void keystore(final long run) {
+        step("keystore", () -> {
+            java.security.KeyStore store = java.security.KeyStore.getInstance("AndroidKeyStore");
+            store.load(null);
+            boolean before = store.containsAlias("megler-test-rsa");
+            java.security.KeyPairGenerator rsa = java.security.KeyPairGenerator.getInstance("RSA", "AndroidKeyStore");
+            rsa.initialize(new android.security.keystore.KeyGenParameterSpec.Builder("megler-test-rsa", android.security.keystore.KeyProperties.PURPOSE_ENCRYPT
+                    | android.security.keystore.KeyProperties.PURPOSE_DECRYPT).setKeySize(2048)
+                    .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_RSA_PKCS1).build());
+            java.security.KeyPair pair = rsa.generateKeyPair();
+            byte[] secret = "sixteen byte key".getBytes("UTF-8");
+            javax.crypto.Cipher wrap = javax.crypto.Cipher.getInstance("RSA/ECB/PKCS1Padding");
+            wrap.init(javax.crypto.Cipher.ENCRYPT_MODE, store.getCertificate("megler-test-rsa").getPublicKey());
+            byte[] wrapped = wrap.doFinal(secret);
+            javax.crypto.Cipher unwrap = javax.crypto.Cipher.getInstance("RSA/ECB/PKCS1Padding");
+            unwrap.init(javax.crypto.Cipher.DECRYPT_MODE, (java.security.PrivateKey) store.getKey("megler-test-rsa", null));
+            int bits = ((java.security.interfaces.RSAPublicKey) pair.getPublic()).getModulus().bitLength();
+            boolean rsaHeld = Arrays.equals(secret, unwrap.doFinal(wrapped)) && wrapped.length == 256 && bits == 2048;
+
+            java.security.KeyPairGenerator ec = java.security.KeyPairGenerator.getInstance("EC", "AndroidKeyStore");
+            ec.initialize(new android.security.keystore.KeyGenParameterSpec.Builder("megler-test-ec", android.security.keystore.KeyProperties.PURPOSE_SIGN
+                    | android.security.keystore.KeyProperties.PURPOSE_VERIFY).setDigests(android.security.keystore.KeyProperties.DIGEST_SHA256).build());
+            java.security.KeyPair ecPair = ec.generateKeyPair();
+            java.security.Signature sign = java.security.Signature.getInstance("SHA256withECDSA");
+            sign.initSign((java.security.PrivateKey) store.getKey("megler-test-ec", null));
+            sign.update(secret);
+            byte[] signature = sign.sign();
+            java.security.Signature verify = java.security.Signature.getInstance("SHA256withECDSA");
+            verify.initVerify(store.getCertificate("megler-test-ec").getPublicKey());
+            verify.update(secret);
+            int ecBits = ((java.security.interfaces.ECPublicKey) ecPair.getPublic()).getParams().getCurve().getField().getFieldSize();
+            boolean ecHeld = verify.verify(signature) && ecBits == 256;
+            detail = "rsa=" + rsaHeld + " (" + bits + " bits, " + wrapped.length + " bytes wrapped) ec=" + ecHeld + " (" + ecBits + " bits) there-before=" + before + " run=" + run;
+            Log.i("DataTest", "keystore " + detail);
+            return rsaHeld && ecHeld && before == (run > 1);
         });
     }
 

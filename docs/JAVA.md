@@ -96,8 +96,8 @@ bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-f
       75 checks, 0 failed          the Java test app demos, the keyboard's 25 and the frame meter's 3 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
       13 checks, 0 failed          the Java test app crash: an exception nothing catches, launcher aliases, an app written for Android 6
-      45 checks, 0 failed          the Java test app data: a database, the storage, the battery, the time zone and TLS, the first run
-      46 checks, 0 failed          data again, on what the first run left, with another battery and a time zone that is none
+      46 checks, 0 failed          the Java test app data: a database, the storage, the battery, the time zone, TLS and key pairs, the first run
+      47 checks, 0 failed          data again, on what the first run left, with another battery and a time zone that is none
       47 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
     (then each app once more, its drawing recorded for the PC's run to draw again)
 ```
@@ -510,8 +510,8 @@ and `kept`: the app leaves three rows and counts its runs; `tools/build-tests.sh
 runs it twice, the second time on the data folder of the first, and the
 second run must find the rows of the first and say that it is run 2.
 With the storage's, the battery's and the time zone's steps (below) and one
-for a popup list and one for TLS, 45 checks in the first run and 46 in the
-second. The popup:
+for a popup list, one for TLS and one for the key store's key pairs ("On
+libcore"), 46 checks in the first run and 47 in the second. The popup:
 a `ListPopupWindow` of three rows that wraps its
 content, shown under a strip at the top of the window, has all three rows
 inside its list and clear of the list's padding (160 high: three rows of 48
@@ -1397,6 +1397,24 @@ connection must fail as an `IOException`, and has the trust manager refuse a
 certificate. A cipher asked of "AndroidOpenSSL"
 by name is not there.
 
+Key pairs are BouncyCastle's too, and that needed one thing more. Android 9
+refuses the system's BouncyCastle to an app that names it for an RSA or EC key
+pair, a key factory, an HMAC and the rest of a list
+(`Providers.checkBouncyCastleDeprecation`, when the app's target SDK is above
+27; `VMRuntime`'s is above that here, since nothing sets it), and only when it
+is named: `KeyPairGenerator.getInstance("RSA")` without a provider gets
+BouncyCastle's. The framework's `AndroidKeyStore` named every provider in turn,
+so every key pair made in it ended in "no RSA key pair generator" -- Amazon's
+sign-in storage in MX Player, three times a start. The overlay's
+`megler/KeyStoreProvider.java` takes the generator from the provider's service
+instead. The data app's `keystore` step makes an RSA pair of 2048 bits and an
+EC pair on P-256 in `AndroidKeyStore` under aliases, wraps sixteen bytes with
+`RSA/ECB/PKCS1Padding` and unwraps them, signs with `SHA256withECDSA` and
+verifies, both keys found again through `KeyStore.getInstance
+("AndroidKeyStore")`; the second run finds the RSA pair of the first before it
+makes it again. The keys are ordinary ones in the app's data
+(`.megler_keystore`), as in the original: nothing here is hardware-backed.
+
 **The built-in `java.lang` stays** as the first way to start
 (`hk_dvm_start(NULL, 0)`). It could be dropped now that every fixture passes on
 libcore too; it is kept because libcore is 40 MB that the ordinary package does
@@ -1984,8 +2002,8 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: twenty-six files** in the overlay,
-twenty-four of them a statement or a method each inside an otherwise untouched copy
+**What differs from the original's framework: twenty-seven files** in the overlay,
+twenty-five of them a statement or a method each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and five files of members added** to classes of the original's.
 
@@ -2229,6 +2247,12 @@ the context that knows.
 - `megler/ViewRoot.java`, three calls and a field, and no fault of the
   original's: `doFrame` tells the driver where a frame's phases begin and how
   much of the screen it drew, for the frame meter ("The frame meter", above).
+- `megler/KeyStoreProvider.java`, one method, and this port's circumstance
+  rather than the original's fault: `PairGen.generateKeyPair` takes another
+  provider's key pair generator from its service, because
+  `KeyPairGenerator.getInstance(algorithm, provider)` refuses the system's
+  BouncyCastle for RSA and EC, and BouncyCastle is what has them while
+  conscrypt's native library is not in the root ("On libcore").
 
 - `android/preference/PreferenceActivity.java`, the largest: the activity's
   content and preference headers. Android's `onCreate` sets a layout in which
