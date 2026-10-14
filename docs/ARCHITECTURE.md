@@ -187,7 +187,7 @@ an app will reach it.
 | `struct stat`, `dirent`, `sigaction`, `tm` | bionic's layouts | filled in field by field |
 | `FILE` | `__sF[3]`, 84 bytes apart, fields old headers read inline | this layer's own, with that layout at its start |
 | `malloc`/`memalign`/`free` | one `free` for all | every block has a header saying where the host's block starts |
-| file descriptors | pipes, eventfd, epoll | this layer's own table; pipes and eventfds are implemented here |
+| file descriptors | pipes, eventfd, epoll, sockets | this layer's own table; pipes and eventfds are implemented here, sockets are the host's behind it (see "The network") |
 | paths | `/data/data/<pkg>`, `/sdcard`, `/proc/cpuinfo` | a mount table onto folders under `LocalState` (see "Files and the shared storage"); the `/proc` and `/sys` files code reads are made up |
 | signals | delivered asynchronously | between the app's own threads they are: a thread in the middle of Android code is stopped, sent to the handler and put back (`SuspendThread`, `SetThreadContext`, the vectored handler); one that waits or sleeps in this layer is woken for it. Nothing comes from outside the process |
 | a thread's stack | all there from the start; code moves `sp` by any amount and writes | Windows hands a stack out a page at a time, through a guard page that code built for Windows touches in order. Android code does not, and a write beyond the guard page ends the process with no handler run. So the whole stack is committed, down to a guard page of its own, the first time a thread is given a guest thread pointer (`hk_thread_whole_stack`) |
@@ -358,6 +358,128 @@ through its own C library, what an app does to files, in a folder of its own
 way Windows answered. **Settings › Check the Folders** runs it, and so does a
 package built with `tools/build-appx.sh arm --auto storage`, into
 `megler-auto.log`.
+
+## The network
+
+An app's sockets are the phone's own: Winsock 2, which an app container may
+use (the package declares `internetClient`, `internetClientServer` and
+`privateNetworkClientServer`, which together are what Android's INTERNET
+permission allows). Three layers:
+
+- **The host** (`host/hk_host.h`, "sockets"; Winsock in `hk_host_win32.c`,
+  BSD sockets in `hk_host_posix.c`) has sockets, the system's resolver and the
+  list of interfaces in neutral terms of its own: its own families, options,
+  flags and errors, an address structure of its own. A host socket never
+  blocks.
+- **bionic** (`bionic/hk_net.c`: sockets; `bionic/hk_netdb.c`: names,
+  addresses, interfaces) is what an app links against. It turns Linux's ABI
+  into the host's and back: the numbers (`AF_INET6` is 10 on Linux and 23 on
+  Windows, `SOL_SOCKET` 1 and 0xFFFF, the `SO_*`, `IPPROTO_*`, `TCP_*` and
+  `MSG_*` options and flags), the structures (`sockaddr_in6`, `msghdr`,
+  `linger`, a `timeval` where Windows takes milliseconds, `ip_mreqn`,
+  `group_req`, `ifreq`), and the errors as Linux's errno. `struct addrinfo`
+  is bionic's, whose order is BSD's -- `ai_canonname` before `ai_addr`, the
+  same as Windows', the other way round from glibc's. An option with no
+  meaning on the host succeeds and is logged once.
+- **The descriptor table** (`bionic/hk_libc_io.c`): a socket is a descriptor
+  like a file, so `read`, `write`, `close`, `dup`, `fcntl` (`O_NONBLOCK`,
+  `FD_CLOEXEC`), `ioctl` (`FIONREAD`, `FIONBIO`, the `SIOCGIF*` questions)
+  and `fstat` (`S_IFSOCK`) work on it.
+
+Windows is made to answer as Linux does where Android code depends on it.
+libcore makes every socket an IPv6 one and reaches IPv4 addresses through it
+as `::ffff:a.b.c.d`, which works because the host turns `IPV6_V6ONLY` off
+(Linux's default, not Windows'). A UDP socket is not told of an earlier
+datagram's ICMP refusal, as Windows otherwise would on the next receive. A
+refused connection to the machine's own address is refused at once (Windows
+retransmits the opening segment twice first, a second or more). Linux's
+`SO_REUSEADDR` is kept and not given its Windows meaning (which lets a second
+socket take a port another listens on). A failed connection's error is said
+once. A datagram larger than the buffer is cut short and said so with
+`MSG_TRUNC`, where Windows calls it an error.
+
+**Names.** `getaddrinfo` and `android_getaddrinfofornet` (libcore's
+`InetAddress` goes through the latter) ask the host's resolver (`GetAddrInfoW`)
+for names. Numbers, and `localhost` -- 127.0.0.1, as Android's hosts file has
+it -- need no network. With no type asked for, every address comes once as a
+datagram entry and once as a stream entry, as bionic gives them.
+`getnameinfo`, the `gethostby*` calls, `inet_pton`/`inet_ntop` (IPv6 written
+as bionic writes it), services and protocols by name are there too.
+
+**Interfaces** are the host's (`GetAdaptersAddresses`) under the names an
+Android phone gives them: `lo`, `wlan0`, `eth0`, `rmnet0`, each with a link
+entry (`AF_PACKET`) and its addresses, as Linux's `getifaddrs` lists them;
+`java.net.NetworkInterface` reads them through `getifaddrs`,
+`if_nametoindex` and `SIOCGIFFLAGS`. Interfaces that are down and the host's
+own tunnels are left out.
+
+**The app's own sockets.** `AF_UNIX` is implemented in the process, in
+`hk_net.c`: `socketpair` of stream, datagram and seqpacket sockets, and names
+(paths or abstract) bound, listened on and connected to. Nothing outside the
+app could be reached on a phone anyway. Libraries make such a pair as a
+wake-up channel, and libcore makes one to stand in for a socket it closes
+under a blocked thread.
+
+### Waiting on sockets with everything else
+
+poll, select and epoll are given a mix: a socket and the pipe an engine's
+loop is woken by, a socket and an eventfd, sockets and files. On Windows
+`WSAPoll` takes sockets only -- and on the Windows these phones have, before
+Windows 10 2004, it never reports a connection attempt that failed -- and
+nothing of Windows' waits on the layer's pipes and eventfds, which are not
+handles. So the wait is not the host's at all. Every descriptor of the layer
+already waited one way: under the descriptor table's lock, on the one
+condition that every change of a pipe or an eventfd is announced on. Sockets
+were made to fit that:
+
+- Each host socket has an event that Winsock sets on each of its network
+  events (`WSAEventSelect`), and a thread-pool wait watches the event. When it
+  fires, the events are taken (`WSAEnumNetworkEvents`), what they say that
+  cannot be asked later is kept (how a connection attempt ended, that the
+  other side closed), and the table's condition is announced, as when a pipe
+  is written to. On Linux one thread waits on all host sockets at once,
+  edge-triggered (`epoll` with `EPOLLET`), and announces likewise.
+- A waiter looks at what holds under the lock -- for a host socket, `select()`
+  with no wait on Windows, `poll()` on Linux -- and then waits on the
+  condition. The announcement takes the same lock, so a change that comes
+  after the look wakes the waiter and none is missed, whichever kind of
+  descriptor changed.
+- Winsock's events are edges, and room to send (`FD_WRITE`) is announced only
+  after a send that found none. So a send that took part of what it was given
+  is asked again with the rest until Winsock has taken all of it or refused
+  some: then the edge is armed.
+
+This costs one more thread hop per change than a native wait, wakes every
+waiter of the process on every change (as a pipe's write always did), and
+needs no thread of the layer's own on Windows. Blocking calls -- `accept`,
+`connect`, `recv`, `send` on a socket without `O_NONBLOCK` -- wait the same
+way, so `SO_RCVTIMEO` and `SO_SNDTIMEO` are the limits of that wait, and a
+signal sent to the thread ends it. That last matters for Java: libcore
+closes a socket that another thread is blocked on by putting a dead pair in
+its place (`dup2`) and sending that thread signal 34
+(`AsynchronousCloseMonitor`), whose handler does not ask for `SA_RESTART`; the
+blocked call must end with `EINTR`, and `ServerSocket.close()` then ends
+`accept()` with "Socket closed". Signals above 32 are kept in a word of their
+own for that. poll, select and epoll end with `EINTR` when any handler ran,
+as Linux's do; the looper's own waits go on.
+
+*Proven:* on this PC (the Win32 host) and under qemu (Linux), by
+`core/tests/hk_net_tests.c` over loopback, through the C library as an app
+calls it -- TCP over IPv4 and over IPv6 reached as `::ffff:127.0.0.1`,
+blocking and not, refusal, accept with a timeout, 6 MB with a blocked and with
+a polling writer, shutdown and the end of a stream, UDP, options, AF_UNIX,
+poll, select and epoll each woken by a socket, a pipe and an eventfd alone,
+`getaddrinfo`'s results word by word as guest code reads them, and (under
+qemu) signal 34 ending a blocked accept and a blocked read; and from Java
+under qemu by the test app `data` (`InetAddress`, `HttpURLConnection` against
+a `ServerSocket` of the app's own, `DatagramSocket`, a `ServerSocket` closed
+under its accepting thread, a `java.nio` selector woken from another thread
+and then serving two channels without blocking, `NetworkInterface`). The check a phone runs
+(`megler_net_check`) reaches the internet from both. *Expected:* that a phone's
+Winsock in an app container does what the PC's does, loopback within the
+process included (Microsoft's documents allow it within a process).
+`tools/build-appx.sh arm --auto net` asks. No TLS: an https connection fails
+with an `SSLException`, as it did before there were sockets.
 
 ## The Java side
 

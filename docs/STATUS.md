@@ -27,6 +27,7 @@ Back. No real app has been tried.
 | Sound: an OpenSL ES buffer-queue player, resampled and mixed to 44.1 kHz stereo for the shell | **passes on the phone** as far as the mixer's output (sample counts and levels) |
 | Films: `libmediandk.so` (extractor, decoders, formats) over the shell's Media Foundation reader; pictures onto a `SurfaceTexture` | **works on the phone** with Hollow Knight's two opening films (H.264 360x202, AAC): every picture decoded and shown full screen, the sound in step with them; watched and heard by the phone's owner, played through and skipped |
 | The shared storage: one `/sdcard` for every app, the app's own `Android/data` and `obb` in it, and links to folders of the phone's own through handles the shell hands over | **passes under qemu and on PC** with a stand-in for the shell (`core/tests/hk_storage_tests.c`, 424 checks), and on PC with the shell's own host over Windows.Storage (`player/StorageHost.cpp`, the same checks; a test program is no app container). **On the phone** (HP Elite x3, 0.1.0.126, `tools/build-appx.sh arm --auto storage`): Music, Pictures, Movies and DCIM are found and answer, and the check's 102 steps pass -- 24 in each link, in a folder of its own: files made, written, read back, appended to, emptied, renamed, moved, removed, folders likewise, and a file moved from one link to another. One thing the PC did not show: an open straight after a close is at times refused with a sharing violation, something of Windows' own having the new file for a moment (2 steps of 102, different ones each run); the host asks again for up to a second. A folder is not moved into another folder by renaming (the app is told EXDEV, and copies). **Not tried**: the Settings section (the list, Add a Folder with the folder picker, the folders Windows remembers across starts), Documents, Downloads, a memory card |
+| The network: TCP and UDP sockets, servers included, blocking and not; the app's own AF_UNIX sockets; names (`getaddrinfo`, `getnameinfo`, `gethostbyname`); the interfaces; poll, select and epoll over sockets with pipes, eventfds and files (docs/ARCHITECTURE.md, "The network") | **passes under qemu and on PC** over loopback (`core/tests/hk_net_tests.c`: 234 checks under qemu, 225 on the PC, which cannot run the test of signal 34 ending a blocked call), and from Java under qemu (the test app `data`: `InetAddress`, `HttpURLConnection` against a `ServerSocket` of the app's own, `DatagramSocket`, a `ServerSocket` closed under the thread in `accept`, a `java.nio` selector, `NetworkInterface`). The check a phone is to run (`megler_net_check`: a public name, `HEAD /generate_204` on its port 80, a server of its own on 127.0.0.1, UDP on 127.0.0.1) passes on both with the internet. **Not tried on a phone at all**: `tools/build-appx.sh arm --auto net` is the run to make; whether an app container's Winsock lets an app reach its own server on loopback is the first thing it answers. No TLS: https fails with an `SSLException` as before |
 | Sound out of the phone (XAudio2) | **heard on the phone** with build 0.1.0.21, the Probe's tone and the demo's; XAudio2 played every frame it was given. With 0.1.0.19 nothing was heard and the log could not say why: the engine was built on the app's own thread then, and nothing was counted |
 | ANGLE: its DLLs, a display, a context | **works on the phone**: Direct3D 11 at feature level 11_1, EGL 1.5, OpenGL ES 3.0; 16384-pixel textures, DXT, depth textures, NPOT; no ETC1, no ASTC |
 | A window surface over the shell's texture, the copy to the swap chain, the picture on screen | **works on the phone**: the right way up, the right colours, 1280x720 scaled to a 2560x1440 screen, 59 frames a second paced by `Present(1)` |
@@ -428,11 +429,18 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   ACTION_BATTERY_CHANGED hears each change. The language is still English.
   Not there: garbage collection (an app that animates lasts minutes); sound,
   WebView and OpenGL from Java; a `SurfaceView` drawn by native code; method
-  handles; conscrypt's native half (no TLS); the network; other apps (the
+  handles; conscrypt's native half (no TLS, so no https: plain sockets and
+  http are there, above, and not yet tried on a phone); other apps (the
   package manager knows only the one running); Kotlin has run only as part of
   Device Info.
 - **Sound from files.** OpenSL ES players fed PCM through a buffer queue are mixed; a player given a file or a URL (which would need MP3/Ogg decoding here) is refused. AAudio is not there.
-- **Network.** Sockets fail as if there were no network.
+- **The network on a phone.** Sockets and names work under qemu and on the PC
+  (the table above) and have not run on a phone. **TLS** is not there: an
+  https connection fails with an `SSLException`. Not there either: ancillary
+  data over sockets (no descriptors passed), `AF_NETLINK` (an app asking the
+  kernel for routes is told there is no such family), and a
+  `ConnectivityManager` that follows the phone: the framework always says
+  connected over Wi-Fi, whatever the phone has.
 - **ETC1 textures** (see above).
 - **Direct system calls** in guest code (`svc 0`), which a JIT inside an app makes.
 - **The on-screen keyboard**, sensors, the software `ANativeWindow_lock` path.

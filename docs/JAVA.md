@@ -96,8 +96,8 @@ bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-f
       75 checks, 0 failed          the Java test app demos, the keyboard's 25 and the frame meter's 3 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
       13 checks, 0 failed          the Java test app crash: an exception nothing catches, launcher aliases, an app written for Android 6
-      45 checks, 0 failed          the Java test app data: a database, the storage, the battery, the time zone and TLS, the first run
-      46 checks, 0 failed          data again, on what the first run left, with another battery and a time zone that is none
+      52 checks, 0 failed          the Java test app data: a database, the storage, the battery, the time zone, TLS and the network, the first run
+      53 checks, 0 failed          data again, on what the first run left, with another battery and a time zone that is none
       47 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
     (then each app once more, its drawing recorded for the PC's run to draw again)
 ```
@@ -509,9 +509,12 @@ and opened at version 2, `onUpgrade` once, the column it adds there. `left`
 and `kept`: the app leaves three rows and counts its runs; `tools/build-tests.sh`
 runs it twice, the second time on the data folder of the first, and the
 second run must find the rows of the first and say that it is run 2.
-With the storage's, the battery's and the time zone's steps (below) and one
-for a popup list and one for TLS, 45 checks in the first run and 46 in the
-second. The popup:
+With the storage's, the battery's and the time zone's steps (below), one
+for a popup list, one for TLS and seven for the network (docs/ARCHITECTURE.md,
+"The network": names, `HttpURLConnection` against a `ServerSocket` of the
+app's own, `DatagramSocket`, a `ServerSocket` closed under the thread in its
+`accept`, a `java.nio` selector, `NetworkInterface`, `ConnectivityManager`),
+52 checks in the first run and 53 in the second. The popup:
 a `ListPopupWindow` of three rows that wraps its
 content, shown under a strip at the top of the window, has all three rows
 inside its list and clear of the list's padding (160 high: three rows of 48
@@ -1916,8 +1919,10 @@ native code is.
   sensors, no video, no OpenGL from Java, no keyboard.
 - Images other than what the shell decodes; the stand-in reads PNG alone, and
   Windows 10 Mobile has no WebP decoder, which apps' resources use heavily.
-- **No network**: sockets fail as if there were none (`bionic/hk_net.c`), and
-  `libopenjdk`'s start-up, which probes for IPv6, is told so.
+- **The network is not tried on a phone**: sockets and names are the phone's
+  own Winsock's (`bionic/hk_net.c`, `hk_netdb.c`; docs/ARCHITECTURE.md, "The
+  network"), and `java.net`, `HttpURLConnection` over http and `java.nio`
+  work on them under qemu.
 - **No TLS and no conscrypt**: `libjavacrypto.so` is not built (it needs
   `libssl`). Digests, random numbers, MACs and ciphers are had without it
   ("The security providers"); TLS and whatever asks conscrypt's provider by
@@ -2283,8 +2288,8 @@ What stands between this and an app from a shop, as far as reading tells
   which exist here and are tested singly, not together. Kotlin's reflection
   reads the `kotlin.Metadata` annotation, which is a run-time annotation with
   string arrays: read here.
-- **The big libraries**: an HTTP client needs sockets and TLS, neither of
-  which is here; a JSON library that reflects on generic field types needs
+- **The big libraries**: an HTTP client needs sockets, which are here, and
+  TLS, which is not; a JSON library that reflects on generic field types needs
   `Signature`, which is; dependency injection that generates code needs
   nothing; one that scans a `DexFile`'s class names gets them.
 - **A collector**, before any of them runs for long (below).
@@ -2444,7 +2449,7 @@ Still to change, for the steps above:
 | `core/src/apk/hk_apk.c` | (done) an APK with Java and native libraries that no engine was recognised in is `java` |
 | `core/src/run/hk_run.c` | it refuses every app where guest code cannot run; a Java app without native libraries needs none (only the PC's tests meet this) |
 | `core/src/host/*` | something called when a thread ends |
-| `core/src/bionic/hk_libc_mem.c`, `hk_net.c` | a shared mapping for a file mapped twice; sockets |
+| `core/src/bionic/hk_libc_mem.c`, `hk_net.c` | a shared mapping for a file mapped twice; (done) sockets |
 | `core/src/ld/hk_ld.c` | (done) libraries told apart by where they came from |
 | `app/Megler` | `megler_gfx_host` and `present_pixels`; a Java app's page and state; the keyboard and the rest of what `megler.Native` asks of a host; the Android root in the ordinary package or unpacked once |
 | `docs/STATUS.md`, `docs/ARCHITECTURE.md`, `README.md` | they describe the first milestone |

@@ -36,12 +36,16 @@ has to answer.
   preferences, background tasks, databases, a native library of their own --
   and the first real apps start there (docs/STATUS.md says how far each
   gets), their text in Android's own fonts; what they still wait for is
-  garbage collection, sound and the network.
+  garbage collection, sound and TLS (https).
 - OpenGL ES 2.0 on any phone; 3.0 where the GPU's driver gives Direct3D feature
   level 10 or more. No Vulkan.
 - Sound through OpenSL ES buffer queues (what FMOD, OpenAL Soft and SDL sit on).
   Films an engine plays through `libmediandk.so`, when they are something Windows
-  decodes (MP4 with H.264 and AAC). No network yet.
+  decodes (MP4 with H.264 and AAC).
+- The network over the phone's own Winsock: TCP and UDP, servers included, names,
+  the interfaces, from native code and from Java (`HttpURLConnection` over
+  http, `java.net`, NIO). Tested on a PC and under qemu, not yet on a phone. No
+  TLS yet: https fails.
 
 The app's library page tells, for each APK, what it is and why it can or cannot run.
 
