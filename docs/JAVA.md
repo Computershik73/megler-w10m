@@ -1924,9 +1924,220 @@ exception.
 ### Memory
 
 **Nothing is collected.** Every object is a zeroed allocation from the C heap
-that lives as long as the process. (The original does not collect either.) The
-plan is under "Threads and memory" below. Allocation goes through one function,
-`alloc_raw` in `hk_dvm_object.c`.
+that lives as long as the process. (The original does not collect either.)
+Allocation goes through one function, `alloc_raw` in `hk_dvm_object.c`. The
+collector's design is the next section. This one changes when it is built.
+
+### The collector (design, round 7; not built yet)
+
+Why now: the frame meter's first lines from the phone. Apktool M's heap grew by
+about 5 MB a second, 239 MB at the start and 1227 MB after three and a half
+minutes. The process reached 1.6 GB, Direct2D's `CreateBitmap` failed with
+E_OUTOFMEMORY, and the core aborted. Part of that growth was a layout loop
+that is fixed now (`AbsListView`, above). But any app that animates or
+scrolls allocates without end, and an app that runs long enough dies.
+
+This replaces the plan under "Threads and memory" below in one respect. That
+plan had native code exact (a table of local references per thread) and native
+stacks not scanned. This one scans every stack conservatively and stops threads
+where they are. The reason is the runtime's own C code. The natives of the
+drivers, of `hk_dvm_art*.c` and of the JNI layer hold raw `hk_jobj *` in C
+locals across calls that allocate:
+`args[0].l = hk_dvm_new_string(a); args[1].l = hk_dvm_new_string(b);` is the
+pattern, and there are hundreds of them. An exact table would need every one of
+them found and annotated, and a missed one is a use-after-free. Scanning the C
+stack finds them all without a line changed. It also covers guest JNI code that
+keeps a local reference in a local, which is what local references are for.
+
+**What it is.** A non-moving, stop-the-world mark and sweep.
+- *Non-moving*: objects stay at their addresses. Every `jobject` is an address,
+  `Get<Type>ArrayElements` and `GetPrimitiveArrayCritical` hand out the array's
+  own storage, the identity hash is the address, and `Unsafe` works on offsets
+  from it.
+- *Mark*: the world stopped, from the roots below, with an explicit mark stack.
+  The mark stack is allocated before the stop, sized by the count of live
+  objects.
+- *Sweep*: after the world goes on, under the heap's lock. Objects allocated
+  while it runs are born marked.
+- No generations and no compaction. Fragmentation is limited by size classes.
+
+**The heap.** It is no longer the C heap.
+- *Small objects*, up to 2 KB, live in blocks of 64 KB, each of one size class
+  (16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048
+  bytes). Blocks come from the host as aligned reservations. A block has a
+  header with its class, a free list, and two bitmaps, "allocated" and "marked".
+- *Large objects*, over 2 KB, are allocated one by one. They are kept in an
+  array sorted by address, each with its mark bit.
+- "Is this word inside an object, and which one" is answered by the address.
+  The block's base is found from a sorted array of block bases (binary search;
+  some thousands of blocks for a gigabyte). The object is found by
+  `(address - first) / size` and the "allocated" bit. A large object is found
+  by binary search over its sorted array.
+- Interior addresses count. A pointer to an array's elements keeps the array.
+  This is the case for `u.arr.data` in a C local, or for what
+  `GetByteArrayElements` returned to guest code.
+- An empty block goes back to the host after a sweep when more than a few are
+  empty.
+
+**Roots, and exact or conservative.**
+- *Conservative*:
+  - Every registered thread's C stack, from its stack pointer at the stop to
+    the top recorded at registration (`hk_thread_stack_bounds`), and its
+    registers at the stop. This covers the runtime's C code, the drivers, the
+    JNI layer and guest native code alike.
+  - Every thread's frame stack, the interpreter's registers, from its base to
+    its `sp` (plus a margin of 64 words). A register is untyped here: an int
+    that looks like an address keeps an object a little longer. In exchange
+    nothing has to know which register holds a reference at which pc, which
+    would take a verifier.
+- *Exact*:
+  - Inside objects. A class's reference slots are its fields of type `L` or
+    `[`, its superclasses' included, as a slot list made at link time. An
+    object array is all references. A string has none. `hk_jobj.fields`, the
+    JNI layer's by-name fields of its stand-in classes, counts by its
+    `is_object` flags.
+  - Every linked class: its statics (typed by their fields), its `Class`
+    object, its `init_error`. Classes are never unloaded.
+  - The runtime's tables: interned strings, each DEX file's resolved string
+    constants (`scache`), reflection's `Method`/`Field` objects (kept for good,
+    one per member), proxy classes' method arrays, the preallocated
+    `OutOfMemoryError`.
+  - Each thread's pending exception, `peer` (its `java.lang.Thread`) and
+    `scratch`.
+  - The JNI layer's global reference table (`g_refs` in `hk_jni.c`, which
+    `NewGlobalRef` already keeps with counts) and its stand-in classes' statics.
+  - C globals of the drivers and the runtime that hold objects: the Java
+    driver's clipboard, `g_dvm.app_loader`, and what an audit of every
+    `hk_jobj *` in a static or a C struct finds. They are registered with
+    `hk_dvm_add_root(hk_jobj **)`, and the audit's list goes into this section.
+- *Weak global references* (`NewWeakGlobalRef`) are strong for now. A weak
+  handle here is the object's address. If the object were freed and its
+  address reused, `IsSameObject(weak, NULL)` would say "alive" for an unrelated
+  object. Clearing them properly needs indirect handles, which is later work
+  with its own commit.
+- *Not covered*: a `jobject` that native code keeps in its own heap or globals
+  without `NewGlobalRef`. That is invalid JNI, and on Android such a reference
+  stops working at the native method's return. `jclass` values cached so do
+  survive, because classes are never freed.
+
+**How threads are stopped.** Asynchronously, with no safepoints.
+- The host layer can already stop a thread and read its registers:
+  `SuspendThread`/`GetThreadContext` on Windows, which `hk_thread_interrupt`
+  uses, and a signal on Linux.
+- The collector does this, in this order:
+  1. It takes the runtime's locks: `hk_dvm_lock`, the heap's lock, the JNI
+     references' lock and the interned strings' lock.
+  2. It suspends every other registered thread and reads its stack pointer and
+     registers.
+  3. It marks.
+  4. It processes references (below).
+  5. It resumes the threads.
+  6. It releases the locks.
+  7. It sweeps.
+- Because the locks are taken first, no stopped thread holds one of them.
+- Between the stop and the resume the collector allocates nothing, frees
+  nothing and logs nothing. A stopped thread may hold the C library's heap
+  lock or the log's.
+- A thread is registered by `hk_dvm_self` (it already is), with its `hk_thread`
+  and its stack's top. It is unregistered when it ends: the end of a Java
+  thread, `DetachCurrentThread`, and the bionic layer's thread exit for guest
+  threads that attached. A thread that cannot be suspended because it is gone
+  is dropped from the list.
+- A thread suspended in the middle of anything is fine for a non-moving,
+  non-incremental collector. A reference being moved is in a register or still
+  in its old place, and both are scanned. An object just allocated is in a
+  register or a local. The heap's lock means no thread is halfway through the
+  allocator's lists.
+- Threads that never touch the runtime are not stopped: the shell's UI thread,
+  audio threads, the host's drawing threads.
+
+**When it runs.**
+- When an allocation finds that more than the budget has been allocated since
+  the last collection. The budget is the larger of 8 MB and three quarters of
+  what survived the last one. The bytes of bitmaps made since then count too
+  (`hk_java_gfx_stats`), since that memory is freed only through the objects.
+- `System.gc()` and `Runtime.gc()` (today they do nothing).
+- Before an `OutOfMemoryError`. If an allocation would pass the heap's limit,
+  a collection runs that also clears soft references, and only if that is not
+  enough is `OutOfMemoryError` thrown. The limit is 512 MB, or half of
+  `hk_mem_limit`, whichever is smaller.
+- The collection runs on the allocating thread, before it takes the heap's
+  lock. Its pause and the result are one line in the log ("gc: 41 ms, 212 MB
+  live of 260, 48 MB freed, 3 threads stopped"), and the frame meter's line
+  gets the time spent collecting.
+
+**References, finalizers, queues.** libcore's `java.lang.ref.Reference` has a
+`referent` that ART treats specially, and so will this collector.
+- While marking, an object of a subclass of `Reference` has its `referent`
+  slot skipped and goes on a list.
+- After marking:
+  - `WeakReference`: the referent is cleared if it is unmarked.
+  - `SoftReference`: the same, but only in a collection that clears soft
+    references (before an `OutOfMemoryError`, or when the heap is past three
+    quarters of its limit).
+  - `PhantomReference`, `sun.misc.Cleaner` among them: cleared and enqueued
+    when the referent is unmarked. `NativeAllocationRegistry` frees native
+    memory through `Cleaner`.
+- A cleared reference with a queue goes on a pending list linked through
+  `pendingNext`. Nothing runs Java on the collecting thread, which may be deep
+  in C code holding locks. The list is handed to a reference thread of the
+  runtime's own, a Java thread made at start, which calls
+  `ReferenceQueue.enqueuePending(list)`. That is libcore's own method, the one
+  the ReferenceQueueDaemon calls; it runs `Cleaner.clean()` for cleaners and
+  enqueues the rest.
+- *Finalizers.* An object whose class overrides `finalize()` with a body
+  (ART's "finalizable") is recorded at allocation in a C list, not through
+  libcore's `FinalizerReference`. After marking, every unmarked finalizable
+  object is marked again with everything it reaches (resurrected), taken off
+  the list, and queued. The same runtime thread calls `finalize()` on each,
+  catching what it throws. The next collection frees the object if nothing
+  revived it. `Runtime.runFinalization()` waits until the queue is empty.
+- libcore's `Daemons` are not started. FinalizerWatchdogDaemon would end the
+  app if a finalizer took ten seconds, which is a policy for later.
+
+**Bitmaps' native memory.** The framework's `Bitmap` has a `finalize()` that
+calls `recycle()`, which frees the `megler.Gfx` handle (`Gfx.bmFree`). So with
+finalizers, a bitmap nobody holds frees its pixels at the collection after
+next. Bitmap bytes made count toward the next collection's budget, as said, so
+an app that makes bitmaps and drops them collects before Direct2D runs out.
+
+**The sweep frees what an object owns besides itself**: its monitor, a string's
+cached UTF-8, the `fields` array of a stand-in object.
+
+**How it will be tested.**
+- *The core's tests* (both hosts):
+  - allocate and drop in a loop with a small heap limit, so that the limit is
+    passed many times over and the live size stays put;
+  - a root held only by a C local of a native, across a collection;
+  - a reference held only in an interpreter register;
+  - an interior pointer into an array;
+  - statics and global references;
+  - weak, soft and phantom references with queues;
+  - a finalizer that resurrects its object;
+  - four threads allocating and checking trees of objects while collections
+    happen.
+  - A debug switch (`HK_DVM_GC_POISON`) fills freed objects with a pattern and
+    keeps their memory out of reuse, so that a use after free shows as the
+    pattern.
+- *A test app `gc`* under qemu: an Activity that allocates for minutes with a
+  bounded heap, checks its own data, uses `WeakReference`, `SoftReference` and
+  `ReferenceQueue` and finalizers, and runs threads that allocate at once.
+- *The `natives` app*: a JNI method that makes objects (`NewStringUTF`,
+  `NewObjectArray`), calls `System.gc()` through JNI, and checks them;
+  a global reference that survives.
+- *Apktool M under qemu with the frame meter*, for minutes: the heap must stay
+  flat.
+
+**Order of the work.** Each step is a commit that builds and passes.
+1. The heap: blocks, size classes and large objects in place of the C heap,
+   with nothing freed yet.
+2. Registration and suspension of threads, and the conservative scan. Then a
+   collection that only marks and reports what it would free, run by the
+   tests.
+3. The audit of C roots, the sweep, the trigger and `System.gc()`.
+4. References and the reference thread.
+5. Finalizers, and bitmaps with them.
+6. The `gc` app and the stress tests.
 
 ### What is not checked
 
@@ -2399,7 +2610,9 @@ Thirteen thousand instructions a picture is a fifth of a millisecond of
 interpreting on the phone at the rate expected below; what a picture costs
 there will be the shell's drawing and the copy of 1.5 MB.
 
-The collector planned:
+The collector planned (superseded in round 7 by "The collector" under Design,
+which scans native stacks conservatively and stops threads where they are,
+instead of the exact native roots and safepoints below):
 
 - *Non-moving mark and sweep, stopping the world.* Non-moving because pointers to
   objects are everywhere outside the runtime's sight: every `jobject` native
