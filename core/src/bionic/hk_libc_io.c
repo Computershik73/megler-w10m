@@ -362,7 +362,23 @@ static int maps_one(hk_addr bias, const char *name, const void *phdr, unsigned p
     return 0;
 }
 
-/* The content of a /proc or /sys file some code reads to learn about the device; NULL when there is none by that name. */
+/*
+ * The command line Chromium-based apps (Brave and its kind) read at start. Renderer and GPU run as Android services in
+ * processes of their own, which this platform cannot start: in a single process the renderer runs on threads of the
+ * browser's, and the GPU too.
+ */
+#define CHROME_COMMAND_LINE "/data/local/chrome-command-line"
+
+/* Whether a path is one of the files synthetic() makes up. */
+static bool is_synthetic(const char *g)
+{
+    return !strncmp(g, "/proc/", 6) || !strncmp(g, "/sys/", 5) || !strcmp(g, CHROME_COMMAND_LINE);
+}
+
+/*
+ * The content of a /proc or /sys file some code reads to learn about the device, or of the Chromium command line; NULL
+ * when there is none by that name.
+ */
 static char *synthetic(const char *g, size_t *size)
 {
     textbuf t;
@@ -404,6 +420,8 @@ static char *synthetic(const char *g, size_t *size)
         if (!strcmp(leaf, "cpuinfo_max_freq") || !strcmp(leaf, "scaling_max_freq") || !strcmp(leaf, "scaling_cur_freq")) tb_add(&t, "1800000\n");
         else if (!strcmp(leaf, "cpuinfo_min_freq") || !strcmp(leaf, "scaling_min_freq")) tb_add(&t, "300000\n");
         else return NULL;
+    } else if (!strcmp(g, CHROME_COMMAND_LINE)) {
+        tb_add(&t, "chrome --single-process --in-process-gpu\n");
     } else {
         return NULL;
     }
@@ -665,7 +683,7 @@ static int g_open(const char *path, int flags, int mode)
         o->shm_prot = 7;
         o->mem = (u8 *)hk_alloc(1);
         o->mem_size = 0;
-    } else if (!strncmp(g, "/proc/", 6) || !strncmp(g, "/sys/", 5)) {
+    } else if (is_synthetic(g)) {
         size_t n = 0;
         o->mem = (u8 *)synthetic(g, &n);
         if (!o->mem) {
@@ -1312,7 +1330,7 @@ static int g_stat_path(const char *path, g_stat *out)
         free(g);
         return 0;
     }
-    text = (!strncmp(g, "/proc/", 6) || !strncmp(g, "/sys/", 5)) ? synthetic(g, &n) : NULL;
+    text = is_synthetic(g) ? synthetic(g, &n) : NULL;
     if (text) {
         free(text);
         fill_special(out, G_S_IFREG | 0444, n, g);

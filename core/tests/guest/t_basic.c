@@ -816,6 +816,26 @@ int t_fonts(void)
 }
 
 /*
+ * The command line a Chromium-based app reads at its start: /data/local/chrome-command-line exists (stat gives its size,
+ * as File.exists and File.length ask), and it says single-process with the GPU in-process. 3, or the negated step.
+ */
+int t_chrome_cmdline(void)
+{
+    static const char want[] = "chrome --single-process --in-process-gpu\n";
+    unsigned st[32];
+    char text[128];
+    int fd, n;
+    if (stat("/data/local/chrome-command-line", st) != 0 || st[12] != sizeof(want) - 1) return -1;
+    fd = open("/data/local/chrome-command-line", 0);
+    if (fd < 0) return -2;
+    n = read(fd, text, sizeof(text) - 1);
+    close(fd);
+    if (n != (int)sizeof(want) - 1) return -3;
+    text[n] = 0;
+    return strcmp(text, want) == 0 ? 3 : -3;
+}
+
+/*
  * An IFUNC: a symbol the loader resolves at load time by running a resolver in the library's own code, which picks one of
  * several implementations (libc's string and memory routines are IFUNCs that pick a CPU-tuned version). The resolver is
  * the library's code, so the loader must have made the text executable before it runs it (hk_ld.c's two-pass relocate).
