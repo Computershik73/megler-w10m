@@ -352,7 +352,12 @@ that reads, writes, seeks, says its size and deletes, and a folder handle that
 lists; everything else -- a handle for the attributes alone, a folder deleted
 or renamed through its handle, what a folder's name asked for as a file is
 answered with, a picked folder kept across starts -- has not been asked of a
-phone.
+phone. What asks is `megler_storage_check`: in every link the layer does,
+through its own C library, what an app does to files, in a folder of its own
+(`megler-storage-check`) that it removes again, and says each step and which
+way Windows answered. **Settings › Check the Folders** runs it, and so does a
+package built with `tools/build-appx.sh arm --auto storage`, into
+`megler-auto.log`.
 
 ## The Java side
 

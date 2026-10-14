@@ -101,6 +101,15 @@ public:
     /// Forgets an added folder. On the UI thread.
     void remove(const std::string& token);
 
+    /// megler_storage_check (megler.h) on the links as they are now: the layer
+    /// does in each of them what an app does to files, in a folder of its
+    /// own that it removes again, and `line` is told every step. Before
+    /// that, three steps of its own: that the music, the pictures and the
+    /// videos are among the links, as they are expected to be on a phone.
+    /// Returns the last line, "DONE storage: N checks, M failed". Not on the
+    /// UI thread, and not while an app runs.
+    std::string check(const std::function<void(const std::string&)>& line);
+
     /// What has been asked so far and which way Windows answered, in a line:
     /// how many calls of each kind, how many folders had to be looked up and
     /// how many were known, and each of the ways round a refusal that was

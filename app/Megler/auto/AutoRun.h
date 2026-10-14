@@ -1,6 +1,6 @@
 // The unattended on-device run: a build made with
 //
-//   tools/build-appx.sh arm --auto probe|selftest|gfx|play|java (or several, with commas)
+//   tools/build-appx.sh arm --auto probe|selftest|gfx|storage|play|java (or several, with commas)
 //
 // does, at start-up, without anyone touching the phone:
 //
@@ -16,6 +16,15 @@
 //    (player/GfxHost.h: Direct2D, DirectWrite, WIC) on this device and
 //    checked; what it says is in megler-auto.log, and its pictures are
 //    LocalState\shot-gfx-*.bmp;
+//  * storage: the phone's folders in an app's storage (player/StorageHost.h)
+//    gone through as an app goes through them, by the layer's own file
+//    functions (megler_storage_check): in the music, the pictures, the videos
+//    and every other link, a folder made, a file written, read back,
+//    stat'ed, renamed, moved and removed, the folder removed. A line in
+//    megler-auto.log for each link the shell found and for each step, then how
+//    Windows answered, then "DONE storage: N checks, M failed". It works in a
+//    folder of its own in each, megler-storage-check, removes it again, and
+//    touches nothing else of the user's. It runs no app;
 //  * play: opens the player on the library's game (the first that can run
 //    and is not the demo; the demo when there is nothing else) as a tap on
 //    Play would, and lets it run for two minutes or until it ends. What it
@@ -58,7 +67,7 @@ bool start(std::string description);
 /// without it.
 void tick(ui::AppShell& shell);
 
-/// "probe,selftest", "probe", "selftest", "gfx", "play", "java"..., or "" in a normal build.
+/// "probe,selftest", "probe", "selftest", "gfx", "storage", "play", "java"..., or "" in a normal build.
 const char* modes();
 
 } // namespace megler::app::autorun

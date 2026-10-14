@@ -41,6 +41,9 @@
 static int t_checks, t_failed;
 static hk_test_sink t_sink;
 static void *t_sink_user;
+/* The check for a phone (below), run among the tests' own lines: only its steps that fail are said, each with where it was. */
+static bool g_check_quiet;
+static char g_check_where[240];
 
 static void say(const char *fmt, ...)
 {
@@ -224,12 +227,19 @@ static bool fake_remove(void *user, int root, const char *rel, bool dir, int *er
     return ok;
 }
 
+/* Set, the stand-in moves no folder into another folder: what a phone's shell is expected to say of that, tried here. */
+static bool g_fake_moves_no_folder;
+
 static bool fake_rename(void *user, int from_root, const char *from, int to_root, const char *to, int *err)
 {
     char *a = fake_path(from_root, from), *b = fake_path(to_root, to);
+    const char *from_name = strrchr(from, '/'), *to_name = strrchr(to, '/');
+    size_t from_dir = from_name ? (size_t)(from_name - from) : 0, to_dir = to_name ? (size_t)(to_name - to) : 0;
+    hk_stat st;
     bool ok = false;
     (void)user;
     if (!a || !b) *err = HK_E_NOENT;
+    else if (g_fake_moves_no_folder && (from_root != to_root || from_dir != to_dir || strncmp(from, to, from_dir)) && hk_path_stat(a, &st, NULL) && st.is_dir) *err = HK_E_XDEV;
     else ok = hk_path_rename(a, b, err);
     free(a);
     free(b);
@@ -1103,7 +1113,267 @@ static void test_no_links(const char *data)
     CHECK(C.rename("/sdcard/Pictures/p.txt", "/sdcard/Music/p.txt") == 0 && C.unlink("/sdcard/Music/p.txt") == 0 && C.rmdir("/sdcard/Pictures/album") == 0);
     CHECK(C.rmdir("/sdcard/Music") == -1 && last_errno() == GE_NOTEMPTY);
     CHECK(is_dir("/sdcard/Android/data/" PKG) && !strcmp(get("/sdcard/Android/data/" PKG "/files/save.dat"), "new"));
+    {
+        /* The check goes through a folder of the layer's own as through a link, and says which it found. */
+        static const char *const names[] = { "Pictures", "Download" };
+        int before = t_failed;
+        g_check_quiet = true;
+        hk_storage_check_run(names, 2, t_sink, t_sink_user, NULL);
+        g_check_quiet = false;
+        CHECK_INT(t_failed - before, 0);
+    }
     CHECK_INT(g_calls - calls, 0);
+}
+
+/* ------------------------------------------------- the check for a phone
+ *
+ * What an app does to files, done in a folder of the shared storage through
+ * the C library, a line said for every step: hk_storage_check_run, which a
+ * phone runs on its real libraries (megler_storage_check in megler.h) and the
+ * tests run here on the stand-in's. Everything happens in a folder of the
+ * check's own, megler-storage-check, made in the folder asked about and taken
+ * away at the end: nothing else there is opened, changed or removed.
+ */
+#define CHECK_DIR "megler-storage-check"
+
+static void heading(const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(g_check_where, sizeof(g_check_where), fmt, ap);
+    va_end(ap);
+    if (!g_check_quiet) say("%s", g_check_where);
+}
+
+static void step_said(bool ok, int err, const char *fmt, ...)
+{
+    char text[420], why[40];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(text, sizeof(text), fmt, ap);
+    va_end(ap);
+    t_checks++;
+    if (!ok) t_failed++;
+    snprintf(why, sizeof(why), " -- errno %d", err);
+    if (!g_check_quiet) say("  %s %s%s", ok ? "ok  " : "FAIL", text, ok ? "" : why);
+    else if (!ok) say("  FAIL %s: %s%s", g_check_where, text, why);
+}
+
+/* A step: whether it went as it must, and what it was. A failed one says the errno it was left with. */
+#define STEP(cond, ...)                 \
+    do {                                \
+        bool ok_ = (cond);              \
+        int err_ = last_errno();        \
+        step_said(ok_, err_, __VA_ARGS__); \
+    } while (0)
+
+static void noted(const char *fmt, ...)
+{
+    char text[420];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(text, sizeof(text), fmt, ap);
+    va_end(ap);
+    if (!g_check_quiet) say("       %s", text);
+}
+
+/* Takes the check's own folder away, by the names the check gives things and no others: after a run, and before one for what an earlier run left when it was cut short. */
+static void check_sweep(const char *own)
+{
+    static const char *const files[] = { "a.txt", "b.txt", "c.txt", "x.txt", "sub/b.txt", "sub2/b.txt", "sub3/moved/b.txt" };
+    static const char *const dirs[] = { "sub3/moved", "sub3", "sub2", "sub" };
+    char path[400];
+    size_t i;
+    for (i = 0; i < HK_COUNT(files); i++) {
+        snprintf(path, sizeof(path), "%s/%s", own, files[i]);
+        C.unlink(path);
+    }
+    for (i = 0; i < HK_COUNT(dirs); i++) {
+        snprintf(path, sizeof(path), "%s/%s", own, dirs[i]);
+        C.rmdir(path);
+    }
+    C.rmdir(own);
+}
+
+static void check_dir(const char *dir, const char *alias)
+{
+    static const char alphabet[] = "abcdefghijklmnopqrstuvwxyz";
+    char own[300], a[340], b[340], c[340], sub[340], sub2[340], sub3[340], held[400], through[400], buf[64];
+    dir_seen *seen = (dir_seen *)hk_alloc(sizeof(*seen));
+    char *host = hk_fs_host_path(dir);
+    bool link = host && hk_path_is_foreign(host);
+    u64 began = hk_time_monotonic_ns(), t;
+    int before, fd, i;
+    free(host);
+    snprintf(own, sizeof(own), "%s/" CHECK_DIR, dir);
+    snprintf(a, sizeof(a), "%s/a.txt", own);
+    snprintf(b, sizeof(b), "%s/b.txt", own);
+    snprintf(c, sizeof(c), "%s/c.txt", own);
+    snprintf(sub, sizeof(sub), "%s/sub", own);
+    snprintf(sub2, sizeof(sub2), "%s/sub2", own);
+    snprintf(sub3, sizeof(sub3), "%s/sub3", own);
+    snprintf(through, sizeof(through), "%s/" CHECK_DIR "/a.txt", alias);
+    heading("%s, which is %s", dir, link ? "a folder of the phone's own" : "a folder of the layer's own, not one of the phone's");
+    STEP(is_dir(dir), "it is a folder");
+    read_dir(dir, seen);
+    before = seen->count;
+    STEP(before >= 0 && seen->dots, "it is listed: %d entries", before);
+    if (times(seen, CHECK_DIR)) {
+        noted("an earlier check's folder was still there (a run cut short); it is taken away first");
+        check_sweep(own);
+        before--;
+    }
+    STEP(C.mkdir(own, 0777) == 0, "a folder is made in it: " CHECK_DIR);
+    STEP(C.mkdir(own, 0777) == -1 && last_errno() == GE_EXIST, "made again it is refused, being there (EEXIST)");
+    STEP(put(a, alphabet), "a file is written in the folder: a.txt, 26 bytes");
+    STEP(!strcmp(get_into(buf, sizeof(buf), through), alphabet), "and read back through the storage's other name, %s", alias);
+    STEP(size_of(through) == 26, "stat says 26 bytes and a file");
+    {
+        t_stat st;
+        i64 now = (i64)(hk_time_realtime_ns() / 1000000000ull);
+        bool ok = C.stat(a, &st) == 0;
+        STEP(ok && st.mt_sec > now - 2 * 86400 && st.mt_sec < now + 2 * 86400, "its time of change is now, give or take (%lld s from the clock's)", ok ? (long long)(st.mt_sec - now) : 0ll);
+    }
+    {
+        t_stat st;
+        bool ok;
+        memset(&st, 0, sizeof(st));
+        fd = C.open(a, T_WRONLY | T_APPEND, 0);
+        ok = fd >= 0 && C.write(fd, "0123", 4) == 4 && C.fstat(fd, &st) == 0 && st.st_size == 30;
+        if (fd >= 0) C.close(fd);
+        STEP(ok && !strcmp(get_into(buf, sizeof(buf), a), "abcdefghijklmnopqrstuvwxyz0123"), "four bytes appended: 30 bytes by fstat, the new ones at the end");
+    }
+    fd = C.open(a, T_WRONLY | T_TRUNC, 0);
+    i = fd >= 0 && C.write(fd, "new", 3) == 3;
+    if (fd >= 0) C.close(fd);
+    STEP(i && size_of(a) == 3 && !strcmp(get_into(buf, sizeof(buf), a), "new"), "opened to be emptied, and written again: 3 bytes");
+    STEP(open_errno(a, T_WRONLY | T_CREAT | T_EXCL) == GE_EXIST, "to make it anew when it is there is refused (EEXIST)");
+    read_dir(own, seen);
+    STEP(seen->count == 1 && times(seen, "a.txt") == 1 && type_of(seen, "a.txt") == T_DT_REG, "the folder lists one entry, the file");
+    STEP(C.rename(a, b) == 0 && stat_errno(a) == GE_NOENT && size_of(b) == 3, "renamed where it is: a.txt is b.txt, and a.txt is gone");
+    STEP(put(c, "replacement") && C.rename(c, b) == 0 && !strcmp(get_into(buf, sizeof(buf), b), "replacement") && stat_errno(c) == GE_NOENT,
+         "a second file renamed onto it takes its place");
+    snprintf(held, sizeof(held), "%s/b.txt", sub);
+    STEP(C.mkdir(sub, 0777) == 0 && C.rename(b, held) == 0 && size_of(held) == 11 && stat_errno(b) == GE_NOENT, "a folder made in the folder, and the file moved into it by renaming");
+    STEP(C.rmdir(sub) == -1 && last_errno() == GE_NOTEMPTY && size_of(held) == 11, "the folder is NOT removed while it holds the file (ENOTEMPTY), and the file is still in it");
+    STEP(C.unlink(sub) == -1 && last_errno() == GE_ISDIR && is_dir(sub), "nor removed as if it were a file (EISDIR)");
+    snprintf(held, sizeof(held), "%s/b.txt", sub2);
+    STEP(C.rename(sub, sub2) == 0 && size_of(held) == 11 && stat_errno(sub) == GE_NOENT, "the folder renamed where it is, with what it holds");
+    {
+        /* A folder into another folder: by rename where the host can, and where it cannot the answer an app copies on. */
+        char moved[400], inside[440];
+        int r, e;
+        snprintf(moved, sizeof(moved), "%s/moved", sub3);
+        snprintf(inside, sizeof(inside), "%s/b.txt", moved);
+        STEP(C.mkdir(sub3, 0777) == 0, "a second folder made beside it");
+        r = C.rename(sub2, moved);
+        e = last_errno();
+        if (r == 0) {
+            STEP(size_of(inside) == 11 && stat_errno(sub2) == GE_NOENT, "the first folder moved into the second by renaming, with what it holds");
+            snprintf(held, sizeof(held), "%s", inside);
+        } else {
+            *hk_errno_ptr() = e;
+            STEP(e == GE_XDEV && size_of(held) == 11 && stat_errno(moved) == GE_NOENT,
+                 "the first folder is not moved into the second by renaming: EXDEV, as between two disks, which an app answers by copying; nothing was moved or lost");
+        }
+    }
+    snprintf(through, sizeof(through), "%s/none.txt", own);
+    STEP(open_errno(through, T_RDONLY) == GE_NOENT && stat_errno(through) == GE_NOENT, "a file that is not there is ENOENT, to open and to stat");
+    /* What a call costs here: on a phone each is a question to Windows' broker. */
+    t = hk_time_monotonic_ns();
+    for (i = 0; i < 20; i++) size_of(held);
+    noted("20 times stat of the file: %d ms", (int)((hk_time_monotonic_ns() - t) / 1000000ull));
+    t = hk_time_monotonic_ns();
+    for (i = 0; i < 20; i++) open_errno(held, T_RDONLY);
+    noted("20 times the file opened and closed: %d ms", (int)((hk_time_monotonic_ns() - t) / 1000000ull));
+    STEP(C.unlink(held) == 0 && stat_errno(held) == GE_NOENT, "the file is removed");
+    STEP(C.unlink(held) == -1 && last_errno() == GE_NOENT, "removed again it is ENOENT");
+    check_sweep(own);
+    read_dir(dir, seen);
+    STEP(stat_errno(own) == GE_NOENT && seen->count == before && !times(seen, CHECK_DIR), "the folders are removed, the check's own last: %s is as it was, %d entries", dir, before);
+    noted("all of that took %d ms", (int)((hk_time_monotonic_ns() - began) / 1000000ull));
+    free(seen);
+}
+
+/* A file from one folder of the storage to another by renaming: from one link to another on a phone. */
+static void check_between(const char *from_dir, const char *to_dir)
+{
+    char from_own[300], to_own[300], from[340], to[340], buf[32];
+    int r, e;
+    snprintf(from_own, sizeof(from_own), "%s/" CHECK_DIR, from_dir);
+    snprintf(to_own, sizeof(to_own), "%s/" CHECK_DIR, to_dir);
+    snprintf(from, sizeof(from), "%s/x.txt", from_own);
+    snprintf(to, sizeof(to), "%s/x.txt", to_own);
+    heading("from %s to %s", from_dir, to_dir);
+    check_sweep(from_own);
+    check_sweep(to_own);
+    STEP(C.mkdir(from_own, 0777) == 0 && C.mkdir(to_own, 0777) == 0 && put(from, "across"), "a folder of the check's in each, and a file in the first");
+    r = C.rename(from, to);
+    e = last_errno();
+    if (r == 0) {
+        STEP(!strcmp(get_into(buf, sizeof(buf), to), "across") && stat_errno(from) == GE_NOENT, "the file moved from the one to the other by renaming");
+    } else {
+        *hk_errno_ptr() = e;
+        STEP(e == GE_XDEV && size_of(from) == 6 && stat_errno(to) == GE_NOENT, "the file is not moved from the one to the other by renaming: EXDEV, which an app answers by copying; it is where it was");
+    }
+    check_sweep(from_own);
+    check_sweep(to_own);
+    STEP(stat_errno(from_own) == GE_NOENT && stat_errno(to_own) == GE_NOENT, "and both folders of the check's are gone again");
+}
+
+int hk_storage_check_run(const char *const *names, int count, hk_test_sink sink, void *user, int *checks)
+{
+    int i, was_checks = t_checks, was_failed = t_failed, failed;
+    hk_test_sink was_sink = t_sink;
+    void *was_user = t_sink_user;
+    t_sink = sink;
+    t_sink_user = user;
+    t_failed = 0;
+    if (!libc_found()) {
+        t_checks++;
+        t_failed++;
+        say("  FAIL the C library's file functions are not there: is the core started?");
+    } else {
+        t_statfs room;
+        memset(&room, 0, sizeof(room));
+        for (i = 0; i < count; i++) {
+            char dir[200], alias[200];
+            snprintf(dir, sizeof(dir), "/sdcard/%s", names[i]);
+            snprintf(alias, sizeof(alias), SD "/%s", names[i]);
+            check_dir(dir, alias);
+        }
+        if (count >= 2) {
+            char from[200], to[200];
+            snprintf(from, sizeof(from), "/sdcard/%s", names[0]);
+            snprintf(to, sizeof(to), "/sdcard/%s", names[1]);
+            check_between(from, to);
+        }
+        if (count > 0 && C.statfs("/sdcard", &room) == 0)
+            noted("room, as statfs has it for every path: %llu MB free of %llu MB", (unsigned long long)(room.f_bavail * room.f_bsize >> 20),
+                  (unsigned long long)(room.f_blocks * room.f_bsize >> 20));
+    }
+    failed = t_failed;
+    if (checks) *checks += t_checks - was_checks;
+    /* (The tests call this in the middle of their own counting, which goes on from here.) */
+    t_failed = was_failed + failed;
+    t_sink = was_sink;
+    t_sink_user = was_user;
+    return failed;
+}
+
+/* The check, on the links the layout's tests left: all its steps must go as they must, either way a folder's move is answered. */
+static void test_check(void)
+{
+    static const char *const names[] = { "Music", "Pictures" };
+    int before = t_failed;
+    say("the shared storage: the check a phone runs on its libraries");
+    g_check_quiet = true;
+    hk_storage_check_run(names, 2, t_sink, t_sink_user, NULL);
+    g_fake_moves_no_folder = true;
+    hk_storage_check_run(names, 1, t_sink, t_sink_user, NULL);
+    g_fake_moves_no_folder = false;
+    g_check_quiet = false;
+    CHECK_INT(t_failed - before, 0);
 }
 
 /*
@@ -1145,6 +1415,7 @@ static int run_in(const char *base, hk_storage_host_maker make, hk_test_sink sin
         if (libc_found()) {
             test_layout(data);
             test_threads();
+            test_check();
             test_no_links(data);
             /* As the tests after this one found things: no links, nobody to ask, and the current directory where it was. */
             C.chdir("/");

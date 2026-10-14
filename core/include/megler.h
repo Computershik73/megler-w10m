@@ -991,6 +991,29 @@ int megler_selftest(megler_line_fn out, void *user);
  */
 void megler_probe(megler_line_fn out, void *user);
 
+/*
+ * Whether the phone's folders do in an app's storage what an app will ask of
+ * them. The shared storage is set up with `storage` as megler_run would set it
+ * up, and in every link that is writable the layer does, through its own C
+ * library, what an app does to files: lists the folder, makes a folder,
+ * writes a file and reads it back through the storage's other name, stats,
+ * appends, empties, renames, replaces, moves into a folder, is refused the
+ * removal of a folder that holds something, renames and moves folders,
+ * removes everything again; then renames a file from the first link to the
+ * second. One line for each step ("ok" or "FAIL" first), and which of two
+ * allowed answers was given where there are two. Returns the number of steps
+ * that failed and adds the number of steps to *checks (which may be NULL).
+ *
+ * It works in a folder of its own in each link, megler-storage-check, removes
+ * it at the end (and at the start, should an earlier run have been cut
+ * short), and opens, changes and removes nothing else that is there.
+ *
+ * Not while an app runs: it sets the storage's links. It runs no app, so
+ * megler_run is as free afterwards as it was. Takes a few seconds; call it
+ * from a background thread, not the UI thread.
+ */
+int megler_storage_check(const megler_storage_host *storage, megler_line_fn out, void *user, int *checks);
+
 #ifdef __cplusplus
 }
 #endif

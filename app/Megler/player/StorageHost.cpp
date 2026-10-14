@@ -526,6 +526,25 @@ megler_storage_host StorageHost::callbacks() {
     return host;
 }
 
+std::string StorageHost::check(const std::function<void(const std::string&)>& line) {
+    const megler_storage_host host = callbacks();
+    int checks = 0, failed = 0;
+    for (const char* expected : {"Music", "Pictures", "Movies"}) {
+        bool there = false;
+        for (int i = 0; i < host.link_count; i++) there = there || !strcmp(host.links[i].name, expected);
+        checks++;
+        if (!there) failed++;
+        line(std::string(there ? "  ok   /sdcard/" : "  FAIL /sdcard/") + expected +
+             (there ? " is one of the phone's folders" : " is NOT one of the phone's folders: the storage's lines at the start of the log say why"));
+    }
+    using Line = std::function<void(const std::string&)>;
+    failed += megler_storage_check(&host, [](const char* text, void* user) { (*static_cast<const Line*>(user))(text); }, const_cast<Line*>(&line), &checks);
+    line("       " + summary());
+    const std::string done = format("DONE storage: %d checks, %d failed", checks, failed);
+    line(done);
+    return done;
+}
+
 std::string StorageHost::summary() {
     const Counts& c = gCounts;
     std::string text = format("%u files opened, %u folders to list, %u asked what they are; %u folders made, %u things removed, %u renamed; %u folders looked up on the "

@@ -2,6 +2,7 @@
 // are in Android's storage, and what this build and this phone are.
 #include "pch.h"
 
+#include "player/Session.h"
 #include "player/StorageHost.h"
 #include "shell/Platform.h"
 #include "shell/Settings.h"
@@ -108,10 +109,41 @@ private:
         auto addLabel = label("Add a Folder", glyphs::add, font::body, weightNormal(), p.accentText);
         addLabel.Margin(ThicknessHelper::FromLengths(16, 11, 16, 11));
         rows.push_back(button(addLabel, [this] { addFolder(); }, ButtonKind::plain, "Add a Folder"));
+        auto checkLabel = label(checking_ ? "Checking the Folders..." : "Check the Folders", glyphs::wrench, font::body, weightNormal(),
+                                checking_ ? p.secondaryLabel : p.accentText);
+        checkLabel.Margin(ThicknessHelper::FromLengths(16, 11, 16, 11));
+        rows.push_back(button(checkLabel, [this] { checkFolders(); }, ButtonKind::plain, "Check the Folders"));
         return listSection("Android Storage", rows,
                            "Folders of the phone that every Android app finds in its storage. The music, pictures and videos are there by themselves. "
                            "Add a Folder puts any other folder there under a name you give it: the phone's Documents or Downloads, a folder of a "
-                           "memory card. An app is given them when it starts.");
+                           "memory card. An app is given them when it starts. Check the Folders tries in each what an app does to files, in a "
+                           "folder of its own that it removes again (megler-storage-check); every step is in the Log.");
+    }
+
+    /// StorageHost::check on a worker thread, its steps into the log, its
+    /// last line shown. Not while an app runs or once one has: the layer's
+    /// storage is that app's then.
+    void checkFolders() {
+        if (checking_) return;
+        if (session::spent()) {
+            shell_.alert("Not Now", "An app is running or has run since Megler was opened. Close Megler and open it again, and check the folders before playing.");
+            return;
+        }
+        checking_ = true;
+        rebuild();
+        auto done = std::make_shared<std::string>();
+        const std::weak_ptr<Page> weak = shared_from_this();
+        shell_.runInBackground(
+            [done] {
+                shellLog::write("storage check: started from Settings");
+                *done = StorageHost::shared().check([](const std::string& line) { shellLog::write("storage check: " + line); });
+            },
+            [this, weak, done] {
+                if (!weak.lock()) return;
+                checking_ = false;
+                rebuild();
+                shell_.alert("The Folders Were Checked", (done->empty() ? std::string("The check did not finish.") : *done) + "\nEvery step is in the Log.");
+            });
     }
 
     /// The folder picker, then a name for the folder in Android's storage,
@@ -254,6 +286,7 @@ private:
     int ticks_ = 0;
     bool linksShown_ = false; // the Android Storage section was built after the search for the links was over
     bool adding_ = false;     // the folder picker or the name's dialog is up
+    bool checking_ = false;   // StorageHost::check is going through the folders
 };
 
 } // namespace
