@@ -1391,6 +1391,42 @@ every register that holds it. On libcore the constructor called is not
 `String.<init>` (which only throws there) but the `StringFactory.newStringFrom...`
 method of the same parameters.
 
+### The loop, and the watched loop
+
+The interpreter's loop is compiled twice from one source
+(`hk_dvm_interp_loop.h`, included twice by `hk_dvm_interp.c`):
+
+- `hk_dvm_interpret` runs code.
+- `hk_dvm_interpret_watched` also does, for every instruction, what is asked
+  while anything watches them (`slow_step`: the trace at level 3, the step
+  limit, the profile).
+
+The plain loop does not look at `g_dvm.slow` for each instruction. It looks
+only where code can go on forever: at a jump back and at a call
+(`SAFEPOINT`). When what it finds there differs from what it runs as, it
+hands the frame on top to the other loop. `interpret` then runs the other loop
+from that frame's pc until the frame entered from C returns or throws. Nothing
+is in flight at those places: no call's result is waiting for its
+`move-result`, and no exception for its `move-exception`. So a profile switched
+on while the app runs (`HK_JAVA_PROFILE=after:N`) starts at the main loop's
+next jump back.
+
+`slow_step` itself is out of line, so the loop's head is only the fetch, the
+count of instructions executed (for the meter) and the switch:
+- MSVC for ARM (`tools/dvm-arm-disasm.sh`) makes it six instructions: add,
+  ldrh, adds, str, uxtb, tbh.
+- Before, it was eleven: it also had movw and movt of `g_dvm`, the load of
+  `slow`, cbz, and a second store.
+
+Benchmark on x64, interpreter at the same place, ns a turn:
+
+| item | before both | `slow_step` out of line | then the two loops |
+| --- | ---: | ---: | ---: |
+| int arithmetic | 13.1 | 10.3 | 7.7 |
+| iget and iput | 22.7 | 18.0 | 14.5 |
+| aget and aput | 23.3 | 19.5 | 13.9 |
+| `HashMap.get` | 307 | 256 | 242 |
+
 ### Calls done in place: intrinsics
 
 On libcore, some of the library's methods are done by the interpreter itself
@@ -3131,8 +3167,9 @@ faster.
 
 What to do about it, cheapest first:
 
-1. Take the per-instruction `g_dvm.slow` check out of the loop: poll at branches
-   and calls only.
+1. *Done in round 8:* the per-instruction `g_dvm.slow` check is out of the
+   loop. The plain loop polls at jumps back and calls only ("The loop, and the
+   watched loop").
 2. **Quicken**: when an instruction's field, method or string has been resolved,
    rewrite it in a private copy of the method's code to a form that carries the
    answer (a slot number, a vtable index), so that running it again resolves
