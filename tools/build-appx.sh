@@ -339,8 +339,12 @@ rm -rf "$BUILD/link" && mkdir -p "$BUILD/link"
 # player/GfxHost.cpp, which reaches WIC through CoCreateInstance and so names
 # no third DLL). No /guard:cf: nothing here is built with it,
 # and gecko-w10m found the guard's tables wrong for Thumb on these phones.
+# The interpreter's loop first in the program's code: its speed moves by up to two thirds when unrelated code before it
+# shifts the loop's head across a fetch window (docs/JAVA.md, the interpreter's speed). Pinned, a change elsewhere in the
+# program cannot make Java apps slower or faster on the phone.
+echo hk_dvm_interpret > "$BUILD/link/order.txt"
 "$LINK" /nologo "${OBJS_W[@]}" "/OUT:$(w "$BUILD/link/Megler.exe")" "/PDB:$(w "$BUILD/link/Megler.pdb")" \
-  "/MAP:$(w "$BUILD/link/Megler.map")" /DEBUG /OPT:REF /OPT:ICF /INCREMENTAL:NO \
+  "/MAP:$(w "$BUILD/link/Megler.map")" "/ORDER:@$(w "$BUILD/link/order.txt")" /DEBUG /OPT:REF /OPT:ICF /INCREMENTAL:NO \
   /APPCONTAINER /SUBSYSTEM:WINDOWS "/MACHINE:$MACHINE" /DYNAMICBASE /NXCOMPAT /MANIFEST:NO \
   WindowsApp.lib OneCoreUAP.lib d3d11.lib dxgi.lib mfplat.lib mfreadwrite.lib mfuuid.lib d2d1.lib dwrite.lib \
   /DELAYLOAD:oleaut32.dll /DELAYLOAD:xaudio2_9.dll /DELAYLOAD:mfplat.dll /DELAYLOAD:mfreadwrite.dll \
