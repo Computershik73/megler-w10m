@@ -361,7 +361,7 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   43 MB to 12, and 28 MB less held by every app).
 
   **Real apps** (2026-10-14, the phone's owner added three; builds 0.1.0.110
-  to 0.1.0.121). An app with bytecode *and* native libraries is an ordinary
+  to 0.1.0.130). An app with bytecode *and* native libraries is an ordinary
   Java app now: `System.loadLibrary` loads the library out of the APK with
   the layer's linker and its native methods are bound to the bytecode
   (`core/tests/app/natives`, a test app with a library built by the NDK,
@@ -371,18 +371,24 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
     phone -- its tabs, its settings; its second start, which ended on a
     missing native of Java serialization, works again. Its lists of other
     apps are empty: there are no other apps.
-  - *Apktool M 2.4.0* (two native libraries): starts on the phone, shows its
-    licence dialog (whose heading is cut off at the right) and, the licence
-    accepted, its main screen with the drawer open. The drawer of folders is
-    still empty: the folders are there (below), what the app asks of the
-    framework for them is the Java side's next thing.
+  - *Apktool M 2.4.0* (two native libraries): on the phone (0.1.0.128, by
+    scripted taps) its licence is accepted, its two questions answered, and
+    its drawer lists `/storage/emulated/0` -- twelve folders, its own
+    `Apktool_M` among them -- and, `Music` tapped, the four files of the
+    phone's Music library. The drawer had been empty because no button of a
+    support-library dialog did anything (`Message.obtain(Message)` answered
+    null), so the licence was never accepted; the files were not the cause.
+    It lasts: four minutes of redrawing twenty times a second were run. The
+    line under each name that says a size and a date shows "..." on the
+    phone. Its Settings open; its switches are whole.
   - *Device Info 3.4.3.4* (Kotlin, AndroidX, Material, two native libraries;
     its target is Android 15): runs on the phone since 0.1.0.122, the build
     with the WebP decoder -- its dashboard with the memory chart, the
-    processor's cores, the display. Wrong on it: the selected tab's label is
-    all but invisible, the battery reads 0 % (nothing tells the framework),
-    the storage card showed a total of 0 (a sum done in 32 bits). Its GPU
-    page needs OpenGL from Java.
+    processor's cores, the display. Since 0.1.0.129 the selected tab has its
+    pill, the storage card the phone's real room (59.6 GB, 34.1 free) and the
+    battery card the phone's battery (100 % on the cable; the voltage and
+    the temperature are made up, Windows saying neither). Its GPU page needs
+    OpenGL from Java.
   Also since then: databases (`android.database.sqlite` on SQLite compiled
   into the core over the host layer's files, `tools/sqlite-fetch.sh`); WebP
   (libwebp's decoder in the core, `tools/webp-fetch.sh`: Windows 10 Mobile
@@ -409,9 +415,16 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   font (a line of Roboto is 23.4 for an em of 20; by DirectWrite's own
   measures it was 26.4, and Segoe UI before that 26.6). What the fonts lack
   -- other scripts, emoji -- is the phone's own fallback. A label that is
-  still cut off is no longer the font's doing: QuickShortcutMaker's four
-  tabs are a quarter of the screen each where Android gives each its text's
-  width and a share of the rest.
+  still cut off is no longer the font's doing. QuickShortcutMaker's
+  "APPLICATIONS" tab is cut off as Android's own rule has it for an app that
+  targets Android 7 or later (four weighted tabs in a row that scrolls get
+  equal shares of their summed widths: 187 each of 720); whether a real
+  phone shows it so has not been compared.
+  **The phone, for an app** (0.1.0.129): the shell tells the core the time
+  zone as Windows names it (tzdata's names) and the battery with its
+  changes (`megler_set_timezone`, `megler_set_battery`; `player/PhoneState.cpp`);
+  a Java app's default zone is the phone's and a receiver of
+  ACTION_BATTERY_CHANGED hears each change. The language is still English.
   Not there: garbage collection (an app that animates lasts minutes); sound,
   WebView and OpenGL from Java; a `SurfaceView` drawn by native code; method
   handles; conscrypt's native half (no TLS); the network; other apps (the
