@@ -615,6 +615,7 @@ static bool present_canvas(void *user, void *canvas, int width, int height)
     (void)user;
     if (!J.config->gfx.present || hk_java_gl_composing()) return false;
     started = hk_time_monotonic_ns();
+    hk_java_gl_views_shown();
     if (t_part[2] > t_part[0] && t_part[3] > t_part[1])
         shown = J.config->gfx.present(J.config->gfx.user, canvas, t_part[0], t_part[1], t_part[2] - t_part[0], t_part[3] - t_part[1]);
     else
@@ -1030,8 +1031,9 @@ static void main_thread(void *arg)
         /* What C keeps of the app's objects across calls: the collector keeps it too. */
         hk_dvm_add_root(&J.clipboard);
         hk_dvm_register(hk_java_gfx_natives());
-        /* OpenGL ES and EGL from Java, and the window they are shown in. */
+        /* OpenGL ES and EGL from Java, and the window they are shown in: composed by the shell where it can. */
         hk_java_gl_start(J.config->width, J.config->height, show);
+        hk_java_gl_set_shell(&J.config->gfx);
         hk_dvm_register(hk_java_gles_natives());
         hk_dvm_register(hk_java_gl_natives());
         memset(args, 0, sizeof(args));

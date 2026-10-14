@@ -44,7 +44,9 @@
 # `natives`, the one with a native library of its own, where there is an NDK
 # as well to build that (said and left out where there is none), and `crash`,
 # which ends on an exception nothing catches, and `gl`, OpenGL ES from Java (a
-# GLSurfaceView, EGL14, EGL10) on a stand-in that draws. And `data`, a database through
+# GLSurfaceView, EGL14, EGL10) on a stand-in that draws -- twice: with a test
+# shell that composes the window from the frames the core hands it, and with one
+# that refuses them, the core composing. And `data`, a database through
 # the framework's android.database.sqlite, twice, the second run on what the
 # first left, where the core has SQLite in it (build/sqlite). Their
 # pictures are written to build/java-pictures as BMP files. Each is then run
@@ -170,6 +172,12 @@ EOF
         done
       else
         echo "(the Java test app data is not run: the core was built without SQLite)"
+      fi
+      # The GL app again with a shell that does not compose the window (gl_frame says no): the core reads the frames back and
+      # composes the window itself, the way taken where EGL shares no textures; the same checks of the picture.
+      if [ -f "$ROOT/build/guest/java/gl.apk" ]; then
+        echo "the Java test app gl again, the window composed by the core (the shell takes no frames)"
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/java-data-gl && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --java gl $WB/gl.apk $WB/java-data-gl $WB/android-root '$WROOT/build/java-pictures-readback' 0 480x800@160 readback 2>&1" || STATUS=1
       fi
       # And an upright surface, as a phone held upright gives an app that does not ask for landscape: the same app, the same checks.
       echo "the Java test app hello again, on an upright surface (720 x 1280 at 320 dpi)"

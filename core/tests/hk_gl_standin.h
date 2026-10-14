@@ -35,6 +35,12 @@ void hk_gl_standin_stats_get(hk_gl_standin_stats *out);
 void hk_gl_standin_reset(bool bgra, bool es1);
 /* The colour of a pixel of the calling thread's current surface as 0xRRGGBBAA, (0, 0) its bottom left; 0 with none. */
 u32 hk_gl_standin_pixel(int x, int y);
+/*
+ * A surface by what eglQuerySurfacePointerANGLE gave as its texture's shared handle (EGL_ANGLE_surface_d3d_texture_2d_share_handle,
+ * which the stand-in lists): its memory, R, G, B, A, rows bottom first, and its size. For a test's shell that composes the
+ * window from the surfaces' frames (megler_gfx_host.gl_frame).
+ */
+bool hk_gl_standin_shared(void *share_handle, const u8 **rgba, int *width, int *height);
 
 #ifdef __cplusplus
 }

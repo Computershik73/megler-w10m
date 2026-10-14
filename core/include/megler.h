@@ -440,10 +440,38 @@ typedef struct megler_storage_host {
  *                 anything reads the memory. The layer calls it for the
  *                 window's bitmap only, when this canvas is that bitmap's
  *                 only one, nothing has been written into the memory behind
- *                 it, and no OpenGL ES frames are composed under the views
- *                 (the layer then needs the memory itself); on the thread
- *                 that draws the canvas, never on the UI thread, one call at
- *                 a time with present_pixels. NULL: never; the layer flushes.
+ *                 it, and the layer does not compose OpenGL ES frames under
+ *                 the views itself (it then needs the memory; see gl_frame);
+ *                 on the thread that draws the canvas, never on the UI
+ *                 thread, one call at a time with present_pixels. NULL:
+ *                 never; the layer flushes.
+ *   gl_frame      optional, with present and gl_place: OpenGL ES views'
+ *   gl_place      frames shown under the window's views by the shell, the
+ *                 layer reading neither back. A view that draws with EGL
+ *                 (a GLSurfaceView, a SurfaceView with an EGL window
+ *                 surface) has a `layer`, 0..7, and its frames are shown
+ *                 at the rectangle gl_place gives it (x, y, width, height
+ *                 of the window; width 0: the layer shows nothing any more,
+ *                 and its frame is dropped), scaled to it, opaque, with the
+ *                 window's views over them -- their premultiplied colours,
+ *                 as present last showed them; the views leave holes where
+ *                 the frames are to show. gl_frame is a new frame:
+ *                 `share_handle` is the DXGI shared handle of ANGLE's
+ *                 Direct3D 11 texture of the surface (an OpenGL ES pbuffer;
+ *                 EGL_ANGLE_surface_d3d_texture_2d_share_handle), width x
+ *                 height, its rows bottom first as OpenGL has them. The
+ *                 frame is finished in it (the layer has called glFinish),
+ *                 and the texture may be drawn into again as soon as this
+ *                 returns: the shell takes what it keeps first. The window
+ *                 is shown again with the new frame when the views have
+ *                 been shown and the layer placed, else the frame is kept
+ *                 for the next present. False: the shell cannot; the layer
+ *                 then composes the window itself from then on, reading the
+ *                 frames back and the views out of the memory, and hands the
+ *                 pictures to present_pixels. gl_frame comes on the thread
+ *                 that swapped, gl_place on any thread, before the present
+ *                 or the gl_frame it is for. All three NULL, or EGL without
+ *                 share handles: the layer composes the window itself.
  *
  *   save          remembers the clip. restore brings back the clip of the
  *                 matching save. They nest; the layer never calls restore
@@ -889,6 +917,8 @@ typedef struct megler_gfx_host {
     void (*bitmap_gone)(void *user, uint32_t id);
 
     bool (*present)(void *user, void *canvas, int x, int y, int width, int height);
+    bool (*gl_frame)(void *user, int layer, void *share_handle, int width, int height);
+    void (*gl_place)(void *user, int layer, int x, int y, int width, int height);
 } megler_gfx_host;
 
 /*
