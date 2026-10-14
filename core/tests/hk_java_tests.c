@@ -29,6 +29,10 @@
  * went; the test reads that, and looks at the bitmap the library painted
  * where the app drew it. Only where guest code can run.
  *
+ * `gl` is OpenGL ES from Java: a GLSurfaceView's renderer on the layer's GL thread, EGL14 on a pbuffer, EGL10 and GL10 on a
+ * SurfaceView from a thread of the app's, and the window composed of the views and the frames under them. OpenGL ES is the
+ * stand-in that draws (hk_gl_standin.c), for every app here.
+ *
  * `app` is any APK at all: started, left to itself until it is still, its
  * picture written, then whatever the script on the command line says -- a
  * touch, a wait, Back, each followed by another picture -- and a summary of
@@ -47,11 +51,14 @@
 #include "../src/drivers/hk_driver.h"
 #include "../src/drivers/hk_java.h"
 #include "../src/drivers/hk_java_gfx.h"
+#include "../src/drivers/hk_java_gl.h"
 #include "../src/dvm/hk_dvm.h"
 #include "../src/hk_base.h"
 #include "../src/host/hk_host.h"
+#include "../src/ndk/hk_egl.h"
 #include "../src/run/hk_run.h"
 #include "hk_gfx_standin.h"
+#include "hk_gl_standin.h"
 #include "hk_tests.h"
 
 const char *megler_data_dir(void);
@@ -265,16 +272,18 @@ static bool g_start_said;
 static void settle(void)
 {
     hk_java_stats st;
-    i32 pictures = W.pictures, polls;
+    i32 pictures, polls;
     u64 since = hk_time_monotonic_ns();
     int tries;
     hk_java_get_stats(&st);
+    /* (The views' pictures: an OpenGL surface drawn continuously is a new picture every frame and never still.) */
+    pictures = st.frames;
     polls = st.polls;
     for (tries = 0; tries < 6000 && running(); tries++) {
         hk_sleep_ns(10000000ull);
         hk_java_get_stats(&st);
-        if (W.pictures != pictures) {
-            pictures = W.pictures;
+        if (st.frames != pictures) {
+            pictures = st.frames;
             polls = st.polls;
             since = hk_time_monotonic_ns();
         } else if (st.polls - polls >= 20 && hk_time_monotonic_ns() - since >= 200000000ull) {
@@ -1323,6 +1332,105 @@ static int run_crash(void)
     return g_failed;
 }
 
+/* --------------------------------------------------------------------- gl */
+
+/*
+ * `gl`: OpenGL ES from Java (core/tests/app/gl), with the stand-in that draws (hk_gl_standin.c) where ANGLE would be. A
+ * GLSurfaceView's renderer on the layer's GL thread -- its calls in Android's order, sixty frames a second at most, none
+ * when not asked for in RENDERMODE_WHEN_DIRTY and one when asked, an event queued to it, a fixed size, a pause and a
+ * resume that bring a new context; EGL14 on a pbuffer; EGL10 and GL10 on a SurfaceView of the app's own thread. And the
+ * picture: the frames under the views, where the views left holes, the label over the GL view.
+ */
+static int run_gl(void)
+{
+    int at = -1, line, gl[4], label[4], egl[4], tries;
+    long ms = -1;
+    char text[200];
+    hk_java_gl_stats st0, st1;
+    memset(gl, 0, sizeof(gl));
+    memset(label, 0, sizeof(label));
+    memset(egl, 0, sizeof(egl));
+    expect_line("I/GlTest: onCreate", &at, 120);
+    /* The version the device says it offers is what a context can be made of (the stand-in has OpenGL ES 3). */
+    expect_line("I/GlTest: device gles=3.0 req=0x30000", &at, 30);
+    /* EGL14 on a pbuffer, on a thread of the app's: how an app asks the GPU's name. */
+    CHECK(wait_line("I/GlTest: egl14 pbuffer made=true egl=1.4 pixel=255,0,128 width=16 version=2 current=true released=true max-texture=4096 error=0", 0, 120) >= 0);
+    CHECK(find_line("I/GlTest: egl14 strings vendor=Megler renderer=stand-in for OpenGL ES version=OpenGL ES 2.0 (stand-in) extensions=3", 0) >= 0);
+    /* The renderer, on the GL thread with its context current: created, changed, drawn, in that order. */
+    expect_line("I/GlTest: created 1 thread=GLThread ", &at, 120);
+    CHECK(strstr(line_at(at), "current=true version=2 config=8/16") != NULL);
+    expect_line("I/GlTest: strings vendor=Megler renderer=stand-in for OpenGL ES version=OpenGL ES 2.0 (stand-in) extensions=3 gl10=Megler", &at, 30);
+    expect_line("I/GlTest: program linked=1 position=0 color=0 log=stand-in: program", &at, 30);
+    expect_line("I/GlTest: changed ", &at, 30);
+    expect_line("I/GlTest: first frame on GLThread", &at, 30);
+    CHECK(strstr(line_at(at), "error=0") != NULL);
+    line = wait_line("I/GlTest: layout ", 0, 60);
+    CHECK(line >= 0 && rect_in(line_at(line), "gl", gl) && rect_in(line_at(line), "label", label) && rect_in(line_at(line), "egl", egl));
+    snprintf(text, sizeof(text), "I/GlTest: changed %dx%d on GLThread", gl[2], gl[3]);
+    CHECK(find_line(text, 0) >= 0);
+    /* RENDERMODE_CONTINUOUSLY, paced as a swap interval of 1 paces it: thirty frames take half a second at least. */
+    line = wait_line("I/GlTest: continuous 30 frames in ", 0, 120);
+    CHECK(line >= 0 && sscanf(strstr(line_at(line), " in ") + 4, "%ld", &ms) == 1 && ms >= 480);
+    say("  thirty frames drawn continuously took %ld ms", ms);
+    /* RENDERMODE_WHEN_DIRTY: nothing drawn while nothing asks, one frame for one requestRender. An event on the GL thread. */
+    expect_line("I/GlTest: when-dirty idle frames=0", &at, 60);
+    expect_line("I/GlTest: request-render frames=1", &at, 60);
+    expect_line("I/GlTest: event on GLThread ", &at, 60);
+    CHECK(strstr(line_at(at), "current=true vendor=Megler") != NULL);
+    /* EGL10 and GL10 from the app's own thread on the bottom SurfaceView: a 565 configuration found by exact match, a version-1 context. */
+    line = wait_line("I/GlTest: egl10 configs=6 exact565=true made=true surface=", 0, 60);
+    snprintf(text, sizeof(text), "surface=%dx%d egl=1.4", egl[2], egl[3]);
+    CHECK(line >= 0 && strstr(line_at(line), text));
+    CHECK(wait_line("I/GlTest: egl10 swapped 5 ok=true error=12288", 0, 60) >= 0);
+    CHECK(find_line("java: this OpenGL ES has no version 1", 0) >= 0);
+    settle();
+    write_picture("gl-1");
+    /* The views over the frames: the GL view's blue, the triangle's yellow at its centroid, the label over it, the EGL10 view's green. */
+    CHECK(pixel(gl[0] + 4, gl[1] + 4) == 0x0080FF);
+    CHECK(pixel(gl[0] + gl[2] / 2, gl[1] + gl[3] * 7 / 12) == 0xFFFF00);
+    CHECK(pixel(gl[0] + gl[2] / 2, gl[1] + gl[3] / 8) == 0x0080FF);
+    CHECK(pixel(label[0] + 2, label[1] + 2) == 0xFF00FF);
+    CHECK(pixel(egl[0] + egl[2] / 2, egl[1] + egl[3] / 2) == 0x00FF00);
+    /* A fixed size half the view's: a new surface, onSurfaceChanged with that size, the frame scaled into the view. */
+    expect_line("I/GlTest: fixed size asked ", &at, 60);
+    snprintf(text, sizeof(text), "I/GlTest: changed %dx%d on GLThread", gl[2] / 2, gl[3] / 2);
+    expect_line(text, &at, 60);
+    expect_line("I/GlTest: ready frames=", &at, 60);
+    settle();
+    write_picture("gl-2");
+    CHECK(pixel(gl[0] + 4, gl[1] + 4) == 0x0080FF);
+    CHECK(pixel(gl[0] + gl[2] / 2, gl[1] + gl[3] * 7 / 12) == 0xFFFF00);
+    CHECK(pixel(label[0] + 2, label[1] + 2) == 0xFF00FF);
+    /* Paused: no frames. Resumed: the context made again (it was not to be kept), onSurfaceCreated and onSurfaceChanged again, a frame. */
+    megler_set_paused(true);
+    expect_line("I/GlTest: onPause", &at, 30);
+    hk_sleep_ns(300000000ull);
+    hk_java_gl_get_stats(&st0);
+    hk_sleep_ns(500000000ull);
+    hk_java_gl_get_stats(&st1);
+    CHECK(st1.swaps == st0.swaps);
+    megler_set_paused(false);
+    expect_line("I/GlTest: onResume", &at, 30);
+    expect_line("I/GlTest: created 2 thread=GLThread ", &at, 60);
+    expect_line("I/GlTest: changed ", &at, 30);
+    for (tries = 0; tries < 1000 && st1.swaps == st0.swaps && running(); tries++) {
+        hk_sleep_ns(10000000ull);
+        hk_java_gl_get_stats(&st1);
+    }
+    CHECK(st1.swaps > st0.swaps);
+    say("  %u swaps of window surfaces, %u of them shown, on %u GL threads; %d pictures in all, %d of them as a part", (unsigned)st1.swaps, (unsigned)st1.shown,
+        (unsigned)st1.threads, (int)W.pictures, (int)W.parts);
+    CHECK(W.parts > 0);
+    line = find_line("java: OpenGL frames ", 0);
+    if (line >= 0) say("  %s", line_at(line));
+    back_and_end("I/GlTest: onDestroy", &at);
+    CHECK(wait_line("java: GLThread 1 ended", 0, 30) >= 0);
+    CHECK(wait_line("I/GlTest: egl10 ended", 0, 30) >= 0);
+    CHECK(find_line("FAILED", 0) < 0 && find_line("FATAL EXCEPTION", 0) < 0);
+    say_app_lines("/GlTest: ");
+    return g_failed;
+}
+
 /* -------------------------------------------------------------- any app */
 
 /*
@@ -1425,12 +1533,19 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
         hk_dvm_gc_set_poison(true);
         hk_dvm_gc_set_min_budget(2u << 20);
     }
+    /*
+     * OpenGL ES is the stand-in that draws, as for any app here: there is no ANGLE under qemu or on this PC. A real app that
+     * asks the GPU's name is told "stand-in for OpenGL ES".
+     */
+    hk_egl_set_provider(hk_gl_standin);
+    hk_gl_standin_reset(true, false);
     if (start(apk, android_root)) {
         if (!strcmp(which, "demos")) run_demos();
         else if (!strcmp(which, "natives")) run_natives();
         else if (!strcmp(which, "crash")) run_crash();
         else if (!strcmp(which, "data")) run_data();
         else if (!strcmp(which, "gc")) run_gc();
+        else if (!strcmp(which, "gl")) run_gl();
         else if (g_any_app) run_app();
         else run_hello();
         if (running()) {

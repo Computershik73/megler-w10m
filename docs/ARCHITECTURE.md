@@ -243,6 +243,158 @@ works, the app's own first.
 
 There is no Vulkan on Windows 10 Mobile, so apps that need it cannot run.
 
+### OpenGL ES from an app's Java
+
+An app whose user interface is Java draws its views in memory (megler_gfx_host, and
+`present_pixels` hands the shell the whole window as a picture). Some of its views
+can be OpenGL ES surfaces: a `GLSurfaceView` with a `Renderer`, or any
+`SurfaceView` (or `SurfaceHolder`, or `Surface`) an app makes an EGL window surface
+on through `EGL14` or `EGL10`. And some apps use EGL with no view at all: a pbuffer
+to ask the GPU's name, or to draw off the screen. This is how that is done here.
+Android's picture of it is kept: the surface lies *under* the window, and the
+views are drawn over it with a hole where the `SurfaceView` is.
+
+**One OpenGL ES in the process.** The Java natives call the very functions native
+code is bound to, ANGLE's, by name through the core (`hk_egl_host`). Two things
+differ from a guest's binding: a function with float parameters is ANGLE's own and
+not its adapter (the caller is the core, which passes floats as the host does),
+and nothing is traced. The texture policy (`hk_gltex.c`) is the same for both.
+EGL is the core's too: its one display (made on the layer's service thread), its
+configuration rules (no 10-bit configurations), contexts made without a
+configuration where ANGLE allows it.
+
+**The GLES classes** (`android.opengl.GLES10` to `GLES32`) declare 832 native
+methods in the framework. They are mechanical and generated:
+`tools/gles-natives.py` reads the framework's Java declarations and Khronos' C
+prototypes (the NDK's headers) and lays one onto the other in order, as Android's
+own generator does, into `core/src/drivers/hk_java_gles.c` (checked in). An array
+and the offset after it are one pointer: the array's own memory from that element
+on (the runtime never moves or copies an array). A `java.nio` buffer is one
+pointer: what Android's `NIOAccess` gives -- a direct buffer's address plus its
+position times its element size, or for a buffer over an array, that array's
+memory from `arrayOffset + position`. An `int` or `long` where C has a pointer is
+an offset into the bound buffer object (`glDrawElements(..., int offset)`). A
+`String` where C has `const GLchar *` is its UTF-8. What returns a string or a
+buffer, takes a `String[]` or a callback, or otherwise differs from C (39 of the
+832) is written by hand in `core/src/drivers/hk_java_gl.c`.
+
+**EGL from Java** is the framework's own Java -- `javax.microedition.khronos.egl`
+(`MeglerEGL`, EGL10 and EGL11) and `android.opengl.EGL14` over it -- on the natives
+of `megler.EGLNative`: a context (an OpenGL ES version, a context to share with),
+a pbuffer surface, a window surface (a pbuffer the size of its view, bound to the
+view), make current, swap, destroy. Every context and every surface is one
+configuration, 8 bits a channel, 24 bits of depth and 8 of stencil; the Java side
+offers the app several configurations (8888, 888, 565, each with and without
+depth and stencil) so that a chooser looking for an exact match finds one, and
+all of them are that one underneath. A version-1 context (`GL10`, the default of
+`GLSurfaceView`) is asked of ANGLE and, where ANGLE has no OpenGL ES 1, is a
+version-2 one, said in the log.
+
+**`GLSurfaceView`.** `megler.Native.startGL(view, renderer, version)` starts a GL
+thread of the layer's own for that view (C, in `hk_java_gl.c`), a thread of the
+app's (Java attached, named `GLThread N`, and a guest thread, since the renderer
+may call the app's native code). It makes its context, and then each turn asks the
+view (`GLSurfaceView.meglerFrame`, the overlay's) what to do: the events queued with
+`queueEvent` are run there, on the GL thread with the context current, and the
+answer is one of: end, no surface, paused, draw, or nothing to draw. It draws --
+`onSurfaceCreated` once for each context, `onSurfaceChanged` for each new surface
+or size, `onDrawFrame`, then a swap -- when the render mode is
+`RENDERMODE_CONTINUOUSLY`, or for `RENDERMODE_WHEN_DIRTY` when `requestRender`
+was called; otherwise it waits until something wakes it (`requestRender`,
+`queueEvent`, the surface made, changed or destroyed, `onPause`, `onResume`,
+the view leaving its window). As Android's `GLThread` does: on `onPause` the
+surface is released and, unless `setPreserveEGLContextOnPause(true)`, the
+context too, so `onSurfaceCreated` comes again after `onResume`; a new surface
+is always followed by `onSurfaceChanged`; when the view leaves its window the
+thread ends and its context goes; a renderer that throws ends its thread as an
+exception nothing catches ends any Java thread here (logged as `FATAL
+EXCEPTION`). EGL called by the renderer on that thread answers for the
+thread's own context and surface, which are real objects that other threads
+can share (`eglGetCurrentContext` as the share of a context made elsewhere).
+The configuration `onSurfaceCreated` is given is what the app's
+`EGLConfigChooser` chose, or one of the sizes it asked for.
+
+**Composition, as built (the first way; `hk_java_gl.c`).** A window surface is a pbuffer on
+ANGLE's device. At each swap its frame is read back into memory (`glReadPixels`
+on the default framebuffer, whatever the app had bound; as B, G, R, A where
+ANGLE offers `GL_EXT_read_format_bgra`, so that rows are copied as they are).
+The core then composes the window: the views' last picture over the frames of
+the surfaces where the views left a hole, premultiplied "over" (a dimmed dialog
+over a GL view dims it), a surface of another size than its view scaled into
+the view's rectangle. It hands the result to the shell through `present_pixels`
+-- or `present_pixels_part` with the rectangle of the GL view, for a new GL
+frame under unchanged views. The shell is unchanged. To compose again when only
+one of the two changed, the core keeps a copy of the views' picture and of the
+composed one, from the moment the app first makes a window surface (an app
+without one pays nothing). When the views' picture changes, each row of a GL
+view's rectangle is classified once: wholly hole (the frame's row is copied),
+wholly covered (left alone), or mixed (composed pixel by pixel). Where a
+surface is on the screen comes from the `SurfaceView` itself, which says so
+(`EGLNative.place`) each time it is drawn with its hole: the hole and the frame
+come from the same picture of the views. A surface's first frames before the
+views have shown the hole are not shown, as on Android.
+
+`present_pixels` is now called on the app's main thread (the views) and on the
+threads that swap (GL frames), one call at a time under the compositor's lock.
+
+**Pacing.** A swap of a window surface returns no sooner than a sixtieth of a
+second after the one before was due, as a swap interval of 1 would have it, so
+a renderer in `RENDERMODE_CONTINUOUSLY` draws about sixty frames a second and
+not as many as it can. The shell's own `Present(1)` paces the screen as well.
+A swap of a pbuffer does nothing and returns at once, as on Android.
+
+**What a swap costs.** The log says it every five seconds while GL frames
+are shown (`java: OpenGL frames ...`: reading back, composing, the shell's
+part, the longest). Measured so far only without ANGLE, on the stand-in that
+draws, whose read-back is a copy of memory: at 720 x 1280 with a 720 x 1182
+surface under the views (AIDA64's main screen), 1.45 ms of a swap's own work
+on this PC -- 1.27 reading back, 0.12 composing (the hole's rows are copied
+as they come), 0.06 the shell's copy of the rectangle -- and 0.9 ms to
+compose a new picture of the views over the last frame; under qemu (an
+emulated ARM core) AIDA64's 720 x 1182 surface, 8.1 ms reading back and 0.4
+composing. On the phone the read-back is ANGLE's: a copy of the surface to
+a staging texture and a wait for the GPU to finish the frame, on top of
+copying 3.4 MB out of it. That is the number to read in the phone's log
+before deciding on the faster way.
+
+**The faster way (not built).** Reading back stalls the CPU until the GPU has
+finished the frame, and composing is the CPU's work. Both go if the GPU
+composes, on one Direct3D device:
+
+- The shell would use ANGLE's device for a Java app as it does for a game. Today
+  a Java app's pictures are put on a device of the shell's own, made at the
+  first picture (`WindowHost::makeOwnDevice`); a game's frames come on ANGLE's,
+  through `attach_device` and `acquire_target`. At feature level 9_3, where most
+  of these phones stop, two devices cannot share a texture, so it has to be
+  ANGLE's. The core would make ANGLE's display when the app starts (or at its
+  first EGL surface), call `attach_device`, and take a target texture with
+  `acquire_target`, as for a game.
+- The core would compose with OpenGL ES itself, in a context of its own on a
+  window surface over that target (exactly a game's window surface): each
+  frame, the app's surface as a texture (its pbuffer bound with
+  `eglBindTexImage`, or a texture shared through a share group) drawn as a quad
+  at its view's rectangle, then the views' picture as a texture drawn over it
+  with premultiplied blending, then `present` -- what the original Megler's
+  render thread does on iOS. The views' picture is uploaded only where it
+  changed (`glTexSubImage2D` of the changed rectangle), which the shell does by
+  `UpdateSubresource` today.
+- Two threads use the GPU then (the app's GL thread renders, the compositor
+  samples its result): a fence (`glFenceSync`, or `EGL_KHR_fence_sync`) or a
+  `glFinish` on the app's thread before the frame is handed over, and two
+  surfaces a view in turn so that the app draws the next frame while the last
+  is composed.
+- What it saves per frame: the read-back (a GPU flush and a copy of the
+  surface into memory the CPU can read), the swizzle and composition on the
+  CPU, and the shell's flip of the composed rectangle and its upload. What it
+  costs: the views' picture must be composed every GL frame on the GPU (cheap),
+  a fourth way for the window host to be driven (a Java app on ANGLE's
+  device), and the order of who makes the device (today ANGLE is never loaded
+  for a Java app that draws no OpenGL; it would be, at its first surface).
+- The core's side would be in `hk_java_gl.c` and `hk_egl.c` (a window surface
+  of the core's own on the shell's texture already exists for games); the
+  shell's side is a few lines (`attach_device` arriving for a Java app too,
+  and `present_pixels` no longer used while it is).
+
 ## Sound
 
 An app's PCM goes through OpenSL ES buffer queues; `ndk/hk_opensles.c` is the object

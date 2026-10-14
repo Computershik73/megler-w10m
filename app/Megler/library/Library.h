@@ -99,7 +99,7 @@ public:
     bool addDemo();
     static bool hasDemo();
     /// The Java test apps a package built with --java carries beside the demo
-    /// (demo\hello.apk and demo\demos.apk: tools/build-appx.sh), copied into
+    /// (demo\hello.apk, demo\demos.apk and demo\gl.apk: tools/build-appx.sh), copied into
     /// the library like the demo. `name` is the file's name. False when this
     /// package has no such file or the copy failed.
     bool addPackaged(const std::string& name);

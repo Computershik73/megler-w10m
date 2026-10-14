@@ -378,7 +378,7 @@ void WindowHost::describe() {
     description_ = format("%ux%u, Direct3D %s", bufferWidth_, bufferHeight_, levelName(featureLevel_));
 }
 
-// MARK: A Java app's pictures (megler_window_host.present_pixels; the app's main thread)
+// MARK: A Java app's pictures (megler_window_host.present_pixels; the app's main thread, or a thread that swaps its GL frames)
 
 void WindowHost::presentPixels(void* user, const void* pixels, int width, int height, int stride) {
     static_cast<WindowHost*>(user)->showPixels(pixels, width, height, stride);

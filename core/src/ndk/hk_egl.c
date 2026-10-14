@@ -820,6 +820,19 @@ void *hk_egl_resolve(const char *name)
     return tracing && fn ? traced(name, fn) : fn;
 }
 
+void *hk_egl_host(const char *name)
+{
+    static bool told;
+    if (!hk_egl_is_gl_name(name)) return NULL;
+    /* The EGL functions above take no floats: the same ones guests get. */
+    if (name[0] == 'e') return resolve(name);
+    if (!told) {
+        told = true;
+        hk_gltex_set_host(angle);
+    }
+    return hk_gltex_wrap(name, angle(name));
+}
+
 u32 hk_egl_device_removed(void) { return hk_host_d3d11_removed_reason(g_d3d_device); }
 
 /* ------------------------------------------------------ external textures */

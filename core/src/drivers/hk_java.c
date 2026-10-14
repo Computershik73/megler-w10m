@@ -10,7 +10,8 @@
  * activity stack, the main Looper, views measured, laid out and drawn into a
  * bitmap. What it cannot do in Java it asks of megler.* classes' native
  * methods. This file is megler.Native: the log, the APK's files, the screen's
- * size, input, the end of the app. megler.Gfx, the drawing, is hk_java_gfx.c.
+ * size, input, the end of the app. megler.Gfx, the drawing, is hk_java_gfx.c;
+ * OpenGL ES and EGL, and a GLSurfaceView's thread, hk_java_gl.c.
  *
  * Everything the runtime needs to start is in one folder laid out like
  * Android's /system, the "Android root" (tools/dvm-android-root.sh):
@@ -36,6 +37,7 @@
 #include "hk_driver.h"
 #include "hk_java.h"
 #include "hk_java_gfx.h"
+#include "hk_java_gl.h"
 
 #define MAX_EVENTS 256
 #define MAX_APKS 12
@@ -428,7 +430,6 @@ N(Native_pollText)
 }
 
 /* What the shell would have to do and cannot be asked yet: said once, and the app goes on. */
-N(Native_startGL) { (void)c; hk_note_once("java: a GLSurfaceView's renderer is not started (OpenGL from Java is not there yet)"); }
 N(Native_share) { hk_info("java: the app shares \"%s\" (nothing here to share it with)", text_of(c->args[0].l)); }
 N(Native_openUrl) { hk_info("java: the app opens %s (nothing here to open it)", text_of(c->args[0].l)); }
 N(Native_setOrientation) { hk_note_once("java: the app asked for orientation %d; the surface stays as the shell made it", (int)c->args[0].i); }
@@ -468,8 +469,6 @@ static const hk_jhle k_native[] = {
     { "megler/Native", "screenWidth", NULL, Native_screenWidth },
     { "megler/Native", "screenHeight", NULL, Native_screenHeight },
     { "megler/Native", "density", NULL, Native_density },
-    { "megler/Native", "startGL", NULL, Native_startGL },
-    { "megler/Native", "requestRender", NULL, Native_nothing },
     { "megler/Native", "setContentView", NULL, Native_nothing },
     { "megler/Native", "pollInput", NULL, Native_pollInput },
     { "megler/Native", "pollText", NULL, Native_pollText },
@@ -493,14 +492,16 @@ static const hk_jhle k_native[] = {
 /* ------------------------------------------- what is not answered yet */
 
 /*
- * The framework's other native classes: sound, web views, sensors, video
- * decoding, and OpenGL ES from Java. None is written here yet. Each of their
- * methods answers zero, false or null, said once in the log for the class,
- * and the framework's own Java makes of that what an app can live with: a
- * sound that did not load is id 0, a sensor is not available, a codec not
- * supported, an EGL context EGL_NO_CONTEXT, a web view an empty rectangle.
- * The one that needs another answer than zero to say "no" is below.
- * (Databases, megler.Sqlite, are hk_java_sqlite.c.)
+ * The framework's other native classes: sound, web views, sensors and video
+ * decoding. None is written here yet. Each of their methods answers zero,
+ * false or null, said once in the log for the class, and the framework's own
+ * Java makes of that what an app can live with: a sound that did not load is
+ * id 0, a sensor is not available, a codec not supported, a web view an empty
+ * rectangle. The one that needs another answer than zero to say "no" is below.
+ * (Databases, megler.Sqlite, are hk_java_sqlite.c; OpenGL ES and EGL,
+ * hk_java_gl.c and hk_java_gles.c, whose tables are registered after this one:
+ * the entries here for their classes are only for a native the framework might
+ * declare and they do not bind.)
  */
 N(Absent)
 {
@@ -575,6 +576,19 @@ N(Native_presentRect)
     for (i = 0; i < 4; i++) t_part[i] = c->args[i].i;
 }
 
+/*
+ * A picture of the whole window to the shell, of which `part` (left, top, right, bottom) changed; part[2] 0: all of it.
+ * The views' (present, below) and, once the app draws with EGL on a view, the window composed of the views and the GL
+ * frames (hk_java_gl.c), on the main thread and on the threads that swap, one call at a time.
+ */
+static void show(const void *pixels, int width, int height, int stride, const i32 part[4])
+{
+    if (part[2] > part[0] && part[3] > part[1] && J.config->window.present_pixels_part)
+        J.config->window.present_pixels_part(J.config->window.user, pixels, width, height, stride, part[0], part[1], part[2] - part[0], part[3] - part[1]);
+    else if (J.config->window.present_pixels)
+        J.config->window.present_pixels(J.config->window.user, pixels, width, height, stride);
+}
+
 /* Gfx.present: the window's views, drawn. The shell is handed the picture; a frame is counted either way, so that a run with no shell can be followed. */
 static void present(void *user, const void *pixels, int width, int height, int stride)
 {
@@ -582,11 +596,7 @@ static void present(void *user, const void *pixels, int width, int height, int s
     (void)user;
     if (!pixels) return;
     started = hk_time_monotonic_ns();
-    if (t_part[2] > t_part[0] && t_part[3] > t_part[1] && J.config->window.present_pixels_part)
-        J.config->window.present_pixels_part(J.config->window.user, pixels, width, height, stride, t_part[0], t_part[1], t_part[2] - t_part[0],
-                                             t_part[3] - t_part[1]);
-    else if (J.config->window.present_pixels)
-        J.config->window.present_pixels(J.config->window.user, pixels, width, height, stride);
+    if (!hk_java_gl_views(pixels, width, height, stride, t_part)) show(pixels, width, height, stride, t_part);
     t_part[0] = t_part[1] = t_part[2] = t_part[3] = 0;
     hk_run_count_frame();
     hk_atomic_add(&J.stats.frames, 1);
@@ -995,6 +1005,10 @@ static void main_thread(void *arg)
         /* What C keeps of the app's objects across calls: the collector keeps it too. */
         hk_dvm_add_root(&J.clipboard);
         hk_dvm_register(hk_java_gfx_natives());
+        /* OpenGL ES and EGL from Java, and the window they are shown in. */
+        hk_java_gl_start(J.config->width, J.config->height, show);
+        hk_dvm_register(hk_java_gles_natives());
+        hk_dvm_register(hk_java_gl_natives());
         memset(args, 0, sizeof(args));
         args[0].l = hk_dvm_new_string(J.activity);
         args[1].l = J.application[0] ? hk_dvm_new_string(J.application) : NULL;

@@ -33,8 +33,8 @@
 #              Self-test runs the Dalvik runtime's tests on that libcore;
 #              without it they run on the runtime's built-in java.lang and
 #              a Java app is told what is missing.
-#   --java     --libcore, and the two Java test apps beside the demo
-#              (demo/hello.apk and demo/demos.apk, built by
+#   --java     --libcore, and the three Java test apps beside the demo
+#              (demo/hello.apk, demo/demos.apk and demo/gl.apk, built by
 #              tools/build-test-app.sh, with the Java framework
 #              tools/build-framework.sh builds in the folder `android`): what
 #              a phone needs to show a Java app's picture. The library offers
@@ -465,11 +465,11 @@ fi
 # The Java test apps beside it, which the library offers likewise and the auto run `java` starts.
 if [ "$JAVA" = 1 ]; then
   mkdir -p "$STAGE/demo"
-  for app in hello demos; do
+  for app in hello demos gl; do
     [ -f "$ROOT/build/guest/java/$app.apk" ] || { echo "--java: no build/guest/java/$app.apk" >&2; exit 1; }
     cp "$ROOT/build/guest/java/$app.apk" "$STAGE/demo/"
   done
-  echo "    demo: hello.apk, demos.apk (Java)"
+  echo "    demo: hello.apk, demos.apk, gl.apk (Java)"
   for need in framework/core-oj.dex framework/megler-framework.dex framework/framework-res.apk lib/libjavacore.so; do
     [ -f "$STAGE/android/$need" ] || echo "    WARNING: no android/$need in the package: a Java app will not start, or will start bare" >&2
   done

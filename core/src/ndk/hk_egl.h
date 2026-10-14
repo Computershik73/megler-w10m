@@ -26,6 +26,14 @@ extern "C" {
 void *hk_egl_resolve(const char *name);
 /* Whether a name is one this module answers for, without loading anything (for reports). */
 bool hk_egl_is_gl_name(const char *name);
+/*
+ * The same EGL and OpenGL ES for the core's own callers (an app's Java, drivers/hk_java_gl.c): what a guest is bound to,
+ * except that a GLES function with floats among its parameters is ANGLE's own, not its adapter. A caller compiled for
+ * this host passes floats where the host's convention puts them, which is what ANGLE takes; the adapters are for guest
+ * code, which passes them in integer registers. The texture policy (hk_gltex.c) is the same for both. No tracing thunk
+ * ("trace-gl"): those are for guest calls. NULL when there is no such function.
+ */
+void *hk_egl_host(const char *name);
 
 /*
  * Where EGL and GLES come from. By default ANGLE's two DLLs in the package;

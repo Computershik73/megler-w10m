@@ -162,7 +162,7 @@ void Library::load() {
             }
         }
         // The Java test apps likewise, where the package has them (tools/build-appx.sh --java).
-        for (const wchar_t* name : {L"hello.apk", L"demos.apk"}) {
+        for (const wchar_t* name : {L"hello.apk", L"demos.apk", L"gl.apk"}) {
             const std::wstring source = platform::installDirectory() + L"\\demo\\" + name;
             const std::wstring copy = directory_ + L"\\" + name;
             std::string ours, theirs;
