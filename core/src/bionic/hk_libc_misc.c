@@ -1040,6 +1040,27 @@ static int g_capget(u32 *header, u32 *data)
     hk_set_errno(GE_INVAL);
     return -1;
 }
+/*
+ * ptrace: no process here may trace another, nor itself be traced, which is what Android answers an app that is not a
+ * debugger of a debuggable app. Crash reporters use it to read the registers of the app's other threads; they take EPERM.
+ */
+static long g_ptrace(int request, int pid, void *addr, void *data)
+{
+    (void)request; (void)pid; (void)addr; (void)data;
+    hk_set_errno(GE_PERM);
+    return -1;
+}
+
+/* setpgrp(): bionic's is setpgid(0, 0). */
+static int g_setpgrp(void) { return g_setpgid(0, 0); }
+
+/*
+ * The page size as data. Bionic exports __page_size and __page_shift on 32-bit devices, for code built with NDKs that read
+ * PAGE_SIZE from libc rather than from the header (Android 9 still has them, "for backwards compatibility"); a crash SDK
+ * built that way read address 0 for it here and ended the app.
+ */
+static u32 g_page_size = 4096, g_page_shift = 12;
+
 static int g_capset(u32 *header, const u32 *data)
 {
     (void)header; (void)data;
@@ -1117,6 +1138,7 @@ const hk_sym hk_tab_misc[] = {
     M("getgrgid_r", g_getgrgid_r), M("getgrnam_r", g_getgrnam_r),
     M("seteuid", g_set_one_id), M("setegid", g_set_one_id), M("setreuid", g_set_two_ids), M("setregid", g_set_two_ids),
     M("getpgid", g_getpgid), M("setpgid", g_setpgid), M("capget", g_capget), M("capset", g_capset),
+    M("setpgrp", g_setpgrp), M("ptrace", g_ptrace), HK_DATA("__page_size", &g_page_size), HK_DATA("__page_shift", &g_page_shift),
     M("setmntent", g_setmntent), M("getmntent_r", g_getmntent_r), M("endmntent", g_endmntent),
     /* A process that never forks has no use for what is to be done around a fork. */
     M("__register_atfork", g_zero),

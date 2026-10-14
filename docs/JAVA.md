@@ -85,13 +85,13 @@ the decoder 40 fewer, and the script says which is missing.
 
 ```
 bash tools/build-tests.sh win      (MSVC x64, run on the PC; libcore's native libraries cannot run there)
-    3930 checks, 0 failed          on the built-in java.lang
-    3944 checks, 0 failed          on libcore, its bytecode alone
+    3932 checks, 0 failed          on the built-in java.lang
+    3946 checks, 0 failed          on libcore, its bytecode alone
     (then the shell's own drawing and the storage on Windows' own folders, which are not this document's: 263, 263, 263, 425, 14, 9, 8 and 6 checks)
 
 bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-float, under qemu-arm)
-    4154 checks, 0 failed          on the built-in java.lang
-    4204 checks, 0 failed          on libcore with its native libraries
+    4156 checks, 0 failed          on the built-in java.lang
+    4206 checks, 0 failed          on libcore with its native libraries
       45 checks, 0 failed          the Java test app hello, through megler_run
       72 checks, 0 failed          the Java test app demos, the keyboard's 25 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
@@ -732,6 +732,21 @@ is called until the app compresses a PNG or deletes a folder, which the test
 did not reach. The grey strip 144 pixels wide down the right edge of the main
 screen is the app's own: the drawer is 576 wide and open, and the strip is
 `DrawerLayout`'s shade over what the drawer leaves uncovered.
+
+**Super S22 Launcher 1.8** (minSdk 21, targetSdk 30; a Launcher3; ironSource,
+umeng, the UC crash SDK's `libcrashsdk.so`). It ended on its first screen on
+the phone with a `NullPointerException` on `Rect.left` in its device profile:
+`AppWidgetHostView.getDefaultPaddingForWidget` answered null (the overlay's).
+Under qemu it now shows its welcome screen, and after its button the home
+screen: a clock, a weather icon, the search bar, Camera, Launcher setting and
+Theme on the page, Phone, Message, Apps, Camera and Browser in the dock, under
+a first-run tip whose OK closes it. Fixed on the way: `LauncherApps` and
+`LauncherActivityInfo` (the app's own activity had no title, and the thread
+that loads the home screen ended), and three things of libc's that the crash
+SDK imports (`__page_size`, which it read as a null pointer, `setpgrp`,
+`ptrace`). What it lists is what the framework's `PackageManager` knows: the
+app itself. Its umeng library asks for one HTTPS address over and over,
+about 150 times a second, when the name does not resolve.
 
 **Device Info 3.4.3.4** (minSdk 24, targetSdk 37; views, not Compose: no
 `androidx.compose` anywhere in its DEX; AndroidX appcompat, fragment,

@@ -586,6 +586,19 @@ static void test_media(const char *scratch)
     free(path);
 }
 
+/*
+ * What libc exports that is not a function, and calls only old or odd code makes: Android 9's 32-bit libc has the page size
+ * as data (__page_size, __page_shift), for code built by NDKs that read PAGE_SIZE from it; a crash reporter built so read
+ * address 0 for it here. And setpgrp, and ptrace, which an app is refused.
+ */
+static void test_libc_odds(void)
+{
+    const u32 *size = (const u32 *)hk_bionic_find("__page_size"), *shift = (const u32 *)hk_bionic_find("__page_shift");
+    say("libc's page size as data, setpgrp, ptrace");
+    CHECK(size && *size == 4096 && shift && *shift == 12);
+    CHECK(hk_bionic_find("setpgrp") != NULL && hk_bionic_find("ptrace") != NULL);
+}
+
 /* The battery the core answers for (run/hk_run.h): a full one on mains until one is set, then the one set, made safe to divide by and to read as text. */
 static void test_battery(void)
 {
@@ -1265,6 +1278,7 @@ int hk_tests_run(const char *libdir, const char *scratch, hk_test_sink sink, voi
     test_textures();
     test_media(scratch);
     test_battery();
+    test_libc_odds();
     test_input();
     {
         /* The stand-in for the shell's drawing under a Java app: it is what the Java driver's tests see pictures through. */
