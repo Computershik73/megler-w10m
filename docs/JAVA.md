@@ -545,7 +545,8 @@ the first tab is inflated. In the order met:
    Windows 10 Mobile's WIC has no WebP codec either. Now decoded in the core
    ("WebP pictures"); the app shows its Dashboard.
 4. `Runtime.exec("getenforce")`: `IOException: error=38` (there are no
-   processes to start). The app catches it.
+   processes to start). The app catches it. Now `error=2, No such file or
+   directory`, what Android says of a program that is not on the phone.
 5. `Class.forName("com.android.internal.os.PowerProfile")`: not there (the
    battery's capacity by reflection). The app catches it.
 
@@ -567,7 +568,7 @@ survive.
 | `PackageManager` knowing more than the app itself (installed APKs in the library) | QuickShortcutMaker's whole purpose | small in Java, a decision for the shell |
 | EGL and OpenGL ES from Java (`megler.EGLNative`, `GLES20` over ANGLE) | Device Info's GPU page; any `GLSurfaceView` | large |
 | `megler.Web` (a `WebView`) | ads, licence and help pages in all three | very large; an empty rectangle today |
-| Processes (`Runtime.exec`) | root checkers and file managers probing `su`, `getprop`, `sh` | honest answer is "no such program" (ENOENT), not error 38 |
+| Processes (`Runtime.exec`) | root checkers and file managers probing `su`, `getprop`, `sh` | answered: "no such program" (`error=2`), for every program, `sh` included. An app that wants `getprop`'s output gets the exception, not an empty answer |
 | TLS (conscrypt's `libjavacrypto.so`) | anything that talks HTTPS | the two libraries, built like the other seven |
 | `invoke-custom`, method handles | not met in these three (d8 desugared them) | large |
 

@@ -921,6 +921,19 @@ N(Class_null) { c->ret.l = NULL; }
  * no package of the system's is known by a file it came from.
  */
 N(Runtime_runFinalization0) { (void)c; }
+
+/*
+ * UNIXProcess.forkAndExec, which is Runtime.exec and ProcessBuilder.start. An app's process cannot start another here,
+ * and there is no /system/bin to start anything from: no sh, no getprop, no su. The answer is the one Android gives for a
+ * program that is not on the phone, ENOENT, which libcore turns into "IOException: Cannot run program "getprop": error=2,
+ * No such file or directory" -- what an app that probes for su already expects and catches. (libcore's own native would try
+ * to fork, and say "error=38, Function not implemented", which no Android phone ever says.)
+ */
+N(UNIXProcess_forkAndExec)
+{
+    hk_dvm_throw("java/io/IOException", "error=2, No such file or directory");
+    c->ret.i = -1;
+}
 N(Package_getSystemPackages0) { c->ret.l = hk_dvm_new_array("[Ljava/lang/String;", 0); }
 
 /* ---------------------------------------------------------------- the rest */
@@ -1141,6 +1154,7 @@ static const hk_jhle k_art[] = {
     { "dalvik/system/VMStack", "getThreadStackTrace", NULL, VMStack_getThreadStackTrace },
     { "dalvik/system/VMStack", "getCallingClassLoader", NULL, VMStack_getCallingClassLoader },
     { "java/lang/Runtime", "runFinalization0", NULL, Runtime_runFinalization0 },
+    { "java/lang/UNIXProcess", "forkAndExec", NULL, UNIXProcess_forkAndExec },
     { "java/lang/Package", "getSystemPackage0", NULL, Class_null },
     { "java/lang/Package", "getSystemPackages0", NULL, Package_getSystemPackages0 },
     { "dalvik/system/VMStack", "getClosestUserClassLoader", NULL, VMStack_getClosestUserClassLoader },
