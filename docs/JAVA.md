@@ -1619,8 +1619,8 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: ten files** in the overlay,
-eight of them a statement or a method each inside an otherwise untouched copy
+**What differs from the original's framework: eleven files** in the overlay,
+nine of them a statement or a method each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and two files of members added** to classes of the original's.
 
@@ -1672,6 +1672,16 @@ version checks.
   (The platform's own `AlertDialog`, which the demos app uses, is the
   original's and calls its listeners directly.) Found with the runtime's
   trace and the profile of a run: of the two listeners neither had run.
+- `android/app/usage/StorageStatsManager.java`, two methods in their two
+  forms: `getTotalBytes` and `getFreeBytes` were signatures answering 0.
+  Since Android 8 this is where an app asks how large the phone's storage is
+  (`getTotalBytes(StorageManager.UUID_DEFAULT)`), with `StatFs` beside it for
+  what is free. Device Info's card read "Internal Storage -2147483648%, Free:
+  4.0 GB, Total: 0.0 GB" on the phone: a free space divided by a total of
+  nothing. Both answer for the file system the app's data is on: the total as
+  Android gives it, rounded up to a size storage is sold in (1, 2, 4 ... 512
+  of the next decimal unit, `FileUtils.roundStorageSize`), the free space as
+  it is. The figures are the C library's `statvfs` under `java.io.File`.
 - `android/content/res/ResTable.java`, two methods: a resource is found by
   its name without indexing the whole package ("What an AlertDialog cost").
 - `android/content/res/Resources.java`, the class `Bag`: a style's items are
@@ -1729,7 +1739,7 @@ version checks.
   was empty on the second; it shows its seven headers and their screens.
   Not done: two panes, bread crumbs.
 
-The original has all nine faults; they are its author's to take back.
+The original has all ten faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in
