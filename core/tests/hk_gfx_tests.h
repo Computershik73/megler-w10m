@@ -34,6 +34,16 @@ void hk_gfx_tests_set_scratch(const char *dir);
  */
 int hk_gfx_natives_tests_run(hk_test_sink sink, void *user, int *checks);
 
+/*
+ * OpenGL ES and EGL from an app's Java (core/src/drivers/hk_java_gl.c, hk_java_gles.c) the same way, with the stand-in
+ * that draws (hk_gl_standin.c) in ANGLE's place: that every GLES native the framework declares is bound, GLES20's natives
+ * with arrays, buffers and strings, megler.EGLNative's contexts and surfaces, the window composed of the views and the
+ * frames of a surface under them, and what a swap costs at a phone's size. Needs the runtime running; the buffers need
+ * libcore. It gives the core the stand-in and gives the core back no OpenGL ES at all at its end (hk_egl_set_provider
+ * NULL): not while an app runs.
+ */
+int hk_gl_natives_tests_run(hk_test_sink sink, void *user, int *checks);
+
 #ifdef __cplusplus
 }
 #endif
