@@ -190,9 +190,13 @@ bool hk_dvm_start_android(const char *root)
     int n = 0;
     bool ok;
     if (g_dvm.running) return g_dvm.libcore;
-    /* Whether conscrypt's native library is there decides who the security providers are (hk_dvm_art.c, "the security providers"). */
+    /*
+     * Whether conscrypt's native library is there decides who the security providers are (hk_dvm_art.c, "the security providers"):
+     * there, and on a host that runs ARM code, which is where libcore's libraries load. On the PC's own build its providers could
+     * not start, and with them none could.
+     */
     crypto = hk_sprintf("%s/lib/libjavacrypto.so", root);
-    g_dvm.conscrypt = hk_path_stat(crypto, &st, NULL) && !st.is_dir;
+    g_dvm.conscrypt = HK_HOST_ARM32 && hk_path_stat(crypto, &st, NULL) && !st.is_dir;
     free(crypto);
     for (i = 0; i < HK_COUNT(names); i++) {
         made[i] = hk_sprintf("%s/framework/%s.dex", root, names[i]);
@@ -203,6 +207,11 @@ bool hk_dvm_start_android(const char *root)
     if (!ok) hk_err("dvm: Android's boot class path was not found in %s/framework (core-oj.dex and the rest)", root);
     /* libcore's own libraries, where they are and this host can run them. Without them libcore is its bytecode and what hk_dvm_art_host.c stands in with. */
     else g_libcore_natives = hk_dvm_load_libcore_natives(root);
+    /* libjavacrypto.so stands on libjavacore.so and libnativehelper.so: without them it would not load when conscrypt asks for it. */
+    if (g_dvm.conscrypt && !g_libcore_natives) {
+        hk_warn("dvm: conscrypt's native library is in %s/lib, but libcore's did not load: the runtime's own security provider stands in", root);
+        g_dvm.conscrypt = false;
+    }
     for (i = 0; i < HK_COUNT(names); i++) free(made[i]);
     return ok;
 }
