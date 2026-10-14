@@ -596,6 +596,37 @@ static void thrown_in(hk_jobj *e, char *out, size_t n)
     hk_dvm_clear_pending();
 }
 
+/* Cuts a text to `max` bytes with "..." for the rest, at a character's boundary (the text is UTF-8). */
+static void clip(char *s, size_t max)
+{
+    size_t k;
+    if (strlen(s) <= max || max < 4) return;
+    for (k = max - 3; k > 0 && ((u8)s[k] & 0xC0) == 0x80; k--) { }
+    memcpy(s + k, "...", 4);
+}
+
+/*
+ * An exception and its causes as the runtime describes them, "A: text | caused by B: text | caused by C: text", made
+ * short enough for a dialog: the exception itself and the innermost cause, which is the one that says what went wrong,
+ * each cut to 150 bytes, and what lies between left to the log. The result is at most some 330 bytes.
+ */
+static void shorten(char *what)
+{
+    static const char sep[] = " | caused by ";
+    char first[160], last[160], *cause = strstr(what, sep), *inner = cause;
+    if (!cause) {
+        clip(what, 150);
+        return;
+    }
+    while (strstr(inner + 1, sep)) inner = strstr(inner + 1, sep);
+    hk_strlcpy(last, inner + sizeof(sep) - 1, sizeof(last));
+    *cause = 0;
+    hk_strlcpy(first, what, sizeof(first));
+    clip(first, 150);
+    clip(last, 150);
+    snprintf(what, 340, "%s, caused by %s", first, last);
+}
+
 static void main_thread(void *arg)
 {
     char *framework = hk_sprintf("%s/framework/megler-framework.dex", J.root), *res = hk_sprintf("%s/framework/framework-res.apk", J.root);
@@ -648,7 +679,7 @@ static void main_thread(void *arg)
              * left to do is to say why, once, in a sentence a person can be shown: the exception, and the method of the
              * app's that threw it. The whole stack is in the log.
              */
-            char what[700], where[300];
+            char what[2400], where[300];
             hk_jobj *thrown = hk_dvm_pending();
             stack[0] = 0;
             hk_dvm_pending_stack(stack, sizeof(stack));
@@ -656,6 +687,7 @@ static void main_thread(void *arg)
             hk_dvm_clear_pending();
             hk_err("java: the main thread ended with %s%s%s", what, stack[0] ? "\n" : "", stack);
             thrown_in(thrown, where, sizeof(where));
+            shorten(what);
             snprintf(why, sizeof(why), "the app stopped because nothing caught %s%s%s%s, which ends an app on Android too", what, where[0] ? " (in " : "", where, where[0] ? ")" : "");
         }
     }

@@ -95,7 +95,7 @@ bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-f
       36 checks, 0 failed          the Java test app hello, through megler_run
       72 checks, 0 failed          the Java test app demos, the keyboard's 25 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
-      11 checks, 0 failed          the Java test app crash: an exception nothing catches, and launcher aliases
+      12 checks, 0 failed          the Java test app crash: an exception nothing catches, and launcher aliases
       25 checks, 0 failed          the Java test app data: a database, the first run
       25 checks, 0 failed          data again, on what the first run left
       36 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
@@ -1092,8 +1092,14 @@ no native code or has it for 32-bit ARM.
   `Native.exit`, which has the main `Looper` quit; `AppRunner.run` returns and
   the app is reported ended with status 0. `megler_stop` sets a flag the next
   poll sees, which finishes every activity on the main thread, and the same
-  follows. An exception that reaches the top of the main thread ends the app
-  with status -1 and the exception and its stack as the reason.
+  follows. An exception that reaches the top of the main thread ends the app,
+  as on Android (whose default handler logs "FATAL EXCEPTION: main" and kills
+  the process), with status -1. The reason, in `on_exit` and in
+  `megler_last_error`, is one sentence a dialog can show: "the app stopped
+  because nothing caught <the exception>, caused by <its innermost cause> (in
+  <the innermost method of the app's own on its stack>), which ends an app on
+  Android too". The exception and the cause are cut to 150 bytes each, causes
+  in between are left out; the whole of it, with the stack, is in the log.
 - **The APK's files**: `Native.readApkFile` and the asset calls read the
   app's APK (0), the platform's resources (1: `framework/framework-res.apk` of
   the root, when it is there) and the split APKs (2 and up) through

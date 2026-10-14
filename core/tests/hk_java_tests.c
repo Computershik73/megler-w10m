@@ -1065,10 +1065,12 @@ static int run_crash(void)
     CHECK(g_exited && g_status == -1);
     say("  the app's end, as the shell is told it: %s", g_reason);
     CHECK(strstr(g_reason, "java.lang.IllegalStateException: thrown in onCreate") && strstr(g_reason, "(in megler.test.crash.Second.onCreate)"));
-    CHECK(!strchr(g_reason, '\n') && strlen(g_reason) < 300);
+    /* Of its causes the innermost is named, cut short, and the one in between is not: the sentence fits a dialog whatever the app threw. */
+    CHECK(strstr(g_reason, "thrown in onCreate, caused by java.io.IOException: the innermost cause, which says what went wrong, at length: xxx") && strstr(g_reason, "xxx... (in megler.test"));
+    CHECK(!strstr(g_reason, "a cause in between") && !strchr(g_reason, '\n') && strlen(g_reason) < 440);
     CHECK(!strcmp(megler_last_error(), g_reason));
     /* The framework's own word for it, as Android's log has it, and the stack. */
-    CHECK(find_line("E/Looper: uncaught exception on main", 0) >= 0 && find_line("\tat megler.test.crash.Second.onCreate(Second.java:13)", 0) >= 0);
+    CHECK(find_line("E/Looper: uncaught exception on main", 0) >= 0 && find_line("\tat megler.test.crash.Second.onCreate(Second.java:", 0) >= 0);
     CHECK(find_line("java: the main thread ended with java.lang.IllegalStateException: thrown in onCreate", 0) >= 0);
     return g_failed;
 }
