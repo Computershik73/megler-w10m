@@ -1894,8 +1894,8 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: twenty-three files** in the overlay,
-twenty-one of them a statement or a method each inside an otherwise untouched copy
+**What differs from the original's framework: twenty-five files** in the overlay,
+twenty-three of them a statement or a method each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and five files of members added** to classes of the original's.
 
@@ -2075,6 +2075,13 @@ the context that knows.
   first moment the framework knows of, and never for a software surface,
   whose frames are drawn where it stands. And the surface has its size when
   `surfaceCreated` is called, as on Android: `lockCanvas` there gave null.
+- `android/os/Build.java` and `SystemProperties.java` (one fault, two files):
+  the processor is 32-bit ARM's -- `CPU_ABI` armeabi-v7a, `CPU_ABI2`
+  armeabi, `SUPPORTED_ABIS` and `SUPPORTED_32_BIT_ABIS` both, no 64-bit one,
+  and `ro.product.cpu.abi`/`abilist` to match -- as the phone's is, as the
+  C library's properties say, and as the driver places an app's libraries.
+  The original names a 64-bit one only, and MX Player, which checks the
+  processor against the decoders it carries, logged "ABIs=[arm64-v8a]".
 - `android/content/res/ResTable.java`, two methods: a resource is found by
   its name without indexing the whole package ("What an AlertDialog cost").
 - `android/content/res/Resources.java`, the class `Bag`: a style's items are
@@ -2142,7 +2149,7 @@ the context that knows.
   was empty on the second; it shows its seven headers and their screens.
   Not done: two panes, bread crumbs.
 
-The original has all twenty faults; they are its author's to take back.
+The original has all twenty-one faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in
