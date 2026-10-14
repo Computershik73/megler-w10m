@@ -1030,7 +1030,9 @@ void hk_tests_java_set_script(int count, char **steps)
 static int run_data(void)
 {
     static const char *const steps[] = { "open", "kept", "insert", "query", "types", "update", "delete", "rollback", "commit", "constraint", "statement", "text",
-                                         "bad-sql", "memory", "upgrade", "left" };
+                                         "bad-sql", "memory", "upgrade", "left",
+                                         /* And the storage as an app sees it. */
+                                         "environment", "own-folders", "volumes", "space", "permissions", "download" };
     int at = -1, want = 0, run = 0, line, i;
     char text[120];
     if (g_script_count) sscanf(g_script[0], "run:%d", &want);
@@ -1044,6 +1046,8 @@ static int run_data(void)
     }
     snprintf(text, sizeof(text), "I/DataTest: done ok=%d failed=0", (int)HK_COUNT(steps));
     expect_line(text, &at, 60);
+    /* What requestPermissions asked comes back by a message of its own, after the method that asked has returned. */
+    expect_line("I/DataTest: permission-result ok after done=true", &at, 30);
     /* The core's own word that it is its SQLite, on its files. */
     CHECK(find_line("sqlite: SQLite 3.", 0) >= 0);
     for (i = 0; i < g_nlines; i++)

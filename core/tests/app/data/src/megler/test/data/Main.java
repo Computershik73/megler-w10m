@@ -260,8 +260,118 @@ public class Main extends Activity {
             return count(db) == 3;
         });
         helper.close();
+        storage(run);
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
+        doneLogged = true;
     }
+
+    /**
+     * The phone's storage as an app sees it: where things are (Environment, the app's own folders), what volumes there are
+     * (StorageManager, the public way and the hidden one file managers use), how large it is (StatFs, StorageStatsManager),
+     * that it may be used (permissions), and that it can be: a file written to Download is there to be read and listed, also by
+     * the next run. Paths are checked as Android names them, not by where they are on the host.
+     */
+    private void storage(final long run) {
+        final File root = android.os.Environment.getExternalStorageDirectory();
+        step("environment", () -> {
+            File download = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
+            detail = root + " " + download + " " + android.os.Environment.getExternalStorageState() + " " + android.os.Environment.getDataDirectory() + " "
+                    + android.os.Environment.getRootDirectory() + " " + android.os.Environment.getDownloadCacheDirectory();
+            return "/storage/emulated/0".equals(root.getPath()) && "/storage/emulated/0/Download".equals(download.getPath())
+                    && "mounted".equals(android.os.Environment.getExternalStorageState()) && "mounted".equals(android.os.Environment.getExternalStorageState(download))
+                    && android.os.Environment.isExternalStorageEmulated() && android.os.Environment.isExternalStorageEmulated(root)
+                    && !android.os.Environment.isExternalStorageRemovable() && !android.os.Environment.isExternalStorageRemovable(root)
+                    && "/data".equals(android.os.Environment.getDataDirectory().getPath()) && "/system".equals(android.os.Environment.getRootDirectory().getPath())
+                    && "/data/cache".equals(android.os.Environment.getDownloadCacheDirectory().getPath()) && "Download".equals(android.os.Environment.DIRECTORY_DOWNLOADS)
+                    && "DCIM".equals(android.os.Environment.DIRECTORY_DCIM) && "Documents".equals(android.os.Environment.DIRECTORY_DOCUMENTS);
+        });
+        step("own-folders", () -> {
+            String base = "/storage/emulated/0/Android/";
+            File files = getExternalFilesDir(null), pictures = getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES), cache = getExternalCacheDir(), obb = getObbDir();
+            File[] media = getExternalMediaDirs(), all = getExternalFilesDirs(null);
+            detail = files + " " + pictures + " " + cache + " " + obb + " " + Arrays.toString(media);
+            /* Each is where Android puts it and is there once asked for; the application context and the activity agree. */
+            return (base + "data/megler.test.data/files").equals(files.getPath()) && (base + "data/megler.test.data/files/Pictures").equals(pictures.getPath())
+                    && (base + "data/megler.test.data/cache").equals(cache.getPath()) && (base + "obb/megler.test.data").equals(obb.getPath())
+                    && media.length == 1 && (base + "media/megler.test.data").equals(media[0].getPath()) && all.length == 1 && all[0].equals(files)
+                    && files.isDirectory() && pictures.isDirectory() && cache.isDirectory() && obb.isDirectory() && media[0].isDirectory()
+                    && obb.equals(getApplicationContext().getObbDir()) && media[0].equals(getApplicationContext().getExternalMediaDirs()[0]);
+        });
+        step("volumes", () -> {
+            android.os.storage.StorageManager sm = (android.os.storage.StorageManager) getSystemService(Context.STORAGE_SERVICE);
+            java.util.List<android.os.storage.StorageVolume> list = sm.getStorageVolumes();
+            android.os.storage.StorageVolume v = sm.getPrimaryStorageVolume();
+            /* The hidden way, by reflection, as a file manager written before Android 7 finds the storage. */
+            Object[] old = (Object[]) android.os.storage.StorageManager.class.getMethod("getVolumeList").invoke(sm);
+            String[] paths = (String[]) android.os.storage.StorageManager.class.getMethod("getVolumePaths").invoke(sm);
+            String state = (String) android.os.storage.StorageManager.class.getMethod("getVolumeState", String.class).invoke(sm, "/storage/emulated/0");
+            String elsewhere = (String) android.os.storage.StorageManager.class.getMethod("getVolumeState", String.class).invoke(sm, "/storage/1234-5678");
+            String path = (String) old[0].getClass().getMethod("getPath").invoke(old[0]);
+            File pathFile = (File) old[0].getClass().getMethod("getPathFile").invoke(old[0]);
+            detail = list.size() + " " + v.getDescription(this) + " " + path + " " + Arrays.toString(paths) + " " + state + " " + elsewhere + " " + v.getUuid();
+            return list.size() == 1 && old.length == 1 && paths.length == 1 && "/storage/emulated/0".equals(path) && "/storage/emulated/0".equals(paths[0])
+                    && root.equals(pathFile) && "mounted".equals(state) && "unknown".equals(elsewhere) && "Internal storage".equals(v.getDescription(this))
+                    && v.isPrimary() && !v.isRemovable() && v.isEmulated() && "mounted".equals(v.getState()) && v.getUuid() == null
+                    && sm.getStorageVolume(new File(root, "Download")) != null
+                    && "41217664-9172-527a-b3d5-edabb50a7d69".equals(android.os.storage.StorageManager.UUID_DEFAULT.toString())
+                    && android.os.storage.StorageManager.UUID_DEFAULT.equals(sm.getUuidForPath(getFilesDir()));
+        });
+        step("space", () -> {
+            android.os.StatFs fs = new android.os.StatFs(root.getPath()), data = new android.os.StatFs(android.os.Environment.getDataDirectory().getPath());
+            long total = fs.getTotalBytes(), free = fs.getAvailableBytes();
+            android.app.usage.StorageStatsManager stats = (android.app.usage.StorageStatsManager) getSystemService(Context.STORAGE_STATS_SERVICE);
+            long sold = stats.getTotalBytes(android.os.storage.StorageManager.UUID_DEFAULT), left = stats.getFreeBytes(android.os.storage.StorageManager.UUID_DEFAULT);
+            detail = "total=" + total + " free=" + free + " blocks=" + fs.getBlockCountLong() + "x" + fs.getBlockSizeLong() + " int " + fs.getBlockCount() + "x" + fs.getBlockSize()
+                    + " sold=" + sold + " left=" + left + " file " + root.getTotalSpace() + "/" + root.getUsableSpace();
+            /* Sane, and the same whichever way it is asked: the long calls, the old int ones multiplied as longs, java.io.File, the data partition. */
+            return total >= (1L << 30) && free > 0 && free <= total && fs.getBlockSizeLong() > 0 && fs.getBlockCountLong() * fs.getBlockSizeLong() == total
+                    && (long) fs.getBlockCount() * fs.getBlockSize() == total && fs.getAvailableBlocksLong() * fs.getBlockSizeLong() == free
+                    && (long) fs.getAvailableBlocks() * fs.getBlockSize() == free && fs.getFreeBytes() >= free && root.getTotalSpace() == total && root.getUsableSpace() == free
+                    && data.getTotalBytes() >= (1L << 30)
+                    /* What the phone is sold as: not less than what is there, less than twice it, and never nothing; and what is left of it. */
+                    && sold >= data.getTotalBytes() && sold < 2 * data.getTotalBytes() + 1000 && left > 0 && left <= sold;
+        });
+        step("permissions", () -> {
+            String read = android.Manifest.permission.READ_EXTERNAL_STORAGE, write = android.Manifest.permission.WRITE_EXTERNAL_STORAGE;
+            int granted = android.content.pm.PackageManager.PERMISSION_GRANTED;
+            requestPermissions(new String[] { read, write }, 77);
+            return checkSelfPermission(read) == granted && checkSelfPermission(write) == granted && checkCallingOrSelfPermission(write) == granted
+                    && checkPermission(write, android.os.Process.myPid(), android.os.Process.myUid()) == granted
+                    && getPackageManager().checkPermission(write, getPackageName()) == granted && !shouldShowRequestPermissionRationale(write);
+        });
+        step("download", () -> {
+            File dir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), file = new File(dir, "megler-data-test.txt");
+            String before = null;
+            if (file.exists()) {
+                try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader(file))) {
+                    before = r.readLine();
+                }
+            }
+            dir.mkdirs();
+            try (java.io.FileWriter w = new java.io.FileWriter(file)) {
+                w.write("written by run " + run + "\n");
+            }
+            String now;
+            try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader(file))) {
+                now = r.readLine();
+            }
+            String[] names = dir.list();
+            detail = "before=" + before + " now=" + now + " in " + Arrays.toString(names) + " by /sdcard: " + new File("/sdcard/Download/megler-data-test.txt").length();
+            /* There, with what was written, listed in its folder; under the path's other name too; and the run before left its own. */
+            return ("written by run " + run).equals(now) && file.length() == now.length() + 1 && names != null && Arrays.asList(names).contains("megler-data-test.txt")
+                    && new File("/sdcard/Download/megler-data-test.txt").length() == file.length() && (run == 1 || ("written by run " + (run - 1)).equals(before));
+        });
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
+        boolean all = request == 77 && permissions.length == 2 && results.length == 2;
+        for (int r : results) all &= r == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        /* Delivered as Android delivers it: later, on the main thread, not from inside requestPermissions. */
+        Log.i("DataTest", "permission-result " + (all && android.os.Looper.myLooper() == android.os.Looper.getMainLooper() ? "ok" : "FAILED") + " after done=" + doneLogged);
+    }
+
+    private boolean doneLogged;
 
     @Override
     protected void onDestroy() {

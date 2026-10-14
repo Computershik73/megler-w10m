@@ -96,8 +96,8 @@ bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-f
       72 checks, 0 failed          the Java test app demos, the keyboard's 25 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
       12 checks, 0 failed          the Java test app crash: an exception nothing catches, and launcher aliases
-      25 checks, 0 failed          the Java test app data: a database, the first run
-      25 checks, 0 failed          data again, on what the first run left
+      32 checks, 0 failed          the Java test app data: a database and the storage, the first run
+      32 checks, 0 failed          data again, on what the first run left
       38 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
     (then each app once more, its drawing recorded for the PC's run to draw again)
 ```
@@ -488,11 +488,51 @@ and opened at version 2, `onUpgrade` once, the column it adds there. `left`
 and `kept`: the app leaves three rows and counts its runs; `tools/build-tests.sh`
 runs it twice, the second time on the data folder of the first, and the
 second run must find the rows of the first and say that it is run 2.
-25 checks each.
+With the storage's steps (below), 32 checks each.
 
 On the phone the proof is QuickShortcutMaker, which opens its database when
 its Favourites or History tab is first shown; under qemu the database opens
 and the tabs show their empty state (`build/java-pictures/qsm/app-4.bmp`).
+
+### The storage as an app sees it (the app under qemu-arm)
+
+The same app, `core/tests/app/data`, then asks about the phone's storage the
+ways an app does, six steps more. Paths are checked as Android names them,
+never by where they are on the host.
+
+- `environment`: `Environment.getExternalStorageDirectory()` is
+  `/storage/emulated/0`, the public Download folder is under it, the state is
+  `mounted` (asked plainly and of a path), emulated and not removable;
+  `getDataDirectory()` is `/data`, `getRootDirectory()` `/system`,
+  `getDownloadCacheDirectory()` `/data/cache`.
+- `own-folders`: `getExternalFilesDir(null)` and `(DIRECTORY_PICTURES)`,
+  `getExternalCacheDir()`, `getObbDir()`, `getExternalMediaDirs()` are
+  `Android/data/<package>/files`, `.../files/Pictures`, `.../cache`,
+  `Android/obb/<package>` and `Android/media/<package>` under the shared
+  storage, each there once asked for, and the Activity and the application
+  context agree.
+- `volumes`: `StorageManager.getStorageVolumes()` is one volume, the primary:
+  "Internal storage", emulated, not removable, mounted, with no UUID. The
+  hidden `getVolumeList`, `getVolumePaths` and `getVolumeState`, called by
+  reflection as an old file manager calls them, give the same volume, its
+  path, and `unknown` for a path that is none. `UUID_DEFAULT` is Android's.
+- `space`: `StatFs` on the shared storage and on `/data`: a total of at least
+  a gigabyte, free space within it, and the same answer whichever way it is
+  asked -- the long calls, the old int ones multiplied as longs,
+  `java.io.File`. `StorageStatsManager.getTotalBytes(UUID_DEFAULT)` is not
+  less than what is there and less than twice it; `getFreeBytes` within it.
+- `permissions`: the two storage permissions are granted, asked five ways
+  (`checkSelfPermission`, `checkCallingOrSelfPermission`, `checkPermission`
+  with the app's own pid and uid, `PackageManager.checkPermission`, and no
+  rationale to show); `requestPermissions` returns and
+  `onRequestPermissionsResult` comes afterwards, by a message on the main
+  thread, with both granted. The framework answers every permission this way,
+  not these two only: `checkPermission` is `PERMISSION_GRANTED` whatever the
+  name, and nothing is ever asked of the user.
+- `download`: a file written to the public Download folder is there, reads
+  back, is listed in its folder, has the same length by the path's other
+  name (`/sdcard/Download/...`), and the second run finds what the first
+  wrote.
 
 ### Real apps (qemu-arm; nothing here is run by default)
 
