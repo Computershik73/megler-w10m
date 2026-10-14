@@ -1632,7 +1632,10 @@ version checks.
   Android does: it takes a stopped activity's window away and puts it back
   on resume, where Android leaves a stopped activity's views attached. So
   every list was deaf to touches once its activity had been covered by
-  another and come back.
+  another and come back. And one field, `mIsChildViewEnabled`: Android's own,
+  not public, which AppCompat's `DropDownListView` (every popup menu and
+  spinner of an AppCompat app) takes by reflection; without it each such list
+  logged a `NoSuchFieldException` with its stack.
 - `android/content/res/ResTable.java`, two methods: a resource is found by
   its name without indexing the whole package ("What an AlertDialog cost").
 - `android/content/res/Resources.java`, the class `Bag`: a style's items are

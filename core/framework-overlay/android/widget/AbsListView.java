@@ -9,7 +9,13 @@
 // laid out again by anything else. And it happens here far more often than on Android: Activity.meglerStop takes the stopped
 // activity's window away (ViewRoot.remove, which detaches every view) and meglerResume adds it again, where Android keeps a
 // stopped activity's views attached. So every list was deaf once its activity had been covered by another one and come
-// back -- until something else happened to ask for a layout. Everything else is the original's, unchanged.
+// back -- until something else happened to ask for a layout.
+//
+// And in one field, mIsChildViewEnabled, which the original does not have. It is Android's own (whether the selector is drawn
+// as for an enabled row), not public, and AppCompat's DropDownListView -- every popup menu and spinner of an app built with
+// AppCompat -- takes it by reflection in its constructor and writes it when a row is pressed. Without it each such list
+// logged a NoSuchFieldException with its stack (Apktool M on the phone). Nothing here reads it: this list draws its
+// selector by the pressed row's own state. Everything else is the original's, unchanged.
 package android.widget;
 
 import android.content.Context;
@@ -55,6 +61,8 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Fi
     final RecycleBin mRecycler = new RecycleBin();
     final Rect mListPadding = new Rect();
     Drawable mSelector;
+    /** Android's, for AppCompat's DropDownListView, which reaches it by reflection (see the head of this file). */
+    boolean mIsChildViewEnabled;
     final Rect mSelectorRect = new Rect();
     int mSelectorPosition = INVALID_POSITION;
     boolean mDrawSelectorOnTop, mStackFromBottom, mSmoothScrollbarEnabled = true, mFastScrollEnabled, mTextFilterEnabled, mScrollingCacheEnabled;
