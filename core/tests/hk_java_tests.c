@@ -1219,6 +1219,8 @@ static int run_app(void)
 {
     char name[40];
     int i, n = 1, x, y, x2, y2, k, ms, code, tries;
+    /* HK_JAVA_PROFILE=after:N: the profile from the end of the script's Nth step (0: from the start of the script) to its end. */
+    int after = g_profile_step && !strncmp(g_profile_step, "after:", 6) ? atoi(g_profile_step + 6) : -1;
     i32 pictures = W.pictures;
     /* The first picture can be long in coming: a real app's start under qemu is minutes of class linking. */
     for (tries = 0; tries < 60000 && W.pictures == pictures && running(); tries++) hk_sleep_ns(10000000ull);
@@ -1227,6 +1229,7 @@ static int run_app(void)
     write_picture("app-1");
     for (i = 0; i < g_script_count && running(); i++) {
         const char *s = g_script[i];
+        if (i == after) hk_dvm_profile(true);
         if (sscanf(s, "tap:%d,%d", &x, &y) == 2) {
             tap(x, y);
             hk_sleep_ns(300000000ull);
@@ -1262,6 +1265,11 @@ static int run_app(void)
     if (!running()) say("  the app ended with status %d%s%s", g_status, g_reason[0] ? ": " : "", g_reason);
     /* With HK_JAVA_PROFILE=start: what ran from the app's start to the end of the script. */
     profile_end("start");
+    if (after >= 0 && after < g_script_count) {
+        hk_dvm_profile(false);
+        say("  the profile of the script from its step %d:", after + 1);
+        hk_dvm_profile_report(getenv("HK_JAVA_PROFILE_TOP") && atoi(getenv("HK_JAVA_PROFILE_TOP")) > 0 ? atoi(getenv("HK_JAVA_PROFILE_TOP")) : 20, profile_line, NULL);
+    }
     return g_failed;
 }
 
