@@ -269,6 +269,7 @@ public class Main extends Activity {
         storage(run);
         battery();
         timezone();
+        tls();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
         new android.os.Handler().postDelayed(this::popup, 700);
@@ -482,6 +483,40 @@ public class Main extends Activity {
                     && s.contains(String.format(java.util.Locale.US, " %02d:00 ", calendar.get(java.util.Calendar.HOUR_OF_DAY)))
                     && zoned.getHour() == calendar.get(java.util.Calendar.HOUR_OF_DAY) && zoned.getOffset().getTotalSeconds() * 1000 == zone.getOffset(summer)
                     && zone.getOffset(winter) == zone.getRawOffset();
+        });
+    }
+
+    /**
+     * TLS while there is none: the contexts an app and Android's own HTTP client ask for are there, and a connection that would
+     * use one fails as a connection fails -- an IOException -- not with the AssertionError Android's client throws when there is
+     * no SSLContext at all, which ended threads of MX Player and Super S22 Launcher.
+     */
+    private void tls() {
+        step("tls", () -> {
+            javax.net.ssl.SSLContext context = javax.net.ssl.SSLContext.getInstance("TLS");
+            context.init(null, null, null);
+            javax.net.ssl.SSLSocketFactory factory = context.getSocketFactory();
+            boolean there = factory != null && javax.net.ssl.SSLContext.getInstance("TLSv1.2") != null && javax.net.ssl.SSLContext.getDefault() != null
+                    && javax.net.ssl.SSLSocketFactory.getDefault() != null && javax.net.ssl.HttpsURLConnection.getDefaultSSLSocketFactory() != null;
+            String direct;
+            try {
+                factory.createSocket("127.0.0.1", 443).close();
+                direct = "made";
+            } catch (java.io.IOException e) {
+                direct = e.getMessage();
+            }
+            /* An https URL as an app opens one. Nothing listens there; whichever way it fails, it must fail as an IOException. */
+            String https;
+            try {
+                java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL("https://127.0.0.1:9/").openConnection();
+                c.setConnectTimeout(3000);
+                c.connect();
+                https = "connected";
+            } catch (java.io.IOException e) {
+                https = "IOException";
+            }
+            detail = "there=" + there + " direct=" + direct + " https=" + https;
+            return there && "no TLS on this phone yet".equals(direct) && "IOException".equals(https);
         });
     }
 

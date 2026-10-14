@@ -53,7 +53,7 @@ where; **expected** and **not verified** mean what they say.
 | `core/src/webp/` | WebP pictures decoded in the core: `hk_webp.c`, and libwebp's decoder compiled in where it is there, file by file |
 | `core/include/megler.h` | `megler_gfx_host`, the contract for the shell's drawing; `megler_window_host.present_pixels`; `megler_run_config.android_root` |
 | `core/framework-overlay/` | what differs here from the original's Java framework: files that replace the original's and members added to its classes, each saying at its top what differs and why |
-| `core/src/dvm/art/*.smali`, `hk_dvm_art_dex.h` | three classes the runtime adds to libcore's: a security provider that stands in for conscrypt's, and the getter libcore asks for the phone's time zone |
+| `core/src/dvm/art/*.smali`, `hk_dvm_art_dex.h` | five classes the runtime adds to libcore's: a security provider that stands in for conscrypt's, with SSLContexts whose connections fail politely, and the getter libcore asks for the phone's time zone |
 | `tools/build-framework.sh` | builds the framework's DEX from the original's sources and the overlay |
 | `core/tests/app/`, `tools/build-test-app.sh` | two test apps as ordinary Android apps (aapt2, javac, d8), and their build |
 | `core/tests/hk_java_tests.c` | the test of the driver: the apps started through `megler_run`, their log and their pictures checked |
@@ -96,8 +96,8 @@ bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-f
       72 checks, 0 failed          the Java test app demos, the keyboard's 25 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
       13 checks, 0 failed          the Java test app crash: an exception nothing catches, launcher aliases, an app written for Android 6
-      44 checks, 0 failed          the Java test app data: a database, the storage, the battery and the time zone, the first run
-      45 checks, 0 failed          data again, on what the first run left, with another battery and a time zone that is none
+      45 checks, 0 failed          the Java test app data: a database, the storage, the battery, the time zone and TLS, the first run
+      46 checks, 0 failed          data again, on what the first run left, with another battery and a time zone that is none
       45 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
     (then each app once more, its drawing recorded for the PC's run to draw again)
 ```
@@ -188,13 +188,13 @@ a `substring` out of range, an `ExceptionInInitializerError`'s text).
 
 The six files of the boot class path the test starts from are Android 9's own
 (`core-oj`, `core-libart`, `conscrypt`, `okhttp`, `bouncycastle`, `apache-xml`:
-7617 classes, 11.4 MB of DEX), and after them three classes of the runtime's
-own ("The security providers" below, and the getter of "The time zone"): 7620.
+7617 classes, 11.4 MB of DEX), and after them five classes of the runtime's
+own ("The security providers" below, and the getter of "The time zone"): 7622.
 
 **Without libcore's native libraries** (the PC, and the same code as ARM):
 
-- All six files are read and **every one of the 7620 classes links** (in both
-  runs: `7620 linked, 0 not`).
+- All six files are read and **every one of the 7622 classes links** (in both
+  runs: `7622 linked, 0 not`).
 - The program that uses `java.lang` alone (`d8t/Main.java`) gives the JVM's
   answers for 9 of its 10 tests, and the one that uses `java.util`, `java.io`
   and `java.text` (`d8t/Lib.java`) for the 7 of its 17 that need no native
@@ -507,7 +507,8 @@ and `kept`: the app leaves three rows and counts its runs; `tools/build-tests.sh
 runs it twice, the second time on the data folder of the first, and the
 second run must find the rows of the first and say that it is run 2.
 With the storage's, the battery's and the time zone's steps (below) and one
-for a popup list, 44 checks in the first run and 45 in the second. The popup:
+for a popup list and one for TLS, 45 checks in the first run and 46 in the
+second. The popup:
 a `ListPopupWindow` of three rows that wraps its
 content, shown under a strip at the top of the window, has all three rows
 inside its list and clear of the list's padding (160 high: three rows of 48
@@ -816,7 +817,7 @@ survive.
 | EGL and OpenGL ES from Java (`megler.EGLNative`, `GLES20` over ANGLE) | Device Info's GPU page; any `GLSurfaceView` | large |
 | `megler.Web` (a `WebView`) | ads, licence and help pages in all three | very large; an empty rectangle today |
 | Processes (`Runtime.exec`) | root checkers and file managers probing `su`, `getprop`, `sh` | answered: "no such program" (`error=2`), for every program, `sh` included. An app that wants `getprop`'s output gets the exception, not an empty answer |
-| TLS (conscrypt's `libjavacrypto.so`) | anything that talks HTTPS | the two libraries, built like the other seven |
+| TLS (conscrypt's `libjavacrypto.so`) | anything that talks HTTPS; until then such a connection fails with an `SSLException` ("no TLS on this phone yet") | the two libraries, built like the other seven |
 | `invoke-custom`, method handles | not met in these three (d8 desugared them) | large |
 
 ### The phone's package
@@ -1252,9 +1253,23 @@ name is asked for: BouncyCastle's own key derivation takes its digests from
 "AndroidOpenSSL" and refuses to start on Android without it. Under that name
 it offers the six digests -- which are BouncyCastle's own classes, in Java --
 and `SHA1PRNG`, which is the system's random source (`hk_random`). MACs,
-ciphers and key derivation are BouncyCastle's. There is no TLS, and asking for
-it is `NoSuchAlgorithmException`; a cipher asked of "AndroidOpenSSL" by name
-is not there.
+ciphers and key derivation are BouncyCastle's. There is no TLS, but there are
+SSLContexts by every name Android 9's provider has (TLS, Default, SSL, TLSv1,
+TLSv1.1, TLSv1.2; `NoTlsContext.smali`): `init` takes anything, and the
+socket factory they give -- which is also `SSLSocketFactory.getDefault()`'s
+and `HttpsURLConnection`'s -- answers every socket with an `SSLException`, "no
+TLS on this phone yet", from the call that would connect. Without them
+Android's own HTTP client, behind `URL.openConnection` for an https URL,
+threw `AssertionError` ("the system has no TLS") and ended the thread that
+asked; Firebase's threads in MX Player and an ad SDK's in Super S22 Launcher
+died that way. Now the app sees a failed connection, as for a name that does
+not resolve. (An `SSLEngine` or a server socket factory is
+`UnsupportedOperationException`; `TrustManagerFactory` and `KeyManagerFactory`
+are not there, which an app with an HTTP client of its own may ask for
+first.) The data app's `tls` step asks for the contexts and the defaults, has
+the factory refuse a socket with that message, and opens an https URL whose
+connection must fail as an `IOException`. A cipher asked of "AndroidOpenSSL"
+by name is not there.
 
 **The built-in `java.lang` stays** as the first way to start
 (`hk_dvm_start(NULL, 0)`). It could be dropped now that every fixture passes on

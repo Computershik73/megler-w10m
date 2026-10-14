@@ -5,7 +5,10 @@
 # signatures take their digests from the provider of that name and refuse to start on Android without it, and libcore's
 # strongest random generator is "SHA1PRNG:AndroidOpenSSL". What it offers under the name is the little that can be had
 # without BoringSSL: random bytes from the system (SystemRandom.smali), and the six digests, which are BouncyCastle's own
-# classes written in Java. Anything else asked of "AndroidOpenSSL" is NoSuchAlgorithmException.
+# classes written in Java. And an SSLContext of every name Android 9's has (TLS, Default, SSL, TLSv1 to TLSv1.2) whose
+# connections fail politely (NoTlsContext.smali): there is no TLS, and an app asking for it must get a failed connection,
+# not the AssertionError Android's HTTP client throws when it finds no SSLContext at all. Anything else asked of
+# "AndroidOpenSSL" is NoSuchAlgorithmException.
 .class public final Lmegler/security/RuntimeProvider;
 .super Ljava/security/Provider;
 
@@ -38,6 +41,24 @@
     invoke-virtual {p0, v0, v1}, Ljava/security/Provider;->put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
     const-string v0, "MessageDigest.SHA-512"
     const-string v1, "com.android.org.bouncycastle.jcajce.provider.digest.SHA512$Digest"
+    invoke-virtual {p0, v0, v1}, Ljava/security/Provider;->put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+    const-string v0, "SSLContext.TLS"
+    const-string v1, "megler.security.NoTlsContext"
+    invoke-virtual {p0, v0, v1}, Ljava/security/Provider;->put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+    const-string v0, "SSLContext.Default"
+    const-string v1, "megler.security.NoTlsContext"
+    invoke-virtual {p0, v0, v1}, Ljava/security/Provider;->put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+    const-string v0, "SSLContext.SSL"
+    const-string v1, "megler.security.NoTlsContext"
+    invoke-virtual {p0, v0, v1}, Ljava/security/Provider;->put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+    const-string v0, "SSLContext.TLSv1"
+    const-string v1, "megler.security.NoTlsContext"
+    invoke-virtual {p0, v0, v1}, Ljava/security/Provider;->put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+    const-string v0, "SSLContext.TLSv1.1"
+    const-string v1, "megler.security.NoTlsContext"
+    invoke-virtual {p0, v0, v1}, Ljava/security/Provider;->put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+    const-string v0, "SSLContext.TLSv1.2"
+    const-string v1, "megler.security.NoTlsContext"
     invoke-virtual {p0, v0, v1}, Ljava/security/Provider;->put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
     return-void
 .end method

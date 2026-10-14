@@ -1115,8 +1115,8 @@ static int run_data(void)
                                          "bad-sql", "memory", "upgrade", "left",
                                          /* And the storage as an app sees it. */
                                          "environment", "own-folders", "volumes", "space", "permissions", "download", "list-root",
-                                         /* And the battery, and the time zone. */
-                                         "battery", "timezone" };
+                                         /* And the battery, the time zone, and TLS that fails politely. */
+                                         "battery", "timezone", "tls" };
     int at = -1, want = 0, run = 0, line, i;
     char text[120];
     if (g_script_count) sscanf(g_script[0], "run:%d", &want);

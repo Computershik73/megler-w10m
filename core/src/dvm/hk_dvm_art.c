@@ -643,8 +643,9 @@ static int boot_jars(char out[][64], int cap)
  * conscrypt's native library is not built. Until it is in the root, the
  * list is changed just before that initialiser runs: in conscrypt's first
  * place a provider of the runtime's own under conscrypt's name
- * (art/RuntimeProvider.smali says why the name: random bytes from the system
- * and BouncyCastle's digests), then libcore's, then BouncyCastle, which has
+ * (art/RuntimeProvider.smali says why the name: random bytes from the system,
+ * BouncyCastle's digests, and SSLContexts whose connections fail with an
+ * SSLException -- NoTlsContext.smali), then libcore's, then BouncyCastle, which has
  * MACs, ciphers and key derivation in Java. conscrypt's TLS provider is left
  * out, and with it the two properties that name its socket factories: there
  * is no TLS, and asking for it says so (NoSuchAlgorithmException) instead of
@@ -684,7 +685,8 @@ static void before_init(hk_dvm_class *c)
     set_security(props.l, "ssl.SocketFactory.provider", NULL);
     set_security(props.l, "ssl.ServerSocketFactory.provider", NULL);
     hk_dvm_clear_pending();
-    hk_info("java: conscrypt's native library is not in the Android root: digests are BouncyCastle's, random numbers the system's, and there is no TLS");
+    hk_info("java: conscrypt's native library is not in the Android root: digests are BouncyCastle's, random numbers the system's, and there is no TLS"
+            " (a connection that asks for it fails with an SSLException)");
 }
 
 N(SystemRandom_engineNextBytes)
