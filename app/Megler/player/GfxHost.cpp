@@ -3078,10 +3078,14 @@ bool present(void*, void* canvas, int x, int y, int width, int height) {
         }
         if (fresh) part = base.bounds();
         GpuContext& g = *cv->gc;
-        g.finish();
+        // The copy joins the frame's own drawing (a context's target can change while it draws), which is ended once, here.
+        if (g.owner) g.owner->detach();
         g.dc->SetTarget(onto.get());
         g.target = onto.get();
-        g.dc->BeginDraw();
+        if (!g.inDraw) {
+            g.dc->BeginDraw();
+            g.inDraw = true;
+        }
         if (!part.empty()) {
             // Row y of the picture is row height - 1 - y of the texture; with nearest sampling every pixel lands whole.
             g.dc->SetTransform(Matrix3x2F(1, 0, 0, -1, 0, float(cv->memoryH)));
@@ -3090,7 +3094,10 @@ bool present(void*, void* canvas, int x, int y, int width, int height) {
             g.dc->DrawBitmap(base.gpu.get(), &rect, 1.0f, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, &rect, nullptr);
             g.dc->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_SOURCE_OVER);
         }
+        g.inDraw = false;
+        const uint64_t ending = ticksNow();
         const HRESULT hr = g.dc->EndDraw();
+        s.endTicks += ticksNow() - ending;
         if (FAILED(hr)) {
             gpuFailed("ID2D1DeviceContext::EndDraw", hr);
             return;
