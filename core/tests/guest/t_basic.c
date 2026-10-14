@@ -669,6 +669,27 @@ int t_ashmem(void)
 }
 
 /*
+ * mremap, as an allocator grows and shrinks a block it mapped: grown with MREMAP_MAYMOVE, the bytes are there and the
+ * new pages zero; shrunk, it stays where it is; grown without leave to move, ENOMEM. 5, or the negated step that failed.
+ */
+void *mremap(void *, size_t, size_t, int, ...);
+
+int t_mremap(void)
+{
+    unsigned char *p = mmap(0, 8192, 3, 0x22, -1, 0), *q;
+    if (p == (unsigned char *)-1) return -1;
+    p[0] = 1;
+    p[8191] = 2;
+    q = mremap(p, 8192, 5 * 4096, 1);
+    if (q == (unsigned char *)-1 || q[0] != 1 || q[8191] != 2 || q[8192] != 0 || q[5 * 4096 - 1] != 0) return -2;
+    q[5 * 4096 - 1] = 3;
+    if (mremap(q, 5 * 4096, 4096, 0) != q || q[0] != 1) return -3;
+    if (mremap(q, 4096, 3 * 4096, 0) != (void *)-1 || *__errno() != 12) return -4;
+    if (munmap(q, 4096) != 0) return -5;
+    return 5;
+}
+
+/*
  * fnmatch, which Chromium's FileEnumerator asks of every name it lists: the number of the 16 cases that came out as POSIX
  * and bionic have them.
  */
