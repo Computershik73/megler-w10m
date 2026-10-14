@@ -498,6 +498,19 @@ static int run_hello(void)
     CHECK(pixel(swatch[0] + 300, swatch[1] + 60 * dp) == 0x2060C0);
     CHECK(pixel(swatch[0] + 20, swatch[1] + 20) == 0xFF0000 && pixel(swatch[0] + 9, swatch[1] + 20) == 0x2060C0 && pixel(swatch[0] + 50, swatch[1] + 20) == 0x2060C0);
     CHECK(pixel(swatch[0] + 70, swatch[1] + 20) == 0x00C000 && pixel(swatch[0] + 90, swatch[1] + 20) == 0x2060C0);
+    {
+        /* Two letters made twice the paint's size by a span are drawn as the same letters by a paint of twice the size: the same count of pixels in the colour only they have. */
+        int by_span[4], by_paint[4], spanned, plain;
+        by_span[0] = swatch[0] + 200;
+        by_paint[0] = swatch[0] + 340;
+        by_span[1] = by_paint[1] = swatch[1] + 35;
+        by_span[2] = by_paint[2] = 140;
+        by_span[3] = by_paint[3] = 65;
+        spanned = count_colour(by_span, 0x800080);
+        plain = count_colour(by_paint, 0x800080);
+        say("  two letters at twice the size: %d pixels when a span says so, %d when the paint does", spanned, plain);
+        CHECK(plain > 0 && spanned == plain);
+    }
     /* A shape with no colour of its own, tinted, is filled with the tint, and its rounded corner leaves the field showing: Material's tab indicator. */
     CHECK(pixel(swatch[0] + 40, swatch[1] + 65) == 0xC06020 && pixel(swatch[0] + 10, swatch[1] + 50) == 0x2060C0 && pixel(swatch[0] + 75, swatch[1] + 65) == 0x2060C0);
     /* The PNG from the resources, 16 pixels stretched to 64 dp: orange left, green right, a transparent border through which the layout's grey shows. */
