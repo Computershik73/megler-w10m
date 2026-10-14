@@ -96,8 +96,8 @@ bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-f
       72 checks, 0 failed          the Java test app demos, the keyboard's 25 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
       12 checks, 0 failed          the Java test app crash: an exception nothing catches, and launcher aliases
-      33 checks, 0 failed          the Java test app data: a database and the storage, the first run
-      33 checks, 0 failed          data again, on what the first run left
+      36 checks, 0 failed          the Java test app data: a database, the storage and the battery, the first run
+      36 checks, 0 failed          data again, on what the first run left, with another battery
       39 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
     (then each app once more, its drawing recorded for the PC's run to draw again)
 ```
@@ -490,7 +490,7 @@ and opened at version 2, `onUpgrade` once, the column it adds there. `left`
 and `kept`: the app leaves three rows and counts its runs; `tools/build-tests.sh`
 runs it twice, the second time on the data folder of the first, and the
 second run must find the rows of the first and say that it is run 2.
-With the storage's steps (below), 33 checks each.
+With the storage's and the battery's steps (below), 36 checks each.
 
 On the phone the proof is QuickShortcutMaker, which opens its database when
 its Favourites or History tab is first shown; under qemu the database opens
@@ -544,6 +544,29 @@ Java's calls arrive there.
   Ringtones -- each a directory, the root readable and writable, and the
   app's own `Android/data/<package>` under it. This list is what a file
   manager's first screen is made of (Apktool M's drawer, in "Real apps").
+
+### The battery (both hosts; the app under qemu-arm)
+
+The core answers for the battery in one place, `hk_battery_read`
+(`core/src/run/hk_run.h`): level and scale, status, what it is plugged into,
+health, millivolts, tenths of a degree, whether there is one, and its kind --
+the numbers of Android's `ACTION_BATTERY_CHANGED`. Until `hk_battery_set` is
+called it is a full, healthy Li-ion battery on mains power (100 of 100, 4200
+mV, 25.0 degrees); the shell can set the real one whenever it changes. The
+core's own test (`test_battery`, 4 checks, both hosts) reads the default,
+sets another, reads it back made safe (a scale of 0 is 100, the text ends),
+and sets none again.
+
+An app reads it two ways, and the `battery` step of the data app reads both:
+the sticky intent (`registerReceiver(null, filter)`) with its nine extras, and
+`BatteryManager.getIntProperty` (the capacity is the level as a percentage,
+the status the intent's) with `isCharging()`. A receiver registered for the
+intent is called with it once, afterwards, on the main thread, as Android
+delivers a sticky broadcast; apps that show the battery from their receiver,
+which is the usual way, heard nothing before. The harness leaves the first
+run on the default and sets another battery before the second (37 of 100,
+discharging, unplugged, 3712 mV, 30.1 degrees, "Li-poly"), and checks the
+line the app logs in each: what the app reads is what the core has.
 
 ### Real apps (qemu-arm; nothing here is run by default)
 
@@ -1674,10 +1697,10 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: fourteen files** in the overlay,
-twelve of them a statement or a method each inside an otherwise untouched copy
+**What differs from the original's framework: sixteen files** in the overlay,
+fourteen of them a statement or a method each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
-**and four files of members added** to classes of the original's.
+**and five files of members added** to classes of the original's.
 
 The second kind is for the platform's public members that the original's
 class does not have and an app calls -- a `NoSuchMethodError` where Android
@@ -1775,6 +1798,16 @@ the context that knows.
   shape drew nothing: Device Info's indicator is a rounded rectangle in the
   theme's primary colour behind the selected tab, whose label is white to be
   read on it, and without it "Dashboard" was white on near-white.
+- `megler/Broadcasts.java` and `android/os/BatteryManager.java`, the battery:
+  both had a full battery written in, the intent with four extras (no
+  voltage, temperature, health or technology) and never delivered to the
+  receiver it was registered with. Both ask the core now
+  (`megler.Native.battery()`, two natives added by `megler/Native.java.members`,
+  which are `hk_battery_read`), the intent has Android's extras and is
+  delivered, and `registerReceiver(null, filter)` no longer leaves a null in
+  the list of receivers. Device Info's card read "Battery 0%, Voltage: 0 mV,
+  Temperature: 0C" on the phone because it shows what its receiver is told.
+  (Counted as one fault of the original's: the battery nobody could set.)
 - `android/content/res/ResTable.java`, two methods: a resource is found by
   its name without indexing the whole package ("What an AlertDialog cost").
 - `android/content/res/Resources.java`, the class `Bag`: a style's items are
@@ -1832,7 +1865,7 @@ the context that knows.
   was empty on the second; it shows its seven headers and their screens.
   Not done: two panes, bread crumbs.
 
-The original has all thirteen faults; they are its author's to take back.
+The original has all fourteen faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in

@@ -295,6 +295,33 @@ N(Native_pollInput)
 N(Native_setClipboard) { J.clipboard = c->args[0].l; }
 N(Native_getClipboard) { c->ret.l = J.clipboard; }
 
+/* The battery as the core has it (hk_battery_read, run/hk_run.h), in the order megler.Native.battery's comment gives. */
+N(Native_battery)
+{
+    hk_battery b;
+    hk_jobj *a = hk_dvm_new_array("[I", 8);
+    hk_battery_read(&b);
+    if (a) {
+        i32 *v = (i32 *)a->u.arr.data;
+        v[0] = b.level;
+        v[1] = b.scale;
+        v[2] = b.status;
+        v[3] = b.plugged;
+        v[4] = b.health;
+        v[5] = b.voltage_mv;
+        v[6] = b.temperature;
+        v[7] = b.present ? 1 : 0;
+    }
+    c->ret.l = a;
+}
+
+N(Native_batteryTechnology)
+{
+    hk_battery b;
+    hk_battery_read(&b);
+    c->ret.l = hk_dvm_new_string(b.technology);
+}
+
 N(Native_insets)
 {
     /* Left, top, right, bottom of the screen the app must keep clear -- none: the shell gives the app a surface that is all its own -- and what the keyboard covers of its bottom. */
@@ -403,6 +430,8 @@ static const hk_jhle k_native[] = {
     { "megler/Native", "nativeLooperPoll", NULL, Native_looperPoll },
     { "megler/Native", "dataDir", NULL, Native_dataDir },
     { "megler/Native", "externalDir", NULL, Native_externalDir },
+    { "megler/Native", "battery", NULL, Native_battery },
+    { "megler/Native", "batteryTechnology", NULL, Native_batteryTechnology },
     { "megler/Native", "packageName", NULL, Native_packageName },
     { "megler/Native", "screenWidth", NULL, Native_screenWidth },
     { "megler/Native", "screenHeight", NULL, Native_screenHeight },

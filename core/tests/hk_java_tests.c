@@ -1035,12 +1035,17 @@ void hk_tests_java_set_script(int count, char **steps)
  * says how each step went. It is run twice by the script, the second time on the data folder the first left: the
  * script names the run it expects ("run:2") and the app says which run its own database makes it.
  */
+/* A battery nobody would take for the default: 37 of 100 and going down, off the charger, 3.712 V, 30.1 degrees. */
+static const hk_battery k_battery_run2 = { 37, 100, 3, 0, 2, 3712, 301, true, "Li-poly" };
+
 static int run_data(void)
 {
     static const char *const steps[] = { "open", "kept", "insert", "query", "types", "update", "delete", "rollback", "commit", "constraint", "statement", "text",
                                          "bad-sql", "memory", "upgrade", "left",
                                          /* And the storage as an app sees it. */
-                                         "environment", "own-folders", "volumes", "space", "permissions", "download", "list-root" };
+                                         "environment", "own-folders", "volumes", "space", "permissions", "download", "list-root",
+                                         /* And the battery. */
+                                         "battery" };
     int at = -1, want = 0, run = 0, line, i;
     char text[120];
     if (g_script_count) sscanf(g_script[0], "run:%d", &want);
@@ -1056,6 +1061,12 @@ static int run_data(void)
     expect_line(text, &at, 60);
     /* What requestPermissions asked comes back by a message of its own, after the method that asked has returned. */
     expect_line("I/DataTest: permission-result ok after done=true", &at, 30);
+    /* So does the battery's sticky broadcast to a receiver registered for it, once. */
+    expect_line("I/DataTest: battery-received ok", &at, 30);
+    /* And the battery an app reads is the core's (hk_battery_read): a full one on mains when nothing was set, in the second run the one set before it. */
+    CHECK(find_line(run == 2 && want == 2 ? "I/DataTest: battery is level=37/100 status=3 plugged=0 health=2 voltage=3712 temperature=301 present=true technology=Li-poly capacity=37 charging=false"
+                                           : "I/DataTest: battery is level=100/100 status=5 plugged=1 health=2 voltage=4200 temperature=250 present=true technology=Li-ion capacity=100 charging=true",
+                    0) >= 0);
     /* The core's own word that it is its SQLite, on its files. */
     CHECK(find_line("sqlite: SQLite 3.", 0) >= 0);
     for (i = 0; i < g_nlines; i++)
@@ -1160,6 +1171,8 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
     g_portrait = !strcmp(which, "demos");
     g_any_app = !strcmp(which, "app");
     g_crash_app = !strcmp(which, "crash");
+    /* The data app's second run is on another battery than the one the core has when nobody has said: what the app then reads is what was set here. */
+    if (!strcmp(which, "data") && g_script_count && !strcmp(g_script[0], "run:2")) hk_battery_set(&k_battery_run2);
     if (start(apk, android_root)) {
         if (!strcmp(which, "demos")) run_demos();
         else if (!strcmp(which, "natives")) run_natives();

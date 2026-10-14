@@ -1,0 +1,8 @@
+    // megler-w10m: members added to the original's megler.Native (tools/build-framework.sh, "X.java.members").
+    // The battery, asked of the core (hk_battery_read, core/src/run/hk_run.h), which is the one place that knows it: the
+    // original's framework had a full battery written into the two classes that answer an app (megler.Broadcasts and
+    // android.os.BatteryManager, both overlaid here to ask this instead).
+    /** level, scale, status, plugged, health, millivolts, tenths of a degree Celsius, present (1 or 0): the numbers of Android's ACTION_BATTERY_CHANGED. */
+    public static native int[] battery();
+    /** The battery's kind as Android names it, "Li-ion". */
+    public static native String batteryTechnology();

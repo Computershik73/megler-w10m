@@ -261,6 +261,7 @@ public class Main extends Activity {
         });
         helper.close();
         storage(run);
+        battery();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
     }
@@ -379,6 +380,44 @@ public class Main extends Activity {
 
     private static boolean isStandard(String name) {
         return Arrays.asList("Alarms", "Android", "DCIM", "Documents", "Download", "Movies", "Music", "Notifications", "Pictures", "Podcasts", "Ringtones").contains(name);
+    }
+
+    /**
+     * The battery, the two ways an app reads it: the sticky ACTION_BATTERY_CHANGED intent and BatteryManager. They must agree
+     * with each other; what the numbers are is the test's to say, which sets them in the core (hk_battery_set) before the run.
+     * A receiver registered for the intent is called with it, later.
+     */
+    private void battery() {
+        step("battery", () -> {
+            android.content.IntentFilter filter = new android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED);
+            android.content.Intent sticky = registerReceiver(null, filter);
+            android.os.BatteryManager manager = (android.os.BatteryManager) getSystemService(Context.BATTERY_SERVICE);
+            int capacity = manager.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);
+            Log.i("DataTest", "battery is " + describe(sticky) + " capacity=" + capacity + " charging=" + manager.isCharging());
+            final android.content.Intent[] returned = new android.content.Intent[1];
+            returned[0] = registerReceiver(new android.content.BroadcastReceiver() {
+                private int calls;
+
+                @Override
+                public void onReceive(Context context, android.content.Intent intent) {
+                    calls++;
+                    boolean same = describe(intent).equals(describe(returned[0])) && android.content.Intent.ACTION_BATTERY_CHANGED.equals(intent.getAction());
+                    Log.i("DataTest", "battery-received " + (same && calls == 1 && doneLogged && android.os.Looper.myLooper() == android.os.Looper.getMainLooper() ? "ok" : "FAILED"));
+                    unregisterReceiver(this);
+                }
+            }, filter);
+            int level = sticky.getIntExtra("level", -1), scale = sticky.getIntExtra("scale", -1);
+            detail = describe(sticky) + " capacity=" + capacity;
+            return level >= 0 && scale > 0 && level <= scale && capacity == level * 100 / scale && describe(sticky).equals(describe(returned[0]))
+                    && manager.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_STATUS) == sticky.getIntExtra("status", -1)
+                    && manager.isCharging() == (sticky.getIntExtra("plugged", -1) != 0 && (sticky.getIntExtra("status", -1) == 2 || sticky.getIntExtra("status", -1) == 5));
+        });
+    }
+
+    private static String describe(android.content.Intent battery) {
+        return "level=" + battery.getIntExtra("level", -1) + "/" + battery.getIntExtra("scale", -1) + " status=" + battery.getIntExtra("status", -1) + " plugged="
+                + battery.getIntExtra("plugged", -1) + " health=" + battery.getIntExtra("health", -1) + " voltage=" + battery.getIntExtra("voltage", -1) + " temperature="
+                + battery.getIntExtra("temperature", -1) + " present=" + battery.getBooleanExtra("present", false) + " technology=" + battery.getStringExtra("technology");
     }
 
     @Override

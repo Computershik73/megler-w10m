@@ -586,6 +586,31 @@ static void test_media(const char *scratch)
     free(path);
 }
 
+/* The battery the core answers for (run/hk_run.h): a full one on mains until one is set, then the one set, made safe to divide by and to read as text. */
+static void test_battery(void)
+{
+    hk_battery b, set;
+    say("the battery");
+    memset(&b, 0, sizeof(b));
+    hk_battery_read(&b);
+    CHECK(b.level == 100 && b.scale == 100 && b.status == 5 && b.plugged == 1 && b.health == 2 && b.voltage_mv == 4200 && b.temperature == 250 && b.present && !strcmp(b.technology, "Li-ion"));
+    memset(&set, 0, sizeof(set));
+    set.level = 12;
+    set.status = 3;
+    set.health = 2;
+    set.voltage_mv = 3600;
+    set.temperature = -52;
+    set.present = true;
+    memset(set.technology, 'x', sizeof(set.technology));
+    hk_battery_set(&set);
+    hk_battery_read(&b);
+    CHECK(b.level == 12 && b.scale == 100 && b.status == 3 && b.plugged == 0 && b.voltage_mv == 3600 && b.temperature == -52 && b.present);
+    CHECK(strlen(b.technology) == sizeof(b.technology) - 1);
+    hk_battery_set(NULL);
+    hk_battery_read(&b);
+    CHECK(b.level == 100 && b.plugged == 1 && !strcmp(b.technology, "Li-ion"));
+}
+
 static void test_input(void)
 {
     enum { TAPS = 60000 };
@@ -1198,6 +1223,7 @@ int hk_tests_run(const char *libdir, const char *scratch, hk_test_sink sink, voi
     test_sqlite(scratch);
     test_textures();
     test_media(scratch);
+    test_battery();
     test_input();
     {
         /* The stand-in for the shell's drawing under a Java app: it is what the Java driver's tests see pictures through. */
