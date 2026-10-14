@@ -11,6 +11,7 @@
 #include "hk_dvm_tests.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "../src/host/hk_host.h"
 
@@ -49,6 +50,44 @@ static const bench_item k_items[] = {
     { "classes", "getClass, instance-of, check-cast" },
 };
 
+/*
+ * A sampling profile of one item, for finding where its time goes (HK_BENCH_PROFILE=<method>, with the samples written to
+ * the file HK_BENCH_PROFILE_OUT): a second thread stops the running one every 20 microseconds or so and notes where it was.
+ * The addresses go to the file one a line, after the address of this function, so that a linker map can name them
+ * (tools/dvm-bench.sh profile does).
+ */
+typedef struct sampler {
+    hk_thread *target;
+    volatile i32 stop;
+    hk_addr *pcs;
+    u32 n, cap;
+} sampler;
+
+static void sampler_main(void *arg)
+{
+    sampler *s = (sampler *)arg;
+    while (!s->stop && s->n < s->cap) {
+        hk_thread_regs regs;
+        u64 until = hk_time_monotonic_ns() + 20000;
+        if (hk_thread_suspend(s->target, &regs)) {
+            s->pcs[s->n++] = regs.pc;
+            hk_thread_resume(s->target);
+        }
+        while (hk_time_monotonic_ns() < until) {
+        }
+    }
+}
+
+static void write_samples(const sampler *s, const char *path)
+{
+    FILE *f = fopen(path, "w");
+    u32 i;
+    if (!f) return;
+    fprintf(f, "anchor %llx\n", (unsigned long long)(hk_addr)(void *)hk_dvm_bench_run);
+    for (i = 0; i < s->n; i++) fprintf(f, "%llx\n", (unsigned long long)s->pcs[i]);
+    fclose(f);
+}
+
 /* One run of an item: false when it threw. */
 static bool run_once(const char *method, i32 n, u64 *ns, u64 *executed)
 {
@@ -83,6 +122,8 @@ void hk_dvm_bench_run(const char *fixtures, int ms)
         u64 ns = 0, executed = 0;
         i32 n = 64;
         bool ok = true;
+        /* (Profiling one item: that one alone.) */
+        if (getenv("HK_BENCH_PROFILE") && strcmp(getenv("HK_BENCH_PROFILE"), k_items[i].method)) continue;
         /* Once briefly, so that classes are linked and initialised, and then with more turns until a run lasts a tenth of the time. */
         ok = run_once(k_items[i].method, 16, &ns, &executed);
         while (ok) {
@@ -102,6 +143,35 @@ void hk_dvm_bench_run(const char *fixtures, int ms)
         if (!ok) {
             say("  %-36s threw", k_items[i].what);
             continue;
+        }
+        /* The best of three: what another program on the machine takes from a run is noise, and only ever more time. */
+        if (ok) {
+            int k;
+            for (k = 0; k < 2 && ok; k++) {
+                u64 ns2 = 0, executed2 = 0;
+                ok = run_once(k_items[i].method, n, &ns2, &executed2);
+                if (ok && ns2 < ns) {
+                    ns = ns2;
+                    executed = executed2;
+                }
+            }
+        }
+        if (getenv("HK_BENCH_PROFILE") && !strcmp(getenv("HK_BENCH_PROFILE"), k_items[i].method)) {
+            static sampler smp;
+            hk_thread *th;
+            u64 ns2 = 0, executed2 = 0;
+            smp.target = hk_thread_current();
+            smp.cap = 1u << 20;
+            smp.pcs = (hk_addr *)hk_alloc(sizeof(hk_addr) * smp.cap);
+            smp.n = 0;
+            smp.stop = 0;
+            th = hk_thread_start(sampler_main, &smp, 64 * 1024, "sampler");
+            run_once(k_items[i].method, n * 10, &ns2, &executed2);
+            hk_atomic_xchg(&smp.stop, 1);
+            hk_thread_join(th);
+            say("  (%u samples of %s)", (unsigned)smp.n, k_items[i].method);
+            if (getenv("HK_BENCH_PROFILE_OUT")) write_samples(&smp, getenv("HK_BENCH_PROFILE_OUT"));
+            free(smp.pcs);
         }
         all_ns += ns;
         all_executed += executed;

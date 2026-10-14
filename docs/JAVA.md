@@ -1193,6 +1193,12 @@ included. It needs libcore. It is printed, never checked:
   steadiest number), and the ARM test program under qemu-arm. 300 ms an item.
 - The libcore tests run it too, 40 ms an item. The phone's Self-test prints
   the phone's own table, with the collector set as an app has it.
+- Each item is timed as the best of three runs: other work on the machine
+  only ever adds time.
+- `tools/dvm-bench.sh profile <item> [function]` shows where one item's time
+  goes. A second thread samples where the running one is, about every 20 µs
+  (`HK_BENCH_PROFILE`). `tools/dvm-profile.py` names the functions from the
+  linker map and shows the hottest instructions of one of them.
 - The real workload is an app's start under the Java test harness. After the
   first settle, `hk_tests --java` says "the start: N M instructions on all
   threads, S s to the last picture before the app rested".

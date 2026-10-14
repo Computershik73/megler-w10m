@@ -248,7 +248,10 @@ elif [ "$MODE" = win ]; then
   for obj in StorageHost Strings hk_storage_windows; do
     [ -f "$OUT/storageobj/$obj.obj" ] || { echo "compile failed: $obj.cpp" >&2; exit 1; }
   done
-  "$VC/bin/Hostx64/x64/link.exe" /nologo "/OUT:$(w "$OUT/hk_tests.exe")" "$(w "$OUT/obj")\\*.obj" "$(w "$OUT/zobj")\\*.obj" "$(w "$OUT/gfxobj")\\*.obj" \
+  # (MEGLER_TESTS_MAP=1: a linker map beside it, hk_tests.map, which tools/dvm-bench.sh profile reads.)
+  MAPOPT=()
+  [ "${MEGLER_TESTS_MAP:-0}" = 1 ] && MAPOPT=("/MAP:$(w "$OUT/hk_tests.map")")
+  "$VC/bin/Hostx64/x64/link.exe" /nologo ${MAPOPT[@]+"${MAPOPT[@]}"} "/OUT:$(w "$OUT/hk_tests.exe")" "$(w "$OUT/obj")\\*.obj" "$(w "$OUT/zobj")\\*.obj" "$(w "$OUT/gfxobj")\\*.obj" \
     "$(w "$OUT/storageobj")\\*.obj" bcrypt.lib synchronization.lib d2d1.lib dwrite.lib ole32.lib oleaut32.lib ws2_32.lib iphlpapi.lib
   echo "built $OUT/hk_tests.exe"
   if [ "$RUN" = 1 ]; then

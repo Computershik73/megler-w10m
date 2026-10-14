@@ -10,11 +10,30 @@
 #         is not the phone's speed but moves with it.
 #
 # Each prints the table: for each item, nanoseconds a turn, instructions a turn, millions of instructions a second.
+#
+#   tools/dvm-bench.sh profile <item> [function]
+#
+#   profile  the x64 /O2 program with a linker map, the item run ten times as long while a second thread samples where
+#            it is (hk_dvm_bench.c); tools/dvm-profile.py names the functions the samples fall in and, for the function
+#            named (the interpreter's `interpret` by default), shows its hottest instructions.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MODE="${1:-both}"
 MS="${2:-300}"
 bash "$ROOT/tools/dvm-android-root.sh" > /dev/null
+if [ "$MODE" = profile ]; then
+  ITEM="$2"
+  FUNC="${3:-interpret}"
+  MEGLER_TESTS_OPT=/O2 MEGLER_TESTS_OUT="$ROOT/build/tests-win-o2" MEGLER_TESTS_MAP=1 bash "$ROOT/tools/build-tests.sh" win --no-run --no-libcore > /dev/null
+  OUTF="$ROOT/build/tests-win-o2/samples-$ITEM.txt"
+  HK_BENCH_PROFILE="$ITEM" HK_BENCH_PROFILE_OUT="$(cygpath -w "$OUTF")" "$ROOT/build/tests-win-o2/hk_tests.exe" --dvm-bench \
+    "$(cygpath -w "$ROOT/build/guest/armeabi-v7a/dvm")" "$(cygpath -w "$ROOT/build/android9/root")" 200 | grep -E "samples|$ITEM" || true
+  VC=""
+  for cl in "/c/Program Files/Microsoft Visual Studio/2022/"*/VC/Tools/MSVC/*/bin/Hostx64/x64/cl.exe; do [ -f "$cl" ] && VC="${cl%/cl.exe}"; done
+  VCBIN="$(cygpath -w "$VC")" python "$ROOT/tools/dvm-profile.py" "$(cygpath -w "$OUTF")" "$(cygpath -w "$ROOT/build/tests-win-o2/hk_tests.map")" \
+    "$(cygpath -w "$ROOT/build/tests-win-o2/hk_tests.exe")" "$FUNC" "${4:-40}"
+  exit 0
+fi
 if [ "$MODE" = win ] || [ "$MODE" = both ]; then
   MEGLER_TESTS_OPT=/O2 MEGLER_TESTS_OUT="$ROOT/build/tests-win-o2" bash "$ROOT/tools/build-tests.sh" win --no-run --no-libcore > /dev/null
   echo "== x64, /O2"
