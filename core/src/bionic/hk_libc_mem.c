@@ -521,7 +521,7 @@ const hk_sym hk_tab_mem[] = {
     HK_WRAP("_ZdaPvRKSt9nothrow_t", g_delete_nothrow),
     HK_WRAP("_ZdlPvj", g_delete_sized),
     HK_WRAP("_ZdaPvj", g_delete_sized),
-    HK_WRAP("mmap", g_mmap),
+    HK_WRAP("mmap", g_mmap), HK_WRAP("__mmap2", hk_g_mmap2),
     HK_WRAP("mmap64", g_mmap64),
     HK_WRAP("munmap", g_munmap),
     HK_WRAP("mprotect", g_mprotect),

@@ -550,6 +550,46 @@ int t_dlext(void)
     return 7;
 }
 
+/*
+ * What Chromium's and Firefox's libraries take of bionic besides functions, and the small functions its headers make
+ * calls of: a time past 2038 through time64.h, the IPv6 constants, CPU_COUNT, CMSG_NXTHDR, sysinfo, getopt's globals.
+ * 6, or the negated step that failed.
+ */
+typedef struct { int sec, min, hour, mday, mon, year, wday, yday, isdst; long gmtoff; const char *zone; } t_tm;
+typedef struct { void *name; unsigned namelen; void *iov; size_t iovlen; void *control; size_t controllen; int flags; } t_msghdr;
+t_tm *gmtime64_r(const long long *, t_tm *);
+long long timegm64(t_tm *);
+int __sched_cpucount(size_t, const void *);
+unsigned char *__cmsg_nxthdr(t_msghdr *, unsigned char *);
+int sysinfo(unsigned *);
+extern const unsigned char in6addr_any[16], in6addr_loopback[16];
+extern int optind;
+
+int t_libc_more(void)
+{
+    long long t = 4102444800LL;                      /* 2100-01-01 00:00:00 UTC */
+    t_tm tm;
+    unsigned char set[8] = { 0xB1, 0, 0, 0, 0, 0, 0, 0x80 };
+    unsigned control[8] = { 16, 1, 1, 0, 16, 1, 1, 0 };
+    t_msghdr m;
+    unsigned info[16];
+    int i;
+    memset(&tm, 0, sizeof(tm));
+    if (!gmtime64_r(&t, &tm) || tm.year != 200 || tm.mon != 0 || tm.mday != 1 || tm.hour != 0 || timegm64(&tm) != t) return -1;
+    for (i = 0; i < 15; i++)
+        if (in6addr_any[i] || in6addr_loopback[i]) return -2;
+    if (in6addr_any[15] != 0 || in6addr_loopback[15] != 1) return -2;
+    if (__sched_cpucount(sizeof(set), set) != 5) return -3;
+    memset(&m, 0, sizeof(m));
+    m.control = control;
+    m.controllen = sizeof(control);
+    if (__cmsg_nxthdr(&m, (unsigned char *)control) != (unsigned char *)&control[4] || __cmsg_nxthdr(&m, (unsigned char *)&control[4]) != 0) return -4;
+    memset(info, 0xFF, sizeof(info));
+    if (sysinfo(info) != 0 || info[4] == 0 || info[5] > info[4] || info[13] != 1) return -5;
+    if (optind != 1) return -6;
+    return 6;
+}
+
 
 /* A deep enough frame to need the stack protector's cookie, when built with it. */
 int t_stack(const char *s)

@@ -1819,7 +1819,34 @@ static int sock_ioctl(void *obj, unsigned request, void *arg)
     return fail(GE_NOTTY);
 }
 
+/*
+ * CMSG_NXTHDR, which bionic's header makes a call: the control message after `c` in the message's control data, or NULL.
+ * The guest's structures are 32-bit: msghdr has msg_control at 16 and msg_controllen at 20; cmsghdr is 12 bytes, aligned
+ * to 4.
+ */
+static u8 *g_cmsg_nxthdr(const u8 *msg, u8 *c)
+{
+    u8 *control = (u8 *)(hk_addr)hk_rd32(msg + 16), *next;
+    u32 controllen = hk_rd32(msg + 20);
+    if (!c) return controllen >= 12 ? control : NULL;
+    next = c + ((hk_rd32(c) + 3u) & ~3u);
+    if ((size_t)(next + 12 - control) > controllen) return NULL;
+    return next;
+}
+
+/* FD_SET, FD_CLR and FD_ISSET as bionic's fortified header calls them: checked against the set's 1024 descriptors. */
+static void fd_checked(int fd, size_t size, const char *what)
+{
+    if (fd < 0 || fd >= 1024) hk_fatal("guest: %s: descriptor %d is outside an fd_set", what, fd);
+    if (size < 128) hk_fatal("guest: %s: an fd_set of %u bytes", what, (unsigned)size);
+}
+static void g_fd_set_chk(int fd, u32 *set, size_t size) { fd_checked(fd, size, "FD_SET"); set[fd / 32] |= 1u << (fd % 32); }
+static void g_fd_clr_chk(int fd, u32 *set, size_t size) { fd_checked(fd, size, "FD_CLR"); set[fd / 32] &= ~(1u << (fd % 32)); }
+static int g_fd_isset_chk(int fd, const u32 *set, size_t size) { fd_checked(fd, size, "FD_ISSET"); return (set[fd / 32] >> (fd % 32)) & 1; }
+
 const hk_sym hk_tab_net[] = {
+    HK_WRAP("__cmsg_nxthdr", g_cmsg_nxthdr), HK_WRAP("__FD_SET_chk", g_fd_set_chk), HK_WRAP("__FD_CLR_chk", g_fd_clr_chk),
+    HK_WRAP("__FD_ISSET_chk", g_fd_isset_chk),
     HK_WRAP("socket", g_socket), HK_WRAP("socketpair", g_socketpair), HK_WRAP("connect", g_connect), HK_WRAP("bind", g_bind),
     HK_WRAP("listen", g_listen), HK_WRAP("accept", g_accept), HK_WRAP("accept4", g_accept4), HK_WRAP("send", g_send),
     HK_WRAP("sendto", g_sendto), HK_WRAP("__sendto_chk", g_sendto_chk), HK_WRAP("sendmsg", g_sendmsg), HK_WRAP("sendmmsg", g_sendmmsg),

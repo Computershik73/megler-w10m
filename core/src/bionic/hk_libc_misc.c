@@ -1114,6 +1114,27 @@ static int g_system(const char *cmd)
     return cmd ? -1 : 0;
 }
 
+/*
+ * getopt's globals, which code that parses its own arguments reads (libchrome links them though nothing here runs it as a
+ * program). getopt itself is not here.
+ */
+static u32 g_optarg;
+static i32 g_optind = 1, g_opterr = 1, g_optopt;
+
+/* sysinfo (Linux's struct sysinfo, 64 bytes on 32-bit): the uptime, the memory the app may use and what is free of it. */
+static int g_sysinfo(u32 *out)
+{
+    u64 limit = hk_mem_limit(), used = hk_mem_usage();
+    if (!limit) limit = 2048ull << 20;
+    memset(out, 0, 64);
+    out[0] = (u32)(hk_time_monotonic_ns() / 1000000000ull);   /* uptime */
+    out[4] = (u32)(limit > 0xFFFFFFFFu ? 0xFFFFFFFFu : limit);  /* totalram */
+    out[5] = (u32)(limit > used ? (limit - used > 0xFFFFFFFFu ? 0xFFFFFFFFu : limit - used) : 0);   /* freeram */
+    ((u16 *)out)[20] = 1;                                     /* procs */
+    out[13] = 1;                                              /* mem_unit */
+    return 0;
+}
+
 void hk_misc_init(void)
 {
     hk_random(&g_stack_chk_guard, sizeof(g_stack_chk_guard));
@@ -1123,6 +1144,7 @@ void hk_misc_init(void)
 #define M(n, f) HK_WRAP(n, f)
 
 const hk_sym hk_tab_misc[] = {
+    HK_DATA("optarg", &g_optarg), HK_DATA("optind", &g_optind), HK_DATA("opterr", &g_opterr), HK_DATA("optopt", &g_optopt), M("sysinfo", g_sysinfo),
     M("__errno", hk_errno_ptr), HK_DATA("__stack_chk_guard", &g_stack_chk_guard), M("__stack_chk_fail", g_stack_chk_fail),
     M("atexit", g_atexit), M("__cxa_atexit", g_cxa_atexit), M("__cxa_thread_atexit_impl", g_cxa_thread_atexit),
     M("__aeabi_atexit", g_aeabi_atexit), M("__cxa_finalize", g_cxa_finalize), M("exit", g_exit), M("_exit", g__exit), M("_Exit", g__exit),
