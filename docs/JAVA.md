@@ -291,6 +291,22 @@ work: `libjavacore`, `libopenjdk`, `libicuuc`, `libicui18n`, `libnativehelper`,
   HmacSHA256, `Cipher` AES/CBC/PKCS5Padding there and back, PBKDF2 key
   derivation, `Base64`. All give the JVM's answers. None of it is conscrypt's:
   see "The security providers".
+- **java.nio's covariant returns.** Java 9 gave `ByteBuffer`, `CharBuffer`
+  and the other buffers their own `position(int)`, `limit(int)`, `mark()`,
+  `reset()`, `clear()`, `flip()` and `rewind()`, each returning the buffer's
+  own type, and Android's libcore has them from a later release than 9 (the
+  framework says it is API 34). Code compiled against such an `android.jar`
+  names them: `java/nio/ByteBuffer.position(I)Ljava/nio/ByteBuffer;`, which
+  Android 9's libcore does not have, and every such call was a
+  `NoSuchMethodError` (Brave 1.97's Mojo bindings, on its first IPC message).
+  Each of them returns the buffer it was called on, so `Buffer`'s method is
+  the same call: the runtime resolves a reference to one of these seven, in a
+  class of `java.nio` and returning that class, to `Buffer`'s
+  (`nio_covariant` in `core/src/dvm/hk_dvm_class.c`) when the class has no
+  method of that exact signature. Nothing else is looked up that way.
+  Fixture `t/Nio`, on libcore only: a `ByteBuffer` through all seven and a
+  `CharBuffer`'s `position`, through their own types; a name that is not one
+  of them (`capacity()Ljava/nio/ByteBuffer;`) is still a `NoSuchMethodError`.
 
 ### A Java app with an Activity (qemu-arm)
 

@@ -272,6 +272,7 @@ int hk_dvm_tests_run(const hk_dvm_test_config *config, hk_test_sink sink, void *
         test_jni(config->guest_dir);
         if (!g_libcore) test_d8(config->fixtures);            /* on libcore that program has been run already, with the other */
         if (config->apk) test_real_apk(config->apk);
+        if (g_libcore) test_libcore_nio();
         if (g_libcore) test_libcore_link_all();
         hk_dvm_set_trace(0);
     } else {
