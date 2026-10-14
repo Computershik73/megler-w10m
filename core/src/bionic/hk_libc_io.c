@@ -455,6 +455,7 @@ typedef struct gobj {
     /* OBJ_MEM made as shared memory (hk_fd_shm_create): writable, resized by ftruncate, and the protection mmap allows. */
     bool shm;
     int shm_prot;
+    int shm_seals;                 /* memfd's F_ADD_SEALS */
 } gobj;
 
 #define G_O_ACCMODE 3
@@ -657,6 +658,13 @@ static int g_open(const char *path, int flags, int mode)
         o->type = OBJ_NULL;
     } else if (!strcmp(g, "/dev/urandom") || !strcmp(g, "/dev/random")) {
         o->type = OBJ_RANDOM;
+    } else if (!strcmp(g, "/dev/ashmem")) {
+        /* ashmem as libcutils (and Chromium's copy of it) opens it: a region of no size yet, named and sized by ioctl. */
+        o->type = OBJ_MEM;
+        o->shm = true;
+        o->shm_prot = 7;
+        o->mem = (u8 *)hk_alloc(1);
+        o->mem_size = 0;
     } else if (!strncmp(g, "/proc/", 6) || !strncmp(g, "/sys/", 5)) {
         size_t n = 0;
         o->mem = (u8 *)synthetic(g, &n);
@@ -1258,6 +1266,18 @@ static void fill_special(g_stat *out, u32 mode, u64 size, const char *gpath)
     out->st_mode = mode;
 }
 
+/*
+ * ashmem's character device, misc 10:58 here: /dev/ashmem, and every region of shared memory, which is what
+ * ASharedMemory_create gives on Android. libcutils' ashmem code (Chromium has a copy) takes a descriptor for a region only
+ * when its device number is /dev/ashmem's.
+ */
+#define G_ASHMEM_RDEV ((10u << 8) | 58u)
+static void fill_ashmem(g_stat *out, u64 size, const char *gpath)
+{
+    fill_special(out, G_S_IFCHR | 0600, size, gpath);
+    out->st_rdev = G_ASHMEM_RDEV;
+}
+
 static int g_stat_path(const char *path, g_stat *out)
 {
     char *g, *h;
@@ -1272,6 +1292,11 @@ static int g_stat_path(const char *path, g_stat *out)
     g = normalize(path);
     if (!strncmp(g, "/dev/", 5) && (!strcmp(g, "/dev/null") || !strcmp(g, "/dev/zero") || !strcmp(g, "/dev/urandom") || !strcmp(g, "/dev/random"))) {
         fill_special(out, G_S_IFCHR | 0666, 0, g);
+        free(g);
+        return 0;
+    }
+    if (!strcmp(g, "/dev/ashmem")) {
+        fill_ashmem(out, 0, g);
         free(g);
         return 0;
     }
@@ -1316,7 +1341,10 @@ static int g_fstat(int fd, g_stat *out)
             fill_stat(out, &st, o->path);
         }
         break;
-    case OBJ_MEM: fill_special(out, G_S_IFREG | 0444, o->mem_size, o->path); break;
+    case OBJ_MEM:
+        if (o->shm) fill_ashmem(out, o->mem_size, o->path);
+        else fill_special(out, G_S_IFREG | 0444, o->mem_size, o->path);
+        break;
     case OBJ_DIRFD: fill_special(out, G_S_IFDIR | 0771, 4096, o->path); break;
     case OBJ_PIPE_R: case OBJ_PIPE_W: fill_special(out, G_S_IFIFO | 0600, 0, "pipe"); break;
     case OBJ_EXT:
@@ -2177,6 +2205,18 @@ static int g_fcntl(int fd, int cmd, int arg)
     case 1: r = g_cloexec[fd]; break;              /* F_GETFD */
     case 2: g_cloexec[fd] = (u8)(arg & 1); break;  /* F_SETFD */
     case 3: r = o->flags; break;                   /* F_GETFL */
+    case 1033: /* F_ADD_SEALS: shared memory; a seal against writing takes PROT_WRITE away from later mappings */
+    case 1034: /* F_GET_SEALS */
+        if (o->type != OBJ_MEM || !o->shm) {
+            hk_set_errno(GE_INVAL);
+            r = -1;
+        } else if (cmd == 1033) {
+            o->shm_seals |= arg & 0x1F;
+            if (arg & (0x08 | 0x10)) o->shm_prot &= ~2;  /* F_SEAL_WRITE, F_SEAL_FUTURE_WRITE */
+        } else {
+            r = o->shm_seals;
+        }
+        break;
     case 4: /* F_SETFL: only these two can change */
         o->flags = (o->flags & ~(G_O_NONBLOCK | G_O_APPEND)) | (arg & (G_O_NONBLOCK | G_O_APPEND));
         if (o->type == OBJ_EXT && o->ops->set_nonblock) o->ops->set_nonblock(o->ext, (arg & G_O_NONBLOCK) != 0);
@@ -2185,6 +2225,56 @@ static int g_fcntl(int fd, int cmd, int arg)
     }
     fd_put(o);
     return r;
+}
+
+/*
+ * ashmem's ioctls on shared memory (linux/ashmem.h), for code that drives the region itself, as libcutils does: its name,
+ * its size (set while nothing maps it), its protection (only ever narrowed), and pinning, which is always granted with
+ * nothing purged, since nothing is ever taken back here.
+ */
+static int shm_ioctl(gobj *o, unsigned request, void *arg)
+{
+    switch (request) {
+    case 0x41007701: {                             /* ASHMEM_SET_NAME */
+        char name[256];
+        snprintf(name, sizeof(name), "%.*s", 255, arg ? (const char *)arg : "");
+        free(o->path);
+        o->path = hk_sprintf("/dev/ashmem/%s", name);
+        return 0;
+    }
+    case 0x81007702:                               /* ASHMEM_GET_NAME */
+        snprintf((char *)arg, 256, "%s", o->path && !strncmp(o->path, "/dev/ashmem/", 12) ? o->path + 12 : "");
+        return 0;
+    case 0x40047703: {                             /* ASHMEM_SET_SIZE */
+        size_t size = (size_t)(hk_addr)arg;
+        u8 *mem;
+        if (size > 0x40000000u) break;
+        mem = (u8 *)realloc(o->mem, size ? size : 1);
+        if (!mem) {
+            hk_set_errno(GE_NOMEM);
+            return -1;
+        }
+        if (size > o->mem_size) memset(mem + o->mem_size, 0, size - o->mem_size);
+        o->mem = mem;
+        o->mem_size = size;
+        return 0;
+    }
+    case 0x7704: return (int)o->mem_size;          /* ASHMEM_GET_SIZE */
+    case 0x40047705:                               /* ASHMEM_SET_PROT_MASK */
+        if ((u32)(hk_addr)arg & ~(u32)o->shm_prot & 7u) break;
+        o->shm_prot = (int)((u32)(hk_addr)arg & 7u);
+        return 0;
+    case 0x7706: return o->shm_prot;               /* ASHMEM_GET_PROT_MASK */
+    case 0x40087707: return 0;                     /* ASHMEM_PIN: ASHMEM_NOT_PURGED */
+    case 0x40087708: return 0;                     /* ASHMEM_UNPIN */
+    case 0x7709: return 1;                         /* ASHMEM_GET_PIN_STATUS: ASHMEM_IS_PINNED */
+    case 0x770A: return 0;                         /* ASHMEM_PURGE_ALL_CACHES */
+    default:
+        hk_set_errno(GE_NOTTY);
+        return -1;
+    }
+    hk_set_errno(GE_INVAL);
+    return -1;
 }
 
 static int g_ioctl(int fd, unsigned request, void *arg)
@@ -2205,6 +2295,8 @@ static int g_ioctl(int fd, unsigned request, void *arg)
         else o->flags &= ~G_O_NONBLOCK;
         if (o->type == OBJ_EXT && o->ops->set_nonblock) o->ops->set_nonblock(o->ext, *(int *)arg != 0);
         r = 0;
+    } else if (o->type == OBJ_MEM && o->shm && (request & 0xFF00) == 0x7700) {
+        r = shm_ioctl(o, request, arg);
     } else if (o->type == OBJ_EXT && o->ops->ioctl) {
         r = o->ops->ioctl(o->ext, request, arg);
     } else {

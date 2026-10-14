@@ -626,6 +626,49 @@ int t_shm(void)
 }
 
 /*
+ * ashmem as libcutils drives it (Chromium has a copy): /dev/ashmem opened, named and sized by ioctl, mapped; a region is
+ * ashmem's character device, with /dev/ashmem's device number, which is how that code knows one -- a region from
+ * ASharedMemory_create too; its protection mask through ioctl, narrowed and then binding mmap. And memfd's seals: one
+ * against writing takes PROT_WRITE away. 10, or the negated step that failed.
+ */
+int ioctl(int, unsigned, ...);
+int fcntl(int, int, ...);
+int fstat(int, void *);
+int stat(const char *, void *);
+
+int t_ashmem(void)
+{
+    unsigned st[32], dev_rdev;
+    int fd = open("/dev/ashmem", 2), shm, m;           /* O_RDWR */
+    unsigned char *p;
+    char name[256];
+    if (fd < 0) return -1;
+    if (ioctl(fd, 0x41007701, "t_ashmem") != 0 || ioctl(fd, 0x40047703, 4096) != 0 || ioctl(fd, 0x7704) != 4096) return -2;
+    if (ioctl(fd, 0x81007702, name) != 0 || strcmp(name, "t_ashmem") != 0) return -3;
+    if (stat("/dev/ashmem", st) != 0 || (st[4] & 0170000) != 0020000 || !st[8]) return -4;     /* S_IFCHR, st_rdev */
+    dev_rdev = st[8];
+    if (fstat(fd, st) != 0 || (st[4] & 0170000) != 0020000 || st[8] != dev_rdev) return -5;
+    p = mmap(0, 4096, 3, 1, fd, 0);
+    if (p == (unsigned char *)-1) return -6;
+    p[7] = 9;
+    munmap(p, 4096);
+    if (ioctl(fd, 0x7706) != 7 || ioctl(fd, 0x40047705, 1) != 0 || ioctl(fd, 0x7706) != 1 || ioctl(fd, 0x40047705, 3) == 0) return -7;
+    p = mmap(0, 4096, 1, 1, fd, 0);
+    if (p == (unsigned char *)-1 || p[7] != 9 || mmap(0, 4096, 3, 1, fd, 0) != (void *)-1) return -8;
+    munmap(p, 4096);
+    close(fd);
+    shm = ASharedMemory_create("t_ashmem2", 4096);
+    if (shm < 0 || fstat(shm, st) != 0 || st[8] != dev_rdev || ioctl(shm, 0x7704) != 4096) return -9;
+    close(shm);
+    m = memfd_create("t_seals", 2);                           /* MFD_ALLOW_SEALING */
+    if (m < 0 || ftruncate(m, 4096) != 0 || fcntl(m, 1034) != 0 || fcntl(m, 1033, 0x10) != 0 || fcntl(m, 1034) != 0x10 ||
+        mmap(0, 4096, 3, 1, m, 0) != (void *)-1)
+        return -10;
+    close(m);
+    return 10;
+}
+
+/*
  * fnmatch, which Chromium's FileEnumerator asks of every name it lists: the number of the 16 cases that came out as POSIX
  * and bionic have them.
  */
