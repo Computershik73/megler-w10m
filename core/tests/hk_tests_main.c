@@ -443,6 +443,7 @@ const megler_gfx_host *hk_gfx_windows_host(void (*line)(const char *text, void *
 void hk_gfx_windows_counts(char *out, size_t size);
 int hk_gfx_windows_on_gpu(void);
 void hk_gfx_windows_lose_device(void);
+int hk_gfx_windows_check_present(const megler_gfx_host *h, void (*line)(const char *text, void *user), int *checks);
 
 /* A pixel of a 32 x 32 picture, as a check: a line when it is not what it should be. */
 static int gfx_loss_pixel(const u32 *px, int x, int y, u32 want, const char *what)
@@ -546,7 +547,20 @@ static int gfx_windows_mode(int argc, char **argv)
     config.out_dir = strcmp(argv[2], "-") ? argv[2] : NULL;
     printf("(drawing %s)\n", ways[way]);
     failed = hk_gfx_scenes_run(&config, NULL, NULL, &checks);
-    if ((way == 0 || way == 3) && hk_gfx_windows_on_gpu()) failed += gfx_windows_loss(config.host, &checks);
+    if ((way == 0 || way == 3) && hk_gfx_windows_on_gpu()) {
+        failed += hk_gfx_windows_check_present(config.host, print_line, &checks);
+        failed += gfx_windows_loss(config.host, &checks);
+    } else if (config.host->present) {
+        /* Drawn in memory there is no picture of the shell's own to show: the layer is told no, and flushes as before. */
+        u32 px[16];
+        void *cv = config.host->canvas_new(config.host->user, px, 4, 4, 16);
+        checks++;
+        if (cv && config.host->present(config.host->user, cv, 0, 0, 4, 4)) {
+            printf("  FAIL: present said yes for a canvas drawn in memory\n");
+            failed++;
+        }
+        if (cv) config.host->canvas_free(config.host->user, cv);
+    }
     hk_gfx_windows_counts(counts, sizeof(counts));
     printf("  %s\n%d checks, %d failed\n", counts, checks, failed);
     return failed ? 1 : 0;

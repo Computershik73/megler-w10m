@@ -304,6 +304,14 @@ struct State {
     std::mutex keptMutex;
     std::unordered_map<uint32_t, Kept> kept;
     uint64_t keptBytes = 0, keptClock = 0;
+    // Where a window's picture is shown without the memory (GfxHost::setWindow, present), and the target bitmap over
+    // its texture, made for the texture it last gave (windowMutex).
+    std::mutex windowMutex;
+    GfxHost::Window window;
+    ID3D11Texture2D* windowTexture = nullptr;
+    Ref<ID2D1Bitmap1> windowBitmap;
+    uint64_t windowCanvas = 0; // the serial of the canvas whose picture was shown last
+    std::atomic<uint64_t> canvasSerial{1};
     Ref<ID2D1Factory> d2d;
     Ref<ID2D1Factory1> d2d1;
     Ref<IDWriteFactory> dwrite;
@@ -353,12 +361,16 @@ struct State {
     // put on by Direct2D's effects and through memory, and the kept bitmaps made and drawn again.
     std::atomic<uint64_t> uploads{0}, uploadPixels{0}, uploadTicks{0}, readBacks{0}, readBackPixels{0}, readBackTicks{0}, byEffects{0},
         throughMemory{0}, keptMade{0}, keptReused{0};
+    // ... and the window's pictures shown without the memory, and the read-backs of such a window's canvas, which come only
+    // when something reads its memory.
+    std::atomic<uint64_t> shown{0}, showTicks{0}, windowReadBacks{0}, windowReadBackPixels{0}, windowReadBackTicks{0};
     std::mutex statsMutex;
     uint64_t statsAt = 0; // when the last line was written (ticks); 0: never
     struct Totals {
         uint64_t sessions = 0, direct = 0, composed = 0, layers = 0, partTargets = 0, targetsMade = 0, makeTicks = 0, endTicks = 0, composeTicks = 0,
                  composedPixels = 0, sessionPixels = 0, uploads = 0, uploadPixels = 0, uploadTicks = 0, readBacks = 0, readBackPixels = 0,
-                 readBackTicks = 0, byEffects = 0, throughMemory = 0, keptMade = 0, keptReused = 0;
+                 readBackTicks = 0, byEffects = 0, throughMemory = 0, keptMade = 0, keptReused = 0, shown = 0, showTicks = 0, windowReadBacks = 0,
+                 windowReadBackPixels = 0, windowReadBackTicks = 0;
     } statsLast;
 };
 
@@ -1013,6 +1025,7 @@ struct Surface {
     Ref<ID2D1Bitmap1> readable; // what read-backs go through, taken at the first
     Box gpuAhead;               // drawn on the processor and not yet read back into the memory
     Box memAhead;               // in the memory and not yet uploaded
+    bool window = false;        // a window's picture, shown without the memory (present): its read-backs are counted apart
 
     Box bounds() const {
         Box b;
@@ -1142,10 +1155,19 @@ struct Surface {
         const uint64_t from = ticksNow();
         struct Timed {
             uint64_t from;
-            ~Timed() { G().readBackTicks += ticksNow() - from; }
-        } timed{from};
+            bool window;
+            ~Timed() {
+                const uint64_t ticks = ticksNow() - from;
+                G().readBackTicks += ticks;
+                if (window) G().windowReadBackTicks += ticks;
+            }
+        } timed{from, window};
         ++G().readBacks;
         G().readBackPixels += uint64_t(box.width()) * uint64_t(box.height());
+        if (window) {
+            ++G().windowReadBacks;
+            G().windowReadBackPixels += uint64_t(box.width()) * uint64_t(box.height());
+        }
         if (!readable) readable = takeBitmap(w, h, true);
         if (!readable) return false;
         const D2D1_POINT_2U at = D2D1::Point2U(UINT32(box.l - ox), UINT32(box.t - oy));
@@ -1665,6 +1687,7 @@ constexpr size_t partTargetsKept = 4;
 
 struct Canvas {
     uint32_t magic = canvasMagic;
+    uint64_t serial = G().canvasSerial.fetch_add(1); // its own, never another's
     Surface base;                  // the memory, or the part of it the clip leaves open (fitBase); on the graphics processor all of it
     uint8_t* memory = nullptr;     // the canvas's memory as a whole
     int memoryW = 0, memoryH = 0, memoryStride = 0;
@@ -2895,10 +2918,17 @@ void noteDrawing() {
     t.throughMemory = s.throughMemory;
     t.keptMade = s.keptMade;
     t.keptReused = s.keptReused;
+    t.shown = s.shown;
+    t.showTicks = s.showTicks;
+    t.windowReadBacks = s.windowReadBacks;
+    t.windowReadBackPixels = s.windowReadBackPixels;
+    t.windowReadBackTicks = s.windowReadBackTicks;
     const State::Totals& l = s.statsLast;
     typedef unsigned long long ull;
     if (s.statsAt && t.sessions != l.sessions && s.gpu && !gpuGone()) {
-        // On the graphics processor: what went up and came back, which is where the time goes now, and what is kept there.
+        // On the graphics processor: what went up and came back, which is where the time goes now, the window's pictures
+        // shown without the memory, and what is kept there. A read-back of a window shown so comes only when something read
+        // its memory; those of other canvases are the contract's (the memory holds the picture when flush returns).
         const double seconds = ticksToMs(now - s.statsAt) / 1000.0;
         size_t keptCount;
         uint64_t keptBytes;
@@ -2907,14 +2937,19 @@ void noteDrawing() {
             keptCount = s.kept.size();
             keptBytes = s.keptBytes;
         }
+        const uint64_t windowBacks = t.windowReadBacks - l.windowReadBacks;
         say("%.1f s (graphics processor): %llu drawings begun and ended (%.1f ms ending them), %llu calls drawn by Direct2D, %llu by its effects, %llu "
-            "through memory (%.1f ms), %llu layers; %llu uploads of %.2f Mpx (%.1f ms), %llu read-backs of %.2f Mpx (%.1f ms, the wait for the processor "
-            "in it); bitmaps: %llu uploaded, %llu drawn from those kept, %zu kept in %.1f MB",
+            "through memory (%.1f ms), %llu layers; %llu pictures shown without the memory (%.1f ms); %llu uploads of %.2f Mpx (%.1f ms); read-backs "
+            "(the wait for the processor in them): %llu of other canvases, %.2f Mpx (%.1f ms), %llu of the shown window's, %.2f Mpx (%.1f ms); bitmaps: "
+            "%llu uploaded, %llu drawn from those kept, %zu kept in %.1f MB",
             seconds, ull(t.sessions - l.sessions), ticksToMs(t.endTicks - l.endTicks), ull(t.direct - l.direct), ull(t.byEffects - l.byEffects),
-            ull(t.throughMemory - l.throughMemory), ticksToMs(t.composeTicks - l.composeTicks), ull(t.layers - l.layers), ull(t.uploads - l.uploads),
-            double(t.uploadPixels - l.uploadPixels) / 1e6, ticksToMs(t.uploadTicks - l.uploadTicks), ull(t.readBacks - l.readBacks),
-            double(t.readBackPixels - l.readBackPixels) / 1e6, ticksToMs(t.readBackTicks - l.readBackTicks), ull(t.keptMade - l.keptMade),
-            ull(t.keptReused - l.keptReused), keptCount, double(keptBytes) / 1048576.0);
+            ull(t.throughMemory - l.throughMemory), ticksToMs(t.composeTicks - l.composeTicks), ull(t.layers - l.layers), ull(t.shown - l.shown),
+            ticksToMs(t.showTicks - l.showTicks), ull(t.uploads - l.uploads), double(t.uploadPixels - l.uploadPixels) / 1e6,
+            ticksToMs(t.uploadTicks - l.uploadTicks), ull(t.readBacks - l.readBacks - windowBacks),
+            double((t.readBackPixels - l.readBackPixels) - (t.windowReadBackPixels - l.windowReadBackPixels)) / 1e6,
+            ticksToMs((t.readBackTicks - l.readBackTicks) - (t.windowReadBackTicks - l.windowReadBackTicks)), ull(windowBacks),
+            double(t.windowReadBackPixels - l.windowReadBackPixels) / 1e6, ticksToMs(t.windowReadBackTicks - l.windowReadBackTicks),
+            ull(t.keptMade - l.keptMade), ull(t.keptReused - l.keptReused), keptCount, double(keptBytes) / 1048576.0);
     } else if (s.statsAt && t.sessions != l.sessions) {
         const double seconds = ticksToMs(now - s.statsAt) / 1000.0;
         const uint64_t sessions = t.sessions - l.sessions;
@@ -2964,6 +2999,109 @@ void touched(void*, void* canvas) {
     if (!cv || !cv->base.gc) return;
     cv->base.gpuAhead = Box();
     cv->base.memAhead = cv->base.bounds();
+}
+
+/// A target bitmap over the window host's texture, made again when it gives
+/// another texture (`fresh`: it did, and what that holds is not known).
+/// (The bitmap holds the texture, so a new one is never at the address of
+/// the old while the old is kept.)
+Ref<ID2D1Bitmap1> windowBitmapFor(ID3D11Texture2D* texture, bool* fresh) {
+    State& s = G();
+    std::lock_guard<std::mutex> lock(s.windowMutex);
+    *fresh = false;
+    if (texture == s.windowTexture && s.windowBitmap) return s.windowBitmap;
+    *fresh = true;
+    s.windowBitmap.reset();
+    s.windowTexture = nullptr;
+    Ref<IDXGISurface> surface;
+    HRESULT hr = texture->QueryInterface(__uuidof(IDXGISurface), reinterpret_cast<void**>(surface.put()));
+    if (SUCCEEDED(hr))
+        hr = s.gpuResource->CreateBitmapFromDxgiSurface(
+            surface.get(),
+            D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS(D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW),
+                                    D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96.0f, 96.0f),
+            s.windowBitmap.put());
+    if (FAILED(hr)) {
+        gpuFailed("ID2D1DeviceContext::CreateBitmapFromDxgiSurface", hr);
+        s.windowBitmap.reset();
+        return s.windowBitmap;
+    }
+    s.windowTexture = texture;
+    return s.windowBitmap;
+}
+
+/// megler_gfx_host.present: the canvas's picture on the graphics processor,
+/// the part that changed, drawn into the window host's texture -- bottom row
+/// first, as the panel shows it flipped, and copied as it is, alpha and all,
+/// as present_pixels takes the memory -- and shown. No read-back and no
+/// wait: the processor is handed the copy and the frame as it is handed the
+/// drawing, and the swap chain's own frame latency is what holds the app's
+/// thread back.
+bool present(void*, void* canvas, int x, int y, int width, int height) {
+    Canvas* cv = canvasOf(canvas);
+    if (!cv || !cv->gc || !cv->base.gc || gpuGone()) return false;
+    noteDrawing();
+    bool shown = false;
+    guarded("present", [&] {
+        State& s = G();
+        GfxHost::Window window;
+        {
+            std::lock_guard<std::mutex> lock(s.windowMutex);
+            window = s.window;
+        }
+        if (!window.target || !window.show) return;
+        const uint64_t from = ticksNow();
+        Surface& base = cv->base;
+        // What the memory has and the processor not yet (nothing drawn since canvas_new or touched) goes up first.
+        if (!base.memAhead.empty()) {
+            base.upload(base.memAhead);
+            base.memAhead = Box();
+        }
+        Box part;
+        part.l = x;
+        part.t = y;
+        part.r = x + width;
+        part.b = y + height;
+        if (width <= 0 || height <= 0) part = base.bounds();
+        part.intersect(base.bounds());
+        ID3D11Texture2D* texture = window.target(window.user, cv->memoryW, cv->memoryH);
+        if (!texture) return;
+        bool fresh = false;
+        Ref<ID2D1Bitmap1> onto = windowBitmapFor(texture, &fresh);
+        if (!onto || gpuGone()) return;
+        // A texture not drawn into before (the first picture, another size, a window made again), or another canvas than the
+        // one shown last (a new bitmap for the screen), gets the whole picture.
+        {
+            std::lock_guard<std::mutex> lock(s.windowMutex);
+            if (s.windowCanvas != cv->serial) fresh = true;
+            s.windowCanvas = cv->serial;
+        }
+        if (fresh) part = base.bounds();
+        GpuContext& g = *cv->gc;
+        g.finish();
+        g.dc->SetTarget(onto.get());
+        g.target = onto.get();
+        g.dc->BeginDraw();
+        if (!part.empty()) {
+            // Row y of the picture is row height - 1 - y of the texture; with nearest sampling every pixel lands whole.
+            g.dc->SetTransform(Matrix3x2F(1, 0, 0, -1, 0, float(cv->memoryH)));
+            g.dc->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
+            const D2D1_RECT_F rect = D2D1::RectF(float(part.l), float(part.t), float(part.r), float(part.b));
+            g.dc->DrawBitmap(base.gpu.get(), &rect, 1.0f, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, &rect, nullptr);
+            g.dc->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_SOURCE_OVER);
+        }
+        const HRESULT hr = g.dc->EndDraw();
+        if (FAILED(hr)) {
+            gpuFailed("ID2D1DeviceContext::EndDraw", hr);
+            return;
+        }
+        window.show(window.user);
+        base.window = true;
+        ++s.shown;
+        s.showTicks += ticksNow() - from;
+        shown = true;
+    });
+    return shown;
 }
 
 void save(void*, void* canvas) {
@@ -5266,6 +5404,32 @@ void GfxHost::loseDevice() {
     say("the graphics processor's device is taken as lost (a test asks): from now on everything is drawn in memory");
 }
 
+void GfxHost::setWindow(const Window& window) {
+    State& s = G();
+    std::lock_guard<std::mutex> lock(s.windowMutex);
+    s.window = window;
+    s.windowBitmap.reset();
+    s.windowTexture = nullptr;
+}
+
+ID3D11Device* GfxHost::device() {
+    State& s = G();
+    if (s.started.load(std::memory_order_acquire) <= 0 || !s.gpu || gpuGone()) return nullptr;
+    return s.d3d.get();
+}
+
+void GfxHost::lockDevice() {
+    State& s = G();
+    if (s.started.load(std::memory_order_acquire) <= 0 || !s.gpu) return;
+    if (Ref<ID2D1Multithread> lock = s.d2d.as<ID2D1Multithread>()) lock->Enter();
+}
+
+void GfxHost::unlockDevice() {
+    State& s = G();
+    if (s.started.load(std::memory_order_acquire) <= 0 || !s.gpu) return;
+    if (Ref<ID2D1Multithread> lock = s.d2d.as<ID2D1Multithread>()) lock->Leave();
+}
+
 void GfxHost::setFontFolder(const wchar_t* folder) {
     State& s = G();
     std::lock_guard<std::mutex> lock(s.startMutex);
@@ -5292,6 +5456,8 @@ GfxHost::Counts GfxHost::counts() {
     c.gpuLost = s.gpuLost.load();
     c.uploads = s.uploads;
     c.readBacks = s.readBacks;
+    c.windowReadBacks = s.windowReadBacks;
+    c.shown = s.shown;
     c.byEffects = s.byEffects;
     c.throughMemory = s.throughMemory;
     c.keptMade = s.keptMade;
@@ -5338,6 +5504,7 @@ megler_gfx_host GfxHost::callbacks() {
     host.image_decode = &imageDecode;
     host.image_encode = &imageEncode;
     host.bitmap_gone = &bitmapGone;
+    host.present = &present;
     return host;
 }
 

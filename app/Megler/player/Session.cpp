@@ -193,6 +193,8 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         // `android` of the installed package, which is where tools/build-appx.sh --libcore (or --java) puts them. An app
         // with a native engine uses neither.
         config.gfx = gfxCallbacks();
+        // The window's pictures drawn on the graphics processor are shown from there, in this window (WindowHost.h).
+        GfxHost::shared().setWindow(window->gfxWindow());
         config.android_root = nullptr;
         config.keyboard = KeyboardHost::shared().callbacks();
         config.on_exit = &onExit;

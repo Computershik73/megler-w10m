@@ -50,11 +50,23 @@
 // device context is then used by two threads, one at a time, under a lock
 // that nothing of a game's ever takes.
 //
+// Where the app's views are drawn on the graphics processor (GfxHost), the
+// device is GfxHost's, not one of this class's own: the window's picture is
+// then drawn into the target texture there, the changed part flipped into
+// place by Direct2D (GfxHost::setWindow, megler_gfx_host.present), and shown
+// from it without ever being read back into memory. Direct2D uses that
+// device's context from the app's threads, so every use of it here is under
+// Direct2D's lock (DeviceLock). Nothing here waits for the graphics
+// processor: the swap chain keeps its three buffers, and a frame latency of
+// two (IDXGIDevice1::SetMaximumFrameLatency) is what makes Present hold the
+// app's thread when it runs ahead of the display.
+//
 // One WindowHost lives from Play to the end of the process: one app runs per
 // process, and the core may call it for as long as the app's threads live.
 #pragma once
 
 #include "megler.h"
+#include "player/GfxHost.h"
 
 #include <atomic>
 #include <mutex>
@@ -81,6 +93,9 @@ public:
 
     /// The callbacks for megler_run_config.window, with this as their user.
     megler_window_host callbacks();
+    /// Where GfxHost shows the window's pictures it drew on the graphics
+    /// processor (GfxHost::setWindow): this window's target texture.
+    GfxHost::Window gfxWindow();
 
     /// UI thread: the panel's size in DIPs, at first and whenever it changes.
     void setPanelSize(float width, float height);
@@ -125,6 +140,14 @@ private:
     bool makeOwnDevice(unsigned width, unsigned height);
     void showAgain();
     void writePixelsShot(const std::wstring& path);
+    // ... and those GfxHost draws on the graphics processor (gfxWindow), on the thread that draws them.
+    static ID3D11Texture2D* gfxTarget(void* user, int width, int height);
+    static void gfxShow(void* user);
+    ID3D11Texture2D* pictureTarget(int width, int height);
+    void showTarget();
+    /// The device was GfxHost's and is lost: everything made on it goes, and the next picture makes a device of this class's own.
+    void leaveLostDevice();
+    struct DeviceLock;
 
     winrt::Windows::UI::Xaml::Controls::SwapChainPanel panel_{nullptr};
     winrt::Windows::UI::Core::CoreDispatcher dispatcher_{nullptr};
@@ -162,6 +185,8 @@ private:
     int ownDeviceState_ = 0;                // 0 not tried, 1 made, -1 cannot be
     std::vector<uint8_t> flipped_;          // the picture, bottom row first: what goes into the target texture
     int flippedWidth_ = 0, flippedHeight_ = 0;
+    bool flippedStale_ = false;             // GfxHost drew into the texture since: flipped_ is not the picture any more
+    bool sharedDevice_ = false;             // the device is GfxHost's: its context is used under Direct2D's lock
     uint64_t picturesDropped_ = 0;
 };
 

@@ -36,7 +36,14 @@
 //     (D2D1_BITMAP_OPTIONS_CPU_READ), mapped, and its rows copied into the
 //     memory. Mapping waits for the graphics processor to have drawn
 //     everything before it: that wait is the price of the round trip, and
-//     the log's line says what it costs.
+//     the log's line says what it costs (on the phone 10-17 ms, whatever
+//     the size).
+//   - So the window's picture does not take it: the core asks for it to be
+//     shown from the canvas (megler_gfx_host.present) instead of flushing the
+//     window's bitmap, and the part that changed is drawn, flipped, into the
+//     window host's texture on the same device (setWindow) and shown. The
+//     canvas stays unflushed; the core flushes it, and it is read back, only
+//     when something reads the window's memory.
 //   - A layer (save_layer) is a target bitmap of its extent, cleared, drawn
 //     into, and put onto the picture under it at its restore.
 //   - Bitmaps drawn from the core's memory (draw_bitmap, shader_bitmap) are
@@ -129,6 +136,9 @@
 
 #include <cstdint>
 
+struct ID3D11Device;
+struct ID3D11Texture2D;
+
 namespace megler::app {
 
 class GfxHost {
@@ -163,6 +173,34 @@ public:
     /// now on, as if Direct3D had said DXGI_ERROR_DEVICE_REMOVED.
     void loseDevice();
 
+    /// Where the window's picture goes when the core has it shown from a
+    /// canvas without the memory (megler_gfx_host.present): the window
+    /// host's. Without one, present says no and the picture goes through
+    /// the memory and present_pixels.
+    struct Window {
+        void* user = nullptr;
+        /// The texture the picture is drawn into, width x height,
+        /// B8G8R8A8, bottom row first (the window host's target, which the
+        /// panel shows flipped), on device() and bindable as a render
+        /// target; it keeps the last picture, of which only the changed part
+        /// is drawn again. Null: there is none, and the picture goes through
+        /// the memory.
+        ID3D11Texture2D* (*target)(void* user, int width, int height) = nullptr;
+        /// What was drawn into it is to be shown now.
+        void (*show)(void* user) = nullptr;
+    };
+    void setWindow(const Window& window);
+
+    /// The Direct3D device canvases are drawn on: null while they are drawn
+    /// in memory, before the first drawing, and once the device is lost. A
+    /// window host makes its swap chain on it, to be handed pictures there.
+    /// It lives as long as the process.
+    ID3D11Device* device();
+    /// Direct2D's lock on that device (ID2D1Multithread), which whoever
+    /// else uses the device's immediate context holds meanwhile. It nests.
+    void lockDevice();
+    void unlockDevice();
+
     /// A folder with Android's own fonts in it (Roboto-Regular.ttf and the
     /// rest of Android 9's /system/fonts that its named families are made
     /// of): they are then the faces an app gets by Android's family names,
@@ -189,6 +227,8 @@ public:
         bool gpuLost = false;      // ... and the device has been lost since
         uint64_t uploads = 0;      // times memory was uploaded to a canvas's picture
         uint64_t readBacks = 0;    // ... and read back from it
+        uint64_t windowReadBacks = 0; // ... of them, from a canvas whose pictures are shown without the memory
+        uint64_t shown = 0;        // pictures shown from a canvas without the memory (present)
         uint64_t byEffects = 0;    // drawing calls put on by Direct2D's effects
         uint64_t throughMemory = 0; // ... and by this file's arithmetic, read back and uploaded again
         uint64_t keptMade = 0;     // bitmaps of the core's uploaded to be kept

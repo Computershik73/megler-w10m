@@ -49,6 +49,20 @@ struct PanelAnswer {
 
 } // namespace
 
+/// Direct2D's lock on the device for as long as this lives, when the device
+/// is GfxHost's: Direct2D uses its immediate context from the app's threads.
+struct WindowHost::DeviceLock {
+    bool held;
+    explicit DeviceLock(const WindowHost& host) : held(host.sharedDevice_) {
+        if (held) GfxHost::shared().lockDevice();
+    }
+    ~DeviceLock() {
+        if (held) GfxHost::shared().unlockDevice();
+    }
+    DeviceLock(const DeviceLock&) = delete;
+    DeviceLock& operator=(const DeviceLock&) = delete;
+};
+
 WindowHost::Rect WindowHost::letterbox(float areaWidth, float areaHeight, float contentWidth, float contentHeight) {
     Rect r;
     if (areaWidth <= 0 || areaHeight <= 0 || contentWidth <= 0 || contentHeight <= 0) return r;
@@ -75,6 +89,14 @@ megler_window_host WindowHost::callbacks() {
     host.present_pixels = &WindowHost::presentPixels;
     host.present_pixels_part = &WindowHost::presentPixelsPart;
     return host;
+}
+
+GfxHost::Window WindowHost::gfxWindow() {
+    GfxHost::Window window;
+    window.user = this;
+    window.target = &WindowHost::gfxTarget;
+    window.show = &WindowHost::gfxShow;
+    return window;
 }
 
 void WindowHost::setPanelSize(float width, float height) {
@@ -149,7 +171,10 @@ bool WindowHost::createSwapChain(unsigned width, unsigned height) {
     desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
     desc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
     com_ptr<IDXGISwapChain1> chain;
-    hr = factory->CreateSwapChainForComposition(device_.get(), &desc, nullptr, chain.put());
+    {
+        DeviceLock device(*this);
+        hr = factory->CreateSwapChainForComposition(device_.get(), &desc, nullptr, chain.put());
+    }
     if (FAILED(hr)) {
         shellLog::write(format("window: CreateSwapChainForComposition(%ux%u) failed, 0x%08X", width, height, unsigned(hr)));
         return false;
@@ -210,6 +235,7 @@ bool WindowHost::createSwapChain(unsigned width, unsigned height) {
     transformDirty_ = true;
     describe();
     if (flag(L"early-present")) {
+        DeviceLock device(*this);
         const HRESULT presented = swapChain_->Present(0, 0);
         shellLog::write(format("window: an empty frame presented at once, 0x%08X", unsigned(presented)));
     }
@@ -243,11 +269,14 @@ ID3D11Texture2D* WindowHost::acquire(int width, int height) {
     // The back buffers match the target, so present() is one CopyResource.
     if (UINT(width) != bufferWidth_ || UINT(height) != bufferHeight_) {
         backBuffer_ = nullptr;
-        // (Flush lets go of what the context still holds of the old buffers;
-        // it changes no pipeline state.)
-        context_->Flush();
-        hr = swapChain_->ResizeBuffers(0, UINT(width), UINT(height), DXGI_FORMAT_UNKNOWN, 0);
-        if (SUCCEEDED(hr)) hr = swapChain_->GetBuffer(0, IID_PPV_ARGS(backBuffer_.put()));
+        {
+            // (Flush lets go of what the context still holds of the old buffers;
+            // it changes no pipeline state.)
+            DeviceLock device(*this);
+            context_->Flush();
+            hr = swapChain_->ResizeBuffers(0, UINT(width), UINT(height), DXGI_FORMAT_UNKNOWN, 0);
+            if (SUCCEEDED(hr)) hr = swapChain_->GetBuffer(0, IID_PPV_ARGS(backBuffer_.put()));
+        }
         if (SUCCEEDED(hr)) {
             bufferWidth_ = UINT(width);
             bufferHeight_ = UINT(height);
@@ -392,6 +421,21 @@ void WindowHost::presentPixelsPart(void* user, const void* pixels, int width, in
 // first, at whatever feature level the phone has (9_3 on most); the
 // software one after it, which is slow and still shows a picture.
 bool WindowHost::makeOwnDevice(unsigned width, unsigned height) {
+    // The device the app's views are drawn on, where they are drawn on the graphics processor: their pictures are then
+    // shown from there (gfxWindow), and the ones that come through memory go up to the same texture.
+    if (ID3D11Device* drawing = GfxHost::shared().device()) {
+        device_.copy_from(drawing);
+        device_->GetImmediateContext(context_.put());
+        featureLevel_ = device_->GetFeatureLevel();
+        sharedDevice_ = true;
+        deviceOwner_ = "the drawing's (GfxHost)";
+        // Present holds the app's thread once two frames wait for the display: nothing else here waits for the processor.
+        if (com_ptr<IDXGIDevice1> dxgi = device_.try_as<IDXGIDevice1>()) dxgi->SetMaximumFrameLatency(2);
+        shellLog::write(format("window: a Java app's pictures: on the Direct3D device its views are drawn on, feature level %s; shown from there",
+                               levelName(featureLevel_)));
+        return createSwapChain(width, height);
+    }
+    sharedDevice_ = false;
     static const D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_10_0,
                                                D3D_FEATURE_LEVEL_9_3,  D3D_FEATURE_LEVEL_9_2,  D3D_FEATURE_LEVEL_9_1};
     const UINT count = UINT(sizeof(levels) / sizeof(levels[0]));
@@ -411,14 +455,71 @@ bool WindowHost::makeOwnDevice(unsigned width, unsigned height) {
         return false;
     }
     deviceOwner_ = "the shell's own";
+    if (com_ptr<IDXGIDevice1> dxgi = device_.try_as<IDXGIDevice1>()) dxgi->SetMaximumFrameLatency(2);
     shellLog::write(format("window: a Java app's pictures: a Direct3D device of the shell's own, %s, feature level %s", kind, levelName(featureLevel_)));
     return createSwapChain(width, height);
+}
+
+// The device was GfxHost's and is gone: the swap chain, the texture and the
+// device go with it, and the next picture, which comes through memory now,
+// makes a device of this class's own (makeOwnDevice) and a swap chain on it.
+void WindowHost::leaveLostDevice() {
+    shellLog::write("window: the device the app's views were drawn on is lost: the pictures go on a device of the shell's own");
+    target_ = nullptr;
+    backBuffer_ = nullptr;
+    swapChain2_ = nullptr;
+    swapChain_ = nullptr;
+    context_ = nullptr;
+    device_ = nullptr;
+    sharedDevice_ = false;
+    showsPixels_ = false;
+    bufferWidth_ = bufferHeight_ = 0;
+    ownDeviceState_ = 0;
+}
+
+ID3D11Texture2D* WindowHost::gfxTarget(void* user, int width, int height) { return static_cast<WindowHost*>(user)->pictureTarget(width, height); }
+
+void WindowHost::gfxShow(void* user) { static_cast<WindowHost*>(user)->showTarget(); }
+
+// GfxHost is about to draw the window's picture into the target texture: it
+// is made now if it is not there or is of another size, and only on
+// GfxHost's own device (one of this class's own cannot take its drawing).
+ID3D11Texture2D* WindowHost::pictureTarget(int width, int height) {
+    if (width <= 0 || height <= 0) return nullptr;
+    std::lock_guard<std::mutex> lock(pixelsMutex_);
+    if (sharedDevice_ && !GfxHost::shared().device()) leaveLostDevice();
+    if (!ownDeviceState_) {
+        shellLog::write(format("window: the app's first picture, %dx%d: it draws its views on the graphics processor", width, height));
+        ownDeviceState_ = makeOwnDevice(unsigned(width), unsigned(height)) ? 1 : -1;
+    }
+    if (ownDeviceState_ < 0 || !sharedDevice_) return nullptr;
+    if (!target_ || surfaceWidth_.load() != width || surfaceHeight_.load() != height) {
+        showsPixels_ = false;
+        if (!acquire(width, height)) return nullptr;
+    }
+    flippedStale_ = true;
+    return target_.get();
+}
+
+// ... and has drawn it: shown, as a picture that came through memory is.
+void WindowHost::showTarget() {
+    std::lock_guard<std::mutex> lock(pixelsMutex_);
+    if (!target_) return;
+    DeviceLock device(*this);
+    presentFrame();
+    showsPixels_ = true;
+    if (transformDirty_.exchange(false) && swapChain_ && backBuffer_ && !noPresent_) {
+        applyTransform();
+        context_->CopyResource(backBuffer_.get(), target_.get());
+        swapChain_->Present(0, 0);
+    }
 }
 
 void WindowHost::showPixels(const void* pixels, int width, int height, int stride) {
     // No picture: the last one stays (megler.h; the core does not pass this on today).
     if (!pixels || width <= 0 || height <= 0 || stride < width * 4) return;
     std::lock_guard<std::mutex> lock(pixelsMutex_);
+    if (sharedDevice_ && !GfxHost::shared().device()) leaveLostDevice();
     if (!ownDeviceState_) {
         shellLog::write(format("window: the app's first picture, %dx%d: it draws its views in memory, not with OpenGL", width, height));
         ownDeviceState_ = makeOwnDevice(unsigned(width), unsigned(height)) ? 1 : -1;
@@ -445,6 +546,8 @@ void WindowHost::showPixels(const void* pixels, int width, int height, int strid
     flippedHeight_ = height;
     for (int y = 0; y < height; y++)
         memcpy(flipped_.data() + size_t(height - 1 - y) * rowBytes, static_cast<const uint8_t*>(pixels) + size_t(y) * size_t(stride), rowBytes);
+    flippedStale_ = false;
+    DeviceLock device(*this);
     context_->UpdateSubresource(target_.get(), 0, nullptr, flipped_.data(), UINT(rowBytes), 0);
     presentFrame();
     showsPixels_ = true;
@@ -468,6 +571,9 @@ void WindowHost::showPixelsPart(const void* pixels, int width, int height, int s
     if (right <= left || bottom <= top) return;
     {
         std::unique_lock<std::mutex> lock(pixelsMutex_);
+        if (sharedDevice_ && !GfxHost::shared().device()) leaveLostDevice();
+        // (The kept copy may be stale, GfxHost having drawn into the texture since: the texture is the last picture all the
+        // same, and only the screenshot reads the copy, which knows.)
         const bool kept = ownDeviceState_ > 0 && target_ && showsPixels_ && surfaceWidth_.load() == width && surfaceHeight_.load() == height &&
                           flippedWidth_ == width && flippedHeight_ == height && flipped_.size() >= size_t(width) * size_t(height) * 4;
         if (kept) {
@@ -483,6 +589,7 @@ void WindowHost::showPixelsPart(const void* pixels, int width, int height, int s
             box.bottom = UINT(height - top);
             box.front = 0;
             box.back = 1;
+            DeviceLock device(*this);
             context_->UpdateSubresource(target_.get(), 0, &box, flipped_.data() + size_t(box.top) * rowBytes + size_t(left) * 4, UINT(rowBytes), 0);
             presentFrame();
             if (transformDirty_.exchange(false) && swapChain_ && backBuffer_ && !noPresent_) {
@@ -509,6 +616,12 @@ void WindowHost::writePixelsShot(const std::wstring& path) {
         for (int tries = 0; tries < 20 && !lock.try_lock(); tries++) Sleep(5);
         if (!lock.owns_lock()) {
             shellLog::write("window: no screenshot: the app is showing a picture just now");
+            return;
+        }
+        // GfxHost drew the last picture into the texture: that is read, as a game's frame is.
+        if (flippedStale_ && target_) {
+            DeviceLock device(*this);
+            writeScreenshot(path);
             return;
         }
         if (flippedWidth_ <= 0 || flippedHeight_ <= 0 || flipped_.size() < size_t(flippedWidth_) * size_t(flippedHeight_) * 4) return;
@@ -546,6 +659,7 @@ void WindowHost::showAgain() {
     if (!lock.owns_lock()) return;
     if (!swapChain_ || !backBuffer_ || !target_ || noPresent_) return;
     if (transformDirty_.exchange(false)) applyTransform();
+    DeviceLock device(*this);
     context_->CopyResource(backBuffer_.get(), target_.get());
     const HRESULT hr = swapChain_->Present(0, 0);
     if (FAILED(hr) && hr != lastPresentError_) {

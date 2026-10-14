@@ -6,11 +6,91 @@
 // Only tools/build-tests.sh win builds this file, with GfxHost.cpp itself
 // beside it: the build for qemu-arm has no Direct2D to link, and the phone's
 // package gets its GfxHost from the shell.
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+
+#include <d3d11.h>
+
 #include "player/GfxHost.h"
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <string>
+#include <vector>
+
+namespace {
+
+/// A window for GfxHost to show pictures in (GfxHost::setWindow), as the
+/// shell's WindowHost is: a texture on GfxHost's device that holds the
+/// picture bottom row first, and a count of the pictures shown.
+struct TestWindow {
+    ID3D11Texture2D* texture = nullptr;
+    int width = 0, height = 0;
+    int shown = 0;
+} g_window;
+
+ID3D11Texture2D* windowTarget(void*, int width, int height) {
+    if (g_window.texture && (g_window.width != width || g_window.height != height)) {
+        g_window.texture->Release();
+        g_window.texture = nullptr;
+    }
+    if (!g_window.texture) {
+        ID3D11Device* device = megler::app::GfxHost::shared().device();
+        if (!device) return nullptr;
+        D3D11_TEXTURE2D_DESC td = {};
+        td.Width = UINT(width);
+        td.Height = UINT(height);
+        td.MipLevels = 1;
+        td.ArraySize = 1;
+        td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        td.SampleDesc.Count = 1;
+        td.Usage = D3D11_USAGE_DEFAULT;
+        td.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+        if (FAILED(device->CreateTexture2D(&td, nullptr, &g_window.texture))) return nullptr;
+        g_window.width = width;
+        g_window.height = height;
+    }
+    return g_window.texture;
+}
+
+void windowShow(void*) { g_window.shown++; }
+
+/// What the window shows, top row first, read through a staging copy under
+/// Direct2D's lock on the device, as WindowHost uses the device's context.
+bool readWindow(std::vector<uint32_t>& out) {
+    megler::app::GfxHost& gfx = megler::app::GfxHost::shared();
+    ID3D11Device* device = gfx.device();
+    if (!device || !g_window.texture) return false;
+    D3D11_TEXTURE2D_DESC td = {};
+    g_window.texture->GetDesc(&td);
+    td.Usage = D3D11_USAGE_STAGING;
+    td.BindFlags = 0;
+    td.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    ID3D11Texture2D* staging = nullptr;
+    if (FAILED(device->CreateTexture2D(&td, nullptr, &staging))) return false;
+    ID3D11DeviceContext* context = nullptr;
+    device->GetImmediateContext(&context);
+    bool ok = false;
+    gfx.lockDevice();
+    context->CopyResource(staging, g_window.texture);
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (SUCCEEDED(context->Map(staging, 0, D3D11_MAP_READ, 0, &mapped))) {
+        out.resize(size_t(td.Width) * td.Height);
+        for (UINT y = 0; y < td.Height; y++)
+            memcpy(out.data() + size_t(td.Height - 1 - y) * td.Width, static_cast<const uint8_t*>(mapped.pData) + size_t(y) * mapped.RowPitch, size_t(td.Width) * 4);
+        context->Unmap(staging, 0);
+        ok = true;
+    }
+    gfx.unlockDevice();
+    context->Release();
+    staging->Release();
+    return ok;
+}
+
+} // namespace
 
 extern "C" {
 
@@ -65,5 +145,126 @@ int hk_gfx_windows_on_gpu(void) {
 
 /// The graphics processor's device taken as lost, for the test of what a canvas does then.
 void hk_gfx_windows_lose_device(void) { megler::app::GfxHost::shared().loseDevice(); }
+
+/// The window's picture shown from its canvas without the memory
+/// (megler_gfx_host.present), into a window of the test's own: shown with no
+/// read-back and the memory left alone; of a part, that part alone; and,
+/// after a flush, the memory exactly the picture shown, as the core's later
+/// reader gets it. Lines to `line`; how many checks failed.
+int hk_gfx_windows_check_present(const megler_gfx_host* h, void (*line)(const char* text, void* user), int* checks) {
+    megler::app::GfxHost& gfx = megler::app::GfxHost::shared();
+    int failed = 0;
+    char text[300];
+    auto check = [&](bool ok, const char* what) {
+        ++*checks;
+        if (ok) return;
+        ++failed;
+        snprintf(text, sizeof(text), "  FAIL the window shown from its canvas: %s", what);
+        line(text, nullptr);
+    };
+    line("  the window's picture shown from its canvas on the graphics processor, without the memory (megler_gfx_host.present)", nullptr);
+    megler::app::GfxHost::Window window;
+    window.target = windowTarget;
+    window.show = windowShow;
+    gfx.setWindow(window);
+    const int w = 64, hgt = 48;
+    std::vector<uint32_t> memory(size_t(w) * hgt, 0), shown, before;
+    void* cv = h->canvas_new(h->user, memory.data(), w, hgt, w * 4);
+    check(cv != nullptr, "no canvas");
+    if (!cv) return failed;
+    megler_gfx_paint p = {};
+    p.miter_limit = 4;
+    p.text_size = 12;
+    p.text_scale_x = 1;
+    p.blend = MEGLER_GFX_BLEND_SRC_OVER;
+    p.filter_mode = -1;
+    p.flags = MEGLER_GFX_ANTI_ALIAS;
+    h->draw_color(h->user, cv, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    p.color = 0xFFFF0000u;
+    h->draw_rect(h->user, cv, 8, 8, 24, 24, &p, nullptr);
+    p.color = 0x802040C0u;
+    h->draw_oval(h->user, cv, 20, 20, 50, 44, &p, nullptr);
+    const megler::app::GfxHost::Counts first = gfx.counts();
+    const bool whole = h->present(h->user, cv, 0, 0, w, hgt);
+    const megler::app::GfxHost::Counts second = gfx.counts();
+    check(whole && g_window.shown == 1, "the whole picture was not shown");
+    check(second.readBacks == first.readBacks, "showing it read the picture back");
+    check(memory[10 * w + 10] == 0, "showing it wrote the memory");
+    check(readWindow(shown) && shown[10 * w + 10] == 0xFFFF0000u && shown[2 * w + 60] == 0xFFFFFFFFu && shown[32 * w + 35] != 0xFFFFFFFFu,
+          "the window does not show the picture (red at 10,10, white at 60,2, the oval at 35,32)");
+    // A part: what changed inside it is shown, what changed outside it is not (the core says what changed; it said this).
+    before = shown;
+    p.color = 0xFF00A000u;
+    h->draw_rect(h->user, cv, 40, 4, 56, 12, &p, nullptr);
+    p.color = 0xFF000000u;
+    h->draw_rect(h->user, cv, 0, 40, 8, 48, &p, nullptr);
+    check(h->present(h->user, cv, 40, 4, 16, 8) && g_window.shown == 2, "a part was not shown");
+    bool partRight = readWindow(shown) && shown[6 * w + 45] == 0xFF00A000u && shown[44 * w + 2] == before[44 * w + 2];
+    for (int y = 0; y < hgt && partRight; y++)
+        for (int x = 0; x < w; x++)
+            if ((x < 40 || x >= 56 || y < 4 || y >= 12) && shown[size_t(y) * w + x] != before[size_t(y) * w + x]) {
+                partRight = false;
+                break;
+            }
+    check(partRight, "a part shown changed the window outside the part, or not inside it");
+    // The whole again, and then the memory brought up to date as the core does before it reads it: exactly the picture shown.
+    check(h->present(h->user, cv, 0, 0, w, hgt) && readWindow(shown), "the whole picture was not shown again");
+    const megler::app::GfxHost::Counts third = gfx.counts();
+    h->flush(h->user, cv);
+    const megler::app::GfxHost::Counts fourth = gfx.counts();
+    check(fourth.readBacks == third.readBacks + 1 && fourth.windowReadBacks == third.windowReadBacks + 1, "the flush did not read the window's canvas back, once");
+    check(shown.size() == memory.size() && !memcmp(shown.data(), memory.data(), memory.size() * 4), "after a flush the memory is not the picture shown");
+    // The memory written behind the canvas's back (touched), and shown with nothing drawn since: the memory's picture.
+    for (int y = 30; y < 40; y++)
+        for (int x = 4; x < 60; x++) memory[size_t(y) * w + x] = 0xFF00FFFFu;
+    h->touched(h->user, cv);
+    check(h->present(h->user, cv, 0, 0, w, hgt) && readWindow(shown) && !memcmp(shown.data(), memory.data(), memory.size() * 4),
+          "the memory written behind the canvas was not what was shown next");
+    h->canvas_free(h->user, cv);
+    snprintf(text, sizeof(text), "    %d pictures shown, %llu read-backs of the window's canvas (the one flush)", g_window.shown,
+             static_cast<unsigned long long>(gfx.counts().windowReadBacks));
+    line(text, nullptr);
+    // What it costs here: a frame of a 720x1280 window that redraws a strip of 720x64, shown so, against the same frame
+    // flushed (read back) as before. The processor is waited for once, at the end of each hundred, by reading the window.
+    {
+        const int ww = 720, wh = 1280;
+        std::vector<uint32_t> screen(size_t(ww) * wh, 0);
+        void* sc = h->canvas_new(h->user, screen.data(), ww, wh, ww * 4);
+        LARGE_INTEGER frequency, t0, t1;
+        QueryPerformanceFrequency(&frequency);
+        double ways[2] = {0, 0};
+        if (sc) {
+            h->draw_color(h->user, sc, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+            h->present(h->user, sc, 0, 0, ww, wh);
+            for (int way = 0; way < 2; way++) {
+                QueryPerformanceCounter(&t0);
+                for (int i = 0; i < 100; i++) {
+                    h->save(h->user, sc);
+                    h->clip_rect(h->user, sc, 0, 600, float(ww), 664, MEGLER_GFX_CLIP_INTERSECT);
+                    h->draw_color(h->user, sc, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+                    p.color = 0xFFE0E0E0u;
+                    for (int k = 0; k < 7; k++) h->draw_rect(h->user, sc, float(k * 100 + 10), 610, float(k * 100 + 90), 612, &p, nullptr);
+                    p.color = 0xFF2060C0u;
+                    if (i & 1) h->draw_rect(h->user, sc, 300, 614, 302, 650, &p, nullptr);
+                    h->restore(h->user, sc);
+                    if (way == 0) h->present(h->user, sc, 0, 600, ww, 64);
+                    else h->flush(h->user, sc);
+                }
+                readWindow(shown);
+                QueryPerformanceCounter(&t1);
+                ways[way] = double(t1.QuadPart - t0.QuadPart) * 1e6 / double(frequency.QuadPart) / 100.0;
+            }
+            h->canvas_free(h->user, sc);
+            snprintf(text, sizeof(text),
+                     "    a frame that redraws a strip of 720x64 of a 720x1280 window and shows it so %.0f us; flushed and read back instead %.0f us", ways[0],
+                     ways[1]);
+            line(text, nullptr);
+        }
+    }
+    gfx.setWindow(megler::app::GfxHost::Window());
+    if (g_window.texture) g_window.texture->Release();
+    g_window = TestWindow();
+    return failed;
+}
 
 } // extern "C"

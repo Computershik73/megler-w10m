@@ -266,9 +266,9 @@ contract, and keeps the software way for when there is no device for it.
   `canvas_new` or `touched`, unless that drawing replaces every pixel (a window's
   frame begins with `drawColor`). At `flush` the box round everything drawn since
   the last flush is copied to a bitmap the processor can read and mapped, and its
-  rows go into the memory, which the core and `present_pixels` read. Mapping waits
-  for the processor to finish: that, and the copy, is the price of keeping the
-  contract, and the log's `gfx:` line says what it is.
+  rows go into the memory, which the core reads. Mapping waits for the processor
+  to finish: that is the price of keeping the contract, and the log's `gfx:` line
+  says what it is. The window's canvas is not flushed for its pictures (below).
 - **Layers** are target bitmaps of their extent, drawn back at their restore.
   **Bitmaps** drawn from the core's memory are uploaded once and kept under the
   core's id and version (`megler_gfx_image`) until `bitmap_gone` or a memory budget.
@@ -289,28 +289,40 @@ contract, and keeps the software way for when there is no device for it.
 ways, on this PC's graphics processor and in memory, and replays the Java test
 apps' recorded drawing.
 
-**Presenting straight from the processor (not built).** Each frame of a window is
-still drawn on the processor, read back into memory, and uploaded again by the
-window host to a texture of its own device. The read-back is the one wait in the
-frame. Removing it needs the core:
+**The window, shown straight from the processor.** Measured on the phone, every
+read-back cost 10-17 ms whatever its size -- the wait for the processor, not the
+bytes -- which left a frame's drawing as dear as the software rasterizer had
+made it. So the window's picture is not read back:
 
-- megler_gfx_host would get an optional `present(canvas, x, y, width, height)`:
-  show the part of the window's canvas that changed, from the shell's own
-  picture, without a flush; false when it cannot (the core then flushes and
-  calls `present_pixels` as today, which is also what NULL means).
-- The core would call it in place of flushing the window's bitmap and calling
-  `present_pixels(_part)`, when the window's picture is that one canvas's alone
-  -- no OpenGL frames composed under the views, nothing written into the memory
-  behind the canvas. The canvas then stays unflushed; anything that reads the
-  window's memory later (a screenshot, `View.getDrawingCache`, composing with a
-  GL view) flushes it first, as the core already does before every read
-  (`bm_settle`), and the shell reads back then.
-- The shell's window host would make its swap chain on GfxHost's device instead
-  of a device of its own, and copy the changed part from the canvas's target
-  bitmap into its texture (`CopySubresourceRegion`, or a `DrawBitmap` with the
-  flip the texture's bottom-up rows need) before presenting. Both run on the
-  app's thread that calls `present`, under Direct2D's lock (`ID2D1Multithread`),
-  since the window host would then use the device's context itself.
+- megler_gfx_host has an optional `present(canvas, x, y, width, height)`: show the
+  part of the window that changed from the shell's own picture of the canvas,
+  without a flush. False when it cannot; the core then flushes and calls
+  `present_pixels` as before, which is also what NULL means.
+- The core (`G_present` in `drivers/hk_java_gfx.c`, `present_canvas` in
+  `drivers/hk_java.c`) calls it in place of flushing the window's bitmap and
+  calling `present_pixels(_part)`, when one canvas alone draws the bitmap,
+  nothing was written into its memory behind it, and no OpenGL frames are
+  composed under the views (`hk_java_gl_composing`). The canvas then stays
+  unflushed: whatever reads the window's memory later flushes it first, as the
+  core always does before a read (`bm_settle`), and the shell reads back then.
+  Flush keeps its meaning; nothing else in the contract changed.
+- The shell's window host makes its swap chain on GfxHost's device
+  (`GfxHost::device`), and GfxHost draws the changed part of the canvas into the
+  window host's target texture there, flipped (the texture keeps a game's
+  bottom-up rows, which the panel's transform turns over), then the window
+  host presents (`GfxHost::setWindow`). Every use of the device's context by the
+  window host is under Direct2D's lock (`ID2D1Multithread`). Nothing waits for
+  the processor: no Map, the swap chain keeps three buffers, and a frame
+  latency of two makes `Present` hold the app's thread when it runs ahead of
+  the display.
+- The read-backs left are those of other canvases (bitmaps an app draws into
+  and then reads, which megler.h's flush has to put into memory), counted apart in
+  the log's `gfx:` line, and the window's own when something reads its memory.
+
+`tools/build-tests.sh win` checks the window's path on the PC's processor (shown
+with no read-back, a part alone, and after a flush the memory exactly the picture
+shown); under qemu the Java test apps' pictures come through `present` too, the
+stand-in showing its canvas's memory.
 
 ### OpenGL ES from an app's Java
 
