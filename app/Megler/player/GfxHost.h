@@ -50,11 +50,12 @@
 //     or by a layer with a geometric mask. drawColor is a Clear or a filled
 //     rectangle; a layer at SRC_OVER is DrawBitmap at the layer's alpha. The
 //     other transfer modes, colour filters, shadows and the rest of the
-//     host's own arithmetic are done by Direct2D's effects where they say
-//     the same thing (GfxHost.cpp lists which, and what differs); anything
-//     left reads the box it changes back into memory, puts the drawing on
-//     there by the arithmetic below, and uploads the box again: slower, and
-//     the same picture.
+//     host's own arithmetic are put together in work bitmaps of the canvas's
+//     own and put on by Direct2D's effects, whose formulas are megler.h's
+//     (GfxHost.cpp lists which, and what differs); what cannot be done so
+//     reads the box it changes back into memory, puts the drawing on there
+//     by the arithmetic below, and uploads the box again: slower, and the
+//     same picture.
 //
 // In memory. A canvas is a Direct2D software render target
 // (ID2D1Factory::CreateWicBitmapRenderTarget) over an IWICBitmap of this
