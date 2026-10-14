@@ -230,6 +230,15 @@ struct State {
 
     std::atomic<uint64_t> clipSerial{1};
     std::atomic<uint64_t> canvases{0}, sessions{0}, direct{0}, composed{0}, layers{0}, runsShaped{0}, runsReused{0}, notes{0}, partTargets{0};
+    // Where the drawing's time goes, in performance-counter ticks, and how much it moved: a line in the log every 5 s
+    // while an app draws (noteDrawing).
+    std::atomic<uint64_t> targetsMade{0}, makeTicks{0}, endTicks{0}, composeTicks{0}, composedPixels{0}, sessionPixels{0};
+    std::mutex statsMutex;
+    uint64_t statsAt = 0; // when the last line was written (ticks); 0: never
+    struct Totals {
+        uint64_t sessions = 0, direct = 0, composed = 0, layers = 0, partTargets = 0, targetsMade = 0, makeTicks = 0, endTicks = 0, composeTicks = 0,
+                 composedPixels = 0, sessionPixels = 0;
+    } statsLast;
 };
 
 State& G() {
@@ -258,6 +267,21 @@ void say(const char* fmt, ...) {
     vsnprintf(text + 5, sizeof(text) - 5, fmt, args);
     va_end(args);
     emit(text);
+}
+
+inline uint64_t ticksNow() {
+    LARGE_INTEGER t;
+    QueryPerformanceCounter(&t);
+    return uint64_t(t.QuadPart);
+}
+
+inline double ticksToMs(uint64_t ticks) {
+    static const double perMs = [] {
+        LARGE_INTEGER f;
+        QueryPerformanceFrequency(&f);
+        return double(f.QuadPart) / 1000.0;
+    }();
+    return double(ticks) / perMs;
 }
 
 /// A line in the log the first time something of this `kind` happens, and
@@ -708,6 +732,14 @@ struct Surface {
         State& s = G();
         if (rt) return true;
         if (!px || w <= 0 || h <= 0) return false;
+        const uint64_t from = ticksNow();
+        struct Timed {
+            uint64_t from;
+            ~Timed() {
+                G().makeTicks += ticksNow() - from;
+                ++G().targetsMade;
+            }
+        } timed{from};
         Ref<IWICBitmap> bitmap;
         if (s.copying) {
             IWICImagingFactory* factory = wic();
@@ -767,6 +799,7 @@ struct Surface {
         if (!make()) return false;
         if (mirror) copyMirror(true);
         rt->BeginDraw();
+        G().sessionPixels += uint64_t(w) * uint64_t(h);
         drawing = true;
         pushed = 0;
         pushedSerial = 0;
@@ -787,7 +820,9 @@ struct Surface {
     void end() {
         if (!drawing) return;
         popClip();
+        const uint64_t from = ticksNow();
         const HRESULT hr = rt->EndDraw();
+        G().endTicks += ticksNow() - from;
         drawing = false;
         if (mirror && SUCCEEDED(hr)) copyMirror(false);
         if (FAILED(hr)) {
@@ -1209,7 +1244,17 @@ inline uint32_t sweepAt(const Shader& s, const Matrix3x2F& toShader, int x, int 
 /// byte of each of its pixels is how much of the pixel is covered; null:
 /// all of every pixel), by the transfer mode. Both pictures are of the same
 /// canvas, and the target is not drawing.
+void composeUntimed(Surface& target, Box box, const Source& src, const Surface* cover, int blend);
+
+/// compose, its time and pixels counted for the log's line.
 void compose(Surface& target, Box box, const Source& src, const Surface* cover, int blend) {
+    const uint64_t from = ticksNow();
+    composeUntimed(target, box, src, cover, blend);
+    G().composeTicks += ticksNow() - from;
+    if (!box.empty()) G().composedPixels += uint64_t(box.width()) * uint64_t(box.height());
+}
+
+void composeUntimed(Surface& target, Box box, const Source& src, const Surface* cover, int blend) {
     box.intersect(target.bounds());
     if (cover) box.intersect(cover->bounds());
     if (src.pixels) box.intersect(src.pixels->bounds());
@@ -1630,9 +1675,45 @@ void canvasFree(void*, void* canvas) {
     delete cv;
 }
 
+/// Every 5 s while canvases are flushed: where the drawing's time went since the last line. Direct2D's own drawing
+/// is what remains of the core's "the shell's drawing" after these.
+void noteDrawing() {
+    State& s = G();
+    const uint64_t now = ticksNow();
+    std::lock_guard<std::mutex> lock(s.statsMutex);
+    if (s.statsAt && ticksToMs(now - s.statsAt) < 5000.0) return;
+    State::Totals t;
+    t.sessions = s.sessions;
+    t.direct = s.direct;
+    t.composed = s.composed;
+    t.layers = s.layers;
+    t.partTargets = s.partTargets;
+    t.targetsMade = s.targetsMade;
+    t.makeTicks = s.makeTicks;
+    t.endTicks = s.endTicks;
+    t.composeTicks = s.composeTicks;
+    t.composedPixels = s.composedPixels;
+    t.sessionPixels = s.sessionPixels;
+    const State::Totals& l = s.statsLast;
+    if (s.statsAt && t.sessions != l.sessions) {
+        const double seconds = ticksToMs(now - s.statsAt) / 1000.0;
+        const uint64_t sessions = t.sessions - l.sessions;
+        say("%.1f s: %llu drawings begun and ended over %.1f Mpx in all (%.1f ms ending them), %llu calls drawn by Direct2D, %llu by the host's arithmetic over "
+            "%.1f Mpx (%.1f ms), %llu layers, %llu render targets made (%.1f ms), a target moved to a part %llu times",
+            seconds, static_cast<unsigned long long>(sessions), double(t.sessionPixels - l.sessionPixels) / 1e6, ticksToMs(t.endTicks - l.endTicks),
+            static_cast<unsigned long long>(t.direct - l.direct), static_cast<unsigned long long>(t.composed - l.composed),
+            double(t.composedPixels - l.composedPixels) / 1e6, ticksToMs(t.composeTicks - l.composeTicks), static_cast<unsigned long long>(t.layers - l.layers),
+            static_cast<unsigned long long>(t.targetsMade - l.targetsMade), ticksToMs(t.makeTicks - l.makeTicks),
+            static_cast<unsigned long long>(t.partTargets - l.partTargets));
+    }
+    s.statsLast = t;
+    s.statsAt = now;
+}
+
 void flush(void*, void* canvas) {
     Canvas* cv = canvasOf(canvas);
     if (!cv) return;
+    noteDrawing();
     // What is drawn into a layer that is still open is in the layer's picture, and reaches the memory at the layer's restore.
     guarded("flush", [&] {
         cv->base.end();
