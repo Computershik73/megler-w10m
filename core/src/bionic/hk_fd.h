@@ -37,6 +37,19 @@ int hk_fd_close(int fd);
 /* A descriptor on a host file (HK_O_* flags), for handing the guest a file that has no guest path -- the APK itself. */
 int hk_fd_open_host(const char *host_path, int host_flags);
 int hk_fd_eventfd(unsigned initial, int flags);
+/*
+ * Shared memory as a descriptor (ASharedMemory_create, memfd_create): `size` zeroed bytes of the layer's own, read and
+ * written like a file and mapped by mmap. A mapping is a copy, as every file mapping here is: what a MAP_SHARED writable
+ * mapping holds is written back at msync, at munmap and at the app's end, and a mapping made after that sees it; two
+ * mappings alive at once do not see each other's writes. -1 with errno on failure.
+ */
+int hk_fd_shm_create(const char *name, u64 size);
+/* Its protection (ASharedMemory_setProt): from then on a mapping may be no more than that (G_PROT_* bits). 0, or -1 with errno. */
+int hk_fd_shm_set_prot(int fd, int prot);
+/* The protection a shared memory descriptor allows, or -1 when the descriptor is not one. */
+int hk_fd_shm_prot(int fd);
+/* Its size, or -1. */
+i64 hk_fd_shm_size(int fd);
 
 /* A descriptor whose object another module implements. Each call may be NULL. */
 typedef struct hk_fd_ops {

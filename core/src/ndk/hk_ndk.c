@@ -660,6 +660,21 @@ static const char *g_sensor_text(const void *s) { (void)s; return ""; }
 static u32 g_sensor_fzero(const void *s) { (void)s; return hk_fb(0.0f); }
 static int g_sensor_events(void *q, void *events, size_t n) { (void)q; (void)events; (void)n; return 0; }
 
+/*
+ * ASharedMemory (API 26): the descriptor layer's shared memory (hk_fd_shm_create). Chromium's linker keeps a copy of its
+ * library's relocated RELRO in one, for its other processes; Gecko's IPC makes its shared memory with it. There is no
+ * other process here, and a mapping is a copy (hk_fd.h): what is written through one mapping is seen by a mapping made
+ * after it is unmapped, not by one alive at the same time.
+ */
+static int g_ashmem_create(const char *name, size_t size) { return hk_fd_shm_create(name, size); }
+static size_t g_ashmem_size(int fd)
+{
+    i64 n = hk_fd_shm_size(fd);
+    return n < 0 ? 0 : (size_t)n;
+}
+static int g_ashmem_set_prot(int fd, int prot) { return hk_fd_shm_set_prot(fd, prot); }
+static int g_ashmem_from_java(void *env, void *pfd) { (void)env; (void)pfd; return -1; }
+
 /* Tracing: off. */
 static int g_trace_enabled(void) { return 0; }
 static void g_trace_begin(const char *name) { (void)name; }
@@ -668,6 +683,8 @@ static void g_trace_end(void) { }
 #define N(n, f) HK_WRAP(n, f)
 
 const hk_sym hk_tab_ndk[] = {
+    N("ASharedMemory_create", g_ashmem_create), N("ASharedMemory_getSize", g_ashmem_size), N("ASharedMemory_setProt", g_ashmem_set_prot),
+    N("ASharedMemory_dupFromJava", g_ashmem_from_java),
     N("ANativeWindow_acquire", hk_nwindow_acquire), N("ANativeWindow_release", hk_nwindow_release),
     N("ANativeWindow_fromSurface", g_nw_from_surface),
     N("ANativeWindow_getWidth", g_nw_width), N("ANativeWindow_getHeight", g_nw_height), N("ANativeWindow_getFormat", g_nw_format),

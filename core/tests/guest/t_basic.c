@@ -590,6 +590,40 @@ int t_libc_more(void)
     return 6;
 }
 
+/*
+ * Shared memory, as Chromium copies its library's RELRO and Firefox talks to itself: ASharedMemory (libandroid) and
+ * memfd_create (libc). Mapped, written and unmapped, what was written is there for the next mapping; its protection,
+ * once narrowed, bounds every later mapping and is never widened again. 9, or the negated step that failed.
+ */
+int ASharedMemory_create(const char *, size_t);
+size_t ASharedMemory_getSize(int);
+int ASharedMemory_setProt(int, int);
+int memfd_create(const char *, unsigned);
+int ftruncate(int, long);
+long lseek(int, long, int);
+
+int t_shm(void)
+{
+    int fd = ASharedMemory_create("t_shm", 8192), m;
+    unsigned char *p, *q;
+    char back[4] = { 0 };
+    if (fd < 0 || ASharedMemory_getSize(fd) != 8192) return -1;
+    p = mmap(0, 8192, 3, 1, fd, 0);                  /* PROT_READ | PROT_WRITE, MAP_SHARED */
+    if (p == (unsigned char *)-1 || p[100] != 0) return -2;
+    p[100] = 77;
+    if (munmap(p, 8192) != 0) return -3;
+    if (ASharedMemory_setProt(fd, 1) != 0) return -4;  /* PROT_READ */
+    if (mmap(0, 8192, 3, 1, fd, 0) != (void *)-1) return -5;
+    q = mmap(0, 8192, 1, 1, fd, 0);
+    if (q == (unsigned char *)-1 || q[100] != 77 || munmap(q, 8192) != 0) return -6;
+    if (ASharedMemory_setProt(fd, 3) == 0) return -7;
+    close(fd);
+    m = memfd_create("t_memfd", 1);
+    if (m < 0 || ftruncate(m, 100) != 0 || write(m, "abc", 3) != 3 || lseek(m, 0, 0) != 0) return -8;
+    if (read(m, back, 3) != 3 || back[0] != 'a' || back[2] != 'c' || lseek(m, 98, 0) != 98 || write(m, "xyz", 3) != 2) return -9;
+    close(m);
+    return 9;
+}
 
 /* A deep enough frame to need the stack protector's cookie, when built with it. */
 int t_stack(const char *s)

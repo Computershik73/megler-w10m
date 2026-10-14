@@ -449,6 +449,9 @@ typedef struct gobj {
     int nitems, epoll_next;
     const hk_fd_ops *ops;          /* OBJ_EXT: another module's object (a socket) */
     void *ext;
+    /* OBJ_MEM made as shared memory (hk_fd_shm_create): writable, resized by ftruncate, and the protection mmap allows. */
+    bool shm;
+    int shm_prot;
 } gobj;
 
 #define G_O_ACCMODE 3
@@ -883,6 +886,20 @@ static i32 obj_write(gobj *o, const void *buf, u32 n, bool positioned, u64 offse
     int err = 0;
     i64 r;
     switch (o->type) {
+    case OBJ_MEM: {
+        /* Shared memory only, and inside its size: it grows by ftruncate, as memfd's does, not by writing past its end. */
+        u64 at = positioned ? offset : o->pos;
+        u32 left;
+        if (!o->shm) {
+            hk_set_errno(GE_BADF);
+            return -1;
+        }
+        left = at < o->mem_size ? (u32)(o->mem_size - at) : 0;
+        if (n > left) n = left;
+        memcpy(o->mem + at, buf, n);
+        if (!positioned) o->pos += n;
+        return (i32)n;
+    }
     case OBJ_FILE:
         r = positioned ? hk_file_pwrite(o->file, buf, n, offset, &err) : hk_file_write(o->file, buf, n, &err);
         if (r < 0) hk_set_errno(hk_errno_of(err));
@@ -1000,9 +1017,9 @@ i32 hk_fd_pread(int fd, void *buf, u32 n, u64 offset)
 
 void *hk_fd_hold(int fd)
 {
-    /* A file of the host's only: a mapping of anything else (a pipe, a made-up file) has nothing to be written back to. */
+    /* A file of the host's, or shared memory: a mapping of anything else (a pipe, a made-up file) has nothing to be written back to. */
     gobj *o = fd_get(fd);
-    if (o && o->type != OBJ_FILE) {
+    if (o && o->type != OBJ_FILE && !(o->type == OBJ_MEM && o->shm)) {
         fd_put(o);
         o = NULL;
     }
@@ -1096,6 +1113,24 @@ static int g_ftruncate64(int fd, i64 size)
 {
     int err = 0, r = -1;
     WITH_FD(fd, o, -1)
+    if (o->type == OBJ_MEM && o->shm) {
+        /* Shared memory: a new size, the bytes past the old end zero. */
+        if (size < 0 || size > 0x40000000) {
+            hk_set_errno(GE_INVAL);
+        } else {
+            u8 *mem = (u8 *)realloc(o->mem, (size_t)size ? (size_t)size : 1);
+            if (!mem) {
+                hk_set_errno(GE_NOMEM);
+            } else {
+                if ((size_t)size > o->mem_size) memset(mem + o->mem_size, 0, (size_t)size - o->mem_size);
+                o->mem = mem;
+                o->mem_size = (size_t)size;
+                r = 0;
+            }
+        }
+        fd_put(o);
+        return r;
+    }
     if (o->type != OBJ_FILE) hk_set_errno(GE_INVAL);
     else if (!hk_file_truncate(o->file, (u64)size, &err)) hk_set_errno(hk_errno_of(err));
     else r = 0;
@@ -1843,6 +1878,74 @@ static int g_pipe2(int fds[2], int flags)
 
 static int g_pipe(int fds[2]) { return g_pipe2(fds, 0); }
 
+int hk_fd_shm_create(const char *name, u64 size)
+{
+    gobj *o;
+    u8 *mem;
+    int fd;
+    if (size > 0x40000000u) {
+        hk_set_errno(GE_INVAL);
+        return -1;
+    }
+    /* (Not hk_alloc, which ends the process when it cannot: an app asking for too much is told so.) */
+    mem = (u8 *)calloc(1, size ? (size_t)size : 1);
+    if (!mem) {
+        hk_set_errno(GE_NOMEM);
+        return -1;
+    }
+    o = (gobj *)hk_alloc(sizeof(*o));
+    o->type = OBJ_MEM;
+    o->refs = 1;
+    o->shm = true;
+    o->shm_prot = 7;                                 /* PROT_READ | PROT_WRITE | PROT_EXEC */
+    o->mem = mem;
+    o->mem_size = (size_t)size;
+    o->path = hk_sprintf("/dev/ashmem/%s", name ? name : "");
+    o->flags = 2;                                    /* O_RDWR */
+    fd = fd_new(o);
+    if (fd < 0) obj_destroy(o);
+    return fd;
+}
+
+int hk_fd_shm_set_prot(int fd, int prot)
+{
+    gobj *o = fd_get(fd);
+    int r = -1;
+    if (!o) hk_set_errno(GE_BADF);
+    else if (o->type != OBJ_MEM || !o->shm) hk_set_errno(GE_INVAL);
+    else if (prot & ~o->shm_prot & 7) hk_set_errno(GE_INVAL);          /* protection is only ever taken away, as ashmem's */
+    else {
+        o->shm_prot = prot & 7;
+        r = 0;
+    }
+    if (o) fd_put(o);
+    return r;
+}
+
+int hk_fd_shm_prot(int fd)
+{
+    gobj *o = fd_get(fd);
+    int r = o && o->type == OBJ_MEM && o->shm ? o->shm_prot : -1;
+    if (o) fd_put(o);
+    return r;
+}
+
+i64 hk_fd_shm_size(int fd)
+{
+    gobj *o = fd_get(fd);
+    i64 r = o && o->type == OBJ_MEM && o->shm ? (i64)o->mem_size : -1;
+    if (o) fd_put(o);
+    return r;
+}
+
+/* memfd_create (API 30, and the system call before it): shared memory with a name. */
+static int g_memfd_create(const char *name, unsigned flags)
+{
+    int fd = hk_fd_shm_create(name, 0);
+    if (fd >= 0 && (flags & 1)) g_cloexec[fd] = 1;   /* MFD_CLOEXEC */
+    return fd;
+}
+
 int hk_fd_eventfd(unsigned initial, int flags)
 {
     gobj *o = (gobj *)hk_alloc(sizeof(*o));
@@ -2386,7 +2489,7 @@ const hk_sym hk_tab_io[] = {
     IO("readdir_r", g_readdir_r), IO("readdir64_r", g_readdir_r), IO("closedir", g_closedir), IO("rewinddir", g_rewinddir),
     IO("telldir", g_telldir), IO("seekdir", g_seekdir), IO("dirfd", g_dirfd), IO("scandir", g_scandir), IO("scandir64", g_scandir),
     IO("alphasort", g_alphasort), IO("alphasort64", g_alphasort),
-    IO("pipe", g_pipe), IO("pipe2", g_pipe2), IO("eventfd", g_eventfd), IO("dup", g_dup), IO("dup2", g_dup2), IO("dup3", g_dup3),
+    IO("pipe", g_pipe), IO("pipe2", g_pipe2), IO("eventfd", g_eventfd), IO("memfd_create", g_memfd_create), IO("dup", g_dup), IO("dup2", g_dup2), IO("dup3", g_dup3),
     IO("fcntl", g_fcntl), IO("__fcntl64", g_fcntl), IO("ioctl", g_ioctl), IO("isatty", g_isatty),
     IO("poll", g_poll), IO("__poll_chk", g_poll), IO("ppoll", g_ppoll), IO("__ppoll_chk", g_ppoll), IO("select", g_select),
     IO("pselect", g_pselect), IO("epoll_create", g_epoll_create), IO("epoll_create1", g_epoll_create1), IO("epoll_ctl", g_epoll_ctl),
