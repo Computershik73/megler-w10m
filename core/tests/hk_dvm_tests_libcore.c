@@ -160,6 +160,41 @@ static void test_timezone(void)
     CHECK_STR(thrown(), "");
 }
 
+/*
+ * A DEX file handed over in memory, as a library that carries Java code inside its native one hands it over
+ * (dalvik.system.InMemoryDexClassLoader; JUCE, which comScore in MX Player is built with, does): m.dex, which nothing has
+ * put on the path, read into a byte array, wrapped in a ByteBuffer and given to the loader, whose class then runs.
+ */
+static void test_in_memory_dex(const char *fixtures)
+{
+    char *path = hk_sprintf("%s/m.dex", fixtures);
+    size_t size = 0;
+    u8 *bytes = (u8 *)hk_file_read_all(path, &size);
+    hk_jobj *array, *buffer, *parent, *loader = NULL, *cls = NULL;
+    say("a DEX file handed over in memory (InMemoryDexClassLoader)");
+    free(path);
+    CHECK(bytes != NULL && !hk_dvm_class_exists("t/FromMemory"));
+    if (!bytes) return;
+    array = hk_dvm_new_array("[B", (i32)size);
+    if (array) memcpy(array->u.arr.data, bytes, size);
+    free(bytes);
+    memset(A, 0, sizeof(A));
+    A[0].l = array;
+    buffer = call("java/nio/ByteBuffer", "wrap", "([B)Ljava/nio/ByteBuffer;").l;
+    parent = call("java/lang/ClassLoader", "getSystemClassLoader", "()Ljava/lang/ClassLoader;").l;
+    memset(A, 0, sizeof(A));
+    A[0].l = buffer;
+    A[1].l = parent;
+    if (buffer) loader = hk_dvm_new("dalvik/system/InMemoryDexClassLoader", "(Ljava/nio/ByteBuffer;Ljava/lang/ClassLoader;)V", A);
+    CHECK_STR(thrown(), "");
+    memset(A, 0, sizeof(A));
+    A[0].l = hk_dvm_new_string("t.FromMemory");
+    if (loader) cls = vcall(loader, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;").l;
+    CHECK(cls != NULL);
+    CHECK_STR(thrown(), "");
+    CHECK_INT(call("t/FromMemory", "answer", "()I").i, 42);
+}
+
 void test_libcore(const hk_dvm_test_config *config, u64 started_ns, const hk_dvm_stats *at_start)
 {
     const char *fixtures = config->fixtures, *scratch = config->scratch;
@@ -289,4 +324,6 @@ void test_libcore(const hk_dvm_test_config *config, u64 started_ns, const hk_dvm
         (unsigned)(s.object_bytes >> 10), (unsigned)(s.meta_bytes >> 10));
     /* The time zones are a file read through libcore's own libraries. */
     if (natives) test_timezone();
+    /* (InMemoryDexClassLoader goes through java.io, whose native half is libcore's.) */
+    if (natives) test_in_memory_dex(fixtures);
 }

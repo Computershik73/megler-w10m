@@ -40,6 +40,9 @@ for dir in core/tests/dvm/fixtures/*/; do
   "$PY" tools/dexasm.py asm -o "$GEN/$name.dex" "$dir"*.smali "${extra[@]}" > /dev/null
   keep "$GEN/$name.dex" "$OUT/$name.dex"
 done
+# m.dex: a class for the tests to hand over in memory (InMemoryDexClassLoader); it is not put on the path.
+"$PY" tools/dexasm.py asm -o "$GEN/m.dex" core/tests/dvm/memory/*.smali > /dev/null
+keep "$GEN/m.dex" "$OUT/m.dex"
 keep core/tests/dvm/d8/d8t.dex "$OUT/d8t.dex"
 keep core/tests/dvm/d8/expected.txt "$OUT/expected.txt"
 for f in lib.dex lib-expected.txt lib-android.txt; do [ -f "core/tests/dvm/d8/$f" ] && keep "core/tests/dvm/d8/$f" "$OUT/$f"; done

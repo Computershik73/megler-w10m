@@ -91,7 +91,7 @@ bash tools/build-tests.sh win      (MSVC x64, run on the PC; libcore's native li
 
 bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-float, under qemu-arm)
     4164 checks, 0 failed          on the built-in java.lang
-    4214 checks, 0 failed          on libcore with its native libraries
+    4219 checks, 0 failed          on libcore with its native libraries
       47 checks, 0 failed          the Java test app hello, through megler_run
       72 checks, 0 failed          the Java test app demos, the keyboard's 25 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
@@ -1119,6 +1119,21 @@ the object, then its `<init>(String)`. `Throwable`'s constructors record where
 they were called from (`nativeFillInStackTrace`): each frame's method and the
 instruction it was at, which with the DEX file's line table gives
 `hk_dvm_pending_stack` and libcore's `StackTraceElement`s.
+
+### A DEX file in memory
+
+`dalvik.system.InMemoryDexClassLoader` (Android 8 and later) hands the runtime
+a DEX file's bytes in a `ByteBuffer` (`DexFile.createCookieWithArray`, and
+`createCookieWithDirectBuffer` for a direct one, whose memory is at its
+address). The bytes are copied -- the runtime keeps a DEX file's bytes for
+good, and the buffer is the app's -- and its classes join the one class path
+as an opened file's do. This is how a library carrying Java code inside its
+native one puts it on the path: JUCE does, and comScore in MX Player is built
+with it (`com.rmsl.juce.JuceInvocationHandler`; without it comScore went on
+with a null and ended MX Player's main thread); Facebook's Audience Network
+loads its own DEX so. The runtime's tests on libcore hand over `m.dex`, which
+nothing puts on the path, and run its class (where libcore's native
+libraries are: the loader goes through `java.io`).
 
 ### Static initialisation
 

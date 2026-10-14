@@ -799,6 +799,60 @@ N(DexFile_openDexFileNative)
     c->ret.l = cookie;
 }
 
+/*
+ * A DEX file handed over in memory: dalvik.system.InMemoryDexClassLoader (Android 8 and later), which is how a library
+ * that carries Java code inside its native one puts it on the path -- JUCE does, and comScore in MX Player is built with
+ * it; Facebook's Audience Network loads its own DEX so. Its bytes are copied (the runtime keeps a DEX's bytes for good,
+ * and the buffer is the app's), and its classes join the one path like a file's that the app opens.
+ */
+static void in_memory_dex(hk_jcall *c, const u8 *bytes, i64 limit, i32 start, i32 end)
+{
+    static volatile i32 count;
+    char label[48];
+    hk_jobj *cookie;
+    u8 *copy;
+    size_t n;
+    if (!bytes || start < 0 || end <= start || end > limit) {
+        hk_dvm_throw("java/io/IOException", "no DEX file in the buffer given (%d to %d)", (int)start, (int)end);
+        return;
+    }
+    n = (size_t)(end - start);
+    copy = (u8 *)hk_alloc(n);
+    memcpy(copy, bytes + start, n);
+    snprintf(label, sizeof(label), "in-memory DEX %d", (int)hk_atomic_add(&count, 1));
+    if (!hk_dvm_add_dex(copy, n, label)) {
+        free(copy);
+        hk_dvm_throw("java/io/IOException", "the buffer is not a DEX file this runtime can read (%s, %u bytes)", label, (unsigned)n);
+        return;
+    }
+    cookie = hk_dvm_new_array("[J", 1);
+    if (cookie) ((i64 *)cookie->u.arr.data)[0] = 1;
+    c->ret.l = cookie;
+}
+
+/* createCookieWithArray(byte[] buf, int start, int end) */
+N(DexFile_createCookieWithArray)
+{
+    hk_jobj *a = c->args[0].l;
+    if (!a) {
+        hk_dvm_throw("java/lang/NullPointerException", "buf == null");
+        return;
+    }
+    in_memory_dex(c, (const u8 *)a->u.arr.data, a->u.arr.len, c->args[1].i, c->args[2].i);
+}
+
+/* createCookieWithDirectBuffer(ByteBuffer buf, int start, int end): a direct buffer, whose memory is at its address field. */
+N(DexFile_createCookieWithDirectBuffer)
+{
+    hk_jvalue address, capacity;
+    address.j = capacity.j = 0;
+    if (!c->args[0].l || !hk_dvm_get_field(c->args[0].l, "address", &address) || !hk_dvm_get_field(c->args[0].l, "capacity", &capacity)) {
+        hk_dvm_throw("java/io/IOException", "a ByteBuffer that is not a direct one");
+        return;
+    }
+    in_memory_dex(c, (const u8 *)(hk_addr)address.j, capacity.i, c->args[1].i, c->args[2].i);
+}
+
 N(DexFile_defineClassNative)
 {
     const char *name = hk_dvm_string_utf8(c->args[0].l);
@@ -1246,6 +1300,8 @@ static const hk_jhle k_art[] = {
     { "megler/security/SystemRandom", "engineNextBytes", NULL, SystemRandom_engineNextBytes },
     { "megler/runtime/PhoneTimeZone", "getId", NULL, PhoneTimeZone_getId },
     { "dalvik/system/DexFile", "openDexFileNative", NULL, DexFile_openDexFileNative },
+    { "dalvik/system/DexFile", "createCookieWithArray", NULL, DexFile_createCookieWithArray },
+    { "dalvik/system/DexFile", "createCookieWithDirectBuffer", NULL, DexFile_createCookieWithDirectBuffer },
     { "dalvik/system/DexFile", "defineClassNative", NULL, DexFile_defineClassNative },
     { "dalvik/system/DexFile", "getClassNameList", NULL, DexFile_getClassNameList },
     { "dalvik/system/DexFile", "closeDexFile", NULL, DexFile_true },
