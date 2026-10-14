@@ -1426,24 +1426,29 @@ int hk_net_tests_run(hk_test_sink sink, void *user, int *checks)
         CHECK(libc_found());
         goto out;
     }
-    /* A phone may refuse an app its own loopback; that is said once, and what needs it left out, rather than counted as this layer's failure. */
+    /*
+     * A phone may refuse an app its own loopback. There it is said once, and
+     * what needs loopback left out, rather than counted as this layer's
+     * failure; anywhere else (this PC, qemu) it is a failure.
+     */
     {
         u16 port = 0;
         int e;
         probe = listener(false, &port);
         s = probe >= 0 ? connect_within(sa, sa4(sa, k_lo4, port), 3000) : -1;
         e = err();
-        if (s < 0 && (e == GE_ACCES || e == GE_TIMEDOUT || e == GE_NETUNREACH || e == GE_PERM)) {
-            say("network: THIS HOST REFUSES AN APP ITS OWN LOOPBACK (errno %d): the tests that need it are left out", e);
+        if (s < 0) {
+            bool phone = !strcmp(hk_host_name(), "win32-arm");
+            say("network: THIS HOST REFUSES AN APP ITS OWN LOOPBACK (errno %d): the tests that need it are left out%s", e, phone ? "" : ", and that is a failure here");
+            if (!phone) CHECK(s >= 0);
             if (probe >= 0) N.close(probe);
             test_names();
             test_interfaces();
             test_unix();
             goto out;
         }
-        CHECK(probe >= 0 && s >= 0);
-        if (s >= 0) N.close(s);
-        if (probe >= 0) N.close(probe);
+        N.close(s);
+        N.close(probe);
     }
     test_tcp_blocking(false);
     test_tcp_blocking(true);
