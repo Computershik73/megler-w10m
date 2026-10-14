@@ -296,7 +296,17 @@ static bool g_direct;
 static bool running(void)
 {
     const char *reason = NULL;
-    if (!g_direct) return megler_running();
+    if (!g_direct) {
+        int tries;
+        if (megler_running()) return true;
+        /*
+         * The core says "not running" a moment before it tells the shell why (hk_run_ended: the flag, a line in the log, then
+         * on_exit), so the end is there to read only when on_exit has been through. The crash test once read the status and the
+         * reason in that moment and found neither.
+         */
+        for (tries = 0; tries < 500 && !g_exited; tries++) hk_sleep_ns(10000000ull);
+        return false;
+    }
     if (!g_exited && hk_java_ended(&g_status, &reason)) {
         hk_strlcpy(g_reason, reason ? reason : "", sizeof(g_reason));
         hk_atomic_xchg(&g_exited, 1);
