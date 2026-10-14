@@ -852,12 +852,13 @@ static const char *eai_text(int code)
     return code >= 0 && code < (int)HK_COUNT(text) ? text[code] : "Unknown error";
 }
 
+/* The first name an app has the host's resolver look up (numbers and "localhost" are not): the name, which is the app's server's, and how many addresses; not the addresses. */
 static void said_first_name(const char *name, int e, int count)
 {
     static volatile i32 said;
     if (said || hk_atomic_xchg(&said, 1)) return;
-    if (e) hk_info("network: the first name the app looked up, \"%.100s\", was not found: %s", name, eai_text(e));
-    else hk_info("network: the first name the app looked up, \"%.100s\", has %d address%s", name, count, count == 1 ? "" : "es");
+    if (e) hk_info("network: the first name the app asked the resolver for, \"%.100s\", was not found: %s", name, eai_text(e));
+    else hk_info("network: the first name the app asked the resolver for, \"%.100s\", has %d address%s", name, count, count == 1 ? "" : "es");
 }
 
 /*
