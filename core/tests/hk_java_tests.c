@@ -516,9 +516,12 @@ static void on_exit_cb(void *user, int status, const char *reason)
     hk_atomic_xchg(&g_exited, 1);
 }
 
+static const char *g_android_root;
+
 static bool start(const char *apk, const char *android_root)
 {
     static megler_run_config cfg;
+    g_android_root = android_root;
     memset(&cfg, 0, sizeof(cfg));
     cfg.apk_path = apk;
     cfg.android_root = android_root;
@@ -1424,9 +1427,11 @@ static int run_data(void)
                                          "bad-sql", "memory", "upgrade", "left",
                                          /* And the storage as an app sees it. */
                                          "environment", "own-folders", "volumes", "space", "permissions", "download", "list-root",
-                                         /* And the battery, the time zone, TLS that fails politely, Android's key store's key pairs, and
-                                            the list of decoders, which is empty and says nothing about it. */
-                                         "battery", "timezone", "tls", "keystore", "codecs",
+                                         /* And the battery, the time zone, TLS (conscrypt's: a TLS server and client of the app's own on loopback,
+                                            and an https URL through Android's HTTP client; or, where its library is not in the Android root, the
+                                            stand-in that fails politely), Android's key store's key pairs, and the list of decoders, which is empty
+                                            and says nothing about it. */
+                                         "battery", "timezone", "tls", "tls-loopback", "tls-https", "keystore", "codecs",
                                          /* And XML through android.util.Xml: a serializer and a pull parser, kXML's. */
                                          "xml",
                                          /* And the network from Java, on loopback: names, an HTTP server of the app's own and HttpURLConnection, UDP, a server
@@ -1445,6 +1450,15 @@ static int run_data(void)
     }
     snprintf(text, sizeof(text), "I/DataTest: done ok=%d failed=0", (int)HK_COUNT(steps));
     expect_line(text, &at, 60);
+    /* The TLS the app had is the one the Android root gives: conscrypt's where its library is there and this host runs ARM code (hk_dvm.c). */
+    {
+        char *crypto = hk_sprintf("%s/lib/libjavacrypto.so", g_android_root ? g_android_root : ".");
+        hk_stat st;
+        bool with = HK_HOST_ARM32 && hk_path_stat(crypto, &st, NULL) && !st.is_dir;
+        free(crypto);
+        say("  TLS: %s", with ? "conscrypt's (its library is in the Android root)" : "the runtime's stand-in, which has none");
+        CHECK(find_line(with ? "I/DataTest: tls-is conscrypt provider=com.android.org.conscrypt.OpenSSLProvider" : "I/DataTest: tls-is none provider=megler.security.RuntimeProvider", 0) >= 0);
+    }
     /* What requestPermissions asked comes back by a message of its own, after the method that asked has returned. */
     expect_line("I/DataTest: permission-result ok after done=true", &at, 30);
     /* So does the battery's sticky broadcast to a receiver registered for it, once. */

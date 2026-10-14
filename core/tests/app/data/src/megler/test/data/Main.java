@@ -490,18 +490,37 @@ public class Main extends Activity {
         });
     }
 
+    /** The test server's key and certificate: EC P-256, for 127.0.0.1 and localhost, its own issuer, valid until 2126 (openssl req -x509). */
+    private static final String TLS_CERT = "MIIBmzCCAUGgAwIBAgIUSCkkSCVXmr4YGF4nBH/UqsiQrrEwCgYIKoZIzj0EAwIwFDESMBAGA1UEAwwJbG9jYWxob3N0MCAXDTI2MTAxNDE5NDkwN1oYDzIx"
+            + "MjYwOTIwMTk0OTA3WjAUMRIwEAYDVQQDDAlsb2NhbGhvc3QwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAASSOKxorFlV2PxAaplmg0VzCo6g5dcgejzgpERSfmqr"
+            + "UCxTzAdCDQLxcLOZCYgMKwUHK2eyrVByyAtXT+l2f5t3o28wbTAdBgNVHQ4EFgQUlQdcW7Xv7E4n8iyupv2dBZoWQg0wHwYDVR0jBBgwFoAUlQdcW7Xv7E4n8iyu"
+            + "pv2dBZoWQg0wDwYDVR0TAQH/BAUwAwEB/zAaBgNVHREEEzARhwR/AAABgglsb2NhbGhvc3QwCgYIKoZIzj0EAwIDSAAwRQIhANZj3S08wMis2aZyDna2u0yD7uCg"
+            + "z9HYDYREfE1Ss5ArAiA+Y1r8tv+lwWIh8fhqvc3nS+gF3Y67jscJtaox+zq1/Q==";
+    private static final String TLS_KEY = "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgxyjM+eEJTgNZNj8S0HvPUp/EYUsW7SCywlDYtxPU9QKhRANCAASSOKxorFlV2PxAaplm"
+            + "g0VzCo6g5dcgejzgpERSfmqrUCxTzAdCDQLxcLOZCYgMKwUHK2eyrVByyAtXT+l2f5t3";
+
+    /** Whether the TLS this app has is conscrypt's (its native library is in the Android root) or the runtime's stand-in, which has none. */
+    private boolean conscrypt;
+
     /**
-     * TLS while there is none: the contexts an app and Android's own HTTP client ask for are there, and a connection that would
-     * use one fails as a connection fails -- an IOException -- not with the AssertionError Android's client throws when there is
-     * no SSLContext at all, which ended threads of MX Player and Super S22 Launcher.
+     * TLS. With conscrypt's native library in the Android root the security providers are Android's own and TLS is conscrypt's,
+     * over BoringSSL: the platform trusts Android 9's certificate authorities and nothing else, and the two steps after this one
+     * talk TLS on loopback. Without it the runtime's stand-ins are there (NoTlsContext.smali): the contexts an app and Android's
+     * own HTTP client ask for are there, and a connection that would use one fails as a connection fails -- an IOException -- not
+     * with the AssertionError Android's client throws when there is no SSLContext at all, which ended threads of MX Player and
+     * Super S22 Launcher. Which of the two it is, the log says ("tls-is"), and the test holds it against the Android root.
      */
     private void tls() {
         step("tls", () -> {
             javax.net.ssl.SSLContext context = javax.net.ssl.SSLContext.getInstance("TLS");
             context.init(null, null, null);
+            String provider = context.getProvider().getClass().getName();
+            conscrypt = "com.android.org.conscrypt.OpenSSLProvider".equals(provider);
+            Log.i("DataTest", "tls-is " + (conscrypt ? "conscrypt" : "none") + " provider=" + provider);
             javax.net.ssl.SSLSocketFactory factory = context.getSocketFactory();
             boolean there = factory != null && javax.net.ssl.SSLContext.getInstance("TLSv1.2") != null && javax.net.ssl.SSLContext.getDefault() != null
                     && javax.net.ssl.SSLSocketFactory.getDefault() != null && javax.net.ssl.HttpsURLConnection.getDefaultSSLSocketFactory() != null;
+            if (conscrypt) return there && tlsPlatform();
             String direct;
             try {
                 factory.createSocket("127.0.0.1", 443).close();
@@ -535,6 +554,155 @@ public class Main extends Activity {
                     && managers[0] instanceof javax.net.ssl.X509TrustManager && "no TLS on this phone yet".equals(trusts)
                     && ((javax.net.ssl.X509TrustManager) managers[0]).getAcceptedIssuers().length == 0;
         });
+        /* Without TLS there is nothing to talk on loopback: the two steps say so and hold. */
+        step("tls-loopback", () -> !conscrypt || offMain(this::tlsLoopback));
+        step("tls-https", () -> !conscrypt || offMain(this::tlsHttps));
+    }
+
+    /**
+     * conscrypt's platform side: digests are its own (over BoringSSL), the platform's trust manager holds Android 9's certificate
+     * authorities, a certificate none of them issued is refused, and an https URL nobody listens at fails as an IOException.
+     */
+    private boolean tlsPlatform() throws Exception {
+        String digests = java.security.MessageDigest.getInstance("SHA-256").getProvider().getClass().getName();
+        javax.net.ssl.TrustManagerFactory trust = javax.net.ssl.TrustManagerFactory.getInstance(javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm());
+        trust.init((java.security.KeyStore) null);
+        javax.net.ssl.TrustManager[] managers = trust.getTrustManagers();
+        javax.net.ssl.X509TrustManager platform = managers.length == 1 && managers[0] instanceof javax.net.ssl.X509TrustManager ? (javax.net.ssl.X509TrustManager) managers[0] : null;
+        int issuers = platform == null ? -1 : platform.getAcceptedIssuers().length;
+        String trusts;
+        try {
+            platform.checkServerTrusted(new java.security.cert.X509Certificate[] { tlsCertificate() }, "ECDHE_ECDSA");
+            trusts = "trusted";
+        } catch (java.security.cert.CertificateException e) {
+            trusts = "refused";
+        }
+        String https;
+        try {
+            java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL("https://127.0.0.1:9/").openConnection();
+            c.setConnectTimeout(3000);
+            c.connect();
+            https = "connected";
+        } catch (java.io.IOException e) {
+            https = "IOException";
+        }
+        detail = "digests=" + digests + " trust=" + managers.length + " issuers=" + issuers + " self-signed=" + trusts + " https=" + https;
+        Log.i("DataTest", "tls-said " + detail);
+        return "com.android.org.conscrypt.OpenSSLProvider".equals(digests) && platform != null && issuers >= 100 && "refused".equals(trusts) && "IOException".equals(https);
+    }
+
+    private static java.security.cert.X509Certificate tlsCertificate() throws Exception {
+        return (java.security.cert.X509Certificate) java.security.cert.CertificateFactory.getInstance("X.509")
+                .generateCertificate(new java.io.ByteArrayInputStream(java.util.Base64.getDecoder().decode(TLS_CERT)));
+    }
+
+    /** [0]: a server's context with the test key, [1]: a client's that trusts the test certificate alone. */
+    private static javax.net.ssl.SSLContext[] tlsContexts() throws Exception {
+        java.security.cert.X509Certificate cert = tlsCertificate();
+        java.security.PrivateKey key = java.security.KeyFactory.getInstance("EC").generatePrivate(new java.security.spec.PKCS8EncodedKeySpec(java.util.Base64.getDecoder().decode(TLS_KEY)));
+        java.security.KeyStore keys = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType());
+        keys.load(null, null);
+        keys.setKeyEntry("server", key, new char[0], new java.security.cert.Certificate[] { cert });
+        javax.net.ssl.KeyManagerFactory kmf = javax.net.ssl.KeyManagerFactory.getInstance(javax.net.ssl.KeyManagerFactory.getDefaultAlgorithm());
+        kmf.init(keys, new char[0]);
+        java.security.KeyStore trusted = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType());
+        trusted.load(null, null);
+        trusted.setCertificateEntry("server", cert);
+        javax.net.ssl.TrustManagerFactory tmf = javax.net.ssl.TrustManagerFactory.getInstance(javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm());
+        tmf.init(trusted);
+        javax.net.ssl.SSLContext server = javax.net.ssl.SSLContext.getInstance("TLS"), client = javax.net.ssl.SSLContext.getInstance("TLS");
+        server.init(kmf.getKeyManagers(), null, null);
+        client.init(null, tmf.getTrustManagers(), null);
+        return new javax.net.ssl.SSLContext[] { server, client };
+    }
+
+    /**
+     * A TLS server of the app's own on 127.0.0.1 and a client that trusts its certificate: the handshake, a line each way, the
+     * session's protocol, suite and peer. Then a client with the platform's trust, which must refuse the same server, and the
+     * server must see the handshake fail.
+     */
+    private boolean tlsLoopback() throws Exception {
+        javax.net.ssl.SSLContext[] contexts = tlsContexts();
+        final javax.net.ssl.SSLServerSocket server = (javax.net.ssl.SSLServerSocket) contexts[0].getServerSocketFactory()
+                .createServerSocket(0, 5, java.net.InetAddress.getByName("127.0.0.1"));
+        final String[] heard = new String[2];
+        Thread t = new Thread(() -> {
+            for (int i = 0; i < 2; i++) {
+                try (java.net.Socket c = server.accept()) {
+                    c.setSoTimeout(10000);
+                    heard[i] = new java.io.BufferedReader(new java.io.InputStreamReader(c.getInputStream(), "UTF-8")).readLine();
+                    c.getOutputStream().write("pong\n".getBytes("UTF-8"));
+                    c.getOutputStream().flush();
+                } catch (java.io.IOException e) {
+                    heard[i] = "the server: " + e.getClass().getSimpleName();
+                }
+            }
+        }, "tls-server");
+        t.start();
+        String back, protocol, suite;
+        boolean peer;
+        try (javax.net.ssl.SSLSocket s = (javax.net.ssl.SSLSocket) contexts[1].getSocketFactory().createSocket("127.0.0.1", server.getLocalPort())) {
+            s.setSoTimeout(10000);
+            s.startHandshake();
+            javax.net.ssl.SSLSession session = s.getSession();
+            protocol = session.getProtocol();
+            suite = session.getCipherSuite();
+            peer = session.getPeerCertificates()[0].equals(tlsCertificate());
+            s.getOutputStream().write("ping\n".getBytes("UTF-8"));
+            s.getOutputStream().flush();
+            back = new java.io.BufferedReader(new java.io.InputStreamReader(s.getInputStream(), "UTF-8")).readLine();
+        }
+        String refused;
+        try (javax.net.ssl.SSLSocket s = (javax.net.ssl.SSLSocket) javax.net.ssl.SSLSocketFactory.getDefault().createSocket("127.0.0.1", server.getLocalPort())) {
+            s.setSoTimeout(10000);
+            s.startHandshake();
+            refused = "handshake made";
+        } catch (javax.net.ssl.SSLHandshakeException e) {
+            refused = "SSLHandshakeException";
+        }
+        t.join(10000);
+        server.close();
+        detail = "protocol=" + protocol + " suite=" + suite + " peer=" + peer + " heard=" + heard[0] + " back=" + back + " platform=" + refused + " then " + heard[1];
+        Log.i("DataTest", "tls-loopback-said " + detail);
+        return !t.isAlive() && "TLSv1.2".equals(protocol) && suite.startsWith("TLS_ECDHE_ECDSA_") && peer && "ping".equals(heard[0]) && "pong".equals(back)
+                && "SSLHandshakeException".equals(refused) && heard[1] != null && heard[1].startsWith("the server: ");
+    }
+
+    /**
+     * An https URL as an app opens one, through Android's own HTTP client (com.android.okhttp, behind URL.openConnection), by name:
+     * "localhost", which the certificate names, so the host name is checked too.
+     */
+    private boolean tlsHttps() throws Exception {
+        javax.net.ssl.SSLContext[] contexts = tlsContexts();
+        final javax.net.ssl.SSLServerSocket server = (javax.net.ssl.SSLServerSocket) contexts[0].getServerSocketFactory()
+                .createServerSocket(0, 5, java.net.InetAddress.getByName("127.0.0.1"));
+        final String[] request = new String[1];
+        Thread t = new Thread(() -> {
+            try (java.net.Socket c = server.accept()) {
+                c.setSoTimeout(10000);
+                java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(c.getInputStream(), "ISO-8859-1"));
+                request[0] = r.readLine();
+                for (String line; (line = r.readLine()) != null && !line.isEmpty();) { }
+                java.io.OutputStream o = c.getOutputStream();
+                o.write("HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 5\r\nConnection: close\r\n\r\nmegler!".getBytes("ISO-8859-1"));
+                o.flush();
+            } catch (java.io.IOException e) {
+                request[0] = "the server: " + e;
+            }
+        }, "tls-https-server");
+        t.start();
+        javax.net.ssl.HttpsURLConnection c = (javax.net.ssl.HttpsURLConnection) new java.net.URL("https://localhost:" + server.getLocalPort() + "/hello").openConnection();
+        c.setSSLSocketFactory(contexts[1].getSocketFactory());
+        c.setConnectTimeout(5000);
+        c.setReadTimeout(10000);
+        int code = c.getResponseCode();
+        String suite = c.getCipherSuite(), body = readAll(c.getInputStream());
+        c.disconnect();
+        t.join(10000);
+        server.close();
+        detail = "code=" + code + " suite=" + suite + " body=" + body + " request=" + request[0];
+        Log.i("DataTest", "tls-https-said " + detail);
+        return code == 200 && "megler!".equals(body) && suite != null && suite.startsWith("TLS_ECDHE_ECDSA_") && "GET /hello HTTP/1.1".equals(request[0]);
     }
 
     /**
