@@ -15,7 +15,12 @@
 #   lib/*.so                libcore's native libraries, 32-bit ARM, where they
 #                           have been built (build/android9/lib); without them
 #                           the runtime still starts, and libcore is its
-#                           bytecode alone
+#                           bytecode alone. With libjavacrypto.so among them
+#                           the security providers are conscrypt's, TLS
+#                           included (hk_dvm_art.c, "the security providers")
+#   etc/security/cacerts/*  the certificate authorities Android 9 trusts, which
+#                           conscrypt's trust manager reads; without them no
+#                           server's certificate is trusted
 #   framework/megler-framework.dex
 #                           the Java framework an app with an Activity runs
 #                           on, where tools/build-framework.sh has built it
@@ -105,6 +110,14 @@ for f in "$A9/lib/"*.so; do
   LIBS=$((LIBS + 1))
 done
 [ "$LIBS" -gt 0 ] || echo "  (no native libraries in build/android9/lib: libcore will be its bytecode alone)"
+CERTS=0
+for f in "$A9/system/etc/security/cacerts/"*; do
+  [ -f "$f" ] || continue
+  mkdir -p "$OUT/etc/security/cacerts"
+  cp -u "$f" "$OUT/etc/security/cacerts/"
+  CERTS=$((CERTS + 1))
+done
+[ "$CERTS" -gt 0 ] || echo "  (no certificates in build/android9/system/etc/security/cacerts: tools/android9-unpack.sh takes them out of the image)"
 FONTS=0
 for f in "$A9/system/fonts/"*.ttf; do
   [ -f "$f" ] || continue
@@ -120,4 +133,4 @@ if [ -f "$ROOT/build/framework/megler-framework.dex" ]; then
   FW="the Java framework"
 fi
 size() { du -sk "$1" | cut -f1; }
-echo "${OUT#$ROOT/}: $(size "$OUT") KB in all: framework $(size "$OUT/framework") KB ($FW, $RES_SAID), lib $(size "$OUT/lib") KB ($LIBS libraries), $FONTS fonts, usr $(size "$OUT/usr") KB"
+echo "${OUT#$ROOT/}: $(size "$OUT") KB in all: framework $(size "$OUT/framework") KB ($FW, $RES_SAID), lib $(size "$OUT/lib") KB ($LIBS libraries), $CERTS certificates, $FONTS fonts, usr $(size "$OUT/usr") KB"
