@@ -57,6 +57,36 @@ public class MainActivity extends Activity {
         String unlimited = row.getMeasuredWidth() + ":" + narrow.getMeasuredWidth() + "+" + wide.getMeasuredWidth();
         row.measure(android.view.View.MeasureSpec.makeMeasureSpec(200, android.view.View.MeasureSpec.EXACTLY), 0);
         Log.i("HelloTest", "row unlimited=" + unlimited + " exact=" + row.getMeasuredWidth() + ":" + narrow.getMeasuredWidth() + "+" + wide.getMeasuredWidth());
+        /*
+         * Two surfaces over two views in the bottom right corner: one that nothing draws, which must leave the green view under it to be
+         * seen (Android clears a surface's area only once it has a frame), and one drawn magenta, whose frame must be shown.
+         */
+        android.widget.FrameLayout corner = new android.widget.FrameLayout(this);
+        View green = new View(this), blue = new View(this);
+        green.setBackgroundColor(0xFF00A000);
+        blue.setBackgroundColor(0xFF0000C0);
+        android.view.SurfaceView blank = new android.view.SurfaceView(this), drawn = new android.view.SurfaceView(this);
+        corner.addView(green, new android.widget.FrameLayout.LayoutParams(40, 40, android.view.Gravity.START));
+        corner.addView(blank, new android.widget.FrameLayout.LayoutParams(40, 40, android.view.Gravity.START));
+        corner.addView(blue, new android.widget.FrameLayout.LayoutParams(40, 40, android.view.Gravity.END));
+        corner.addView(drawn, new android.widget.FrameLayout.LayoutParams(40, 40, android.view.Gravity.END));
+        drawn.getHolder().addCallback(new android.view.SurfaceHolder.Callback() {
+            @Override
+            public void surfaceCreated(android.view.SurfaceHolder holder) {
+                android.graphics.Canvas c = holder.lockCanvas();
+                if (c == null) return;
+                c.drawColor(0xFFC000C0);
+                holder.unlockCanvasAndPost(c);
+                Log.i("HelloTest", "surface frame posted");
+            }
+
+            @Override
+            public void surfaceChanged(android.view.SurfaceHolder holder, int format, int width, int height) {}
+
+            @Override
+            public void surfaceDestroyed(android.view.SurfaceHolder holder) {}
+        });
+        addContentView(corner, new android.widget.FrameLayout.LayoutParams(80, 40, android.view.Gravity.BOTTOM | android.view.Gravity.END));
         /* A launcher's questions: the platform's padding around a widget's frame, and the activities there are to list -- this app's own, by its label. */
         android.graphics.Rect padding = android.appwidget.AppWidgetHostView.getDefaultPaddingForWidget(this, getComponentName(), null);
         android.content.pm.LauncherApps apps = (android.content.pm.LauncherApps) getSystemService(LAUNCHER_APPS_SERVICE);

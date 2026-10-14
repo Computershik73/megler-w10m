@@ -92,13 +92,13 @@ bash tools/build-tests.sh win      (MSVC x64, run on the PC; libcore's native li
 bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-float, under qemu-arm)
     4164 checks, 0 failed          on the built-in java.lang
     4214 checks, 0 failed          on libcore with its native libraries
-      45 checks, 0 failed          the Java test app hello, through megler_run
+      47 checks, 0 failed          the Java test app hello, through megler_run
       72 checks, 0 failed          the Java test app demos, the keyboard's 25 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
       13 checks, 0 failed          the Java test app crash: an exception nothing catches, launcher aliases, an app written for Android 6
       45 checks, 0 failed          the Java test app data: a database, the storage, the battery, the time zone and TLS, the first run
       46 checks, 0 failed          data again, on what the first run left, with another battery and a time zone that is none
-      45 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
+      47 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
     (then each app once more, its drawing recorded for the PC's run to draw again)
 ```
 
@@ -290,7 +290,7 @@ its resources (a `LinearLayout` with a `TextView`, a `Button`, a view of its own
 that draws with `Canvas`, and an `ImageView` of a PNG), strings and colours. It
 has no native library. `hk_tests --java hello ...` starts it through
 `megler_run`, on a 480 x 800 screen at 160 dpi so that a dp is a pixel, with a
-stand-in for the shell's drawing, and checks (45 checks):
+stand-in for the shell's drawing, and checks (47 checks):
 
 - **What the shell reads first**, `megler_apk_report`: the engine is `java`, the
   APK is runnable, and how its launcher activity asks to be held
@@ -332,7 +332,10 @@ stand-in for the shell's drawing, and checks (45 checks):
   drawn by a paint of twice the size, pixel for pixel as many; the PNG
   stretched from 16 to 64 pixels with its orange and
   green halves and the layout's grey showing through its transparent border;
-  black boxes where the text is.
+  black boxes where the text is. And in the bottom right corner two
+  `SurfaceView`s over two views: one that nothing draws, through which the
+  green view behind it must be seen, and one that draws magenta in its
+  `surfaceCreated`, whose frame must be seen.
 - **A touch on the button** (down and up through `megler_touch`): the
   `OnClickListener` runs, the text becomes `pressed 1`, the drawn view is
   invalidated, and the next picture shows both -- the green rectangle twice as
@@ -768,6 +771,12 @@ SDK imports (`__page_size`, which it read as a null pointer, `setpgrp`,
 `ptrace`). What it lists is what the framework's `PackageManager` knows: the
 app itself. Its umeng library asks for one HTTPS address over and over,
 about 150 times a second, when the name does not resolve.
+
+**AIDA64 2.22** (minSdk 19; a `GLSurfaceView` to ask the GPU, a night mode
+of its own). On the phone it ran and its detail pages opened from taps on
+the main list, but the list itself could not be seen. It was the
+`GLSurfaceView`'s hole over it (the overlay's `SurfaceView`); under qemu the
+main list shows, fourteen pages on its dark theme, as soon as it starts.
 
 **Device Info 3.4.3.4** (minSdk 24, targetSdk 37; views, not Compose: no
 `androidx.compose` anywhere in its DEX; AndroidX appcompat, fragment,
@@ -1856,8 +1865,8 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: twenty-two files** in the overlay,
-twenty of them a statement or a method each inside an otherwise untouched copy
+**What differs from the original's framework: twenty-three files** in the overlay,
+twenty-one of them a statement or a method each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and five files of members added** to classes of the original's.
 
@@ -2025,6 +2034,18 @@ the context that knows.
   service is made by the constructor with the fewest arguments (that is how
   `megler.ContextImpl` makes a service it has no class for), and the original's
   one without arguments passed a null Context: it takes the application's.
+- `android/view/SurfaceView.java`, three statements: the view clears its area
+  of the window -- the hole through which a surface under the window shows --
+  only once there is something under it, as Android's does (`mDrawFinished`,
+  set at the surface's first frame). The original cleared from the start for
+  every `GLSurfaceView`, and for any `SurfaceView` without a frame yet.
+  AIDA64's main screen has a `GLSurfaceView` over its whole content area,
+  only to ask the GPU its name; its renderer never starts here, and the list
+  of pages behind it -- laid out, answering taps -- was cleared from the
+  window. Here the hole is made when an EGL surface is made on the view, the
+  first moment the framework knows of, and never for a software surface,
+  whose frames are drawn where it stands. And the surface has its size when
+  `surfaceCreated` is called, as on Android: `lockCanvas` there gave null.
 - `android/content/res/ResTable.java`, two methods: a resource is found by
   its name without indexing the whole package ("What an AlertDialog cost").
 - `android/content/res/Resources.java`, the class `Bag`: a style's items are
@@ -2092,7 +2113,7 @@ the context that knows.
   was empty on the second; it shows its seven headers and their screens.
   Not done: two panes, bread crumbs.
 
-The original has all nineteen faults; they are its author's to take back.
+The original has all twenty faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in

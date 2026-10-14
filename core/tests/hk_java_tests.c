@@ -525,6 +525,10 @@ static int run_hello(void)
     /* The PNG from the resources, 16 pixels stretched to 64 dp: orange left, green right, a transparent border through which the layout's grey shows. */
     CHECK(pixel(mark[0] + mark[2] / 4, mark[1] + mark[3] / 2) == 0xFF8000 && pixel(mark[0] + 3 * mark[2] / 4, mark[1] + mark[3] / 2) == 0x00A040);
     CHECK(pixel(mark[0] + 1, mark[1] + 1) == 0xE0E0E0 && pixel(mark[0] + mark[2] + 100, mark[1] + mark[3] / 2) == 0xE0E0E0);
+    /* A surface nothing has drawn on leaves the view behind it to be seen; one with a frame shows the frame (the bottom right corner). */
+    CHECK(wait_line("I/HelloTest: surface frame posted", 0, 30) >= 0);
+    settle();
+    CHECK(pixel(g_screen_w - 60, g_screen_h - 20) == 0x00A000 && pixel(g_screen_w - 20, g_screen_h - 20) == 0xC000C0);
     /* The text: the stand-in draws a box for each letter, in the text's colour. */
     black_before = count_colour(text, 0x000000);
     CHECK(black_before > 0);
