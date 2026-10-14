@@ -39,6 +39,12 @@ bool hk_run_active(void) { return g_active != 0; }
 u32 hk_run_frames(void) { return (u32)g_frames; }
 void hk_run_count_frame(void) { hk_atomic_add(&g_frames, 1); }
 
+/*
+ * "Not running" first, then the shell is told (megler.h says so of megler_running). The other order would have the shell told
+ * of an end while megler_running() still answered true: the core's own app test asks exactly that after on_exit, and
+ * megler_storage_check would refuse a shell that went to it on being told. Whoever polls megler_running instead has to wait
+ * for on_exit before reading what on_exit stores; that is the one moment this order leaves open.
+ */
 void hk_run_ended(int status, const char *reason)
 {
     if (hk_atomic_xchg(&g_ended, 1)) return;

@@ -941,6 +941,15 @@ typedef struct megler_run_config {
  * the log and in megler_last_error, when it cannot start.
  */
 bool megler_run(const megler_run_config *config);
+/*
+ * Whether the app runs. When it ends this turns false first and on_exit is
+ * called second, in that order always: inside on_exit and after it, this is
+ * false. So a shell that is told by on_exit may act on "no app runs" at once
+ * (megler_storage_check, for one, refuses while this is true). The other way
+ * about does not hold: seeing this turn false does not mean on_exit has been
+ * through yet, and the status and the reason are on_exit's alone -- wait for
+ * it before reading what it stores.
+ */
 bool megler_running(void);
 const char *megler_last_error(void);
 
