@@ -75,9 +75,12 @@ void tell() {
 
 /// The drawing for an app whose user interface is Java (player/GfxHost.h),
 /// its lines in the shell's log. It makes nothing until such an app first
-/// draws, so a game pays nothing for it. The flag "gfx-copy" (a file of that
-/// name in LocalState\flags) has every canvas copied to a WIC bitmap and
-/// back: the slow way of drawing, for a phone on which the fast one shows
+/// draws, so a game pays nothing for it. It draws on the graphics processor
+/// where there is a device for it; the flag "gfx-software" (a file of that
+/// name in LocalState\flags) has it draw in memory by Direct2D's software
+/// rasterizer instead, as it did before, to compare the two on a phone. The
+/// flag "gfx-copy" has every canvas drawn in memory and copied to a WIC
+/// bitmap and back: the slowest way, for a phone on which the others show
 /// wrong pictures.
 megler_gfx_host gfxCallbacks() {
     GfxHost& gfx = GfxHost::shared();
@@ -88,6 +91,10 @@ megler_gfx_host gfxCallbacks() {
     if (files::exists(platform::localStateDirectory() + L"\\flags\\gfx-copy")) {
         shellLog::write("flag: gfx-copy is on");
         gfx.setCopying(true);
+    }
+    if (files::exists(platform::localStateDirectory() + L"\\flags\\gfx-software")) {
+        shellLog::write("flag: gfx-software is on: canvases are drawn in memory, not on the graphics processor");
+        gfx.setDrawing(GfxHost::Drawing::memory);
     }
     return gfx.callbacks();
 }
@@ -186,6 +193,8 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         // `android` of the installed package, which is where tools/build-appx.sh --libcore (or --java) puts them. An app
         // with a native engine uses neither.
         config.gfx = gfxCallbacks();
+        // The window's pictures drawn on the graphics processor are shown from there, in this window (WindowHost.h).
+        GfxHost::shared().setWindow(window->gfxWindow());
         config.android_root = nullptr;
         config.keyboard = KeyboardHost::shared().callbacks();
         config.on_exit = &onExit;

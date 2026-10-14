@@ -95,7 +95,18 @@ static int e_GetError(void) { return 0x3000; }
 static const char *e_QueryString(void *d, int name)
 {
     (void)d;
-    return name == 0x3055 ? "EGL_KHR_no_config_context EGL_KHR_surfaceless_context EGL_KHR_create_context" : name == 0x3053 ? "Megler (stand-in)" : "1.5 (stand-in)";
+    return name == 0x3055 ? "EGL_KHR_no_config_context EGL_KHR_surfaceless_context EGL_KHR_create_context EGL_ANGLE_query_surface_pointer "
+                            "EGL_ANGLE_surface_d3d_texture_2d_share_handle"
+           : name == 0x3053 ? "Megler (stand-in)"
+                            : "1.5 (stand-in)";
+}
+/* EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE: the surface itself stands for its texture's shared handle (hk_gl_standin_shared). */
+static unsigned e_QuerySurfacePointer(void *d, void *surface, int attribute, void **value)
+{
+    (void)d;
+    if (!surface || attribute != 0x3200 || !value) return 0;
+    *value = surface;
+    return 1;
 }
 static unsigned e_ChooseConfig(void *d, const int *attribs, void **configs, int size, int *num)
 {
@@ -837,6 +848,7 @@ void *hk_gl_standin(const char *name)
         { "eglDestroyContext", (void *)e_DestroyContext }, { "eglCreatePbufferSurface", (void *)e_CreatePbuffer },
         { "eglDestroySurface", (void *)e_DestroySurface }, { "eglMakeCurrent", (void *)e_MakeCurrent }, { "eglGetCurrentContext", (void *)e_GetCurrentContext },
         { "eglSwapBuffers", (void *)e_SwapBuffers }, { "eglSwapInterval", (void *)e_SwapInterval }, { "eglQuerySurface", (void *)e_QuerySurface },
+        { "eglQuerySurfacePointerANGLE", (void *)e_QuerySurfacePointer },
         { "eglBindAPI", (void *)e_BindAPI }, { "eglReleaseThread", (void *)e_True }, { "eglWaitClient", (void *)e_True },
         { "glCreateShader", (void *)g_CreateShader }, { "glShaderSource", (void *)g_ShaderSource }, { "glCompileShader", (void *)g_CompileShader },
         { "glDeleteShader", (void *)g_DeleteShader }, { "glGetShaderiv", (void *)g_GetShaderiv }, { "glGetShaderInfoLog", (void *)g_GetShaderInfoLog },
@@ -881,6 +893,16 @@ void hk_gl_standin_reset(bool bgra, bool es1)
     S.bgra = bgra;
     S.es1 = es1;
     hk_lock_release(&g_lock);
+}
+
+bool hk_gl_standin_shared(void *share_handle, const u8 **rgba, int *width, int *height)
+{
+    const sb_surface *s = (const sb_surface *)share_handle;
+    if (!s || !s->px) return false;
+    *rgba = s->px;
+    *width = s->w;
+    *height = s->h;
+    return true;
 }
 
 u32 hk_gl_standin_pixel(int x, int y)

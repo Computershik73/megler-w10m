@@ -148,7 +148,11 @@ bool megler_apk_icon(const char *apk_path, uint8_t **data, size_t *size);
  *                    `pixels` NULL would mean the app has nothing
  *                    to show any more; the layer does not pass that on today,
  *                    and a shell that is handed it leaves the last picture.
- *                    May be NULL: such an app then runs unseen.
+ *                    May be NULL: such an app then runs unseen. A picture the
+ *                    shell's drawing shows itself (megler_gfx_host.present)
+ *                    does not come here; pictures that do come after such
+ *                    ones are whole and right as ever, the part given as what
+ *                    changed since the last picture shown either way.
  *   present_pixels_part  the same picture, whole as present_pixels hands it,
  *                    of which only the rectangle [x, x + part_width) x [y, y +
  *                    part_height) differs from the picture handed before: the
@@ -420,6 +424,54 @@ typedef struct megler_storage_host {
  *                 Android, where a layer is a picture of its own until its
  *                 restore; the layers stay open and what is drawn next still
  *                 goes into them.
+ *   present       optional: the window's picture, as this canvas has drawn
+ *                 it, shown on the screen from the shell's own surface and
+ *                 not through the memory: in place of flushing the window's
+ *                 bitmap and handing its memory to present_pixels(_part)
+ *                 (megler_window_host). For a shell that draws elsewhere than
+ *                 in the memory, which would otherwise read its picture back
+ *                 at every frame. [x, x + width) x [y, y + height) is what
+ *                 changed since the picture shown before; the whole bitmap
+ *                 for the first picture, or when all of it changed. True:
+ *                 shown. False: nothing was done, and the layer flushes and
+ *                 calls present_pixels as it would without this. The canvas
+ *                 is not flushed by it: the memory keeps what the last flush
+ *                 put there, and the layer flushes, as always, before
+ *                 anything reads the memory. The layer calls it for the
+ *                 window's bitmap only, when this canvas is that bitmap's
+ *                 only one, nothing has been written into the memory behind
+ *                 it, and the layer does not compose OpenGL ES frames under
+ *                 the views itself (it then needs the memory; see gl_frame);
+ *                 on the thread that draws the canvas, never on the UI
+ *                 thread, one call at a time with present_pixels. NULL:
+ *                 never; the layer flushes.
+ *   gl_frame      optional, with present and gl_place: OpenGL ES views'
+ *   gl_place      frames shown under the window's views by the shell, the
+ *                 layer reading neither back. A view that draws with EGL
+ *                 (a GLSurfaceView, a SurfaceView with an EGL window
+ *                 surface) has a `layer`, 0..7, and its frames are shown
+ *                 at the rectangle gl_place gives it (x, y, width, height
+ *                 of the window; width 0: the layer shows nothing any more,
+ *                 and its frame is dropped), scaled to it, opaque, with the
+ *                 window's views over them -- their premultiplied colours,
+ *                 as present last showed them; the views leave holes where
+ *                 the frames are to show. gl_frame is a new frame:
+ *                 `share_handle` is the DXGI shared handle of ANGLE's
+ *                 Direct3D 11 texture of the surface (an OpenGL ES pbuffer;
+ *                 EGL_ANGLE_surface_d3d_texture_2d_share_handle), width x
+ *                 height, its rows bottom first as OpenGL has them. The
+ *                 frame is finished in it (the layer has called glFinish),
+ *                 and the texture may be drawn into again as soon as this
+ *                 returns: the shell takes what it keeps first. The window
+ *                 is shown again with the new frame when the views have
+ *                 been shown and the layer placed, else the frame is kept
+ *                 for the next present. False: the shell cannot; the layer
+ *                 then composes the window itself from then on, reading the
+ *                 frames back and the views out of the memory, and hands the
+ *                 pictures to present_pixels. gl_frame comes on the thread
+ *                 that swapped, gl_place on any thread, before the present
+ *                 or the gl_frame it is for. All three NULL, or EGL without
+ *                 share handles: the layer composes the window itself.
  *
  *   save          remembers the clip. restore brings back the clip of the
  *                 matching save. They nest; the layer never calls restore
@@ -863,6 +915,10 @@ typedef struct megler_gfx_host {
     bool (*image_decode)(void *user, const void *data, size_t size, void *pixels, int width, int height, int stride);
     bool (*image_encode)(void *user, const void *pixels, int width, int height, int stride, int format, int quality, megler_gfx_write write, void *sink);
     void (*bitmap_gone)(void *user, uint32_t id);
+
+    bool (*present)(void *user, void *canvas, int x, int y, int width, int height);
+    bool (*gl_frame)(void *user, int layer, void *share_handle, int width, int height);
+    void (*gl_place)(void *user, int layer, int x, int y, int width, int height);
 } megler_gfx_host;
 
 /*

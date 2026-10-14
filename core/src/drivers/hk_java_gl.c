@@ -141,7 +141,7 @@ enum {
     F_GET_STRING, F_GET_STRINGI, F_SHADER_SOURCE, F_GET_SHADERIV, F_GET_SHADER_LOG, F_GET_PROGRAMIV, F_GET_PROGRAM_LOG, F_GET_SHADER_SOURCE,
     F_ACTIVE_ATTRIB, F_ACTIVE_UNIFORM, F_TF_VARYING, F_BLOCKIV, F_BLOCK_NAME, F_PIPELINEIV, F_PIPELINE_LOG, F_RESOURCEIV, F_RESOURCE_NAME,
     F_UNIFORM_INDICES, F_TF_VARYINGS, F_SHADER_PROGRAMV, F_MAP_RANGE, F_BUFFER_I64V, F_BUFFER_POINTERV, F_DEBUG_LOG,
-    F_GET_INTEGERV, F_BIND_FRAMEBUFFER, F_BIND_BUFFER, F_PIXEL_STOREI, F_READ_PIXELS,
+    F_GET_INTEGERV, F_BIND_FRAMEBUFFER, F_BIND_BUFFER, F_PIXEL_STOREI, F_READ_PIXELS, F_FINISH,
     F_COUNT
 };
 static void *g_fn[F_COUNT];
@@ -417,7 +417,12 @@ static struct {
     u32 (*destroy_surface)(EGLDisplay, EGLSurface);
     u32 (*make_current)(EGLDisplay, EGLSurface, EGLSurface, EGLContext);
     EGLint (*get_error)(void);
-} E = { HK_LOCK_INIT, 0, NULL, NULL, false, false, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
+    /* A pbuffer's Direct3D texture as a DXGI shared handle, for a shell that composes the window (megler_gfx_host.gl_frame). */
+    u32 (*query_pointer)(EGLDisplay, EGLSurface, EGLint, void **);
+    bool share;
+} E = { HK_LOCK_INIT, 0, NULL, NULL, false, false, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, false };
+
+enum { EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE = 0x3200 };
 
 /*
  * The one configuration every context and surface of the app's Java is made with: 8 bits a channel, depth and stencil,
@@ -461,6 +466,8 @@ static bool egl_ready(void)
         if (ok) {
             const char *ext = query ? query(E.display, EGL_EXTENSIONS) : NULL;
             E.surfaceless = ext && strstr(ext, "EGL_KHR_surfaceless_context");
+            E.query_pointer = (u32(*)(EGLDisplay, EGLSurface, EGLint, void **))hk_egl_host("eglQuerySurfacePointerANGLE");
+            E.share = E.query_pointer && ext && strstr(ext, "EGL_ANGLE_surface_d3d_texture_2d_share_handle");
             hk_info("java: EGL for the app's Java: EGL %d.%d, OpenGL ES %s, every surface 8 bits a channel%s", (int)major, (int)minor, E.es3 ? "3 and 2" : "2",
                     E.surfaceless ? ", contexts without a surface" : "");
         } else {
@@ -522,6 +529,8 @@ typedef struct gl_surf {
     u8 *pixels;                        /* where a frame is read back to, rows bottom first */
     size_t pixels_size;
     u64 due;                           /* when the next swap may return */
+    void *share;                       /* its texture's DXGI shared handle, asked for at its first swap; NULL: none */
+    bool share_asked;
 } gl_surf;
 
 static void layer_attach(struct layer *l);
@@ -610,6 +619,7 @@ static struct {
     hk_java_show_fn show;
     i32 width, height;
     bool used;                         /* a window surface has been made: the views' picture is kept from then on */
+    int shell;                         /* 1: the shell composes the window (megler_gfx_host.gl_frame); -1: it is composed here */
     u8 *views, *out;                   /* the views' last picture and the window as composed: width x height, rows top first */
     bool have_views, shown_whole;
     layer layers[MAX_LAYERS];
@@ -618,20 +628,63 @@ static struct {
     u64 first_swap, window_started;
 } C;
 
+/* The shell's drawing, which composes the window where it can (hk_java_gl_set_shell). */
+static const megler_gfx_host *g_shell;
+
+void hk_java_gl_set_shell(const megler_gfx_host *gfx) { g_shell = gfx; }
+
 static i32 max_i(i32 a, i32 b) { return a > b ? a : b; }
 static i32 min_i(i32 a, i32 b) { return a < b ? a : b; }
 
-/* The views' picture and the composed one, made when the first window surface is: an app without one never pays for them. */
-static void use_window(void)
+/* With the lock held: the views' picture and the composed one, for composing here; once. */
+static void compose_here(void)
 {
     size_t n = (size_t)C.width * (size_t)C.height * 4;
-    if (C.used || !n) return;
+    if (C.views || !n) return;
     C.views = (u8 *)hk_alloc(n);
     C.out = (u8 *)hk_alloc(n);
     memset(C.views, 0, n);
     memset(C.out, 0, n);
+}
+
+/*
+ * When the first window surface is made: who composes the window from now on. The shell, on its graphics processor, where
+ * it can (megler_gfx_host.gl_frame and gl_place, with present) and EGL hands out the surfaces' textures (ANGLE's share
+ * handles): the frames are then never read back, nor the views out of the memory. Else here, the views' picture kept and
+ * the frames read back; an app without a window surface never pays for either.
+ */
+static void use_window(void)
+{
+    if (C.used || C.width <= 0 || C.height <= 0) return;
     C.used = true;
-    hk_info("java: the app draws with EGL on a view: from now on its window is composed here, the views over OpenGL's frames");
+    if (g_shell && g_shell->gl_frame && g_shell->gl_place && g_shell->present && E.share) {
+        C.shell = 1;
+        hk_info("java: the app draws with EGL on a view: from now on its window is composed by the shell, the views over OpenGL's frames, "
+                "on the graphics processor (the surfaces' textures shared, nothing read back)");
+        return;
+    }
+    C.shell = -1;
+    compose_here();
+    hk_info("java: the app draws with EGL on a view: from now on its window is composed here, the views over OpenGL's frames%s",
+            g_shell && g_shell->gl_frame && !E.share ? " (this EGL does not share its surfaces' textures)" : "");
+}
+
+static int layer_index(const struct layer *l);
+
+/* With the lock held: the shell is told where a layer's frames go (width 0: nowhere), when it composes the window. */
+static void tell_place(struct layer *l, bool shown);
+
+/* With the lock held: the shell could not take a frame; the window is composed here from now on, from the next picture of the views on. */
+static void stop_shell(void)
+{
+    int i;
+    if (C.shell <= 0) return;
+    C.shell = -1;
+    compose_here();
+    C.have_views = C.shown_whole = false;
+    for (i = 0; i < MAX_LAYERS; i++)
+        if (C.layers[i].view) g_shell->gl_place(g_shell->user, i, 0, 0, 0, 0);
+    hk_warn("java: the shell did not take an OpenGL ES frame: from now on the window is composed here, the frames read back");
 }
 
 static layer *layer_of(hk_jobj *view, bool make)
@@ -648,6 +701,15 @@ static layer *layer_of(hk_jobj *view, bool make)
     memset(&C.layers[free_slot], 0, sizeof(layer));
     C.layers[free_slot].view = view;
     return &C.layers[free_slot];
+}
+
+static int layer_index(const struct layer *l) { return (int)(l - C.layers); }
+
+static void tell_place(struct layer *l, bool shown)
+{
+    if (C.shell <= 0) return;
+    if (shown && l->placed) g_shell->gl_place(g_shell->user, layer_index(l), l->x, l->y, l->w, l->h);
+    else g_shell->gl_place(g_shell->user, layer_index(l), 0, 0, 0, 0);
 }
 
 /* The window's composed picture is the views' there again: no frame under them. */
@@ -754,7 +816,7 @@ static void take_place(layer *l, i32 *x0, i32 *y0, i32 *x1, i32 *y1)
     bool moved = !l->placed || l->x != l->px || l->y != l->py || l->w != l->pw || l->h != l->ph;
     l->pending = false;
     if (!moved) return;
-    if (l->placed) {
+    if (l->placed && C.shell < 0) {
         copy_views(l->x, l->y, l->x + l->w, l->y + l->h);
         *x0 = min_i(*x0, l->x);
         *y0 = min_i(*y0, l->y);
@@ -766,12 +828,17 @@ static void take_place(layer *l, i32 *x0, i32 *y0, i32 *x1, i32 *y1)
     l->w = l->pw;
     l->h = l->ph;
     l->placed = true;
+    /* (Made where the shell composes too: should it stop, the window is composed here with them.) */
     if (l->rows_size < (size_t)l->h) {
         free(l->rows);
         l->rows_size = (size_t)l->h;
         l->rows = (u8 *)hk_alloc(l->rows_size);
     }
     l->rows_valid = false;
+    if (C.shell > 0) {
+        tell_place(l, l->active);
+        return;
+    }
     *x0 = min_i(*x0, l->x);
     *y0 = min_i(*y0, l->y);
     *x1 = max_i(*x1, l->x + l->w);
@@ -783,6 +850,7 @@ static void layer_attach(layer *l)
     hk_lock_acquire(&g_window_lock);
     use_window();
     l->surfaces++;
+    if (!l->active && l->placed) tell_place(l, true);
     l->active = true;
     hk_lock_release(&g_window_lock);
 }
@@ -793,6 +861,10 @@ static void layer_off(layer *l)
     if (!l->active) return;
     l->active = false;
     l->fw = l->fh = 0;
+    if (C.shell > 0) {
+        tell_place(l, false);
+        return;
+    }
     if (C.have_views && l->placed) {
         copy_views(l->x, l->y, l->x + l->w, l->y + l->h);
         show_part(l->x, l->y, l->x + l->w, l->y + l->h);
@@ -839,6 +911,7 @@ void hk_java_gl_start(int width, int height, hk_java_show_fn show)
     free(C.out);
     C.views = C.out = NULL;
     C.used = C.have_views = C.shown_whole = false;
+    C.shell = 0;
     memset(&C.stats, 0, sizeof(C.stats));
     C.first_swap = C.window_started = 0;
     C.width = width;
@@ -861,6 +934,29 @@ void hk_java_gl_reset(void)
     hk_java_gles_forget();
 }
 
+bool hk_java_gl_composing(void)
+{
+    bool here;
+    hk_lock_acquire(&g_window_lock);
+    here = C.used && C.shell < 0;
+    hk_lock_release(&g_window_lock);
+    return here;
+}
+
+void hk_java_gl_views_shown(void)
+{
+    i32 x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    int i;
+    hk_lock_acquire(&g_window_lock);
+    if (C.used && C.shell > 0) {
+        /* Where the views said their surfaces are, as this picture of them has them: the shell is told before it shows it. */
+        for (i = 0; i < MAX_LAYERS; i++)
+            if (C.layers[i].view && C.layers[i].pending) take_place(&C.layers[i], &x0, &y0, &x1, &y1);
+        C.have_views = true;
+    }
+    hk_lock_release(&g_window_lock);
+}
+
 bool hk_java_gl_views(const void *pixels, int width, int height, int stride, const i32 part[4])
 {
     i32 x0 = 0, y0 = 0, x1 = width, y1 = height, r, sx0, sy0, sx1, sy1;
@@ -871,6 +967,8 @@ bool hk_java_gl_views(const void *pixels, int width, int height, int stride, con
         hk_lock_release(&g_window_lock);
         return false;
     }
+    /* The views come here while the shell composes the window only when it could not show them: it is composed here from now on. */
+    if (C.shell > 0) stop_shell();
     if (C.have_views && part && part[2] > part[0] && part[3] > part[1]) {
         x0 = max_i(part[0], 0);
         y0 = max_i(part[1], 0);
@@ -927,7 +1025,7 @@ static void stats_line(const hk_java_gl_stats *a, u64 since, u64 now)
     u64 read = b->read_ns - (a ? a->read_ns : 0), composing = b->compose_ns - (a ? a->compose_ns : 0), shell = b->show_ns - (a ? a->show_ns : 0);
     if (!swaps) return;
     hk_info("java: OpenGL frames %s%.1f s: %u swaps of window surfaces, %u shown (%.1f a second); a swap's own work %.2f ms on average "
-            "(reading back %.2f, composing %.2f, the shell %.2f), the longest %.2f; the window %dx%d",
+            "(reading back, or finishing where the shell composes, %.2f, composing %.2f, the shell %.2f), the longest %.2f; the window %dx%d",
             a ? "" : "in all, ", seconds, (unsigned)swaps, (unsigned)shown, seconds > 0 ? shown / seconds : 0.0, (double)(read + composing + shell) / n / 1e6,
             (double)read / n / 1e6, (double)composing / n / 1e6, (double)shell / n / 1e6, (double)b->longest_ns / 1e6, (int)C.width, (int)C.height);
 }
@@ -996,8 +1094,40 @@ static void pace(gl_surf *s)
 }
 
 /*
- * A swap: a window surface's frame read back, composed under the views and shown, and the swap paced. A pbuffer's swap
- * does nothing, as on Android. The thread is the one that drew, with the context current.
+ * A swap where the shell composes the window: the frame finished in the surface's texture (glFinish: this thread may wait,
+ * the app's main thread and the UI thread never do) and handed to the shell by the texture's shared handle; the shell has
+ * copied what it keeps when gl_frame returns, and the app draws the next frame into the same texture. False: the shell
+ * cannot take frames, and the window is composed here from now on.
+ */
+static bool shell_frame(gl_surf *s, layer *l, bool *shown, u64 *finished)
+{
+    typedef void (*fn_finish)(void);
+    fn_finish finish = FN(fn_finish, F_FINISH, "glFinish");
+    bool active, taken;
+    *shown = false;
+    *finished = hk_time_monotonic_ns();
+    if (!s->share_asked) {
+        void *handle = NULL;
+        s->share_asked = true;
+        if (E.query_pointer && E.query_pointer(E.display, s->handle, EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE, &handle) && handle) s->share = handle;
+        else hk_note_once("java: EGL gave no shared handle for a surface's texture (EGL error 0x%x)", (unsigned)E.get_error());
+    }
+    if (!s->share || !finish) return false;
+    finish();
+    *finished = hk_time_monotonic_ns();
+    hk_lock_acquire(&g_window_lock);
+    active = l->active;
+    hk_lock_release(&g_window_lock);
+    if (!active) return true;
+    taken = g_shell->gl_frame(g_shell->user, layer_index(l), s->share, s->width, s->height);
+    *shown = taken;
+    return taken;
+}
+
+/*
+ * A swap: a window surface's frame handed to the shell, which composes the window (shell_frame), or read back, composed
+ * under the views here and shown; and the swap paced. A pbuffer's swap does nothing, as on Android. The thread is the one
+ * that drew, with the context current.
  */
 static bool swap(gl_surf *s, gl_ctx *x)
 {
@@ -1008,6 +1138,33 @@ static bool swap(gl_surf *s, gl_ctx *x)
     l = s->layer;
     if (!l) return true;
     t0 = hk_time_monotonic_ns();
+    if (C.shell > 0) {
+        u64 finished;
+        if (shell_frame(s, l, &shown, &finished)) {
+            t1 = hk_time_monotonic_ns();
+            hk_lock_acquire(&g_window_lock);
+            C.stats.swaps++;
+            C.stats.read_ns += finished - t0;
+            C.stats.show_ns += t1 - finished;
+            if (shown) C.stats.shown++;
+            if (t1 - t0 > C.stats.longest_ns) C.stats.longest_ns = t1 - t0;
+            if (!C.window_started) {
+                C.first_swap = C.window_started = t0;
+                C.window = C.stats;
+            } else if (t1 - C.window_started >= 5000000000ull) {
+                stats_line(&C.window, C.window_started, t1);
+                C.window = C.stats;
+                C.window_started = t1;
+            }
+            hk_lock_release(&g_window_lock);
+            if (shown) hk_run_count_frame();
+            pace(s);
+            return true;
+        }
+        hk_lock_acquire(&g_window_lock);
+        stop_shell();
+        hk_lock_release(&g_window_lock);
+    }
     if (!read_back(s, x)) return false;
     t1 = hk_time_monotonic_ns();
     hk_lock_acquire(&g_window_lock);

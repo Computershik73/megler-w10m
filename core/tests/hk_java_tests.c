@@ -169,7 +169,9 @@ static struct {
     /* Pictures that came as a part (present_pixels_part), and pixels outside the part they said had changed that had changed. */
     i32 parts;
     long stale;
-} W = { HK_LOCK_INIT, NULL, 0, 0, 0, 0, NULL, 0, 0 };
+    /* Pictures shown from a canvas, unflushed (megler_gfx_host.present), as a shell that draws elsewhere than in memory shows them. */
+    volatile i32 from_canvas;
+} W = { HK_LOCK_INIT, NULL, 0, 0, 0, 0, NULL, 0, 0, 0 };
 
 static void present_pixels(void *user, const void *pixels, int width, int height, int stride)
 {
@@ -224,6 +226,134 @@ static void present_pixels_part(void *user, const void *pixels, int width, int h
     W.parts++;
     hk_lock_release(&W.lock);
     hk_atomic_add(&W.pictures, 1);
+}
+
+/*
+ * megler_gfx_host.present, as a shell that draws on a graphics processor has it: the window's picture shown from the canvas that
+ * drew it, which the layer has not flushed. The stand-in's canvas draws straight into the memory, which is its picture, so that
+ * is shown, the same way as a picture handed over by present_pixels(_part): the same checks hold for both.
+ */
+/*
+ * megler_gfx_host.gl_frame and gl_place, as a shell that composes the window on its graphics processor has them: each layer's
+ * place and last frame kept, the views' picture as `present` last showed it kept, and the window composed of the two -- the
+ * frames at their places, scaled to them, opaque, the views' premultiplied colours over them -- whenever either changes,
+ * then shown as a picture handed to present_pixels is. The frames come out of the GL stand-in's surfaces by their "shared
+ * handles" (hk_gl_standin_shared). With the script's "readback" gl_frame says no, and the core composes the window itself.
+ */
+#define GL_LAYERS 8
+static struct {
+    hk_lock lock;
+    bool refuse, used;
+    struct {
+        i32 x, y, w, h;
+        u8 *frame;                     /* R, G, B, A, rows bottom first */
+        int fw, fh;
+    } layers[GL_LAYERS];
+    u8 *views, *out;                   /* B, G, R, A premultiplied, rows top first */
+    int vw, vh;
+    volatile i32 frames, places, composed;
+} GL = { HK_LOCK_INIT };
+
+/* With GL.lock held: the window composed and shown. */
+static void gl_compose(void)
+{
+    int i, r, col;
+    size_t stride = (size_t)GL.vw * 4;
+    if (!GL.views) return;
+    memcpy(GL.out, GL.views, stride * (size_t)GL.vh);
+    for (i = 0; i < GL_LAYERS; i++) {
+        i32 x0, y0, x1, y1;
+        if (!GL.layers[i].frame || GL.layers[i].w <= 0 || GL.layers[i].h <= 0) continue;
+        x0 = GL.layers[i].x < 0 ? 0 : GL.layers[i].x;
+        y0 = GL.layers[i].y < 0 ? 0 : GL.layers[i].y;
+        x1 = GL.layers[i].x + GL.layers[i].w > GL.vw ? GL.vw : GL.layers[i].x + GL.layers[i].w;
+        y1 = GL.layers[i].y + GL.layers[i].h > GL.vh ? GL.vh : GL.layers[i].y + GL.layers[i].h;
+        for (r = y0; r < y1; r++) {
+            i32 lr = r - GL.layers[i].y, fr = GL.layers[i].fh - 1 - (i32)((i64)lr * GL.layers[i].fh / GL.layers[i].h);
+            for (col = x0; col < x1; col++) {
+                i32 fc = (i32)((i64)(col - GL.layers[i].x) * GL.layers[i].fw / GL.layers[i].w);
+                const u8 *g = GL.layers[i].frame + ((size_t)fr * (size_t)GL.layers[i].fw + (size_t)fc) * 4;
+                const u8 *v = GL.views + (size_t)r * stride + (size_t)col * 4;
+                u8 *o = GL.out + (size_t)r * stride + (size_t)col * 4;
+                u32 left = 255u - v[3];
+                o[0] = (u8)(v[0] + (g[2] * left + 127) / 255);
+                o[1] = (u8)(v[1] + (g[1] * left + 127) / 255);
+                o[2] = (u8)(v[2] + (g[0] * left + 127) / 255);
+                o[3] = 255;
+            }
+        }
+    }
+    present_pixels(NULL, GL.out, GL.vw, GL.vh, GL.vw * 4);
+    hk_atomic_add(&GL.composed, 1);
+}
+
+static bool gl_frame(void *user, int layer, void *share_handle, int width, int height)
+{
+    const u8 *rgba;
+    int w, h;
+    (void)user;
+    if (GL.refuse || layer < 0 || layer >= GL_LAYERS || !hk_gl_standin_shared(share_handle, &rgba, &w, &h) || w != width || h != height) return false;
+    hk_lock_acquire(&GL.lock);
+    GL.used = true;
+    if (GL.layers[layer].fw != w || GL.layers[layer].fh != h) {
+        free(GL.layers[layer].frame);
+        GL.layers[layer].frame = (u8 *)hk_alloc((size_t)w * (size_t)h * 4);
+        GL.layers[layer].fw = w;
+        GL.layers[layer].fh = h;
+    }
+    memcpy(GL.layers[layer].frame, rgba, (size_t)w * (size_t)h * 4);
+    if (GL.layers[layer].w > 0) gl_compose();
+    hk_lock_release(&GL.lock);
+    hk_atomic_add(&GL.frames, 1);
+    return true;
+}
+
+static void gl_place(void *user, int layer, int x, int y, int width, int height)
+{
+    (void)user;
+    if (layer < 0 || layer >= GL_LAYERS) return;
+    hk_lock_acquire(&GL.lock);
+    GL.used = true;
+    GL.layers[layer].x = x;
+    GL.layers[layer].y = y;
+    GL.layers[layer].w = width > 0 ? width : 0;
+    GL.layers[layer].h = width > 0 ? height : 0;
+    if (width <= 0) {
+        free(GL.layers[layer].frame);
+        GL.layers[layer].frame = NULL;
+        GL.layers[layer].fw = GL.layers[layer].fh = 0;
+    }
+    hk_lock_release(&GL.lock);
+    hk_atomic_add(&GL.places, 1);
+}
+
+static bool present_canvas(void *user, void *canvas, int x, int y, int width, int height)
+{
+    const void *pixels;
+    int w, h, stride, r;
+    if (!hk_gfx_standin_pixels(canvas, &pixels, &w, &h, &stride)) return false;
+    hk_lock_acquire(&GL.lock);
+    if (GL.used) {
+        /* The shell composes the window: the views' picture is kept, as the shell's snapshot of it, and the window composed. */
+        if (GL.vw != w || GL.vh != h) {
+            free(GL.views);
+            free(GL.out);
+            GL.views = (u8 *)hk_alloc((size_t)w * (size_t)h * 4);
+            GL.out = (u8 *)hk_alloc((size_t)w * (size_t)h * 4);
+            GL.vw = w;
+            GL.vh = h;
+        }
+        for (r = 0; r < h; r++) memcpy(GL.views + (size_t)r * (size_t)w * 4, (const u8 *)pixels + (size_t)r * (size_t)stride, (size_t)w * 4);
+        gl_compose();
+        hk_lock_release(&GL.lock);
+        hk_atomic_add(&W.from_canvas, 1);
+        return true;
+    }
+    hk_lock_release(&GL.lock);
+    if (x == 0 && y == 0 && width == w && height == h) present_pixels(user, pixels, w, h, stride);
+    else present_pixels_part(user, pixels, w, h, stride, x, y, width, height);
+    hk_atomic_add(&W.from_canvas, 1);
+    return true;
 }
 
 /* A pixel of the last picture as 0xRRGGBB (the picture is opaque). */
@@ -400,6 +530,9 @@ static bool start(const char *apk, const char *android_root)
     cfg.window.present_pixels = present_pixels;
     cfg.window.present_pixels_part = present_pixels_part;
     cfg.gfx = *hk_gfx_standin();
+    cfg.gfx.present = present_canvas;
+    cfg.gfx.gl_frame = gl_frame;
+    cfg.gfx.gl_place = gl_place;
     cfg.keyboard.show = keyboard_show;
     cfg.keyboard.hide = keyboard_hide;
     /* The framework says which window each touch went to when it finds this in the environment: asked for with verbose 2. */
@@ -1463,6 +1596,14 @@ static int run_gl(void)
     CHECK(find_line("java: this OpenGL ES has no version 1", 0) >= 0);
     settle();
     write_picture("gl-1");
+    /*
+     * Who composed the window: the shell, from the surfaces' frames by their shared handles and the views as `present` showed
+     * them, nothing read back -- or, when it said no ("readback"), the core, from frames read back and the views' memory.
+     */
+    say("  the window composed by %s: %d frames handed to the shell, %d places told, %d pictures composed there", GL.refuse ? "the core" : "the shell",
+        (int)GL.frames, (int)GL.places, (int)GL.composed);
+    if (GL.refuse) CHECK(find_line("java: the shell did not take an OpenGL ES frame", 0) >= 0 && GL.composed == 0);
+    else CHECK(find_line("java: the app draws with EGL on a view: from now on its window is composed by the shell", 0) >= 0 && GL.frames > 0 && GL.places > 0 && GL.composed > 0);
     /* The views over the frames: the GL view's blue, the triangle's yellow at its centroid, the label over it, the EGL10 view's green. */
     CHECK(pixel(gl[0] + 4, gl[1] + 4) == 0x0080FF);
     CHECK(pixel(gl[0] + gl[2] / 2, gl[1] + gl[3] * 7 / 12) == 0xFFFF00);
@@ -1498,7 +1639,8 @@ static int run_gl(void)
     CHECK(st1.swaps > st0.swaps);
     say("  %u swaps of window surfaces, %u of them shown, on %u GL threads; %d pictures in all, %d of them as a part", (unsigned)st1.swaps, (unsigned)st1.shown,
         (unsigned)st1.threads, (int)W.pictures, (int)W.parts);
-    CHECK(W.parts > 0);
+    /* Composed here, a new GL frame under unchanged views is handed over as the part it changed; the test's shell hands whole pictures. */
+    if (GL.refuse) CHECK(W.parts > 0);
     line = find_line("java: OpenGL frames ", 0);
     if (line >= 0) say("  %s", line_at(line));
     back_and_end("I/GlTest: onDestroy", &at);
@@ -1595,6 +1737,8 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
     g_portrait = !strcmp(which, "demos");
     g_any_app = !strcmp(which, "app");
     g_crash_app = !strcmp(which, "crash");
+    /* The shell does not compose the window ("readback"): the core reads the GL frames back and composes it, as before. */
+    GL.refuse = g_script_count && !strcmp(g_script[0], "readback");
     /* The data app's second run is on another battery than the one the core has when nobody has said: what the app then reads is what was set here. */
     if (!strcmp(which, "data") && g_script_count && !strcmp(g_script[0], "run:2")) hk_battery_set(&k_battery_run2);
     /* And in a time zone the shell names, as it must, before the app starts: one with summer time, and in the second run a name that is no zone's. */
@@ -1636,8 +1780,11 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
      * Pictures drawn in part: none may differ from the screen drawn whole (the window's dirty region missed nothing), and none
      * may have changed outside the part it said (the clip held).
      */
-    say("  %d pictures, %d of them presented as a part; %ld pixels changed outside the part said", (int)W.pictures, (int)W.parts, W.stale);
+    say("  %d pictures, %d of them presented as a part, %d shown from the window's canvas without a flush; %ld pixels changed outside the part said",
+        (int)W.pictures, (int)W.parts, (int)W.from_canvas, W.stale);
     CHECK(W.stale == 0);
+    /* An app that shows pictures and composes no OpenGL frames has them shown from its canvas (megler_gfx_host.present). */
+    if (W.pictures > 0 && count_lines("java: the app draws with EGL on a view") == 0) CHECK(W.from_canvas > 0);
     if (!g_any_app) CHECK(count_lines("a frame drawn in part missed") == 0);
     say("%d checks, %d failed", g_checks, g_failed);
     return g_failed;

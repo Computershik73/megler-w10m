@@ -1622,16 +1622,42 @@ static void check_blend_table(void)
     static const float ends[2] = { 0, 1 };
     pic p, s;
     int mode, k, how, worst = 0, wrong = 0;
-    say("  the eighteen transfer modes against megler.h's table, drawn five ways each on four pairs of colours");
+    say("  the eighteen transfer modes against megler.h's table, drawn seven ways each on four pairs of colours, and as colour filters");
     pic_make(&p, H, 8, 8);
     pic_make(&s, H, 2, 2);
     for (mode = 0; mode < 18; mode++)
         for (k = 0; k < 4; k++)
-            for (how = 0; how < 5; how++) {
+            for (how = 0; how < 8; how++) {
                 u32 src = pairs[k][0], dst = pairs[k][1], want = table_pixel(mode, premultiplied(src), premultiplied(dst)), got;
                 megler_gfx_paint paint = paint_of(src);
                 int d;
-                if (mode == MEGLER_GFX_BLEND_DST && how != 3) continue;
+                if (mode == MEGLER_GFX_BLEND_DST && how != 3 && how != 5 && how != 7) continue;
+                if (how == 5) {
+                    /* A colour filter by the mode, of the source's colour, on a shader that is the destination's colour all
+                       along, drawn by SRC: each colour C of the shader becomes the mode of S = the filter's colour and D = C
+                       (megler.h, THE PAINT), which is the table's pixel again. */
+                    u32 two[2];
+                    void *sh;
+                    two[0] = two[1] = dst;
+                    sh = linear(H, 0, 0, 8, 0, two, ends, 2, MEGLER_GFX_TILE_CLAMP);
+                    color(&p, 0xFF808080u, MEGLER_GFX_BLEND_SRC);
+                    paint = paint_of(0xFF000000u);
+                    paint.blend = MEGLER_GFX_BLEND_SRC;
+                    paint.filter_mode = mode;
+                    paint.filter_color = src;
+                    rect(&p, 2, 2, 6, 6, &paint, sh);
+                    H->shader_free(H->user, sh);
+                    settle(&p);
+                    got = at(&p, 3, 3);
+                    d = apart(got, want);
+                    if (d > worst) worst = d;
+                    if (d > 2) {
+                        wrong++;
+                        if (wrong <= 6) say("    filter by mode %d, %08x on %08x: %08x, the table says %08x", mode, src, dst, got, want);
+                    }
+                    if (at(&p, 0, 0) != 0xFF808080u || at(&p, 7, 7) != 0xFF808080u) wrong++;
+                    continue;
+                }
                 color(&p, dst, MEGLER_GFX_BLEND_SRC);
                 paint.blend = mode;
                 if (how == 0) {
@@ -1658,10 +1684,26 @@ static void check_blend_table(void)
                     color(&p, src | 0xFF000000u, MEGLER_GFX_BLEND_SRC);
                     restore(&p, layer);
                     if (mode == MEGLER_GFX_BLEND_DST) want = premultiplied(dst);
-                } else {
+                } else if (how == 4) {
                     saved clip = save(&p);
                     clip_rect(&p, 2, 2, 6, 6, MEGLER_GFX_CLIP_INTERSECT);
                     color(&p, src, mode);
+                    restore(&p, clip);
+                } else {
+                    /* The last two again under a clip that is a path, whose edge is smoothed: a pixel well inside it is
+                       covered whole, and gets the table's colour as well. */
+                    static const float square[] = { MEGLER_GFX_PATH_MOVE, 2, 2, MEGLER_GFX_PATH_LINE, 6, 2, MEGLER_GFX_PATH_LINE, 6, 6, MEGLER_GFX_PATH_LINE, 2, 6,
+                                                    MEGLER_GFX_PATH_CLOSE };
+                    saved clip = save(&p);
+                    clip_path(&p, square, (int)HK_COUNT(square), MEGLER_GFX_WINDING, MEGLER_GFX_CLIP_INTERSECT);
+                    if (how == 6) {
+                        color(&p, src, mode);
+                    } else {
+                        saved layer = save_layer(&p, NULL, (int)(src >> 24), mode);
+                        color(&p, src | 0xFF000000u, MEGLER_GFX_BLEND_SRC);
+                        restore(&p, layer);
+                        if (mode == MEGLER_GFX_BLEND_DST) want = premultiplied(dst);
+                    }
                     restore(&p, clip);
                 }
                 settle(&p);
@@ -2759,7 +2801,8 @@ static void measure_costs(void)
     u16 t[40];
     char line_of[40];
     float bounds[4] = { 100, 100, 300, 300 };
-    double made, erased, rects, rounded, flushed, flushedPart, first, again, drawn, copied, shared, layered, composed;
+    double made, erased, rects, rounded, flushed, flushedPart, first, again, drawn, copied, shared, kept, layered, composed, strip, written;
+    megler_gfx_image same;
     u64 from;
     int i, n;
     say("  what things cost here (a phone's processor is several times slower):");
@@ -2835,6 +2878,47 @@ static void measure_costs(void)
     for (i = 0; i < 100; i++) bitmap(&screen, &large, 0, 0, 512, 512, 100, 100, 612, 612, &plain);
     settle(&screen);
     shared = microseconds(from, 100);
+    /* The same bitmap under one id and version every time, as the core hands a picture that has not changed: a host that
+       keeps bitmaps draws it from what it kept. (bitmap() above gives each call an id of its own.) */
+    {
+        float src[4] = { 0, 0, 512, 512 }, dst[4] = { 100, 100, 612, 612 };
+        image_of(&large, &same);
+        from = hk_time_monotonic_ns();
+        for (i = 0; i < 100; i++) H->draw_bitmap(H->user, screen.cv, &same, src, dst, &plain);
+        settle(&screen);
+        kept = microseconds(from, 100);
+        H->bitmap_gone(H->user, same.id);
+    }
+    /* A frame as a window draws one when a little of it changed, a caret blinking in a text field: a strip of 720 x 64 of the
+       720 x 1280 picture redrawn -- its background, eight rectangles, two lines of text -- and flushed, which is when a host
+       that draws elsewhere than in the memory puts the strip there. */
+    {
+        megler_gfx_paint bar = paint_of(0xFFE0E0E0u), caret = paint_of(0xFF2060C0u);
+        from = hk_time_monotonic_ns();
+        for (i = 0; i < 100; i++) {
+            saved part = save(&screen);
+            int k;
+            clip_rect(&screen, 0, 600, 720, 664, MEGLER_GFX_CLIP_INTERSECT);
+            color(&screen, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+            for (k = 0; k < 7; k++) rect(&screen, (float)(k * 100 + 10), 610, (float)(k * 100 + 90), 612, &bar, NULL);
+            if (i & 1) rect(&screen, 300, 614, 302, 650, &caret, NULL);
+            text16(&screen, t, units("A line of text in a field", t, 40), 20, 640, &words, NULL, NULL);
+            text16(&screen, t, units("and its hint", t, 40), 420, 640, &words, NULL, NULL);
+            restore(&screen, part);
+            settle(&screen);
+        }
+        strip = microseconds(from, 100);
+    }
+    /* The whole picture written behind the canvas's back (touched), then a rectangle drawn on it and flushed: a host that
+       keeps the picture elsewhere takes all of it again. */
+    from = hk_time_monotonic_ns();
+    for (i = 0; i < 50; i++) {
+        screen.px[i] ^= 0x00010101u;
+        wrote(&screen);
+        rect(&screen, 10, 10, 50, 50, &opaque, NULL);
+        settle(&screen);
+    }
+    written = microseconds(from, 50);
     from = hk_time_monotonic_ns();
     for (i = 0; i < 200; i++) {
         saved layer = save_layer(&screen, bounds, 128, MEGLER_GFX_BLEND_SRC_OVER);
@@ -2853,8 +2937,10 @@ static void measure_costs(void)
     say("    a rectangle and a flush %.0f us, in a clip of 200x100 of the 720x1280 picture %.0f us; a line of 24 letters measured for the first time %.0f us, and again %.2f us;",
         flushed, flushedPart, first, again);
     say("    a line of 24 letters drawn %.0f us;", drawn);
-    say("    a 64x64 bitmap %.0f us, a 512x512 one %.0f us; a 200x200 layer at half strength with a rectangle in it %.0f us; a 100x100 oval by XOR %.0f us", copied, shared,
-        layered, composed);
+    say("    a 64x64 bitmap %.0f us, a 512x512 one %.0f us, the 512x512 one again under the same id and version %.0f us; a 200x200 layer at half strength with a "
+        "rectangle in it %.0f us; a 100x100 oval by XOR %.0f us;", copied, shared, kept, layered, composed);
+    say("    a frame that redraws a strip of 720x64 of the 720x1280 picture (a colour, 8 rectangles, 2 lines of text) and is flushed %.0f us; the whole picture "
+        "written behind the canvas's back, then a rectangle drawn and flushed %.0f us", strip, written);
     pic_done(&large);
     pic_done(&photo);
     pic_done(&screen);

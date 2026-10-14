@@ -33,16 +33,19 @@
  *       for the shell's drawing; check what it logs and draws, touch it, press Back; write each picture as a BMP
  *   hk_tests --java app <apk> <data dir> <android root> <picture dir | -> <verbose> <WIDTHxHEIGHT@DPI> [tap:X,Y | drag:X,Y,X2,Y2 | wait:MS | back | key:CODE]...
  *       the same for any APK: started, its pictures written (app-1, and one more after each step of the script), nothing checked
- *   hk_tests --gfx-windows <picture dir | -> [copy]
+ *   hk_tests --gfx-windows <picture dir | -> [gpu | warp | memory | copy]
  *       the shell's drawing (app/Megler/player/GfxHost.cpp: Direct2D, DirectWrite, WIC) through megler_gfx_host: scenes drawn,
- *       written as PNG files, compared with the stand-in's and checked (hk_gfx_scenes.c). `copy`: with every canvas copied to a
- *       WIC bitmap and back. Only in the build tools/build-tests.sh win makes; any other says so and does nothing
+ *       written as PNG files, compared with the stand-in's and checked (hk_gfx_scenes.c). On this machine's graphics processor
+ *       (the default, `gpu`; and then what a lost device leaves, last), on WARP (Direct3D's software device), in memory by
+ *       Direct2D's software rasterizer, or `copy`: in memory with every canvas copied to a WIC bitmap and back. Only in the
+ *       build tools/build-tests.sh win makes; any other says so and does nothing
  *   hk_tests --gfx-record <hello | demos> <apk> <data dir> <android root> <record file>
  *       start one of the Java test apps through megler_run with the stand-in as the shell's drawing, and write every call it
  *       makes of that drawing to a file (hk_gfx_record.c); only where guest code can run
- *   hk_tests --gfx-replay <record file> <picture dir | -> <name> [standin]
- *       draw such a record again -- by the shell's own drawing in the build tools/build-tests.sh win makes, by the stand-in with
- *       `standin` or in any other build -- and write each picture the app showed as <picture dir>/<name>-N.png
+ *   hk_tests --gfx-replay <record file> <picture dir | -> <name> [standin | memory]
+ *       draw such a record again -- by the shell's own drawing in the build tools/build-tests.sh win makes (on the graphics
+ *       processor, or in memory with `memory`), by the stand-in with `standin` or in any other build -- and write each picture
+ *       the app showed as <picture dir>/<name>-N.png
  *   hk_tests --storage-windows <scratch dir>
  *       the shell's storage host (app/Megler/player/StorageHost.cpp: Windows.Storage) through megler_storage_host: the tests of
  *       hk_storage_tests.c with it in the stand-in's place, on folders under the scratch folder. Only in the build
@@ -436,22 +439,130 @@ static void print_line(const char *line, void *user)
 
 #ifdef HK_GFX_WINDOWS
 /* hk_gfx_windows.cpp: the shell's own megler_gfx_host, and what it counted. */
-const megler_gfx_host *hk_gfx_windows_host(void (*line)(const char *text, void *user), void *user, int copying);
+const megler_gfx_host *hk_gfx_windows_host(void (*line)(const char *text, void *user), void *user, int way);
 void hk_gfx_windows_counts(char *out, size_t size);
+int hk_gfx_windows_on_gpu(void);
+void hk_gfx_windows_lose_device(void);
+int hk_gfx_windows_check_present(const megler_gfx_host *h, void (*line)(const char *text, void *user), int *checks);
+int hk_gfx_windows_check_gl(const megler_gfx_host *h, void (*line)(const char *text, void *user), int *checks);
+
+/* A pixel of a 32 x 32 picture, as a check: a line when it is not what it should be. */
+static int gfx_loss_pixel(const u32 *px, int x, int y, u32 want, const char *what)
+{
+    if (px[y * 32 + x] == want) return 0;
+    printf("  FAIL after the device was lost: %s at %d,%d is %08x, not %08x\n", what, x, y, px[y * 32 + x], want);
+    return 1;
+}
+
+/*
+ * The graphics processor's device lost under canvases that are in use, which
+ * a phone does when its driver resets: the memory keeps what the last flush
+ * put there, a canvas draws on in memory, a layer that was open is put on at
+ * its restore with what was drawn into it after the loss, and a shader and a
+ * bitmap made before the loss still draw. Last in a run: the loss is for good.
+ */
+static int gfx_windows_loss(const megler_gfx_host *h, int *checks)
+{
+    static const u32 two[2] = { 0xFF00FF00u, 0xFF00FF00u };
+    static const float ends[2] = { 0, 1 };
+    static u32 px[32 * 32], picture[4 * 4], later[32 * 32];
+    megler_gfx_paint p;
+    megler_gfx_image image;
+    void *cv, *after, *shader;
+    float src[4] = { 0, 0, 4, 4 }, dst[4] = { 24, 24, 28, 28 }, corner[4] = { 28, 28, 32, 32 };
+    int failed = 0, i;
+    memset(&p, 0, sizeof(p));
+    p.color = 0xFFFF0000u;
+    p.miter_limit = 4;
+    p.text_size = 12;
+    p.text_scale_x = 1;
+    p.blend = MEGLER_GFX_BLEND_SRC_OVER;
+    p.filter_mode = -1;
+    for (i = 0; i < 16; i++) picture[i] = 0xFF00FFFFu;
+    memset(&image, 0, sizeof(image));
+    image.pixels = picture;
+    image.width = image.height = 4;
+    image.stride = 16;
+    image.id = 0x7FFFFFF0u;
+    image.version = 1;
+    printf("  the graphics processor's device lost under a canvas in use\n");
+    cv = h->canvas_new(h->user, px, 32, 32, 128);
+    if (!cv) {
+        printf("  FAIL: no canvas\n");
+        *checks += 1;
+        return 1;
+    }
+    shader = h->shader_linear(h->user, 0, 0, 32, 0, two, ends, 2, MEGLER_GFX_TILE_CLAMP);
+    h->draw_color(h->user, cv, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    h->draw_rect(h->user, cv, 0, 0, 16, 32, &p, NULL);
+    h->draw_bitmap(h->user, cv, &image, src, dst, &p);
+    h->flush(h->user, cv);
+    h->save_layer(h->user, cv, NULL, 255, MEGLER_GFX_BLEND_SRC_OVER);
+    h->draw_rect(h->user, cv, 16, 16, 24, 24, &p, NULL);
+    hk_gfx_windows_lose_device();
+    p.color = 0xFF0000FFu;
+    h->draw_rect(h->user, cv, 16, 0, 32, 8, &p, NULL);
+    h->restore(h->user, cv);
+    h->draw_rect(h->user, cv, 16, 8, 32, 12, &p, shader);
+    h->draw_bitmap(h->user, cv, &image, src, corner, &p);
+    h->flush(h->user, cv);
+    failed += gfx_loss_pixel(px, 2, 2, 0xFFFF0000u, "what the last flush put into the memory");
+    failed += gfx_loss_pixel(px, 25, 25, 0xFF00FFFFu, "a bitmap drawn before the loss");
+    failed += gfx_loss_pixel(px, 31, 31, 0xFF00FFFFu, "a bitmap drawn after it");
+    failed += gfx_loss_pixel(px, 20, 4, 0xFF0000FFu, "what was drawn into the open layer after the loss");
+    failed += gfx_loss_pixel(px, 20, 10, 0xFF00FF00u, "a shader made before the loss");
+    failed += gfx_loss_pixel(px, 20, 30, 0xFFFFFFFFu, "the background");
+    h->canvas_free(h->user, cv);
+    h->shader_free(h->user, shader);
+    /* A canvas made after the loss draws in memory from the start. */
+    after = h->canvas_new(h->user, later, 32, 32, 128);
+    if (after) {
+        h->draw_color(h->user, after, 0xFF102030u, MEGLER_GFX_BLEND_SRC);
+        h->draw_rect(h->user, after, 8, 8, 16, 16, &p, NULL);
+        h->flush(h->user, after);
+        failed += gfx_loss_pixel(later, 10, 10, 0xFF0000FFu, "a canvas made after the loss");
+        failed += gfx_loss_pixel(later, 2, 2, 0xFF102030u, "its background");
+        h->canvas_free(h->user, after);
+    } else {
+        printf("  FAIL: no canvas after the device was lost\n");
+        failed++;
+    }
+    h->bitmap_gone(h->user, image.id);
+    *checks += 9;
+    return failed;
+}
 #endif
 
 static int gfx_windows_mode(int argc, char **argv)
 {
 #ifdef HK_GFX_WINDOWS
+    static const char *const ways[] = { "on this machine's graphics processor", "in memory, every canvas copied to a WIC bitmap and back", "in memory",
+                                        "on WARP, Direct3D's software device" };
     hk_gfx_scenes_config config;
-    char counts[600];
-    int checks = 0, failed, copying = argc >= 4 && !strcmp(argv[3], "copy");
+    char counts[1200];
+    int checks = 0, failed, way = 0;
+    if (argc >= 4) way = !strcmp(argv[3], "copy") ? 1 : !strcmp(argv[3], "memory") ? 2 : !strcmp(argv[3], "warp") ? 3 : 0;
     hk_core_init();
     memset(&config, 0, sizeof(config));
-    config.host = hk_gfx_windows_host(print_line, NULL, copying);
+    config.host = hk_gfx_windows_host(print_line, NULL, way);
     config.out_dir = strcmp(argv[2], "-") ? argv[2] : NULL;
-    if (copying) printf("(every canvas copied to a WIC bitmap and back)\n");
+    printf("(drawing %s)\n", ways[way]);
     failed = hk_gfx_scenes_run(&config, NULL, NULL, &checks);
+    if ((way == 0 || way == 3) && hk_gfx_windows_on_gpu()) {
+        failed += hk_gfx_windows_check_present(config.host, print_line, &checks);
+        failed += hk_gfx_windows_check_gl(config.host, print_line, &checks);
+        failed += gfx_windows_loss(config.host, &checks);
+    } else if (config.host->present) {
+        /* Drawn in memory there is no picture of the shell's own to show: the layer is told no, and flushes as before. */
+        u32 px[16];
+        void *cv = config.host->canvas_new(config.host->user, px, 4, 4, 16);
+        checks++;
+        if (cv && config.host->present(config.host->user, cv, 0, 0, 4, 4)) {
+            printf("  FAIL: present said yes for a canvas drawn in memory\n");
+            failed++;
+        }
+        if (cv) config.host->canvas_free(config.host->user, cv);
+    }
     hk_gfx_windows_counts(counts, sizeof(counts));
     printf("  %s\n%d checks, %d failed\n", counts, checks, failed);
     return failed ? 1 : 0;
@@ -463,7 +574,8 @@ static int gfx_windows_mode(int argc, char **argv)
 #endif
 }
 
-/* A recorded app's drawing again: by the shell's own drawing where this build has it and it is not told otherwise, else by the stand-in that recorded it. */
+/* A recorded app's drawing again: by the shell's own drawing where this build has it and it is not told otherwise (on the
+   graphics processor, or `memory`), else by the stand-in that recorded it. */
 static int gfx_replay_mode(int argc, char **argv)
 {
     const megler_gfx_host *host = hk_gfx_standin();
@@ -473,13 +585,20 @@ static int gfx_replay_mode(int argc, char **argv)
     hk_core_init();
 #ifdef HK_GFX_WINDOWS
     if (argc < 6 || strcmp(argv[5], "standin")) {
-        host = hk_gfx_windows_host(print_line, NULL, 0);
+        host = hk_gfx_windows_host(print_line, NULL, argc >= 6 && !strcmp(argv[5], "memory") ? 2 : 0);
         same = false;
     }
 #else
     (void)argc;
 #endif
     failed = hk_gfx_replay_run(argv[2], host, same, dir, argv[4], NULL, NULL, &checks);
+#ifdef HK_GFX_WINDOWS
+    if (!same) {
+        char counts[1200];
+        hk_gfx_windows_counts(counts, sizeof(counts));
+        printf("  %s\n", counts);
+    }
+#endif
     printf("%d checks, %d failed\n", checks, failed);
     return failed ? 1 : 0;
 }

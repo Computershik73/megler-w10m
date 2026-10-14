@@ -6,6 +6,7 @@
 #ifndef HK_JAVA_GL_H
 #define HK_JAVA_GL_H
 
+#include "../../include/megler.h"
 #include "../hk_base.h"
 #include "../jni/hk_jni.h"
 
@@ -28,6 +29,18 @@ void hk_java_gl_start(int width, int height, hk_java_show_fn show);
  * again. False: no GL, nothing done, show it as it is.
  */
 bool hk_java_gl_views(const void *pixels, int width, int height, int stride, const i32 part[4]);
+/*
+ * Whether the window is composed here (an EGL window surface has been made, and the shell does not compose the window):
+ * its views' picture is then needed in memory.
+ */
+bool hk_java_gl_composing(void);
+/* The shell's drawing, which composes the window itself where it can (megler_gfx_host.gl_frame); before the app runs. */
+void hk_java_gl_set_shell(const megler_gfx_host *gfx);
+/*
+ * The views' picture is about to be shown by the shell from its own (megler_gfx_host.present; the app's main thread): where the
+ * shell composes the window, the places the views said for their surfaces are told it first.
+ */
+void hk_java_gl_views_shown(void);
 /* megler.EGLNative, megler.Native's startGL and requestRender, and the GLES natives written by hand. */
 const hk_jhle *hk_java_gl_natives(void);
 
