@@ -1425,6 +1425,41 @@ Benchmark on x64 in ns a turn, before and after:
 - `getClass` with a cast: 49.1 to 40.2;
 - `StringBuilder`: 873 to 811.
 
+### Calls done in place: trivial methods
+
+A method whose whole body has one of a few trivial shapes is done by the call
+itself, with no frame. Dalvik's dexopt did this for the same code, and ART's
+compiler inlines it. The shapes:
+- an empty body: `Object.<init>`, which every constructor ends in, and the
+  empty methods listeners leave;
+- a constant returned (`const/4`, `return`);
+- a field of `this` returned (a getter);
+- a field of `this` set from the one argument, not a long or a double (a
+  setter);
+- a static field returned.
+
+`classify` finds the shape at a method's first call and writes it to the
+method as one word: the shape, the instruction that does the work, and a
+constant. It writes the field before that word, with a barrier between,
+because other threads read both without a lock. A reader that sees the word
+but not the field yet calls the method instead.
+
+When the call cannot be done in place, the method runs as before:
+- the static field's class is not initialised yet;
+- the object's class has no such slot.
+Synchronized methods, native ones and ones with try blocks are never done in
+place. Neither is anything while every instruction is watched. A call done in
+place counts the instructions the method would have executed (1 or 2), so
+instruction counts stay comparable.
+
+`bench.Edges` covers it too: getters and setters of each kind, constants,
+empty methods, a static getter of another class that must be initialised
+first, and a getter called on null.
+
+Benchmark on x64 in ns a turn: a small object made (its constructor ends in
+`Object.<init>`) 61.5 to 53.6; `ArrayList`'s iterator 88.8 to 76.4;
+`Integer.valueOf` 91.8 to 77.6; `HashMap.get` 272 to 262.
+
 ### Exceptions
 
 One exception can be pending on a thread, for bytecode and native code alike.

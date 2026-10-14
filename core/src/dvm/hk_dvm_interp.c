@@ -388,6 +388,123 @@ static bool intrinsic(hk_dvm_thread *t, u8 id, const hk_dvm_reg *a, hk_jvalue *r
     }
 }
 
+/* ----------------------------------------------------------- trivial methods */
+
+/*
+ * Methods whose whole body is one of a few trivial shapes are done in place by the call, with no frame: an empty body
+ * (Object.<init>, which every constructor ends in, and the empty methods listeners leave), a constant returned, a field
+ * of the object returned (a getter), a field of the object set from the argument (a setter), a static field returned.
+ * What dexopt did on Dalvik and inlining does on ART for the same code. The shape is found at a method's first call. A
+ * call that cannot be done in place (the field's class not initialised yet, an object without the field) runs the method
+ * as before, so anything that throws throws from the method's own frame. Not while every instruction is watched (the
+ * trace, the step limit, the profile): those see each method's own instructions.
+ */
+enum { SHAPE_UNKNOWN, SHAPE_REGULAR, SHAPE_EMPTY, SHAPE_CONST, SHAPE_GETTER, SHAPE_SETTER, SHAPE_STATIC_GETTER };
+
+/* The return instruction that goes with each iget and sget kind: return, return-wide, return-object. */
+static u16 return_for(u32 op)
+{
+    u32 k = op >= 0x60 ? op - 0x60 : op - 0x52;
+    return k == 1 ? 0x10 : k == 2 ? 0x11 : 0x0f;
+}
+
+#define SHAPE_OF(w) ((w) & 0xFFu)
+#define SHAPE_OP(w) (((w) >> 8) & 0xFFu)
+#define SHAPE_VALUE(w) ((i32)(i16)((w) >> 16))
+
+static HK_NOINLINE void classify(hk_dvm_method *m)
+{
+    const u16 *c = m->insns;
+    bool is_static = (m->flags & DVM_ACC_STATIC) != 0;
+    u32 shape = SHAPE_REGULAR, value = 0;
+    u32 op = c ? c[0] & 0xFF : 0;
+    hk_dvm_field *fld = NULL;
+    if (!c || (m->flags & (DVM_ACC_SYNCHRONIZED | DVM_ACC_NATIVE)) || m->ntries) {
+        hk_atomic_xchg((volatile i32 *)&m->shape, SHAPE_REGULAR);
+        return;
+    }
+    if (m->ninsns == 1 && c[0] == 0x000e) {
+        shape = SHAPE_EMPTY;
+    } else if (m->ninsns == 2 && op == 0x12 && (c[1] & 0xFF) == 0x0f && (u32)(c[1] >> 8) == ((c[0] >> 8) & 0xFu)) {
+        /* const/4 vA, #+B; return vA */
+        shape = SHAPE_CONST;
+        value = (u32)((i32)((c[0] >> 12) ^ 8) - 8) & 0xFFFFu;
+    } else if (m->ninsns == 3 && !is_static && m->ins == 1 && op >= 0x52 && op <= 0x58 && (u32)(c[0] >> 12) == (u32)m->regs - 1u
+               && (c[2] & 0xFF) == return_for(op) && (u32)(c[2] >> 8) == ((c[0] >> 8) & 0xFu)) {
+        /* iget-kind vA, this, field; return-kind vA */
+        fld = hk_dvm_resolve_field(m->cls->dex, c[1], false);
+        if (fld && fld->slot < fld->cls->nslots) shape = SHAPE_GETTER;
+    } else if (m->ninsns == 3 && !is_static && m->ins == 2 && op >= 0x59 && op <= 0x5f && op != 0x5a && (u32)(c[0] >> 12) == (u32)m->regs - 2u
+               && ((c[0] >> 8) & 0xFu) == (u32)m->regs - 1u && c[2] == 0x000e) {
+        /* iput-kind value, this, field; return-void (not a long or a double, which come in two registers) */
+        fld = hk_dvm_resolve_field(m->cls->dex, c[1], false);
+        if (fld && fld->slot < fld->cls->nslots) shape = SHAPE_SETTER;
+    } else if (m->ninsns == 3 && is_static && m->ins == 0 && op >= 0x60 && op <= 0x66 && (c[2] & 0xFF) == return_for(op) && (u32)(c[2] >> 8) == (u32)(c[0] >> 8)) {
+        /* sget-kind vAA, field; return-kind vAA */
+        fld = hk_dvm_resolve_field(m->cls->dex, c[1], true);
+        if (fld && fld->cls->statics) shape = SHAPE_STATIC_GETTER;
+    }
+    /* A field that does not resolve is the method's to throw about when it runs. */
+    if (!fld && shape == SHAPE_REGULAR) hk_dvm_clear_pending();
+    /* (A regular method's word is SHAPE_REGULAR alone, which the call compares with first.) */
+    if (shape == SHAPE_REGULAR) op = value = 0;
+    /* The field first, then the word that says how to use it, with a barrier between (another thread reads them unlocked). */
+    m->shape_field = fld;
+    hk_atomic_xchg((volatile i32 *)&m->shape, (i32)(shape | op << 8 | value << 16));
+}
+
+/* A field slot's value as the iget or sget of that kind reads it, into a result. */
+static inline void read_kind(u32 op, const hk_jvalue *s, hk_jvalue *r)
+{
+    r->j = 0;
+    switch (op >= 0x60 ? op - 0x60 : op - 0x52) {
+    case 0: r->i = s->i; break;
+    case 1: r->j = s->j; break;
+    case 2: r->l = s->l; break;
+    case 3: r->i = s->z; break;
+    case 4: r->i = (i32)s->b; break;
+    case 5: r->i = s->c; break;
+    default: r->i = (i32)s->s; break;
+    }
+}
+
+/* A trivial method's work on the invoke's arguments (`w` its shape word): false to call it instead. */
+static bool trivial(const hk_dvm_method *m, u32 w, const hk_dvm_reg *a, hk_jvalue *r)
+{
+    hk_jobj *o = (hk_jobj *)a[0];
+    const hk_dvm_field *fld = m->shape_field;
+    hk_jvalue *s;
+    switch (SHAPE_OF(w)) {
+    case SHAPE_EMPTY: return true;
+    case SHAPE_CONST:
+        r->j = 0;
+        r->i = SHAPE_VALUE(w);
+        return true;
+    case SHAPE_GETTER:
+        /* (The field may not be seen yet on another processor than the one that wrote it: then the method runs.) */
+        if (!fld || fld->slot >= hk_dvm_class_of(o)->nslots) return false;
+        read_kind(SHAPE_OP(w), &hk_dvm_slots(o)[fld->slot], r);
+        return true;
+    case SHAPE_SETTER:
+        if (!fld || fld->slot >= hk_dvm_class_of(o)->nslots) return false;
+        s = &hk_dvm_slots(o)[fld->slot];
+        switch (SHAPE_OP(w)) {
+        case 0x59: s->i = (i32)(u32)a[1]; break;
+        case 0x5b: s->l = (hk_jobj *)a[1]; break;
+        case 0x5c: s->z = (u8)a[1]; break;
+        case 0x5d: s->b = (i8)a[1]; break;
+        case 0x5e: s->c = (u16)a[1]; break;
+        default: s->s = (i16)a[1]; break;
+        }
+        return true;
+    case SHAPE_STATIC_GETTER:
+        if (!fld || fld->cls->state != DVM_CS_INITIALIZED) return false;
+        read_kind(SHAPE_OP(w), &fld->cls->statics[fld->slot], r);
+        return true;
+    default: return false;
+    }
+}
+
 /* ---------------------------------------------------------------- exceptions */
 
 /* The handler in method `m` for exception `e` thrown at `pc`, if it has one. */
@@ -1167,6 +1284,16 @@ static bool interpret(hk_dvm_thread *t, hk_dvm_frame *f, hk_jvalue *ret)
         }
         /* One the interpreter does itself, when its arguments allow (not while every instruction is watched: the trace, the profile). */
         if (target->intrinsic && !g_dvm.slow && intrinsic(t, target->intrinsic, inv_argv, &result)) NEXT(3);
+        /* A method whose body is trivial, done in place; counted as the instructions it would have executed. */
+        if (target->shape != SHAPE_REGULAR && target->insns && !g_dvm.slow) {
+            u32 shape;
+            if (target->shape == SHAPE_UNKNOWN) classify(target);
+            shape = target->shape;
+            if (SHAPE_OF(shape) != SHAPE_REGULAR && trivial(target, shape, inv_argv, &result)) {
+                executed += target->ninsns == 1 ? 1 : 2;
+                NEXT(3);
+            }
+        }
         if (!target->insns) {
             if (!(target->flags & DVM_ACC_NATIVE)) {
                 hk_dvm_throw("java/lang/AbstractMethodError", "%s.%s%s", target->cls->name, target->name, target->sig);

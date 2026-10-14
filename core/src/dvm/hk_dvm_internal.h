@@ -145,6 +145,13 @@ struct hk_dvm_method {
     u32 meter_calls, meter_avg;
     /* One of the library's methods the interpreter does itself when it can (hk_dvm_interp.c, "intrinsics"): its number, or 0. */
     u8 intrinsic;
+    /*
+     * What the whole body is when it is one of the trivial shapes a call does in place (hk_dvm_interp.c, "trivial
+     * methods"): 0 not looked at yet. One word, written once with all of it -- the shape, the instruction that does the
+     * work, a constant -- so that another thread sees it whole; the field is written before it.
+     */
+    volatile u32 shape;
+    hk_dvm_field *volatile shape_field;
 };
 
 enum { DVM_CS_FAILED = -1, DVM_CS_LINKED = 0, DVM_CS_INITIALIZING = 1, DVM_CS_INITIALIZED = 2 };
