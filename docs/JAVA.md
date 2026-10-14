@@ -3240,7 +3240,20 @@ the context that knows.
   was empty on the second; it shows its seven headers and their screens.
   Not done: two panes, bread crumbs.
 
-The original has all twenty-one faults; they are its author's to take back.
+- `android/util/Xml.java`, the class names of `newPullParser` and
+  `newSerializer`. The original asked only for Android 10's names of kXML's
+  classes, `com.android.org.kxml2.io.KXmlParser` and `KXmlSerializer`.
+  Android 9's libcore (`core-libart.dex`) names them `org.kxml2.io.*`, so
+  every `Xml.newPullParser()` threw an `AssertionError` of a
+  `ClassNotFoundException`. MX Player 3.3.1 makes one at its start and ended
+  there on the phone (0.1.0.207). The overlay asks for Android 9's name first,
+  then Android 10's. The data app's step "xml" writes a small document with a
+  serializer and reads it back with a pull parser, both through
+  `android.util.Xml`. A search of the original for other names that differ
+  between Android 9 and later (`com.android.org.*`, `libcore.*` and the like,
+  in `Class.forName` and string literals) found no other.
+
+The original has all twenty-two faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in

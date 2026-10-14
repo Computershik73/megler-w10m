@@ -272,6 +272,7 @@ public class Main extends Activity {
         tls();
         keystore(run);
         codecs();
+        xml();
         network();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
@@ -600,6 +601,37 @@ public class Main extends Activity {
             }
             detail = "count=" + count + " all=" + all + " avc=" + found + " create=" + made;
             return count == 0 && all == 0 && found == null && "IOException".equals(made);
+        });
+    }
+
+    /**
+     * XML through android.util.Xml, as apps read and write their own files and settings with it: a serializer writes a small
+     * document with a namespace, an attribute and escaped text, and a pull parser made by Xml.newPullParser reads it back. Both
+     * are kXML's, under the name Android 9's libcore gives them (MX Player ended at its start when the framework asked for
+     * Android 10's).
+     */
+    private void xml() {
+        step("xml", () -> {
+            java.io.StringWriter out = new java.io.StringWriter();
+            org.xmlpull.v1.XmlSerializer w = android.util.Xml.newSerializer();
+            w.setOutput(out);
+            w.startDocument("UTF-8", true);
+            w.setPrefix("h", "urn:megler");
+            w.startTag("urn:megler", "list");
+            w.startTag(null, "item").attribute(null, "n", "1").text("a < b & c").endTag(null, "item");
+            w.endTag("urn:megler", "list");
+            w.endDocument();
+            String text = out.toString();
+            org.xmlpull.v1.XmlPullParser p = android.util.Xml.newPullParser();
+            p.setInput(new java.io.StringReader(text));
+            StringBuilder seen = new StringBuilder();
+            for (int e = p.getEventType(); e != org.xmlpull.v1.XmlPullParser.END_DOCUMENT; e = p.next()) {
+                if (e == org.xmlpull.v1.XmlPullParser.START_TAG) seen.append('<').append(p.getName()).append(p.getAttributeCount() > 0 ? "@" + p.getAttributeValue(null, "n") : "").append(p.getNamespace().isEmpty() ? "" : "{" + p.getNamespace() + "}");
+                else if (e == org.xmlpull.v1.XmlPullParser.TEXT) seen.append('"').append(p.getText()).append('"');
+                else if (e == org.xmlpull.v1.XmlPullParser.END_TAG) seen.append("</").append(p.getName());
+            }
+            detail = p.getClass().getName() + " " + w.getClass().getName() + " " + seen;
+            return "<list{urn:megler}<item@1\"a < b & c\"</item</list".equals(seen.toString()) && text.contains("a &lt; b &amp; c");
         });
     }
 
