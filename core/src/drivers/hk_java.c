@@ -1112,11 +1112,20 @@ static void java_set_paused(bool paused) { push_event(EV_HOST_PAUSE, paused ? 1 
 /* Whether there is a Java app for the keyboard to talk to. */
 static bool java_runs(void) { return J.config && J.main && !J.ended; }
 
+/*
+ * One thing the keyboard sent, queued for megler.InputMethods. The first that arrives is said in the log, with whether it was
+ * queued, so that a phone's log shows where typed text was lost: the shell says that it sent it, this that the core queued it,
+ * and the framework (the overlay's InputMethods) where it went. Never the text itself.
+ */
 static void push_text(const char *kind, const char *utf8)
 {
+    static volatile i32 said;
     char *item;
     bool queued = false;
-    if (!java_runs()) return;
+    if (!java_runs()) {
+        hk_note_once("java: the keyboard sent something while no Java app runs: it is dropped");
+        return;
+    }
     item = hk_sprintf("%s%s", kind, utf8 ? utf8 : "");
     hk_lock_acquire(&J.lock);
     if (J.ntext < MAX_TEXT) {
@@ -1124,6 +1133,10 @@ static void push_text(const char *kind, const char *utf8)
         queued = true;
     }
     hk_lock_release(&J.lock);
+    /* (Said before the event is queued, so that it comes before what the framework says of it.) */
+    if (kind[0] != 'h' && hk_atomic_cas(&said, 0, 1) == 0)
+        hk_info("java: the first thing the keyboard sent (%s) reached the core %s", kind[0] == 't' ? "text" : kind[0] == 'd' ? "a Backspace" : "an Enter",
+                queued ? "and waits for the app's main thread" : "and is dropped: the app has not taken what was sent before");
     if (queued) push_event(EV_TEXT, 0, 0, 0);
     else free(item);                   /* the app has not taken five hundred of them: it is not listening */
 }

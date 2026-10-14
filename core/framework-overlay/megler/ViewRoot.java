@@ -13,6 +13,9 @@
 // region only (ViewRootImpl.mDirty), and so a blinking cursor cost a whole screen here. For the tests (Native.checkPartial),
 // checkPart draws each partial frame again whole into a second bitmap and says what differs outside the part.
 //
+// And in keyFocus(), which the original does not have: the focused view of the window keys go to, which the overlay's
+// megler.InputMethods names in the log when typed text arrives.
+//
 // Why. Where a frame's time goes -- in Java and in which part of the frame, in the shell's drawing, in handing the picture
 // over -- is measured from the core's side (core/src/drivers/hk_java.c, "the frame meter", a line in the log every five
 // seconds while the app draws), and only the frame itself knows where its phases begin. Nothing else changes: the calls
@@ -492,6 +495,14 @@ public final class ViewRoot implements ViewParent {
         return null;
     }
     public static ViewRoot top() { return sRoots.isEmpty() ? null : sRoots.get(sRoots.size() - 1); }
+    /** The focused view of the window keys go to (dispatchKey's), or null: what megler.InputMethods names in the log. */
+    public static View keyFocus() {
+        for (int i = sRoots.size() - 1; i >= 0; i--) {
+            ViewRoot r = sRoots.get(i);
+            if (r.focusable() && r.mView.getVisibility() == View.VISIBLE) return r.mFocused;
+        }
+        return null;
+    }
 
     // ---- ViewParent (the root of a window has no parent view)
     public boolean isLayoutRequested() { return mLayoutRequested; }

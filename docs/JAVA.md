@@ -1881,7 +1881,7 @@ focused view's `InputConnection`), as the original does on iOS.
   Enter is for the field and does not ask the framework twice. That is the
   original's fault to take back; its iOS shell sends line ends as text too.
 
-Tested in the demos app (`Typing`: four fields; 25 checks): a touch of a field
+Tested in the demos app (`Typing`: four fields; 28 checks): a touch of a field
 asks for the keyboard with the right kind, flags and Enter for each of the
 four, on the app's main thread; "Hello" arrives; Backspace takes one letter
 from the text and a fifth of the text-coloured pixels from the field (585 to
@@ -1891,6 +1891,39 @@ with the cursor at 3; Home and two Cyrillic letters; End, Delete (nothing),
 "2.5" in the number field; a password; "one", Enter, "two" in the note is
 "one\ntwo"; the keyboard's height and "put away" leave the app running and a
 touch asks again; Back takes the screen away and `hide` is called.
+
+The test also covers the order a phone's shell uses: the keyboard's height
+comes in before anything is typed, and 0 after Done has put the keyboard
+away.
+
+**Where typed text went, in the log.** On the phone typed text has not yet
+been seen to reach a field. The shell's log says whether its hidden box took
+the focus and whether typing reached the box and was sent on. The core
+(`push_text` in `hk_java.c`) says once that the first thing the keyboard sent
+reached it and was queued for the app's main thread, or that it was dropped
+because no Java app runs or the queue is full. The overlay's
+`megler/InputMethods.java` says what happened to it next, without the text
+itself. Once per run, the first thing the keyboard sends gets a line that
+names the view with the focus (or none), says whether that view gave an input
+connection, and for a `TextView` gives its text's length before and after. If
+the window's focused view (the one keys go to, `ViewRoot.keyFocus`) is a
+different view, the line names it too. After that a line is written only
+when something changes: text arriving while no view has the focus, or while
+the focused view has no input connection, and text reaching a field again.
+For example:
+
+    java: the first thing the keyboard sent (text) reached the core and waits for the app's main thread
+    I/Megler: keyboard: the first thing the keyboard sent, typed text (1 character), finds no view with the focus: it goes nowhere
+    I/Megler: keyboard: typed text (5 characters) now goes to android.widget.EditText, which has the focus and an input connection; its text was 0 characters long and is 5 now
+
+The demos test checks all three lines. The app runner's script (`hk_tests
+--java app`) can type too: `type:TEXT`, `textkey:N` and `kbd:PIXELS`. In
+QuickShortcutMaker 2.5.0 under qemu, a tap on its search field, the
+keyboard's height, "abc", Backspace and "Z" leave "abZ" in the field, and the
+log says the text went to `android.widget.EditText` (0 characters, then 3).
+No reason was found in the core or the framework why the phone would lose
+typed text that this path delivers under qemu. The next phone log will show
+at which of the three steps it goes missing.
 
 **Not there:** composing text (a keyboard that composes sends each piece when
 it is final), the selection handles and the copy and paste bar (the
@@ -2713,7 +2746,12 @@ the context that knows.
   original's: `doFrame` tells the driver where a frame's phases begin and how
   much of the screen it drew, for the frame meter ("The frame meter", above).
   And a window's dirty rectangle, which `drawAll` draws alone, with the tests'
-  check of it ("Drawing only what changed").
+  check of it ("Drawing only what changed"). And `keyFocus`, the focused
+  view of the window that keys go to, for the next file's log line.
+- `megler/InputMethods.java`: only what `deliverPending` writes in the log.
+  What it does with the keyboard's text is the original's, unchanged
+  ("The keyboard": where typed text went). This is for diagnosis; the
+  original has no fault here.
 - `android/view/View.java`, the invalidations and one statement of
   `drawFromParent`: each invalidation passes its rectangle up to the window,
   clipped on the way, and a child outside a partial frame's clip is not

@@ -667,6 +667,10 @@ static void type_into_fields(const int row[4], int *at)
     i32 shown, hidden;
     memset(name, 0, sizeof(name));
     say("the keyboard: text typed into the demos app's fields");
+    /* Typed while no field has the focus: it goes nowhere, and the framework's log says so (megler.InputMethods in the overlay). */
+    megler_text_commit("x");
+    expect_line("java: the first thing the keyboard sent (text) reached the core and waits for the app's main thread", at, 30);
+    expect_line("I/Megler: keyboard: the first thing the keyboard sent, typed text (1 character), finds no view with the focus: it goes nowhere", at, 30);
     tap(row[0] + row[2] / 2, row[1] + row[3] * 7 + row[3] / 2);
     expect_line("I/DemoTest: list: clicked row 7 \"typing\"", at, 30);
     expect_line("I/DemoTest: typing: created", at, 30);
@@ -683,9 +687,15 @@ static void type_into_fields(const int row[4], int *at)
     CHECK(K.thread != 0 && K.thread != hk_thread_self_id());
     settle();
     CHECK(count_colour(name, 0x102030) == 0);
+    /* The keyboard comes up and says how much it covers before anything is typed, as a phone's shell does. */
+    megler_keyboard_height(g_screen_h * 2 / 5);
+    settle();
     /* Text, as the keyboard commits it. */
     megler_text_commit("Hello");
     expect_line("I/DemoTest: typing: name=\"Hello\" cursor=5", at, 30);
+    /* The log's next word on it: once it reaches a field, which one and what the text's length did; the text itself is not there. */
+    expect_line("I/Megler: keyboard: typed text (5 characters) now goes to android.widget.EditText, which has the focus and an input connection; "
+                "its text was 0 characters long and is 5 now", at, 30);
     settle();
     write_picture("demos-8-typed");
     typed = count_colour(name, 0x102030);
@@ -715,6 +725,8 @@ static void type_into_fields(const int row[4], int *at)
     /* Enter in a field of one line is the field's action: IME_ACTION_DONE, 6. */
     megler_text_key(MEGLER_TEXT_ENTER);
     expect_line("I/DemoTest: typing: action name 6", at, 30);
+    /* Done put the keyboard away: the shell says it covers nothing now. */
+    megler_keyboard_height(0);
     settle();
 
     /* Another field: asked again, for a number with a decimal point, whose Enter is Next. */
@@ -1301,7 +1313,8 @@ static int run_crash(void)
 
 /*
  * The script: "tap:X,Y", "drag:X,Y,X2,Y2", "wait:MILLISECONDS", "back", "key:CODE", in the order given. After each the app is waited for
- * until it is still (a minute at most) and its picture written as app-N.
+ * until it is still (a minute at most) and its picture written as app-N. And the keyboard's part, as a phone's shell plays it:
+ * "type:TEXT" (megler_text_commit), "textkey:N" (megler_text_key, MEGLER_TEXT_*), "kbd:PIXELS" (megler_keyboard_height).
  */
 static int run_app(void)
 {
@@ -1340,6 +1353,15 @@ static int run_app(void)
         } else if (sscanf(s, "key:%d", &code) == 1) {
             megler_key(code, true);
             megler_key(code, false);
+            hk_sleep_ns(300000000ull);
+        } else if (!strncmp(s, "type:", 5)) {
+            megler_text_commit(s + 5);
+            hk_sleep_ns(300000000ull);
+        } else if (sscanf(s, "textkey:%d", &code) == 1) {
+            megler_text_key(code);
+            hk_sleep_ns(300000000ull);
+        } else if (sscanf(s, "kbd:%d", &code) == 1) {
+            megler_keyboard_height(code);
             hk_sleep_ns(300000000ull);
         } else {
             say("  (the script's \"%s\" is not understood)", s);
