@@ -690,6 +690,38 @@ int t_mremap(void)
 }
 
 /*
+ * Clocks of processor time, as Gecko's profiler and Chromium's tracing read them: pthread_getcpuclockid's clock for this
+ * thread, which advances while the thread computes; CLOCK_THREAD_CPUTIME_ID; the process's through clock_getcpuclockid;
+ * clock_getres for each; and the clock of a thread id nobody has, which is refused. 6, or the negated step that failed.
+ */
+pthread_t pthread_self(void);
+int pthread_getcpuclockid(pthread_t, int *);
+int clock_getres(int, struct t_timespec *);
+int clock_getcpuclockid(int, int *);
+
+int t_cpuclock(void)
+{
+    int c, p;
+    struct t_timespec a, b, r;
+    volatile unsigned x = 0;
+    long until;
+    unsigned i;
+    if (pthread_getcpuclockid(pthread_self(), &c) != 0 || c >= 0 || !(c & 4)) return -1;
+    if (clock_gettime(c, &a) != 0 || clock_getres(c, &r) != 0) return -2;
+    /* (Windows adds to a thread's time at its clock's ticks, some 15.6 ms apart.) */
+    for (until = now_ms() + 3000;;) {
+        for (i = 0; i < 200000; i++) x += i;
+        clock_gettime(c, &b);
+        if (b.tv_sec != a.tv_sec || b.tv_nsec != a.tv_nsec || now_ms() > until) break;
+    }
+    if (b.tv_sec * 1000000000LL + b.tv_nsec <= a.tv_sec * 1000000000LL + a.tv_nsec) return -3;
+    if (clock_gettime(3, &r) != 0 || r.tv_sec * 1000000000LL + r.tv_nsec < b.tv_sec * 1000000000LL + b.tv_nsec) return -4;
+    if (clock_getcpuclockid(0, &p) != 0 || p >= 0 || (p & 4) || clock_gettime(p, &r) != 0 || clock_getres(p, &r) != 0) return -5;
+    if (clock_gettime((int)((~32000u) << 3) | 6, &r) != -1) return -6;
+    return 6;
+}
+
+/*
  * fnmatch, which Chromium's FileEnumerator asks of every name it lists: the number of the 16 cases that came out as POSIX
  * and bionic have them.
  */

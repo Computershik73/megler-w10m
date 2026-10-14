@@ -133,6 +133,22 @@ static void *thread_main(void *p)
 
 void hk_thread_runs_app_code(void) { }
 
+u64 hk_thread_cpu_ns(hk_thread *t)
+{
+    clockid_t c = CLOCK_THREAD_CPUTIME_ID;
+    struct timespec ts;
+    if (t && pthread_getcpuclockid(t->t, &c) != 0) return 0;
+    if (clock_gettime(c, &ts) != 0) return 0;
+    return (u64)ts.tv_sec * 1000000000ull + (u64)ts.tv_nsec;
+}
+
+u64 hk_process_cpu_ns(void)
+{
+    struct timespec ts;
+    if (clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts) != 0) return 0;
+    return (u64)ts.tv_sec * 1000000000ull + (u64)ts.tv_nsec;
+}
+
 hk_thread *hk_thread_current(void)
 {
     if (!t_current) {

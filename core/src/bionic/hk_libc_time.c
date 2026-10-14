@@ -40,26 +40,66 @@ static int g_gettimeofday(g_timeval *tv, void *tz)
     return 0;
 }
 
+/*
+ * A clock of processor time, numbered as the kernel numbers them: CLOCK_PROCESS_CPUTIME_ID (2), CLOCK_THREAD_CPUTIME_ID
+ * (3), and a negative one made by pthread_getcpuclockid or clock_getcpuclockid -- the thread or process id negated in the
+ * high bits, the per-thread bit (4) set for a thread. Its time now in *now; false for any other number, and for a thread
+ * that is not alive.
+ */
+static bool cpu_clock(int clock, u64 *now)
+{
+    if (clock == 2) {
+        *now = hk_process_cpu_ns();
+    } else if (clock == 3) {
+        *now = hk_thread_cpu_ns(NULL);
+    } else if (clock < 0 && (clock & 4)) {
+        i32 tid = (i32)~((u32)clock >> 3 | 0xE0000000u);
+        hk_thread *h = hk_gthread_host_of_tid(tid);
+        if (!h) return false;
+        *now = h == hk_thread_current() ? hk_thread_cpu_ns(NULL) : hk_thread_cpu_ns(h);
+    } else if (clock < 0) {
+        *now = hk_process_cpu_ns();
+    } else {
+        return false;
+    }
+    return true;
+}
+
 static int g_clock_gettime(int clock, g_timespec *ts)
 {
     u64 now;
     switch (clock) {
     case 0: case 5: now = hk_time_realtime_ns(); break;           /* CLOCK_REALTIME, _COARSE */
-    case 1: case 4: case 6: case 7: case 2: case 3:               /* monotonic kinds; CPU time counts wall time here */
+    case 1: case 4: case 6: case 7:                               /* the monotonic kinds */
         now = hk_time_monotonic_ns();
         break;
     default:
-        hk_set_errno(GE_INVAL);
-        return -1;
+        if (!cpu_clock(clock, &now)) {
+            hk_set_errno(GE_INVAL);
+            return -1;
+        }
+        break;
     }
     ts->tv_sec = (i32)(now / 1000000000ull);
     ts->tv_nsec = (i32)(now % 1000000000ull);
     return 0;
 }
 
+/* clock_getcpuclockid: the clock of a process's processor time; this process's only (getpid() is 4242 here, or 0). */
+static int g_clock_getcpuclockid(int pid, i32 *clock)
+{
+    if (pid != 0 && pid != 4242) return GE_SRCH;
+    *clock = (i32)((~(u32)(pid ? pid : 4242)) << 3) | 2;
+    return 0;
+}
+
 static int g_clock_getres(int clock, g_timespec *ts)
 {
-    (void)clock;
+    u64 now;
+    if (clock > 7 || (clock < 0 && !cpu_clock(clock, &now))) {
+        hk_set_errno(GE_INVAL);
+        return -1;
+    }
     if (ts) {
         ts->tv_sec = 0;
         ts->tv_nsec = 1;
@@ -400,7 +440,7 @@ void hk_time_init(void)
 }
 
 const hk_sym hk_tab_time[] = {
-    HK_WRAP("time", g_time), HK_WRAP("gettimeofday", g_gettimeofday), HK_WRAP("clock_gettime", g_clock_gettime),
+    HK_WRAP("time", g_time), HK_WRAP("gettimeofday", g_gettimeofday), HK_WRAP("clock_gettime", g_clock_gettime), HK_WRAP("clock_getcpuclockid", g_clock_getcpuclockid),
     HK_WRAP("clock_getres", g_clock_getres), HK_WRAP("nanosleep", g_nanosleep), HK_WRAP("clock_nanosleep", g_clock_nanosleep),
     HK_WRAP("usleep", g_usleep), HK_WRAP("sleep", g_sleep), HK_WRAP("clock", g_clock), HK_WRAP("times", g_times),
     HK_WRAP("gmtime", g_gmtime), HK_WRAP("gmtime_r", g_gmtime_r), HK_WRAP("localtime", g_localtime), HK_WRAP("localtime_r", g_localtime_r),

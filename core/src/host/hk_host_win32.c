@@ -158,6 +158,24 @@ hk_thread *hk_thread_current(void)
     return t_current;
 }
 
+/* GetThreadTimes and GetProcessTimes count in 100 ns; Windows adds to them at each tick of its clock (some 15.6 ms). */
+static u64 filetime_100ns(const FILETIME *f) { return (u64)f->dwHighDateTime << 32 | f->dwLowDateTime; }
+
+u64 hk_thread_cpu_ns(hk_thread *t)
+{
+    FILETIME created, ended, kernel, user;
+    HANDLE h = t ? t->self : GetCurrentThread();
+    if (!h || !GetThreadTimes(h, &created, &ended, &kernel, &user)) return 0;
+    return (filetime_100ns(&kernel) + filetime_100ns(&user)) * 100ull;
+}
+
+u64 hk_process_cpu_ns(void)
+{
+    FILETIME created, ended, kernel, user;
+    if (!GetProcessTimes(GetCurrentProcess(), &created, &ended, &kernel, &user)) return 0;
+    return (filetime_100ns(&kernel) + filetime_100ns(&user)) * 100ull;
+}
+
 /* -------------------------------------------- interrupting a thread in guest code */
 
 static void (*g_interrupt_fn)(void);
