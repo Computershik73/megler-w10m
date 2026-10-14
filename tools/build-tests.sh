@@ -117,8 +117,9 @@ mapfile -t SRCS < <(cd "$ROOT" && find core/src core/tests -maxdepth 3 -name '*.
 mapfile -t ZSRCS < <(cd "$ROOT" && find core/third_party/zlib -maxdepth 1 -name '*.c' ! -name 'gz*.c' | sort)
 
 if [ "$MODE" = arm ]; then
-  { [ -f "$ROOT/build/guest/armeabi-v7a/libt_basic.so" ] && [ "$ROOT/build/guest/armeabi-v7a/libt_jni.so" -nt "$ROOT/core/tests/guest/t_jni.c" ] \
-    && [ "$ROOT/build/guest/armeabi-v7a/runtime/libt_ruser.so" -nt "$ROOT/core/tests/guest/t_user.c" ]; } || bash "$ROOT/tools/build-guest.sh" > /dev/null
+  # The guest libraries again when any of their sources is newer than the first of them build-guest.sh makes.
+  { [ -f "$ROOT/build/guest/armeabi-v7a/libt_basic.so" ] \
+    && [ -z "$(find "$ROOT/core/tests/guest" -type f -newer "$ROOT/build/guest/armeabi-v7a/libt_basic.so" -print -quit)" ]; } || bash "$ROOT/tools/build-guest.sh" > /dev/null
   WROOT="/mnt/${ROOT:1:1}${ROOT:2}"
   cat > "$ROOT/build/tests-arm.sh" <<EOF
 set -e
