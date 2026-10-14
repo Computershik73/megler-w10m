@@ -205,7 +205,7 @@ public class Main extends Activity {
         step("references", () -> {
             int bits = Lib.refs(new Lib(1));
             detail = "0x" + Integer.toHexString(bits);
-            return bits == 0x7FF;
+            return bits == 0x3FFF;
         });
         step("reflection", () -> {
             int[] out = new int[2];

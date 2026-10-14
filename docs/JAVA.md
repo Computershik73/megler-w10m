@@ -1243,7 +1243,7 @@ and not a test.
 | `FatalError` | ends the process with the message | nothing |
 | `PushLocalFrame`, `PopLocalFrame`, `EnsureLocalCapacity` | nothing to do: a reference is the object and nothing is collected; `PopLocalFrame` hands back what it is given | app |
 | `NewGlobalRef`, `NewLocalRef`, `NewWeakGlobalRef` and their `Delete`s | the object itself. A weak reference never goes null, since nothing is collected | app, libcore |
-| `GetObjectRefType` | **wrong**: `JNILocalRefType` for every reference | nothing |
+| `GetObjectRefType` | global when native code holds a global reference to the object, weak when only a weak one, local otherwise, invalid for NULL. A count for each object, since a reference is the object's address; exact unless a library asks about a local reference to an object it also holds globally | app |
 | `IsSameObject` | right | app |
 | `AllocObject` | the object with no constructor run | nothing |
 | `NewObject`, `V`, `A` | right; a `String` is made whole from the arguments | app (`...`), core (`A`), libcore (`V`) |
@@ -1273,9 +1273,10 @@ and not a test.
 | `JavaVM`: `GetEnv`, `AttachCurrentThread`, `AttachCurrentThreadAsDaemon`, `DetachCurrentThread` | above, "Threads" | app |
 | `JavaVM`: `DestroyJavaVM` | does nothing | nothing |
 
-`GetObjectRefType` is the one that answers wrongly; telling a global
-reference from a local one would need references that are more than the
-object's address, which nothing else here needs while nothing is collected.
+`GetObjectRefType` answered "local" for everything until the table of
+counts it now reads (`ref_counted` in `hk_jni.c`); the table forgets an
+object once nothing references it globally, so it grows with what is
+referenced, not with what ever was.
 
 ### Drawing: `megler.Gfx` and the shell
 

@@ -1087,6 +1087,79 @@ static void j_ExceptionDescribe(JNIEnvP e)
 static void j_ExceptionClear(JNIEnvP e) { (void)e; set_pending(NULL); }
 static u8 j_ExceptionCheck(JNIEnvP e) { (void)e; return pending() != NULL; }
 static void j_FatalError(JNIEnvP e, const char *msg) { (void)e; hk_fatal("jni: FatalError: %s", msg ? msg : ""); }
+/*
+ * How many global and weak global references native code holds to an object, for GetObjectRefType and for nothing else
+ * (nothing is collected, so a reference keeps nothing alive). An open table by the object's address. An object whose
+ * counts are back at zero leaves a marker in its place, so that the chains through it hold, and the markers go when the
+ * table is next made anew: its size follows what is referenced now, not everything that ever was.
+ */
+typedef struct ref_count {
+    hk_jobj *o;
+    i32 global, weak;
+} ref_count;
+#define REF_GONE ((hk_jobj *)(hk_addr)1)
+static ref_count *g_refs;
+static u32 g_refs_cap, g_refs_used, g_refs_live;   /* the capacity is a power of two; used counts the markers too */
+static hk_lock g_refs_lock = HK_LOCK_INIT;
+
+static u32 ref_slot(const hk_jobj *o) { return g_refs_cap ? (u32)(((hk_addr)o >> 3) * 2654435761u) & (g_refs_cap - 1) : 0; }
+
+/* The object's entry, or NULL. With the lock held. */
+static ref_count *ref_find(const hk_jobj *o)
+{
+    u32 i, k;
+    for (k = 0, i = ref_slot(o); k < g_refs_cap && g_refs[i].o; k++, i = (i + 1) & (g_refs_cap - 1))
+        if (g_refs[i].o == o) return &g_refs[i];
+    return NULL;
+}
+
+static void ref_counted(hk_jobj *o, int global, int weak)
+{
+    ref_count *r;
+    u32 i, k;
+    if (!o) return;
+    hk_lock_acquire(&g_refs_lock);
+    r = ref_find(o);
+    if (!r && (global > 0 || weak > 0)) {
+        if ((g_refs_used + 1) * 2 > g_refs_cap) {
+            /* Made anew, with room for four times what is live. */
+            ref_count *old = g_refs;
+            u32 old_cap = g_refs_cap, cap = 256;
+            while (cap < g_refs_live * 4 + 4) cap *= 2;
+            g_refs = (ref_count *)hk_alloc(sizeof(ref_count) * cap);
+            g_refs_cap = cap;
+            g_refs_used = 0;
+            for (k = 0; k < old_cap; k++) {
+                if (!old[k].o || old[k].o == REF_GONE) continue;
+                for (i = ref_slot(old[k].o); g_refs[i].o; i = (i + 1) & (cap - 1)) { }
+                g_refs[i] = old[k];
+                g_refs_used++;
+            }
+            free(old);
+        }
+        for (i = ref_slot(o); g_refs[i].o; i = (i + 1) & (g_refs_cap - 1)) { }
+        r = &g_refs[i];
+        r->o = o;
+        r->global = r->weak = 0;
+        g_refs_used++;
+        g_refs_live++;
+    }
+    if (r) {
+        r->global = r->global + global > 0 ? r->global + global : 0;
+        r->weak = r->weak + weak > 0 ? r->weak + weak : 0;
+        if (!r->global && !r->weak) {
+            r->o = REF_GONE;
+            g_refs_live--;
+        }
+    }
+    hk_lock_release(&g_refs_lock);
+}
+
+static hk_jobj *j_NewGlobalRef(JNIEnvP e, hk_jobj *o) { (void)e; ref_counted(o, 1, 0); return hk_jni_ref(o); }
+static void j_DeleteGlobalRef(JNIEnvP e, hk_jobj *o) { (void)e; ref_counted(o, -1, 0); hk_jni_unref(o); }
+static hk_jobj *j_NewWeakGlobalRef(JNIEnvP e, hk_jobj *o) { (void)e; ref_counted(o, 0, 1); return hk_jni_ref(o); }
+static void j_DeleteWeakGlobalRef(JNIEnvP e, hk_jobj *o) { (void)e; ref_counted(o, 0, -1); hk_jni_unref(o); }
+
 static i32 j_PushLocalFrame(JNIEnvP e, i32 cap) { (void)e; (void)cap; return 0; }
 static hk_jobj *j_PopLocalFrame(JNIEnvP e, hk_jobj *result) { (void)e; return result; }
 static hk_jobj *j_NewRef(JNIEnvP e, hk_jobj *o) { (void)e; return hk_jni_ref(o); }
@@ -1576,7 +1649,24 @@ static i64 j_GetDirectBufferCapacity(JNIEnvP e, hk_jobj *o)
     if (real_buffer(o)) return hk_jni_get_field(o, "address").j ? hk_jni_get_field(o, "capacity").i : -1;
     return o && o->native && !strcmp(hk_jni_class_name(o), "java/nio/DirectByteBuffer") ? ((direct_buffer *)o->native)->capacity : -1;
 }
-static i32 j_GetObjectRefType(JNIEnvP e, hk_jobj *o) { (void)e; return o ? 1 : 0; }   /* JNILocalRefType */
+/*
+ * GetObjectRefType: 0 invalid, 1 local, 2 global, 3 weak global. A reference is the object's address here, so the kind is
+ * not in the reference: what is kept is, for each object, how many global and how many weak global references native code
+ * holds to it (ref_counted), and the answer is the strongest of those: global if there is one, weak if there is only that,
+ * local otherwise. It is exact unless a library asks about a local reference to an object it also holds globally.
+ */
+static i32 j_GetObjectRefType(JNIEnvP e, hk_jobj *o)
+{
+    const ref_count *r;
+    i32 kind = 1;
+    (void)e;
+    if (!o) return 0;
+    hk_lock_acquire(&g_refs_lock);
+    r = ref_find(o);
+    if (r) kind = r->global > 0 ? 2 : r->weak > 0 ? 3 : 1;
+    hk_lock_release(&g_refs_lock);
+    return kind;
+}
 
 /* ------------------------------------------------------------- the tables */
 
@@ -1689,7 +1779,7 @@ void hk_jni_init(void)
     SLOT(4, j_GetVersion); SLOT(5, j_DefineClass); SLOT(6, j_FindClass); SLOT(7, j_FromReflectedMethod); SLOT(8, j_FromReflectedField);
     SLOT(9, j_ToReflectedMethod); SLOT(10, j_GetSuperclass); SLOT(11, j_IsAssignableFrom); SLOT(12, j_ToReflectedField); SLOT(13, j_Throw);
     SLOT(14, j_ThrowNew); SLOT(15, j_ExceptionOccurred); SLOT(16, j_ExceptionDescribe); SLOT(17, j_ExceptionClear); SLOT(18, j_FatalError);
-    SLOT(19, j_PushLocalFrame); SLOT(20, j_PopLocalFrame); SLOT(21, j_NewRef); SLOT(22, j_DeleteRef); SLOT(23, j_DeleteRef);
+    SLOT(19, j_PushLocalFrame); SLOT(20, j_PopLocalFrame); SLOT(21, j_NewGlobalRef); SLOT(22, j_DeleteGlobalRef); SLOT(23, j_DeleteRef);
     SLOT(24, j_IsSameObject); SLOT(25, j_NewRef); SLOT(26, j_EnsureLocalCapacity); SLOT(27, j_AllocObject);
     SLOT(28, j_NewObject); SLOT(29, j_NewObjectV); SLOT(30, j_NewObjectA); SLOT(31, j_GetObjectClass); SLOT(32, j_IsInstanceOf);
     SLOT(33, j_GetMethodID);
@@ -1731,7 +1821,7 @@ void hk_jni_init(void)
     }
     SLOT(215, j_RegisterNatives); SLOT(216, j_UnregisterNatives); SLOT(217, j_MonitorEnter); SLOT(218, j_MonitorExit); SLOT(219, j_GetJavaVM);
     SLOT(220, j_GetStringRegion); SLOT(221, j_GetStringUTFRegion); SLOT(222, j_GetArrayElements); SLOT(223, j_ReleaseArrayElements);
-    SLOT(224, j_GetStringChars); SLOT(225, j_ReleaseStringChars); SLOT(226, j_NewRef); SLOT(227, j_DeleteRef); SLOT(228, j_ExceptionCheck);
+    SLOT(224, j_GetStringChars); SLOT(225, j_ReleaseStringChars); SLOT(226, j_NewWeakGlobalRef); SLOT(227, j_DeleteWeakGlobalRef); SLOT(228, j_ExceptionCheck);
     SLOT(229, j_NewDirectByteBuffer); SLOT(230, j_GetDirectBufferAddress); SLOT(231, j_GetDirectBufferCapacity); SLOT(232, j_GetObjectRefType);
 
     g_vm_table[3] = (void *)vm_Destroy;

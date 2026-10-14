@@ -376,7 +376,7 @@ JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_find(JNIEnv *env, jclass 
 
 /* ------------------------------------------------------------- references */
 
-/* Each bit one thing that held; 0x7FF is all of them. */
+/* Each bit one thing that held; 0x3FFF is all of them. */
 JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_refs(JNIEnv *env, jclass cls, jobject o)
 {
     jobject global = (*env)->NewGlobalRef(env, o), local = (*env)->NewLocalRef(env, o), kept;
@@ -400,9 +400,15 @@ JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_refs(JNIEnv *env, jclass cls
         if ((*env)->GetJavaVM(env, &vm) == 0 && vm == g_vm) bits |= 512;
     }
     if (!(*env)->ExceptionCheck(env)) bits |= 1024;
+    /* What kind of reference each is: the fresh string a local one, the object held globally a global one, nothing an invalid one... */
+    if ((*env)->GetObjectRefType(env, global) == JNIGlobalRefType && (*env)->GetObjectRefType(env, kept) == JNILocalRefType
+        && (*env)->GetObjectRefType(env, NULL) == JNIInvalidRefType) bits |= 2048;
     (*env)->DeleteLocalRef(env, local);
-    (*env)->DeleteWeakGlobalRef(env, weak);
     (*env)->DeleteGlobalRef(env, global);
+    /* ...and once the global one is gone, the weak one is what holds it, and after that nothing but the caller's local one. */
+    if ((*env)->GetObjectRefType(env, weak) == JNIWeakGlobalRefType) bits |= 4096;
+    (*env)->DeleteWeakGlobalRef(env, weak);
+    if ((*env)->GetObjectRefType(env, o) == JNILocalRefType) bits |= 8192;
     return bits;
 }
 
