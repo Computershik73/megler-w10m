@@ -274,6 +274,7 @@ public class Main extends Activity {
         codecs();
         xml();
         assetFd();
+        tasks();
         network();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
@@ -652,6 +653,23 @@ public class Main extends Activity {
             int fd = pfd != null ? pfd.detachFd() : -1;
             detail = "pfd=" + (pfd != null) + " fd=" + fd + " at " + afd.getStartOffset() + " length " + afd.getLength() + " head " + java.util.Arrays.toString(head);
             return pfd != null && fd >= 0 && got == 4 && head[0] == 2 && head[1] == 0 && head[2] == 12 && head[3] == 0 && afd.getLength() > 12;
+        });
+    }
+
+    /**
+     * The app's task as ActivityManager.getAppTasks() describes it, through the fields RecentTaskInfo has from TaskInfo
+     * (API 29), which Chromium reads: this activity, the only one, at its root and on its top.
+     */
+    private void tasks() {
+        step("tasks", () -> {
+            android.app.ActivityManager am = (android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE);
+            java.util.List<android.app.ActivityManager.AppTask> tasks = am.getAppTasks();
+            android.app.ActivityManager.RecentTaskInfo t = tasks.isEmpty() ? null : tasks.get(0).getTaskInfo();
+            if (t == null) return false;
+            detail = "task " + t.taskId + " of " + t.numActivities + ", base " + t.baseActivity + ", top " + t.topActivity + ", running " + t.isRunning;
+            return t.taskId == getTaskId() && t.isRunning && t.numActivities == 1 && t.baseActivity != null
+                && t.baseActivity.getClassName().equals(Main.class.getName()) && t.baseActivity.equals(t.topActivity)
+                && t.baseIntent != null && t.baseIntent.getComponent() != null;
         });
     }
 

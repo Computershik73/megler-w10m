@@ -2902,10 +2902,10 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: thirty-five files** in the overlay,
+**What differs from the original's framework: thirty-six files** in the overlay,
 most of them a statement or a few methods each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
-**and seven files of members added** to classes of the original's.
+**and eight files of members added** to classes of the original's.
 
 The second kind is for the platform's public members that the original's
 class does not have and an app calls -- a `NoSuchMethodError` where Android
@@ -2937,6 +2937,12 @@ files folder) for the first and the files folder itself for the second.
 `getExternalCacheDir(s)` and `getExternalFilesDirs`, on to the context it
 wraps; an Activity is a wrapper, and asked of an Activity they never reached
 the context that knows.
+
+`megler/AppRunner.java.members`, like those of `megler/Native`, `Gfx` and
+`EGLNative` (each described with what uses it), adds to one of Megler's own
+classes: `meglerBase()`, the activity at the bottom of the stack, which
+`ActivityManager` (below) gives as the root of the app's task; the original
+had only the top.
 
 - `android/webkit/MimeTypeMap.java`: the original hands its table to
   `libcore.content.type.MimeMap`, an Android 10 class; Android 9's `MimeUtils`
@@ -3272,7 +3278,22 @@ the context that knows.
   `openNonAssetFd`, detaches the number from its `ParcelFileDescriptor`
   and reads the table's header where the entry starts.
 
-The original has all twenty-three faults; they are its author's to take back.
+- `android/app/ActivityManager.java`, `RecentTaskInfo`, which
+  `AppTask.getTaskInfo()` returns: the fields it has from `TaskInfo` on
+  Android 10 and later (`taskId`, `isRunning`, `numActivities`, `baseIntent`,
+  `baseActivity`, `topActivity`, `origActivity`), filled from the activities
+  as they are -- one task, id 1, as `Activity.getTaskId()` says, the first
+  activity started at its root and the last on its top (`meglerBase()` above).
+  The original's had only `id`, and a field a class lacks is a
+  `NoSuchFieldError`, which nothing catches: Brave 1.97's
+  `ChromeTabbedActivity.onCreate` reads `baseActivity` of its task and ended
+  there under qemu. `hk_tests --dvm-link` over Brave's two DEX files names
+  four fields of `RecentTaskInfo` (these), `TextUtils.CHAR_SEQUENCE_CREATOR`
+  (there, of another type) and `ColorSpace.Named.OK_LAB` (Android 16) as the
+  fields it names and the framework lacks. The data app's step "tasks" reads
+  its own task so.
+
+The original has all twenty-four faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in
