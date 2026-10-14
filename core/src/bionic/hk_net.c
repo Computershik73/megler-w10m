@@ -149,6 +149,8 @@ typedef struct gsock {
     u64 rcvtimeo, sndtimeo;            /* SO_RCVTIMEO, SO_SNDTIMEO in ns; 0: none */
     int keepidle, keepintvl, keepcnt;  /* what was set where the host has no such option, to be said back */
     int rcvbuf, sndbuf;                /* AF_UNIX: what was asked, said back */
+    bool first, first_own;             /* the app's first connection, its outcome not yet said (first_connection_ended) */
+    u16 first_port;
     hk_sock *host;                     /* AF_INET and AF_INET6 */
     /* AF_UNIX, the app's own: all of what follows under the descriptor table's lock. */
     struct gsock *peer;                /* the other end, while both are open */
@@ -228,16 +230,16 @@ static const char *errno_name(int e)
     case GE_NETUNREACH: return "no route to the network (ENETUNREACH)";
     case GE_HOSTUNREACH: return "no route to the host (EHOSTUNREACH)";
     case GE_ACCES: return "refused by the system (EACCES)";
-    case GE_INPROGRESS: return "under way (the app does not wait for it)";
+    case GE_INPROGRESS: return "still under way when the app's SO_SNDTIMEO ran out (EINPROGRESS)";
     case GE_INTR: return "cut short by a signal (EINTR)";
     default: return "failed";
     }
 }
 
-/* Something an option asks for that this host has no way of doing: the app is told it was done, and the log says so once. */
+/* An option this layer does not pass on to the host (Windows has nothing like it, or nothing an app could notice): the app is told it was set, and the log says so once. */
 static int quietly(const char *what)
 {
-    hk_note_once("network: the socket option %s means nothing on this host; the app is told it was set", what);
+    hk_note_once("network: the socket option %s is not passed on to the host here; the app is told it was set", what);
     return 0;
 }
 
@@ -261,13 +263,36 @@ static void said_first_socket(const gsock *s)
     if (!said && !hk_atomic_xchg(&said, 1)) hk_info("network: the app's first socket: %s", kind_of(s->family, s->type));
 }
 
-static void said_first_connection(const gsock *s, const hk_sockaddr *a, int e)
+/*
+ * The app's first TCP connection, said once its outcome is known: at once for
+ * a blocking one; for one made without blocking (libcore makes every one so,
+ * and waits with poll) when the app learns it -- SO_ERROR, a second connect,
+ * or the first send or receive. The port only, and whether it is this phone's
+ * own address: nothing of the network's.
+ */
+static volatile i32 g_first_connection;    /* 0: none yet; 1: one under way, not yet said; 2: said */
+
+static bool own_address(const hk_sockaddr *a)
 {
-    static volatile i32 said;
-    bool own = (a->family == HK_AF_INET && a->addr[0] == 127) || (a->family == HK_AF_INET6 && a->addr[15] == 1 && !a->addr[0] && !a->addr[10]);
-    if (said || hk_atomic_xchg(&said, 1)) return;
-    hk_info("network: the app's first connection, %s to port %u%s: %s", s->type == G_SOCK_STREAM ? "TCP" : "UDP", (unsigned)a->port,
-            own ? " of this phone itself" : "", errno_name(e));
+    static const u8 mapped[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF }, one[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 };
+    if (a->family == HK_AF_INET) return a->addr[0] == 127;
+    return a->family == HK_AF_INET6 && (!memcmp(a->addr, one, 16) || (!memcmp(a->addr, mapped, 12) && a->addr[12] == 127));
+}
+
+static void first_connection_began(gsock *s, const hk_sockaddr *a)
+{
+    if (g_first_connection || hk_atomic_cas(&g_first_connection, 0, 1) != 0) return;
+    s->first = true;
+    s->first_port = a->port;
+    s->first_own = own_address(a);
+}
+
+static void first_connection_ended(gsock *s, int e)
+{
+    if (!s->first) return;
+    s->first = false;
+    hk_atomic_xchg(&g_first_connection, 2);
+    hk_info("network: the app's first connection, TCP to port %u%s: %s", (unsigned)s->first_port, s->first_own ? " of this phone itself" : "", errno_name(e));
 }
 
 static u64 deadline_of(u64 timeo) { return timeo ? hk_time_monotonic_ns() + timeo : 0; }
@@ -810,7 +835,10 @@ static void settle(gsock *s)
 {
     if (s->state == S_CONNECTING && s->host) {
         int h = hk_sock_ready(s->host);
-        if ((h & HK_SOCK_OUT) && !(h & (HK_SOCK_ERR | HK_SOCK_HUP))) s->state = S_CONNECTED;
+        if ((h & HK_SOCK_OUT) && !(h & (HK_SOCK_ERR | HK_SOCK_HUP))) {
+            s->state = S_CONNECTED;
+            first_connection_ended(s, 0);
+        }
     }
 }
 
@@ -1237,7 +1265,6 @@ static int g_connect(int fd, const void *sa, u32 len)
         /* A datagram socket: its peer is set, or with AF_UNSPEC taken away. */
         if (a.family && (e = addr_fits(s, &a, true)) != 0) goto out;
         if (!hk_sock_connect(s->host, &a, &err)) e = gerr(err);
-        if (!e && a.family) said_first_connection(s, &a, 0);
         goto out;
     }
     if (s->state == S_CONNECTING) {
@@ -1245,10 +1272,9 @@ static int g_connect(int fd, const void *sa, u32 len)
         int h = hk_sock_ready(s->host);
         if (!(h & (HK_SOCK_OUT | HK_SOCK_ERR | HK_SOCK_HUP))) e = GE_ALREADY;
         else if ((e = gerr(hk_sock_error(s->host))) != 0) s->state = S_FAILED;
-        else {
-            s->state = S_CONNECTED;
-            e = GE_ISCONN;
-        }
+        else s->state = S_CONNECTED;
+        if (e != GE_ALREADY) first_connection_ended(s, e);
+        if (s->state == S_CONNECTED) e = GE_ISCONN;
         goto out;
     }
     if (s->state == S_CONNECTED || s->state == S_LISTENING) {
@@ -1256,6 +1282,7 @@ static int g_connect(int fd, const void *sa, u32 len)
         goto out;
     }
     if ((e = addr_fits(s, &a, false)) != 0) goto out;
+    first_connection_began(s, &a);
     if (hk_sock_connect(s->host, &a, &err)) {
         s->state = S_CONNECTED;
     } else if (err != HK_NE_INPROGRESS) {
@@ -1265,24 +1292,25 @@ static int g_connect(int fd, const void *sa, u32 len)
         u64 deadline = deadline_of(s->sndtimeo);
         s->state = S_CONNECTING;
         if (nonblock) {
+            /* (Its outcome is said when the app learns it.) */
             e = GE_INPROGRESS;
-        } else {
-            for (;;) {
-                int h = hk_sock_ready(s->host);
-                if (h & (HK_SOCK_OUT | HK_SOCK_ERR | HK_SOCK_HUP)) {
-                    e = gerr(hk_sock_error(s->host));
-                    s->state = e ? S_FAILED : S_CONNECTED;
-                    break;
-                }
-                /* (A blocking connection whose SO_SNDTIMEO ran out is still under way, and Linux says so.) */
-                if ((e = sock_wait(s, HK_SOCK_OUT, deadline, s->sndtimeo)) != 0) {
-                    if (e == GE_AGAIN) e = GE_INPROGRESS;
-                    break;
-                }
+            goto out;
+        }
+        for (;;) {
+            int h = hk_sock_ready(s->host);
+            if (h & (HK_SOCK_OUT | HK_SOCK_ERR | HK_SOCK_HUP)) {
+                e = gerr(hk_sock_error(s->host));
+                s->state = e ? S_FAILED : S_CONNECTED;
+                break;
+            }
+            /* (A blocking connection whose SO_SNDTIMEO ran out is still under way, and Linux says so.) */
+            if ((e = sock_wait(s, HK_SOCK_OUT, deadline, s->sndtimeo)) != 0) {
+                if (e == GE_AGAIN) e = GE_INPROGRESS;
+                break;
             }
         }
     }
-    said_first_connection(s, &a, e);
+    first_connection_ended(s, e);
 out:
     hk_fd_let_go(held);
     return e ? fail(e) : 0;
@@ -1618,6 +1646,7 @@ static int getsockopt_held(gsock *s, int level, int name, void *val, u32 *len)
                 if (!(h & (HK_SOCK_OUT | HK_SOCK_ERR | HK_SOCK_HUP))) return give_int(0, val, len);
                 v = gerr(hk_sock_error(s->host));
                 s->state = v ? S_FAILED : S_CONNECTED;
+                first_connection_ended(s, v);
                 return give_int(v, val, len);
             }
             return give_int(gerr(hk_sock_error(s->host)), val, len);
@@ -1764,6 +1793,8 @@ static int sock_readable(void *obj)
 static void sock_close(void *obj)
 {
     gsock *s = (gsock *)obj;
+    /* (A first connection closed before anyone learnt how it went is not said: the next one is.) */
+    if (s->first) hk_atomic_xchg(&g_first_connection, 0);
     if (s->host) hk_sock_close(s->host);
     else local_close(s);
     free(s);
