@@ -288,8 +288,8 @@ static int link_mode(int argc, char **argv)
     ref_print("classes named and defined nowhere", &no_class, 60);
     ref_print("methods named in a class of the boot class path that has none such", &no_method, 80);
     ref_print("fields named in a class of the boot class path that has none such", &no_field, 40);
-    ref_print("methods named in one of their own classes that has none such", &own_method, 15);
-    ref_print("fields named in one of their own classes that has none such", &own_field, 15);
+    ref_print("methods named in one of their own classes that has none such", &own_method, 300);
+    ref_print("fields named in one of their own classes that has none such", &own_field, 300);
     return 0;
 }
 

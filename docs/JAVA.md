@@ -52,7 +52,7 @@ where; **expected** and **not verified** mean what they say.
 | `core/src/sqlite/hk_sqlite3.c`, `hk_sqlite.c` | SQLite's amalgamation compiled in where it is there, and its files, locks and mutexes on the host layer |
 | `core/src/webp/` | WebP pictures decoded in the core: `hk_webp.c`, and libwebp's decoder compiled in where it is there, file by file |
 | `core/include/megler.h` | `megler_gfx_host`, the contract for the shell's drawing; `megler_window_host.present_pixels`; `megler_run_config.android_root` |
-| `core/framework-overlay/` | what differs here from the original's Java framework: eight files, each saying at its top what differs and why |
+| `core/framework-overlay/` | what differs here from the original's Java framework: files that replace the original's and members added to its classes, each saying at its top what differs and why |
 | `core/src/dvm/art/*.smali`, `hk_dvm_art_dex.h` | two classes the runtime adds to libcore's: a security provider that stands in for conscrypt's |
 | `tools/build-framework.sh` | builds the framework's DEX from the original's sources and the overlay |
 | `core/tests/app/`, `tools/build-test-app.sh` | two test apps as ordinary Android apps (aapt2, javac, d8), and their build |
@@ -548,6 +548,11 @@ the first tab is inflated. In the order met:
    processes to start). The app catches it.
 5. `Class.forName("com.android.internal.os.PowerProfile")`: not there (the
    battery's capacity by reflection). The app catches it.
+
+6. `NoSuchMethodError: android/view/View.getDrawingTime()J` when the second
+   tab was touched (a chart's animation), which ended the app. Added, with the
+   other members the app names and the framework lacked ("members added",
+   below). The five tabs open now.
 
 and, not blockers: `megler.EGLNative` and `GLES20` answer nothing (the app asks
 an EGL context for the GPU's name), `megler.Sensors` likewise, billing, in-app
@@ -1580,7 +1585,28 @@ linked, 0 not; 0 classes, methods and fields named and not found.
 
 **What differs from the original's framework: eight files** in the overlay,
 seven of them a statement or a method each inside an otherwise untouched copy
-(the copies are whole files, because a file is what the overlay replaces).
+(the copies are whole files, because a file is what the overlay replaces),
+**and two files of members added** to classes of the original's.
+
+The second kind is for the platform's public members that the original's
+class does not have and an app calls -- a `NoSuchMethodError` where Android
+has a method, which nothing catches. `X.java.members` in the overlay holds
+methods and fields that `tools/build-framework.sh` puts into the original's
+`X.java` before the closing brace of its outermost class; the file begins
+with comments that say what is added and why. Copying `View.java`, 1867
+lines, to add three methods would hide what was added. What an app names
+and the framework lacks is found without running the app:
+`hk_tests --dvm-link <android root> megler-framework.dex <the app's dex>`
+lists, among "methods named in one of their own classes that has none such",
+every member of a framework class the app's DEX refers to that is not there.
+For the three apps tried that list was `View.getDrawingTime`,
+`cancelLongPress` and `getParentForAccessibility`, `Drawable.isProjected`
+(all four added: `android/view/View.java.members`,
+`android/graphics/drawable/Drawable.java.members`), and, not added because
+no run reached them, `Typeface.Builder(FileDescriptor)`,
+`TextUtils.CHAR_SEQUENCE_CREATOR` (there, but of the wrong type),
+`PdfDocument.Page.getCanvas`, and members of Android 15 and 16 behind
+version checks.
 
 - `android/webkit/MimeTypeMap.java`: the original hands its table to
   `libcore.content.type.MimeMap`, an Android 10 class; Android 9's `MimeUtils`

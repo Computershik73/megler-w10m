@@ -1,0 +1,14 @@
+    // megler-w10m: members added to the original's android.view.View (tools/build-framework.sh, "X.java.members").
+    // Three public methods of Android's View that the original does not have. An app that calls one got a
+    // NoSuchMethodError, which nothing catches: Device Info ended on getDrawingTime() the moment its second tab was touched
+    // (a chart's animation asks it), and all three of the apps tried name cancelLongPress().
+    //
+    // getDrawingTime: Android answers the time at which the drawing of the view tree began, on SystemClock.uptimeMillis's
+    // clock; animations measure from it. Drawing is not stamped here, and "now" is the same within a frame's length.
+    public long getDrawingTime() { return android.os.SystemClock.uptimeMillis(); }
+    // cancelLongPress: Android removes the pending long-press and tap checks, which is what this class's own
+    // cancelPendingInputEvents does.
+    public void cancelLongPress() { cancelPendingInputEvents(); }
+    // getParentForAccessibility: the nearest ancestor that matters to accessibility services. There are none here, and
+    // every view matters as much as any other: the parent.
+    public ViewParent getParentForAccessibility() { return getParent(); }

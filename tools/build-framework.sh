@@ -11,6 +11,15 @@
 # replaces the file of the same path under src or gen-src, and a path that is
 # in neither is added. Each overlay file says at its top why it differs.
 #
+# A second kind of overlay file adds to a class without replacing its file:
+# X.java.members holds members -- methods, fields -- that are put into the
+# original's X.java (or the overlay's own, if it has one) just before the
+# closing brace of the file's last, outermost class. It is for the platform's
+# public members that the original's class does not have and an app calls: a
+# NoSuchMethodError where Android has a method. Copying a file of two thousand
+# lines to add three would hide what was added; this way the overlay holds only
+# that. The file begins with comment lines that say what is added and why.
+#
 # javac, then d8, as the original's build.sh does it with the tools of its
 # author's machine; here with what this PC has. The original's first step,
 # gen/gles20.py, is left out: it rewrites files inside the other repository,
@@ -65,9 +74,32 @@ for tree in src gen-src; do
 done
 ORIGINALS=$(wc -l < "$OUT/sources.txt")
 sed "s|^|$OVERLAY/|" "$OUT/overlay.txt" >> "$OUT/sources.txt"
+# The classes that are given more members: each compiled from a copy with the members in it, in place of the file it was made from.
+rm -rf "$OUT/members"
+ADDED=0
+while IFS= read -r rel; do
+  java="${rel%.members}"
+  base="$(grep -F "/$java" "$OUT/sources.txt" | grep -E "(/src|/gen-src|/framework-overlay)/$java\$" | head -1 || true)"
+  [ -n "$base" ] || { echo "core/framework-overlay/$rel adds members to $java, which is neither the original's nor the overlay's" >&2; exit 1; }
+  mkdir -p "$OUT/members/$(dirname "$java")"
+  python - "$(m "$base")" "$(m "$OVERLAY/$rel")" "$(m "$OUT/members/$java")" <<'EOF'
+import io, sys
+base, members, out = sys.argv[1:4]
+text = io.open(base, encoding='utf-8', newline='').read().replace('\r\n', '\n')
+more = io.open(members, encoding='utf-8', newline='').read().replace('\r\n', '\n')
+at = text.rstrip().rfind('}')
+if at < 0:
+    sys.exit('no closing brace in ' + base)
+io.open(out, 'w', encoding='utf-8', newline='\n').write(text[:at] + '    // ---- added by the overlay (' + members.rsplit('/', 1)[-1] + ')\n' + more + '}\n')
+EOF
+  grep -v -x -F "$base" "$OUT/sources.txt" > "$OUT/sources.tmp"
+  mv "$OUT/sources.tmp" "$OUT/sources.txt"
+  echo "$OUT/members/$java" >> "$OUT/sources.txt"
+  ADDED=$((ADDED + 1))
+done < <(cd "$OVERLAY" && find . -name '*.java.members' | sed 's|^\./||' | sort)
 win < "$OUT/sources.txt" > "$OUT/sources.arg"
 find "$FW/stubs" -name '*.java' | sort | win > "$OUT/stubs.arg"
-echo "framework: $ORIGINALS files of the original's, $(wc -l < "$OUT/overlay.txt") of the overlay ($REPLACED of them in place of an original)"
+echo "framework: $ORIGINALS files of the original's, $(wc -l < "$OUT/overlay.txt") of the overlay ($REPLACED of them in place of an original), $ADDED classes given more members"
 
 "$JDK/bin/javac" -nowarn -source 8 -target 8 -encoding UTF-8 -d "$(m "$OUT/stubs")" "@$(m "$OUT/stubs.arg")" 2> "$OUT/javac-stubs.log" \
   || { grep -v '^Note:\|^warning:' "$OUT/javac-stubs.log" | head -40 >&2; echo "javac failed on the stubs" >&2; exit 1; }
