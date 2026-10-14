@@ -1237,6 +1237,10 @@ static void test_dvm(const char *libdir, const char *scratch, bool guest_code)
     checks = 0;
     g_failed += hk_gfx_natives_tests_run(g_sink, g_sink_user, &checks);
     g_checks += checks;
+    /* And OpenGL ES's natives, likewise, with the stand-in that draws in ANGLE's place. */
+    checks = 0;
+    g_failed += hk_gl_natives_tests_run(g_sink, g_sink_user, &checks);
+    g_checks += checks;
     free(android);
     free(java_scratch);
     free(beside);

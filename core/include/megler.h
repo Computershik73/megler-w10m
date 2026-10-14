@@ -138,12 +138,17 @@ bool megler_apk_icon(const char *apk_path, uint8_t **data, size_t *size);
  *                    and swap chain are the shell's own, made when the first
  *                    picture comes. Called when something on screen changed,
  *                    not at a steady rate, on the app's main thread (the one
- *                    its Activity runs on), one call at a time, never on the
- *                    UI thread. `pixels` NULL would mean the app has nothing
+ *                    its Activity runs on) -- and, once the app draws with
+ *                    OpenGL ES on a view (a GLSurfaceView, EGL on a
+ *                    SurfaceView), also on the thread that swapped a frame:
+ *                    the core then composes the window itself, the views
+ *                    over the frames read back from OpenGL ES, and hands the
+ *                    result here, the GL view's rectangle as the part for a
+ *                    new frame. One call at a time, never on the UI thread.
+ *                    `pixels` NULL would mean the app has nothing
  *                    to show any more; the layer does not pass that on today,
  *                    and a shell that is handed it leaves the last picture.
- *                    May be NULL: such an app then runs unseen. An app that
- *                    draws both ways, views over OpenGL, is not provided for.
+ *                    May be NULL: such an app then runs unseen.
  *   present_pixels_part  the same picture, whole as present_pixels hands it,
  *                    of which only the rectangle [x, x + part_width) x [y, y +
  *                    part_height) differs from the picture handed before: the

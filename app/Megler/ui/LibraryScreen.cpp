@@ -171,6 +171,8 @@ private:
     void addJavaApps() {
         bool added = Library::instance().addPackaged("hello.apk");
         if (Library::hasPackaged("demos.apk")) added = Library::instance().addPackaged("demos.apk") && added;
+        // (OpenGL ES from Java: a GLSurfaceView, EGL14 and EGL10.)
+        if (Library::hasPackaged("gl.apk")) added = Library::instance().addPackaged("gl.apk") && added;
         if (!added) shell_.alert("Couldn't Add the Java Test Apps", "The copy into Megler's library failed.");
         refresh();
     }
