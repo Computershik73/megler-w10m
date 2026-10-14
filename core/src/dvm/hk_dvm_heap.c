@@ -1,0 +1,253 @@
+/*
+ * The runtime's heap: the memory every object lives in (alloc_raw, hk_dvm_object.c). It is the runtime's own rather than
+ * the C library's, so that the collector (docs/JAVA.md, "The collector") can tell a word that points into an object from
+ * any other word, keep mark bits beside the objects instead of in them, and free them.
+ *
+ * Small objects, up to 2 KB, are cells in blocks of 64 KB. Each block holds one size class, and keeps a bitmap of the
+ * cells in use, a bitmap of marks, a free list and how far it has handed out cells from its start. Blocks come sixteen at a
+ * time in arenas of 1 MB from the host. Large objects are one allocation each from the C heap, kept in an array sorted by
+ * address. An address is looked up by binary search, over the arenas and then within the large objects.
+ *
+ * One lock covers it all. The collector takes it before it stops the other threads, so no thread can be stopped halfway
+ * through the lists.
+ */
+#include "hk_dvm_internal.h"
+
+#define BLOCK_SIZE 65536u
+#define ARENA_BLOCKS 16u
+#define ARENA_SIZE (BLOCK_SIZE * ARENA_BLOCKS)
+#define BLOCK_MAGIC 0x4B4C4248u        /* "HBLK" */
+#define MAX_SMALL 2048u
+#define MAX_CELLS (BLOCK_SIZE / 16u)
+#define BITMAP_WORDS (MAX_CELLS / 32u)
+
+/* The sizes a cell can have, in bytes: finer where objects are many. */
+static const u16 k_classes[] = { 48, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 448, 512, 640, 768, 896, 1024, 1280, 1536, 2048 };
+#define NCLASSES ((int)(sizeof(k_classes) / sizeof(k_classes[0])))
+
+typedef struct free_cell {
+    struct free_cell *next;
+} free_cell;
+
+typedef struct block {
+    u32 magic;
+    i32 cls;                           /* index into k_classes; -1: not in use yet */
+    u32 cell, ncells, used, bump;      /* bytes a cell, cells it holds, cells in use, cells handed out from the start */
+    u8 *first;                         /* the first cell */
+    free_cell *free;                   /* cells given back, to hand out again */
+    struct block *next;                /* the next block of the same class that has room */
+    u32 inuse[BITMAP_WORDS], mark[BITMAP_WORDS];
+} block;
+
+typedef struct large {
+    u8 *start;
+    size_t size;
+    bool mark;
+} large;
+
+static hk_lock g_heap_lock = HK_LOCK_INIT;
+static u8 **g_arenas;                  /* sorted by address */
+static u32 g_narenas, g_arenas_cap;
+static block *g_spare;                 /* blocks of arenas not yet given a class */
+static block *g_room[NCLASSES];        /* per class: blocks that may have room, the one in use first */
+static large *g_large;                 /* sorted by start */
+static u32 g_nlarge, g_large_cap;
+static u8 g_class_of[MAX_SMALL / 16 + 1];
+static volatile i32 g_classes_ready;
+static u64 g_small_bytes, g_large_bytes, g_reserved;
+
+void hk_dvm_heap_lock(void) { hk_lock_acquire(&g_heap_lock); }
+void hk_dvm_heap_unlock(void) { hk_lock_release(&g_heap_lock); }
+
+static void classes_init(void)
+{
+    u32 s;
+    int c = 0;
+    for (s = 0; s <= MAX_SMALL / 16; s++) {
+        while (c < NCLASSES - 1 && k_classes[c] < s * 16) c++;
+        g_class_of[s] = (u8)c;
+    }
+    hk_atomic_xchg(&g_classes_ready, 1);
+}
+
+/* A new arena: its blocks to the spare list, its address into the sorted list. False when the host had no memory. */
+static bool add_arena(void)
+{
+    u8 *a = (u8 *)hk_mem_alloc(ARENA_SIZE);
+    u32 i, at;
+    if (!a) return false;
+    if (g_narenas == g_arenas_cap) {
+        u32 cap = g_arenas_cap ? g_arenas_cap * 2 : 64;
+        u8 **grown = (u8 **)realloc(g_arenas, sizeof(*grown) * cap);
+        if (!grown) {
+            hk_mem_release(a, ARENA_SIZE);
+            return false;
+        }
+        g_arenas = grown;
+        g_arenas_cap = cap;
+    }
+    for (at = g_narenas; at > 0 && g_arenas[at - 1] > a; at--) g_arenas[at] = g_arenas[at - 1];
+    g_arenas[at] = a;
+    g_narenas++;
+    g_reserved += ARENA_SIZE;
+    /* Spare blocks are handed out lowest first. */
+    for (i = ARENA_BLOCKS; i > 0; i--) {
+        block *b = (block *)(void *)(a + (size_t)(i - 1) * BLOCK_SIZE);
+        b->magic = BLOCK_MAGIC;
+        b->cls = -1;
+        b->next = g_spare;
+        g_spare = b;
+    }
+    return true;
+}
+
+/* A spare block made into one of class `c`. */
+static block *new_block(int c)
+{
+    block *b;
+    u32 header;
+    if (!g_spare && !add_arena()) return NULL;
+    b = g_spare;
+    g_spare = b->next;
+    header = (u32)HK_ALIGN_UP(sizeof(block), (size_t)16);
+    b->cls = c;
+    b->cell = k_classes[c];
+    b->ncells = (BLOCK_SIZE - header) / b->cell;
+    b->used = b->bump = 0;
+    b->first = (u8 *)b + header;
+    b->free = NULL;
+    memset(b->inuse, 0, sizeof(b->inuse));
+    memset(b->mark, 0, sizeof(b->mark));
+    b->next = g_room[c];
+    g_room[c] = b;
+    return b;
+}
+
+static void *small_alloc(size_t size)
+{
+    int c;
+    block *b;
+    u8 *cell = NULL;
+    u32 index;
+    if (!g_classes_ready) classes_init();
+    c = g_class_of[(size + 15) / 16];
+    hk_lock_acquire(&g_heap_lock);
+    for (;;) {
+        b = g_room[c];
+        if (!b) b = new_block(c);
+        if (!b) break;
+        if (b->free) {
+            cell = (u8 *)b->free;
+            b->free = b->free->next;
+            break;
+        }
+        if (b->bump < b->ncells) {
+            cell = b->first + (size_t)b->bump * b->cell;
+            b->bump++;
+            break;
+        }
+        /* Full: off the list of blocks with room, until a sweep gives it some. */
+        g_room[c] = b->next;
+        b->next = NULL;
+    }
+    if (cell) {
+        index = (u32)((size_t)(cell - b->first) / b->cell);
+        b->inuse[index >> 5] |= 1u << (index & 31);
+        b->used++;
+        g_small_bytes += b->cell;
+    }
+    hk_lock_release(&g_heap_lock);
+    if (cell) memset(cell, 0, b->cell);
+    return cell;
+}
+
+static void *large_alloc(size_t size)
+{
+    u8 *p = (u8 *)calloc(1, size);
+    u32 lo, hi;
+    if (!p) return NULL;
+    hk_lock_acquire(&g_heap_lock);
+    if (g_nlarge == g_large_cap) {
+        u32 cap = g_large_cap ? g_large_cap * 2 : 256;
+        large *grown = (large *)realloc(g_large, sizeof(*grown) * cap);
+        if (!grown) {
+            hk_lock_release(&g_heap_lock);
+            free(p);
+            return NULL;
+        }
+        g_large = grown;
+        g_large_cap = cap;
+    }
+    /* Where it goes in address order. */
+    lo = 0;
+    hi = g_nlarge;
+    while (lo < hi) {
+        u32 mid = (lo + hi) / 2;
+        if (g_large[mid].start < p) lo = mid + 1;
+        else hi = mid;
+    }
+    memmove(&g_large[lo + 1], &g_large[lo], sizeof(*g_large) * (g_nlarge - lo));
+    g_large[lo].start = p;
+    g_large[lo].size = size;
+    g_large[lo].mark = false;
+    g_nlarge++;
+    g_large_bytes += size;
+    hk_lock_release(&g_heap_lock);
+    return p;
+}
+
+void *hk_dvm_heap_alloc(size_t size)
+{
+    return size <= MAX_SMALL ? small_alloc(size) : large_alloc(size);
+}
+
+/* The block an address is in, or NULL. With the heap's lock held. */
+static block *block_of(hk_addr p)
+{
+    u32 lo = 0, hi = g_narenas;
+    while (lo < hi) {
+        u32 mid = (lo + hi) / 2;
+        hk_addr a = (hk_addr)g_arenas[mid];
+        if (p < a) hi = mid;
+        else if (p >= a + ARENA_SIZE) lo = mid + 1;
+        else {
+            block *b = (block *)(void *)(a + ((p - a) / BLOCK_SIZE) * BLOCK_SIZE);
+            return b->magic == BLOCK_MAGIC && b->cls >= 0 ? b : NULL;
+        }
+    }
+    return NULL;
+}
+
+/* With the heap's lock held (the collector's). */
+void *hk_dvm_heap_find(hk_addr p)
+{
+    block *b = block_of(p);
+    u32 lo, hi;
+    if (b) {
+        u32 index;
+        if (p < (hk_addr)b->first) return NULL;
+        index = (u32)((p - (hk_addr)b->first) / b->cell);
+        if (index >= b->bump || !(b->inuse[index >> 5] & (1u << (index & 31)))) return NULL;
+        return b->first + (size_t)index * b->cell;
+    }
+    lo = 0;
+    hi = g_nlarge;
+    while (lo < hi) {
+        u32 mid = (lo + hi) / 2;
+        const large *l = &g_large[mid];
+        if (p < (hk_addr)l->start) hi = mid;
+        else if (p >= (hk_addr)l->start + l->size) lo = mid + 1;
+        else return l->start;
+    }
+    return NULL;
+}
+
+void hk_dvm_heap_stats(hk_dvm_heap_info *out)
+{
+    hk_lock_acquire(&g_heap_lock);
+    out->small_bytes = g_small_bytes;
+    out->large_bytes = g_large_bytes;
+    out->reserved = g_reserved;
+    out->large_objects = g_nlarge;
+    hk_lock_release(&g_heap_lock);
+}

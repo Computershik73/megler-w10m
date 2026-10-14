@@ -417,6 +417,20 @@ void hk_dvm_register_fallback(const hk_jhle *table);
 /* Runs a method, bytecode or native, from C. `params` holds one value per parameter. False when it threw. */
 bool hk_dvm_invoke(hk_dvm_method *m, hk_jobj *self, const hk_jvalue *params, hk_jvalue *ret);
 
+/* ---------------------------------------------------------- hk_dvm_heap.c */
+
+/* Where objects live (hk_dvm_heap.c says how). Memory zeroed, or NULL when the host has none. */
+void *hk_dvm_heap_alloc(size_t size);
+/* The start of the object an address points into, or NULL: what the collector's conservative scan asks. With the heap's lock held. */
+void *hk_dvm_heap_find(hk_addr p);
+void hk_dvm_heap_lock(void);
+void hk_dvm_heap_unlock(void);
+typedef struct hk_dvm_heap_info {
+    u64 small_bytes, large_bytes, reserved;   /* in cells in use; in large objects; the host's memory the blocks take */
+    u32 large_objects;
+} hk_dvm_heap_info;
+void hk_dvm_heap_stats(hk_dvm_heap_info *out);
+
 /* ---------------------------------------------------------- hk_dvm_boot.c */
 
 /* The built-in java.lang: its DEX file and its natives. */

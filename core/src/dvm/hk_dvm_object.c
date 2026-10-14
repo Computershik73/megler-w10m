@@ -2,9 +2,9 @@
  * Objects, arrays, strings and Class objects; monitors; the calling thread's
  * state; making and describing exceptions.
  *
- * Nothing is freed. An object is one zeroed allocation from the C heap that
- * lives as long as the process; docs/JAVA.md has the plan for a collector, and
- * everything here goes through alloc_raw so that there is one place to change.
+ * Nothing is freed yet. An object is one zeroed allocation from the runtime's
+ * heap (hk_dvm_heap.c) that lives as long as the process; docs/JAVA.md has the
+ * collector's design, and everything here goes through alloc_raw.
  */
 #include "hk_dvm_internal.h"
 
@@ -73,7 +73,7 @@ static hk_jobj *alloc_raw(hk_dvm_class *c, int kind, u64 body)
     /* The time it takes, for bytecode's own allocations: those made inside a native method are in that method's time. */
     u64 started = self->native_depth ? 0 : hk_time_monotonic_ns();
     self->allocs++;
-    if (body <= 0x7FFF0000u) o = (hk_dvm_obj *)calloc(1, size);
+    if (body <= 0x7FFF0000u) o = (hk_dvm_obj *)hk_dvm_heap_alloc(size);
     if (started) self->alloc_ns += hk_time_monotonic_ns() - started;
     if (!o) {
         if (!g_out_of_memory) hk_fatal("dvm: out of memory (%u bytes for a %s)", (unsigned)body, c->name);

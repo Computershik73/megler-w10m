@@ -2006,12 +2006,12 @@ exception.
 
 ### Memory
 
-**Nothing is collected.** Every object is a zeroed allocation from the C heap
-that lives as long as the process. (The original does not collect either.)
-Allocation goes through one function, `alloc_raw` in `hk_dvm_object.c`. The
-collector's design is the next section. This one changes when it is built.
+**Nothing is collected yet.** Every object is a zeroed allocation from the
+runtime's own heap (`hk_dvm_heap.c`, the first step of the collector below)
+and lives as long as the process. (The original does not collect either.)
+Allocation goes through one function, `alloc_raw` in `hk_dvm_object.c`.
 
-### The collector (design, round 7; not built yet)
+### The collector (design, round 7; being built)
 
 Why now: the frame meter's first lines from the phone. Apktool M's heap grew by
 about 5 MB a second, 239 MB at the start and 1227 MB after three and a half
@@ -2238,7 +2238,9 @@ cached UTF-8, the `fields` array of a stand-in object.
 
 **Order of the work.** Each step is a commit that builds and passes.
 1. The heap: blocks, size classes and large objects in place of the C heap,
-   with nothing freed yet.
+   with nothing freed yet. (Done: `hk_dvm_heap.c`, with `test_gc` checking
+   that an address inside an object, an array's elements included, is found
+   to be that object's, small or large, and that a stack address is not.)
 2. Registration and suspension of threads, and the conservative scan. Then a
    collection that only marks and reports what it would free, run by the
    tests.
