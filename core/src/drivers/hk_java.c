@@ -687,7 +687,8 @@ static void meter_line(const char *what, const meter_window *w, u64 now)
              interpreted ? (double)executed * 1e3 / (double)interpreted : 0.0, (double)(hk_dvm_executed_all() - w->all_executed) / 1e6);
     mem[0] = 0;
     if (process) snprintf(mem, sizeof(mem), "; the process %u MB", (unsigned)(process >> 20));
-    hk_info("java: frames %s%.1f s: %u drawn%s, %.1f ms each on average (longest %.1f): Java %.1f (input and messages %.1f, measure and layout %.1f, "
+    hk_info("java: frames %s%.1f s: %u drawn%s, %.1f ms of work each on average (the longest frame %.1f without input and messages): Java %.1f "
+            "(input and messages %.1f, measure and layout %.1f, "
             "draw traversal %.1f), of it in the shell's drawing %.1f, present %.1f; idle %u%%; %s; heap %u MB (objects %u, nothing collected, %u more in "
             "these %.1f s; bitmaps %u)%s; %s",
             what, (double)elapsed / 1e9, (unsigned)w->drawn, of, per_frame_ms(java + present, n), per_frame_ms(w->longest, 1), per_frame_ms(java, n),

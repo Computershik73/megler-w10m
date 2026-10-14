@@ -999,10 +999,10 @@ qemu, the window with the app's start, the drag of its list by half the screen
 and back, and the first dialog:
 
 ```
-java: frames 6.5 s: 34 drawn, 77.6 ms each on average (longest 185.4): Java 77.4 (input and messages 9.6, measure and
-layout 3.6, draw traversal 64.2), of it in the shell's drawing 62.1, present 0.1; idle 59%; interpreter 14.3 M
-instructions/s, 7.5 M executed on all threads; heap 8 MB (objects 7, nothing collected, 3 more in these 6.5 s; bitmaps 1);
-redrawn 100% of the screen a frame
+java: frames 6.5 s: 34 drawn, 78.2 ms of work each on average (the longest frame 185.0 without input and messages): Java
+78.1 (input and messages 10.1, measure and layout 3.7, draw traversal 64.3), of it in the shell's drawing 62.2, present 0.1;
+idle 58%; interpreter 13.9 M instructions/s, 7.5 M executed on all threads; heap 8 MB (objects 7, nothing collected, 3 more
+in these 6.5 s; bitmaps 1); redrawn 100% of the screen a frame
 ```
 
 How it is had. The overlay's `megler/ViewRoot.java` calls
@@ -1025,9 +1025,11 @@ What each figure is, all in milliseconds per frame except where said:
 
 - **frames**: the time the line covers; frames drawn (that presented
   something), and of how many when some drew nothing.
-- **each on average**: the main thread's busy time per frame (not waiting),
-  input and messages between frames included; **longest**: the longest frame
-  from its layout to its end, the time between frames not included.
+- **of work each on average**: the main thread's busy time per frame (not
+  waiting), input and messages between frames included; **the longest
+  frame**: from its layout to its end, the time between frames not included
+  (so in a line of one frame with much input before it the average can be
+  the larger).
 - **Java**: that busy time less `present`, in its three parts: **input and
   messages** (between frames: the main loop, input, the app's messages and
   timers), **measure and layout**, **draw traversal**; and **of it in the
@@ -1048,7 +1050,7 @@ What each figure is, all in milliseconds per frame except where said:
   invalidated, so a cursor that blinks costs a whole screen.
 
 What the demos run says. Under qemu the shell's drawing is the test program's
-stand-in, in C, emulated: 62 of 77 ms, which says nothing about Direct2D on the
+stand-in, in C, emulated: 62 of 78 ms, which says nothing about Direct2D on the
 phone; the phone's own lines will. The interpreter's 14 to 17 million
 instructions a second under qemu is qemu's figure. Once a list is on the
 screen measure and layout costs almost nothing (0.1 ms a frame in the windows
