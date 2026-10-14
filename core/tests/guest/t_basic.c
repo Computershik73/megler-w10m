@@ -775,6 +775,11 @@ int t_ffcalls(const char *dir)
     close(fd);
     unlink(path);
     if (process_vm_readv(getpid(), &local, 1, &remote, 1, 0) != 7 || strcmp(dst, "copied") != 0) return -7;
+    /* munmap by number (91), as Gecko's allocator calls it */
+    {
+        void *p = mmap(0, 4096, 3, 0x22, -1, 0);
+        if (p == (void *)-1 || syscall(91, p, 4096) != 0) return -7;
+    }
     return 7;
 }
 

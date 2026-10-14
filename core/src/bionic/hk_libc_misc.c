@@ -407,6 +407,7 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     typedef int (*sigaction_fn)(int, const void *, void *);
     typedef int (*sigaltstack_fn)(const void *, void *);
     typedef int (*memfd_fn)(const char *, unsigned);
+    typedef int (*munmap_fn)(void *, size_t);
     switch (nr) {
     case 67:                                                                                                  /* sigaction */
         if (fault_signal_refused(a, b)) return -1;
@@ -421,6 +422,7 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     case 240: return hk_g_futex((volatile i32 *)(hk_addr)a, (int)b, (int)c, (const void *)(hk_addr)d);   /* futex */
     case 263: return ((gettime_fn)hk_bionic_find("clock_gettime"))((int)a, (void *)(hk_addr)b);          /* clock_gettime */
     case 192: return (long)(hk_addr)hk_g_mmap2((void *)(hk_addr)a, (size_t)b, (int)c, (int)d, (int)e, (u32)f);   /* mmap2 */
+    case 91: return ((munmap_fn)hk_bionic_find("munmap"))((void *)(hk_addr)a, (size_t)b);                         /* munmap */
     case 384: hk_random((void *)(hk_addr)a, (size_t)b); return b;          /* getrandom */
     case 158: hk_thread_yield(); return 0;                                 /* sched_yield */
     case 238: case 268: return 0;                                          /* tkill, tgkill */
