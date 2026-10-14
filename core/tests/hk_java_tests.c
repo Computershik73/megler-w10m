@@ -1078,7 +1078,7 @@ static int run_natives(void)
     static const char *const steps[] = { "load", "registered", "primitives", "stack-mix", "overloads", "arrays", "bounds", "strings", "callback", "throw-native",
                                          "throw-java", "find-class", "references", "reflection", "monitor", "thread", "thread-daemon", "needed-library", "asset",
                                          "bitmap", "direct-buffer", "configuration", "library-folder", "loaded-once", "own-file", "missing-library",
-                                         "missing-method", "looper-watched", "system-icu" };
+                                         "missing-method", "looper-watched", "gc-held", "system-icu" };
     int at = -1, layout, pic[4], i;
     char want[120];
     memset(pic, 0, sizeof(pic));
@@ -1229,6 +1229,47 @@ static int run_data(void)
     return g_failed;
 }
 
+/* --------------------------------------------------------------------- gc */
+
+/*
+ * `gc`: the collector as an app meets it (core/tests/app/gc). References cleared and enqueued, finalizers run once and an
+ * object they bring back kept, far more made than the heap holds with what is kept checked, four threads allocating at once,
+ * bitmaps freed through their finalizers. The app runs with the collector's poison on (hk_tests_java_run): an object freed
+ * while still in use would read as 0xDB.
+ */
+static int run_gc(void)
+{
+    static const char *const steps[] = { "weak", "soft", "phantom", "finalize", "resurrect", "churn", "threads", "bitmaps" };
+    int at = -1, i, tries;
+    char text[120];
+    u64 collections = 0, pause_ns = 0, live;
+    uint64_t bitmap_bytes = 0;
+    uint32_t bitmaps = 0;
+    expect_line("I/GcTest: onCreate", &at, 120);
+    for (i = 0; i < (int)HK_COUNT(steps); i++) {
+        snprintf(text, sizeof(text), "I/GcTest: %s ok", steps[i]);
+        expect_line(text, &at, 600);
+    }
+    snprintf(text, sizeof(text), "I/GcTest: done ok=%d failed=0", (int)HK_COUNT(steps));
+    expect_line(text, &at, 120);
+    for (i = 0; i < g_nlines; i++)
+        if (strstr(g_lines[i], "/GcTest: ") && strstr(g_lines[i], " FAILED")) say("  %s", g_lines[i]);
+    /* The app finishes itself. */
+    for (tries = 0; tries < 3000 && running(); tries++) hk_sleep_ns(10000000ull);
+    CHECK(g_exited && g_status == 0);
+    /* The collector ran, the heap is a fraction of what was made, and the dropped bitmaps' pixels went with their finalizers. */
+    hk_dvm_gc_totals(&collections, &pause_ns);
+    live = hk_dvm_live_bytes();
+    hk_java_gfx_stats(&bitmap_bytes, &bitmaps);
+    say("  %u collections, %.0f ms in all; %u MB live at the end; %u bitmaps (%u KB) left of the 40 dropped and the app's own", (unsigned)collections,
+        (double)pause_ns / 1e6, (unsigned)(live >> 20), (unsigned)bitmaps, (unsigned)(bitmap_bytes >> 10));
+    CHECK(collections >= 5);
+    CHECK(live < (64u << 20));
+    CHECK(bitmaps < 20);
+    say_app_lines("/GcTest: ");
+    return g_failed;
+}
+
 /* ------------------------------------------------------------------ crash */
 
 /*
@@ -1353,6 +1394,7 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
         else if (!strcmp(which, "natives")) run_natives();
         else if (!strcmp(which, "crash")) run_crash();
         else if (!strcmp(which, "data")) run_data();
+        else if (!strcmp(which, "gc")) run_gc();
         else if (g_any_app) run_app();
         else run_hello();
         if (running()) {

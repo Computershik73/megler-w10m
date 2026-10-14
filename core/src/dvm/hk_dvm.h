@@ -178,6 +178,7 @@ typedef struct hk_dvm_gc_result {
     u64 objects, live_objects, live_bytes;   /* in the heap; reachable, and their bytes */
     u64 conservative, conservative_bytes;    /* reached first through a conservative root: a stack or a frame's register */
     u64 freed_objects, freed_bytes;
+    u32 cleared, enqueued, to_finalize;      /* references cleared, of them enqueued; objects found to finalize */
     u32 threads_stopped;
     u64 stop_ns, mark_ns, sweep_ns;
 } hk_dvm_gc_result;
@@ -198,6 +199,8 @@ void hk_dvm_gc_native(i64 bytes);
 void hk_dvm_gc_totals(u64 *collections, u64 *pause_ns);
 /* Bytes of the objects in the heap now (live since the last collection, and what was made after it). */
 u64 hk_dvm_live_bytes(void);
+/* Returns once the objects found to finalize so far have been finalized (Runtime.runFinalization), or after ten seconds. */
+void hk_dvm_gc_run_finalization(void);
 
 /* ------------------------------------------------------------ diagnostics */
 

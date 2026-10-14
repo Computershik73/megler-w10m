@@ -94,7 +94,8 @@ bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-f
     4227 checks, 0 failed          on libcore with its native libraries
       47 checks, 0 failed          the Java test app hello, through megler_run
       76 checks, 0 failed          the Java test app demos, the keyboard's 25 and the frame meter's 3 among them
-      43 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
+      46 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
+      18 checks, 0 failed          the Java test app gc: references, finalizers, threads allocating, a heap that stays small
       13 checks, 0 failed          the Java test app crash: an exception nothing catches, launcher aliases, an app written for Android 6
       55 checks, 0 failed          the Java test app data: a database, the storage, the battery, the time zone, TLS, key pairs, codecs and the network, the first run
       56 checks, 0 failed          data again, on what the first run left, with another battery and a time zone that is none
@@ -2280,7 +2281,59 @@ cached UTF-8, the `fields` array of a stand-in object.
      objects.)
 4. References and the reference thread.
 5. Finalizers, and bitmaps with them.
-6. The `gc` app and the stress tests.
+   (4 and 5 done together.)
+   - A class is known at its first instance as a `java.lang.ref` kind (soft,
+     weak or phantom) and as finalizable: a `finalize()` other than
+     `Object`'s that does more than return, as ART has it
+     (`hk_dvm_gc_class_ready`).
+   - While marking, a reference's `referent` is not followed: the reference
+     is noted unless it already waits to be enqueued (`pendingNext` set).
+   - After the strong marking, in Java's order:
+     1. soft referents are kept, unless the collection is the one before an
+        `OutOfMemoryError`;
+     2. weak (and cleared soft) references whose referent nothing reached
+        are cleared, and those with a queue join a ring through `pendingNext`;
+     3. finalizable objects nothing reached are taken off their list and
+        kept, with what they reach, for their `finalize()`;
+     4. phantom references whose referent is still not reached are cleared
+        and enqueued.
+   - The reference thread is a thread of the runtime's own, attached as a
+     daemon and started at the first collection with work for it. It hands
+     the ring to libcore's `ReferenceQueue.enqueuePending`, which runs a
+     `Cleaner` and enqueues the rest. It calls each `finalize()`, catching
+     what it throws. An object waiting for it is a root; after its
+     `finalize()` the next collection frees it unless it came back, and
+     `finalize()` is never called twice.
+   - `VMRuntime.runFinalization` is Java in libcore and waits on
+     `FinalizerReference`'s list for the FinalizerDaemon. That list is
+     filled by Android's runtime, not this one. The method is made a native
+     one before `VMRuntime` is first used, and it waits for the reference
+     thread (`System.runFinalization()` threw "AssertionError: newly-created
+     live Sentinel not on list!" before).
+   - A bitmap nobody holds has its pixels freed through `Bitmap.finalize()`.
+6. The `gc` app and the stress tests. (Done.)
+   - `core/tests/app/gc`, run by `hk_tests --java gc` under the collector's
+     poison, has eight steps, all passing under qemu:
+     - weak: 100 cleared, 100 enqueued;
+     - soft: kept;
+     - phantom: 100 enqueued;
+     - finalize: 100 finalized;
+     - resurrect: brought back once and finalized once;
+     - churn: 62 MB made through a window of a thousand arrays, each checked
+       when it leaves;
+     - threads: four threads building and checking trees and strings, 48
+       rounds right;
+     - bitmaps: 40 dropped, and 1 bitmap left at the end.
+   - Afterwards 44 collections had taken 483 ms in all, and 3 MB was live.
+   - The `natives` app's `gc-held` step: a native method holds a string and
+     an array of strings in local references, and a string in a global
+     reference made in an earlier call. It makes 2000 dropped byte arrays,
+     calls `System.gc()` through JNI, and reads everything back unchanged,
+     twice.
+   - Apktool M under qemu with the collector and no poison: 49 MB of heap
+     after its start (240 MB before), 43 MB after its licence, scrolling and
+     waiting, 30 MB live after each collection; a collection of 200,000
+     objects takes 60 to 100 ms there (mark nearly all of it).
 
 ### What is not checked
 

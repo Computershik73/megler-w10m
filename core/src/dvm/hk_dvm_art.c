@@ -651,7 +651,7 @@ static int boot_jars(char out[][64], int cap)
  * is no TLS, and asking for it says so (NoSuchAlgorithmException) instead of
  * dying in a class that cannot start.
  */
-static const char *g_providers_name, *g_timezone_name;
+static const char *g_providers_name, *g_timezone_name, *g_vmruntime_name;
 
 static void set_security(hk_jobj *props, const char *key, const char *value)
 {
@@ -665,11 +665,39 @@ static void set_security(hk_jobj *props, const char *key, const char *value)
 
 static void give_timezone_getter(void);
 
+/*
+ * VMRuntime.runFinalization(timeout) is Java in libcore: it waits on FinalizerReference's list for the FinalizerDaemon, which
+ * Android's runtime fills as it makes every finalizable object (FinalizerReference.add) and this one does not -- its
+ * collector keeps its own list and finalizes on its reference thread (hk_dvm_gc.c). So the method is made a native one,
+ * before VMRuntime is first used, that waits for that thread instead. Without it, System.runFinalization() threw
+ * "AssertionError: newly-created live Sentinel not on list!".
+ */
+N(VMRuntime_runFinalization)
+{
+    (void)c;
+    hk_dvm_gc_run_finalization();
+}
+
+static void own_run_finalization(hk_dvm_class *c)
+{
+    hk_dvm_method *m = hk_dvm_find_method(c, "runFinalization", "(J)V", true);
+    if (!m) return;
+    m->insns = NULL;
+    m->ninsns = 0;
+    m->flags |= DVM_ACC_NATIVE;
+    m->native = VMRuntime_runFinalization;
+    m->bound = true;
+}
+
 static void before_init(hk_dvm_class *c)
 {
     hk_jvalue props;
     if (c->name == g_timezone_name) {
         give_timezone_getter();
+        return;
+    }
+    if (c->name == g_vmruntime_name) {
+        own_run_finalization(c);
         return;
     }
     if (c->name != g_providers_name || g_dvm.conscrypt) return;
@@ -1029,7 +1057,12 @@ N(Class_null) { c->ret.l = NULL; }
  * getSystemPackages0, which Package.getPackage and getPackages ask when the caller is a class of the boot class path:
  * no package of the system's is known by a file it came from.
  */
-N(Runtime_runFinalization0) { (void)c; }
+/* runFinalization: until the objects the last collections found to finalize have been finalized (hk_dvm_gc.c's reference thread). */
+N(Runtime_runFinalization0)
+{
+    (void)c;
+    hk_dvm_gc_run_finalization();
+}
 /* Runtime.gc(), which System.gc() calls: a collection, as ART does one. */
 N(Runtime_gc)
 {
@@ -1374,6 +1407,7 @@ bool hk_dvm_art_start(void)
     hk_dvm_add_dex(k_dvm_art_dex, k_dvm_art_dex_size, "megler-runtime.dex");
     g_providers_name = hk_dvm_intern("sun/security/jca/Providers");
     g_timezone_name = hk_dvm_intern("java/util/TimeZone");
+    g_vmruntime_name = hk_dvm_intern("dalvik/system/VMRuntime");
     g_dvm.before_init = before_init;
     hk_dvm_register(k_art_nothing);
     hk_dvm_register(k_art);

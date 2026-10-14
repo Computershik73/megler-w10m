@@ -324,6 +324,12 @@ public class Main extends Activity {
             detail = "watchLooper=" + r;
             return r == 1;
         });
+        step("gc-held", () -> {
+            /* Twice: the global reference made in the first call must hold across the second's collection too. */
+            int first = Lib.holdAcrossGc(), second = Lib.holdAcrossGc();
+            detail = "first " + first + " second " + second;
+            return first == 1 && second == 1;
+        });
         step("system-icu", () -> {
             /* Android 9's ICU is version 60; it is the Android root's, the one libcore uses. */
             int v = Lib.icuVersion();

@@ -638,6 +638,54 @@ JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_watchLooper(JNIEnv *env, jcl
     return write(g_pipe[1], "L", 1) == 1 ? 1 : -3;
 }
 
+/* ---------------------------------------------------- objects held across a collection */
+
+static jobject g_held;
+
+/*
+ * Objects a native method holds while the collector runs: a string and an array of strings held only in this function's
+ * locals (local references, which the collector finds on the stack), and a string held by a global reference made in an
+ * earlier call. System.gc() is called through JNI in between, after garbage enough to be worth freeing; everything must read
+ * as it was. 1 when it does; what went wrong otherwise.
+ */
+JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_holdAcrossGc(JNIEnv *env, jclass cls)
+{
+    jclass system = (*env)->FindClass(env, "java/lang/System"), string = (*env)->FindClass(env, "java/lang/String");
+    jmethodID gc = (*env)->GetStaticMethodID(env, system, "gc", "()V");
+    jstring local = (*env)->NewStringUTF(env, "held by a local reference");
+    jobjectArray array = (*env)->NewObjectArray(env, 3, string, NULL);
+    const char *text;
+    char word[32];
+    int i, ok;
+    (void)cls;
+    if (!g_held) g_held = (*env)->NewGlobalRef(env, (*env)->NewStringUTF(env, "held by a global reference"));
+    for (i = 0; i < 3; i++) {
+        snprintf(word, sizeof(word), "element %d", i);
+        (*env)->SetObjectArrayElement(env, array, i, (*env)->NewStringUTF(env, word));
+    }
+    /* Garbage, each a local reference let go at once. */
+    for (i = 0; i < 2000; i++) (*env)->DeleteLocalRef(env, (*env)->NewByteArray(env, 1000));
+    (*env)->CallStaticVoidMethod(env, system, gc);
+    if ((*env)->ExceptionCheck(env)) return -1;
+    text = (*env)->GetStringUTFChars(env, local, NULL);
+    ok = text && !strcmp(text, "held by a local reference");
+    if (text) (*env)->ReleaseStringUTFChars(env, local, text);
+    if (!ok) return -2;
+    text = (*env)->GetStringUTFChars(env, (jstring)g_held, NULL);
+    ok = text && !strcmp(text, "held by a global reference");
+    if (text) (*env)->ReleaseStringUTFChars(env, (jstring)g_held, text);
+    if (!ok) return -3;
+    for (i = 0; i < 3; i++) {
+        jstring e = (jstring)(*env)->GetObjectArrayElement(env, array, i);
+        snprintf(word, sizeof(word), "element %d", i);
+        text = e ? (*env)->GetStringUTFChars(env, e, NULL) : NULL;
+        ok = text && !strcmp(text, word);
+        if (text) (*env)->ReleaseStringUTFChars(env, e, text);
+        if (!ok) return -4 - i;
+    }
+    return 1;
+}
+
 /* ---------------------------------------------------------- the system's ICU */
 
 /* A function of an ICU library by its name and the version ICU gives its names ("u_strlen_60"), the first version that has it. */

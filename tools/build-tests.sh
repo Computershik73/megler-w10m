@@ -151,7 +151,7 @@ EOF
       MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "mkdir -p $WB/android-root && cp -ru '$WROOT/build/android9/root/.' $WB/android-root/ && rm -rf $WB/scratch && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests '$WROOT/build/guest/armeabi-v7a' $WB/scratch --dvm-android $WB/android-root \$([ -f $WB/hk.apk ] && echo --dvm-apk $WB/hk.apk) ${EXTRA[*]:-} 2>&1" || STATUS=1
     fi
     if [ "$JAVA" = 1 ]; then
-      for app in hello demos natives crash; do
+      for app in hello demos natives crash gc; do
         if [ ! -f "$ROOT/build/guest/java/$app.apk" ]; then
           echo "(the Java test app $app is not run: build/guest/java/$app.apk was not built -- its native library needs the NDK, see tools/build-test-app.sh)"
           continue

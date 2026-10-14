@@ -150,6 +150,7 @@ static hk_jobj *alloc_raw(hk_dvm_class *c, int kind, u64 body)
         hk_atomic_add(&g_object_kb, 1);
     }
     hk_atomic_add(&g_object_kb, (i32)(size >> 10));
+    if (c->finalizable || c->gc_ref) hk_dvm_gc_born(&o->j);
     return &o->j;
 }
 

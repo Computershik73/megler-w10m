@@ -180,6 +180,8 @@ struct hk_dvm_class {
     u32 *ref_slots;
     u32 nref_slots;
     volatile i32 ref_slots_ready;
+    u8 gc_ref;                         /* a java.lang.ref class: 1 soft, 2 weak, 3 phantom (their referent is not followed); 0 none */
+    bool finalizable;                  /* it overrides finalize() with a body: its objects are finalized before they are freed */
 };
 
 /*
@@ -443,6 +445,8 @@ bool hk_dvm_invoke(hk_dvm_method *m, hk_jobj *self, const hk_jvalue *params, hk_
 void hk_dvm_gc_class_ready(hk_dvm_class *c);
 /* What a thread's end hands the collector: the thread is no longer to be stopped or scanned. */
 void hk_dvm_gc_thread_gone(hk_dvm_thread *t);
+/* A new object of a class that is finalizable or a reference: the collector keeps account of it (alloc_raw). */
+void hk_dvm_gc_born(hk_jobj *o);
 
 /* ---------------------------------------------------------- hk_dvm_heap.c */
 
