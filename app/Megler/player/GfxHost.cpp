@@ -3292,8 +3292,8 @@ constexpr int64_t sharedFromPixels = 256 * 256;
 
 /// How many bytes of the core's bitmaps are kept on the graphics processor:
 /// an app's icons, backgrounds and pictures of a screen or two. A bitmap
-/// larger than a quarter of it is not kept: the part drawn is copied for
-/// each drawing, as in memory.
+/// larger than half of it (six million pixels) is not kept: the part drawn
+/// is copied for each drawing, as in memory.
 constexpr uint64_t keptBudget = 48ull << 20;
 
 /// The core's bitmap on the graphics processor, kept under its id: the one
@@ -3304,7 +3304,7 @@ Ref<ID2D1Bitmap1> keptBitmap(const megler_gfx_image& image) {
     State& s = G();
     Ref<ID2D1Bitmap1> out;
     const uint64_t bytes = uint64_t(image.width) * uint64_t(image.height) * 4;
-    if (!s.gpuResource || gpuGone() || !image.id || !image.pixels || bytes > keptBudget / 4 || UINT32(image.width) > s.gpuMaxSize ||
+    if (!s.gpuResource || gpuGone() || !image.id || !image.pixels || bytes > keptBudget / 2 || UINT32(image.width) > s.gpuMaxSize ||
         UINT32(image.height) > s.gpuMaxSize)
         return out;
     std::lock_guard<std::mutex> lock(s.keptMutex);
