@@ -472,6 +472,12 @@ static int run_hello(void)
     CHECK(layout >= 0);
     /* ... and the copy, sent, arrives at the first one's handler saying what the first said. */
     CHECK(wait_line("I/HelloTest: message what=7 arg=1,2 obj=word when=true", 0, 30) >= 0);
+    {
+        /* A launcher's questions (AppWidgetHostView, LauncherApps): Android 9's padding of a widget's frame, 8 dp each way; this app's one launcher activity, with its label and icon. */
+        char want[200];
+        snprintf(want, sizeof(want), "I/HelloTest: launcher padding=Rect(%d, %d - %d, %d)", 8 * dp, 8 * dp, 8 * dp, 8 * dp);
+        CHECK(find_line(want, 0) >= 0);
+    }
     /* A row of no fixed width shares what its weighted, widthless children asked for equally among them, as Android does for an app written for Android 7 or later. */
     CHECK(find_line("I/HelloTest: row unlimited=140:70+70 exact=200:100+100", 0) >= 0);
     {

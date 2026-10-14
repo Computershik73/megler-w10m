@@ -57,6 +57,9 @@ public class MainActivity extends Activity {
         String unlimited = row.getMeasuredWidth() + ":" + narrow.getMeasuredWidth() + "+" + wide.getMeasuredWidth();
         row.measure(android.view.View.MeasureSpec.makeMeasureSpec(200, android.view.View.MeasureSpec.EXACTLY), 0);
         Log.i("HelloTest", "row unlimited=" + unlimited + " exact=" + row.getMeasuredWidth() + ":" + narrow.getMeasuredWidth() + "+" + wide.getMeasuredWidth());
+        /* A launcher's questions: the platform's padding around a widget's frame, and the activities there are to list -- this app's own, by its label. */
+        android.graphics.Rect padding = android.appwidget.AppWidgetHostView.getDefaultPaddingForWidget(this, getComponentName(), null);
+        Log.i("HelloTest", "launcher padding=" + padding);
         /* A switch of the theme's, measured with nothing to constrain it: its width is made of its thumb and its track's padding, not of the track picture's own width. */
         android.widget.Switch sw = new android.widget.Switch(this);
         sw.measure(0, 0);

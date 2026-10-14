@@ -92,13 +92,13 @@ bash tools/build-tests.sh win      (MSVC x64, run on the PC; libcore's native li
 bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-float, under qemu-arm)
     4154 checks, 0 failed          on the built-in java.lang
     4204 checks, 0 failed          on libcore with its native libraries
-      43 checks, 0 failed          the Java test app hello, through megler_run
+      44 checks, 0 failed          the Java test app hello, through megler_run
       72 checks, 0 failed          the Java test app demos, the keyboard's 25 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
       13 checks, 0 failed          the Java test app crash: an exception nothing catches, launcher aliases, an app written for Android 6
       44 checks, 0 failed          the Java test app data: a database, the storage, the battery and the time zone, the first run
       45 checks, 0 failed          data again, on what the first run left, with another battery and a time zone that is none
-      43 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
+      44 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
     (then each app once more, its drawing recorded for the PC's run to draw again)
 ```
 
@@ -290,7 +290,7 @@ its resources (a `LinearLayout` with a `TextView`, a `Button`, a view of its own
 that draws with `Canvas`, and an `ImageView` of a PNG), strings and colours. It
 has no native library. `hk_tests --java hello ...` starts it through
 `megler_run`, on a 480 x 800 screen at 160 dpi so that a dp is a pixel, with a
-stand-in for the shell's drawing, and checks (43 checks):
+stand-in for the shell's drawing, and checks (44 checks):
 
 - **What the shell reads first**, `megler_apk_report`: the engine is `java`, the
   APK is runnable, and how its launcher activity asks to be held
@@ -312,6 +312,9 @@ stand-in for the shell's drawing, and checks (43 checks):
   rule for an app written for Android 7 or later, which this app is. (The
   crash app says it is written for Android 6, and there they keep 40 and
   100.) With an exact 200 they have 100 each in both.
+- **A launcher's questions**: `AppWidgetHostView.getDefaultPaddingForWidget`
+  is Android 9's 8 dp each way (framework-res, found by its name: the
+  numbers of the original's `megler.IR` are a later Android's).
 - **A switch measured by itself**: two thumbs and the track's padding wide, as
   Android's `Switch.onMeasure` has it, wider than it is high and wider than
   the picture of its track (38 x 27 with a thumb of 19 at 160 dpi; the track
@@ -1801,8 +1804,8 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: nineteen files** in the overlay,
-seventeen of them a statement or a method each inside an otherwise untouched copy
+**What differs from the original's framework: twenty files** in the overlay,
+eighteen of them a statement or a method each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and five files of members added** to classes of the original's.
 
@@ -1947,6 +1950,15 @@ the context that knows.
   around the panel, 14 pixels above and below at 280 dpi, and this class
   gives its list 8 dp of padding at either end: QuickShortcutMaker's overflow
   menu, two rows of 84 pixels, got a panel 140 high.
+- `android/appwidget/AppWidgetHostView.java`: `getDefaultPaddingForWidget`
+  answered null, and every launcher made from Launcher3 reads `.left` of it in
+  its `DeviceProfile`'s constructor: Super S22 Launcher ended on its first
+  screen. Android answers framework-res's `default_app_widget_padding_*`,
+  which are looked up here by name (the original's `megler.IR` has a later
+  Android's numbers for them, not Android 9's). And four more signatures of
+  the class that answered nothing: two constructors that gave `FrameLayout`
+  no Context, `generateLayoutParams(Context, AttributeSet)`, and
+  `dispatchDraw`, which drew none of the view's children.
 - `android/content/res/ResTable.java`, two methods: a resource is found by
   its name without indexing the whole package ("What an AlertDialog cost").
 - `android/content/res/Resources.java`, the class `Bag`: a style's items are
@@ -2014,7 +2026,7 @@ the context that knows.
   was empty on the second; it shows its seven headers and their screens.
   Not done: two panes, bread crumbs.
 
-The original has all seventeen faults; they are its author's to take back.
+The original has all eighteen faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in
