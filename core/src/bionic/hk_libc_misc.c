@@ -352,11 +352,70 @@ static int g_cacheflush(long start, long end, long flags)
     return 0;
 }
 
-/* syscall(): the handful that code calls by number. ARM EABI numbers. */
+/*
+ * rt_sigaction by number: the kernel's struct (handler, flags, restorer, a 64-bit mask) to bionic's 32-bit sigaction
+ * (handler, a 32-bit mask, flags, restorer) and back. The mask's real-time half is not kept: sigaction here has none.
+ */
+static long rt_sigaction(int sig, const u32 *act, u32 *old, size_t mask_size)
+{
+    typedef int (*sigaction_fn)(int, const u32 *, u32 *);
+    u32 in[4], out[4];
+    int r;
+    if (mask_size != 8) {
+        hk_set_errno(GE_INVAL);
+        return -1;
+    }
+    if (act) {
+        in[0] = act[0];
+        in[1] = act[3];
+        in[2] = act[1];
+        in[3] = act[2];
+    }
+    r = ((sigaction_fn)hk_bionic_find("sigaction"))(sig, act ? in : NULL, old ? out : NULL);
+    if (r == 0 && old) {
+        old[0] = out[0];
+        old[1] = out[2];
+        old[2] = out[3];
+        old[3] = out[1];
+        old[4] = 0;
+    }
+    return r;
+}
+
+/*
+ * A handler for a fault's signal asked for by system call, past libc's sigaction: refused. A fault in guest code is this
+ * layer's to repair or report, never delivered to the guest (see "signals" below), and the code that goes past libc
+ * checks that it is: Gecko's mozglue installs its SIGSEGV handler with syscall(__NR_sigaction) and then writes to a page
+ * of its own with no access, to see its handler called. Refused, it goes on without the handler, as it does where a
+ * kernel will not have it. libc's sigaction keeps taking such handlers, as it always has.
+ */
+static bool fault_signal_refused(long sig, long act)
+{
+    if (!act || (sig != 4 && sig != 7 && sig != 8 && sig != 11)) return false;
+    hk_note_once("a handler for signal %ld asked for by system call is refused: faults are not delivered to guest handlers here", sig);
+    hk_set_errno(GE_NOSYS);
+    return true;
+}
+
+/*
+ * syscall(): the handful that code calls by number. ARM EABI numbers. Gecko's mozglue installs its signal handlers with
+ * syscall(__NR_sigaction) (67), past libc's sigaction, whose old struct is bionic's 32-bit one.
+ */
 static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
 {
     typedef int (*gettime_fn)(int, void *);
+    typedef int (*sigaction_fn)(int, const void *, void *);
+    typedef int (*sigaltstack_fn)(const void *, void *);
+    typedef int (*memfd_fn)(const char *, unsigned);
     switch (nr) {
+    case 67:                                                                                                  /* sigaction */
+        if (fault_signal_refused(a, b)) return -1;
+        return ((sigaction_fn)hk_bionic_find("sigaction"))((int)a, (const void *)(hk_addr)b, (void *)(hk_addr)c);
+    case 174:                                                                                                 /* rt_sigaction */
+        if (fault_signal_refused(a, b)) return -1;
+        return rt_sigaction((int)a, (const u32 *)(hk_addr)b, (u32 *)(hk_addr)c, (size_t)d);
+    case 186: return ((sigaltstack_fn)hk_bionic_find("sigaltstack"))((const void *)(hk_addr)a, (void *)(hk_addr)b);  /* sigaltstack */
+    case 385: return ((memfd_fn)hk_bionic_find("memfd_create"))((const char *)(hk_addr)a, (unsigned)b);           /* memfd_create */
     case 20: return g_getpid();                                            /* getpid */
     case 224: return hk_gthread_self()->tid;                               /* gettid */
     case 240: return hk_g_futex((volatile i32 *)(hk_addr)a, (int)b, (int)c, (const void *)(hk_addr)d);   /* futex */
@@ -1135,6 +1194,107 @@ static int g_sysinfo(u32 *out)
     return 0;
 }
 
+/*
+ * syslog: into the log, as bionic's does (to Android's log, with the tag openlog gave). Priorities 0-3 are errors, 4
+ * warnings, 5-6 information, 7 debugging. %m is the text of errno, as syslog's format has it.
+ */
+static char g_syslog_ident[64] = "syslog";
+static int g_syslog_mask = 0xFF;
+
+static void g_openlog(const char *ident, int option, int facility)
+{
+    (void)option;
+    (void)facility;
+    hk_strlcpy(g_syslog_ident, ident && *ident ? ident : "syslog", sizeof(g_syslog_ident));
+}
+static void g_closelog(void) { }
+static int g_setlogmask(int mask)
+{
+    int old = g_syslog_mask;
+    if (mask) g_syslog_mask = mask;
+    return old;
+}
+
+static void g_vsyslog(int priority, const char *fmt, va_list ap)
+{
+    typedef const char *(*strerror_fn)(int);
+    char form[512], line[1024];
+    const char *p;
+    size_t n = 0;
+    int level = priority & 7;
+    if (!fmt || !(g_syslog_mask & (1 << level))) return;
+    /* %m first: the rest is printf's. */
+    for (p = fmt; *p && n + 1 < sizeof(form); p++) {
+        if (p[0] == '%' && p[1] == '%') {
+            if (n + 2 < sizeof(form)) {
+                form[n++] = '%';
+                form[n++] = '%';
+            }
+            p++;
+        } else if (p[0] == '%' && p[1] == 'm') {
+            const char *t = ((strerror_fn)hk_bionic_find("strerror"))(*hk_errno_ptr());
+            for (; t && *t && n + 2 < sizeof(form); t++) {
+                if (*t == '%') form[n++] = '%';
+                form[n++] = *t;
+            }
+            p++;
+        } else {
+            form[n++] = *p;
+        }
+    }
+    form[n] = 0;
+    vsnprintf(line, sizeof(line), form, ap);
+    hk_log(level <= 3 ? HK_LOG_ERROR : level == 4 ? HK_LOG_WARN : level <= 6 ? HK_LOG_INFO : HK_LOG_DEBUG, "%c/%s: %s",
+           level <= 3 ? 'E' : level == 4 ? 'W' : level <= 6 ? 'I' : 'D', g_syslog_ident, line);
+}
+
+static void g_syslog(int priority, const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    g_vsyslog(priority, fmt, ap);
+    va_end(ap);
+}
+
+/*
+ * process_vm_readv and process_vm_writev: this process's own memory only (getpid() is 4242 here), copied between the two
+ * lists of pieces; another process is ESRCH. 32-bit iovecs: a base and a length.
+ */
+static i32 vm_copy(int pid, const u32 *local, unsigned nlocal, const u32 *remote, unsigned nremote, bool read)
+{
+    unsigned li = 0, ri = 0;
+    u32 loff = 0, roff = 0;
+    i32 done = 0;
+    if (pid != 4242) {
+        hk_set_errno(GE_SRCH);
+        return -1;
+    }
+    while (li < nlocal && ri < nremote) {
+        u32 lleft = local[2 * li + 1] - loff, rleft = remote[2 * ri + 1] - roff, n = lleft < rleft ? lleft : rleft;
+        u8 *l = (u8 *)(hk_addr)local[2 * li] + loff, *rm = (u8 *)(hk_addr)remote[2 * ri] + roff;
+        if (n) {
+            if (read) memcpy(l, rm, n);
+            else memcpy(rm, l, n);
+            done += (i32)n;
+        }
+        loff += n;
+        roff += n;
+        if (loff == local[2 * li + 1]) { li++; loff = 0; }
+        if (roff == remote[2 * ri + 1]) { ri++; roff = 0; }
+    }
+    return done;
+}
+static i32 g_process_vm_readv(int pid, const u32 *local, unsigned nl, const u32 *remote, unsigned nr, unsigned flags)
+{
+    (void)flags;
+    return vm_copy(pid, local, nl, remote, nr, true);
+}
+static i32 g_process_vm_writev(int pid, const u32 *local, unsigned nl, const u32 *remote, unsigned nr, unsigned flags)
+{
+    (void)flags;
+    return vm_copy(pid, local, nl, remote, nr, false);
+}
+
 void hk_misc_init(void)
 {
     hk_random(&g_stack_chk_guard, sizeof(g_stack_chk_guard));
@@ -1163,6 +1323,8 @@ const hk_sym hk_tab_misc[] = {
     M("__system_property_read", g_property_read), M("__system_property_read_callback", g_property_read_callback),
     M("__system_property_set", g_property_set),
     M("getauxval", g_getauxval), M("prctl", g_prctl), M("cacheflush", g_cacheflush), M("syscall", g_syscall),
+    M("openlog", g_openlog), M("closelog", g_closelog), M("setlogmask", g_setlogmask), M("syslog", g_syslog), M("vsyslog", g_vsyslog),
+    M("process_vm_readv", g_process_vm_readv), M("process_vm_writev", g_process_vm_writev),
     M("getrlimit", g_getrlimit), M("getrlimit64", g_getrlimit), M("setrlimit", g_setrlimit), M("getrusage", g_getrusage),
     M("getpriority", g_getpriority), M("setpriority", g_setpriority), M("nice", g_nice),
     M("qsort", g_qsort), M("bsearch", g_bsearch),

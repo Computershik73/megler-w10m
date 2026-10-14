@@ -722,6 +722,63 @@ int t_cpuclock(void)
 }
 
 /*
+ * What Firefox's libraries import of libc that was not there: sigaction by its old system call, as mozglue installs its
+ * handlers, and rt_sigaction (a handler for a fault's signal refused that way); syslog; fputwc, fgetwc and ungetwc in UTF-8; posix_fadvise and posix_fallocate; and
+ * process_vm_readv on the process's own memory. 7, or the negated step that failed.
+ */
+long syscall(long, ...);
+void openlog(const char *, int, int);
+void syslog(int, const char *, ...);
+void closelog(void);
+unsigned fputwc(unsigned, void *);
+unsigned fgetwc(void *);
+unsigned ungetwc(unsigned, void *);
+int posix_fadvise(int, long, long, int);
+int posix_fallocate(int, long, long);
+int process_vm_readv(int, const void *, unsigned long, const void *, unsigned long, unsigned long);
+int getpid(void);
+
+static void ff_handler(int sig) { (void)sig; }
+
+int t_ffcalls(const char *dir)
+{
+    struct { void (*handler)(int); unsigned mask; int flags; void *restorer; } act, old;    /* bionic's, and the old call's */
+    unsigned rt[5], st[32];
+    char path[256], src[8] = "copied", dst[8] = { 0 };
+    struct { void *base; size_t len; } local = { dst, 7 }, remote = { src, 7 };
+    void *f;
+    int fd;
+    unsigned w;
+    memset(&act, 0, sizeof(act));
+    act.handler = ff_handler;
+    memset(&old, 0, sizeof(old));
+    if (syscall(67, 10, &act, 0) != 0 || syscall(67, 10, 0, &old) != 0 || old.handler != ff_handler) return -1;     /* SIGUSR1 */
+    memset(rt, 0xEE, sizeof(rt));
+    if (syscall(174, 10, 0, rt, 8) != 0 || rt[0] != (unsigned)(size_t)ff_handler) return -2;
+    act.handler = 0;
+    syscall(67, 10, &act, 0);
+    act.handler = ff_handler;
+    if (syscall(67, 11, &act, 0) != -1 || syscall(67, 11, 0, &old) != 0) return -2;     /* SIGSEGV: refused, asking allowed */
+    openlog("t_basic", 0, 0);
+    syslog(4, "syslog at %s, %d: %m", "warning", 7);
+    closelog();
+    snprintf(path, sizeof(path), "%s/wide.txt", dir);
+    f = fopen(path, "w+");
+    if (!f) return -3;
+    if (fputwc(0x416, f) != 0x416 || fputwc('a', f) != 'a') return -4;
+    fseek(f, 0, 0);
+    w = fgetwc(f);
+    if (w != 0x416 || ungetwc(w, f) != w || fgetwc(f) != 0x416 || fgetwc(f) != 'a' || fgetwc(f) != 0xFFFFFFFFu) return -5;
+    fclose(f);
+    fd = open(path, 2);
+    if (fd < 0 || posix_fadvise(fd, 0, 0, 2) != 0 || posix_fallocate(fd, 0, 4096) != 0 || fstat(fd, st) != 0 || st[12] != 4096) return -6;
+    close(fd);
+    unlink(path);
+    if (process_vm_readv(getpid(), &local, 1, &remote, 1, 0) != 7 || strcmp(dst, "copied") != 0) return -7;
+    return 7;
+}
+
+/*
  * fnmatch, which Chromium's FileEnumerator asks of every name it lists: the number of the 16 cases that came out as POSIX
  * and bionic have them.
  */

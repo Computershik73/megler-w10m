@@ -1201,6 +1201,18 @@ static int g_ftruncate64(int fd, i64 size)
 }
 static int g_ftruncate(int fd, i32 size) { return g_ftruncate64(fd, size); }
 
+/* posix_fadvise: advice, taken and not acted on; the descriptor must be one. Returns the error, as POSIX has it. */
+static int g_posix_fadvise64(int fd, i64 offset, i64 len, int advice)
+{
+    gobj *o = fd_get(fd);
+    (void)offset;
+    (void)len;
+    if (!o) return GE_BADF;
+    fd_put(o);
+    return advice < 0 || advice > 5 ? GE_INVAL : 0;
+}
+static int g_posix_fadvise(int fd, i32 offset, i32 len, int advice) { return g_posix_fadvise64(fd, offset, len, advice); }
+
 static int g_fsync(int fd)
 {
     WITH_FD(fd, o, -1)
@@ -1621,6 +1633,8 @@ static int g_ok_path(const char *path, int a) { (void)path; (void)a; return 0; }
 static int g_ok_fd(int fd, int a) { (void)fd; (void)a; return 0; }
 static int g_chown(const char *path, int u, int g) { (void)path; (void)u; (void)g; return 0; }
 static int g_utime(const char *path, const void *times) { (void)path; (void)times; return 0; }
+/* (The times of a file are not set here, by any of the utime calls: an app is told they were.) */
+static int g_futimes(int fd, const void *times) { (void)fd; (void)times; return 0; }
 static int g_fail_link(const char *a, const char *b)
 {
     (void)a; (void)b;
@@ -1703,6 +1717,8 @@ static int g_posix_fallocate64(int fd, i64 offset, i64 len)
     *hk_errno_ptr() = saved;
     return err ? err : GE_IO;
 }
+/* (The 32-bit offsets' form, which bionic has beside it.) */
+static int g_posix_fallocate(int fd, i32 offset, i32 len) { return g_posix_fallocate64(fd, offset, len); }
 
 /* What this file system does not have: pipes spliced in the kernel, FIFOs and device files, extended attributes, watches. */
 static int g_io_nosys(void) { hk_set_errno(GE_NOSYS); return -1; }
@@ -2732,6 +2748,7 @@ const hk_sym hk_tab_io[] = {
     IO("tcgetattr", g_io_notty), IO("tcsetattr", g_io_notty), IO("tcdrain", g_io_notty), IO("tcsendbreak", g_io_notty),
     IO("readv", g_readv), IO("writev", g_writev), IO("lseek", g_lseek), IO("lseek64", g_lseek64),
     IO("ftruncate", g_ftruncate), IO("ftruncate64", g_ftruncate64), IO("truncate", g_truncate),
+    IO("posix_fadvise", g_posix_fadvise), IO("posix_fadvise64", g_posix_fadvise64), IO("posix_fallocate", g_posix_fallocate),
     IO("fsync", g_fsync), IO("fdatasync", g_fsync), IO("sync", g_sync),
     IO("stat", g_stat_path), IO("stat64", g_stat_path), IO("lstat", g_stat_path), IO("lstat64", g_stat_path),
     IO("fstat", g_fstat), IO("fstat64", g_fstat), IO("fstatat", g_fstatat), IO("fstatat64", g_fstatat),
@@ -2744,7 +2761,8 @@ const hk_sym hk_tab_io[] = {
     IO("remove", g_remove), IO("rename", g_rename), IO("renameat", g_renameat),
     IO("chdir", g_chdir), IO("getcwd", g_getcwd), IO("realpath", g_realpath), IO("readlink", g_readlink),
     IO("chmod", g_ok_path), IO("fchmod", g_fchmod), IO("chown", g_chown), IO("lchown", g_chown), IO("utime", g_utime),
-    IO("utimes", g_utime), IO("link", g_fail_link), IO("symlink", g_fail_link), IO("umask", g_umask), IO("flock", g_flock),
+    IO("utimes", g_utime), IO("lutimes", g_utime), IO("futimes", g_futimes), IO("link", g_fail_link), IO("symlink", g_fail_link),
+    IO("umask", g_umask), IO("flock", g_flock),
     IO("fchown", g_ok_fd),
     IO("opendir", g_opendir), IO("fdopendir", g_fdopendir), IO("readdir", g_readdir), IO("readdir64", g_readdir),
     IO("readdir_r", g_readdir_r), IO("readdir64_r", g_readdir_r), IO("closedir", g_closedir), IO("rewinddir", g_rewinddir),
