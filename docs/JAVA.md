@@ -1619,8 +1619,8 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: eleven files** in the overlay,
-nine of them a statement or a method each inside an otherwise untouched copy
+**What differs from the original's framework: twelve files** in the overlay,
+ten of them a statement or a method each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and two files of members added** to classes of the original's.
 
@@ -1682,6 +1682,14 @@ version checks.
   Android gives it, rounded up to a size storage is sold in (1, 2, 4 ... 512
   of the next decimal unit, `FileUtils.roundStorageSize`), the free space as
   it is. The figures are the C library's `statvfs` under `java.io.File`.
+- `android/os/storage/StorageManager.java`, the old way to list the storage:
+  `getVolumeList`, `getVolumePaths`, `getVolumeState` and the static
+  `getVolumeList(userId, flags)` were signatures answering null. They are
+  hidden on Android and file managers reach them by reflection, because
+  `getStorageVolumes` did not exist before Android 7. There is one volume,
+  the shared storage, which the original's `StorageVolume` describes; a path
+  that is no volume is "unknown". And `UUID_DEFAULT` is Android's constant
+  (it was null), which is what `getUuidForPath` answers.
 - `android/content/res/ResTable.java`, two methods: a resource is found by
   its name without indexing the whole package ("What an AlertDialog cost").
 - `android/content/res/Resources.java`, the class `Bag`: a style's items are
@@ -1739,7 +1747,7 @@ version checks.
   was empty on the second; it shows its seven headers and their screens.
   Not done: two panes, bread crumbs.
 
-The original has all ten faults; they are its author's to take back.
+The original has all eleven faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in
