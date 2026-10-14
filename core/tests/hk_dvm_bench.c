@@ -105,18 +105,23 @@ static bool run_once(const char *method, i32 n, u64 *ns, u64 *executed)
     return thrown()[0] == 0;
 }
 
-void hk_dvm_bench_run(const char *fixtures, int ms)
+bool hk_dvm_bench_add(const char *fixtures)
 {
-    static bool added;
-    u64 all_ns = 0, all_executed = 0, target = (u64)(ms > 0 ? ms : 50) * 1000000ull;
-    size_t i;
+    static int added;
     if (!added) {
         char *dex = hk_sprintf("%s/bench.dex", fixtures);
-        added = hk_dvm_add_dex_file(dex);
-        if (!added) say("  (no bench.dex in %s)", fixtures);
+        added = hk_dvm_add_dex_file(dex) ? 1 : -1;
+        if (added < 0) say("  (no bench.dex in %s)", fixtures);
         free(dex);
-        if (!added) return;
     }
+    return added > 0;
+}
+
+void hk_dvm_bench_run(const char *fixtures, int ms)
+{
+    u64 all_ns = 0, all_executed = 0, target = (u64)(ms > 0 ? ms : 50) * 1000000ull;
+    size_t i;
+    if (!hk_dvm_bench_add(fixtures)) return;
     say("  %-36s %10s %8s %8s", "", "ns a turn", "insns", "M/s");
     for (i = 0; i < HK_COUNT(k_items); i++) {
         u64 ns = 0, executed = 0;

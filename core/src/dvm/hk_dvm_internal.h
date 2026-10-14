@@ -143,6 +143,8 @@ struct hk_dvm_method {
      * average, in the host's ticks. A method whose calls are short is not timed every time (see invoke_native).
      */
     u32 meter_calls, meter_avg;
+    /* One of the library's methods the interpreter does itself when it can (hk_dvm_interp.c, "intrinsics"): its number, or 0. */
+    u8 intrinsic;
 };
 
 enum { DVM_CS_FAILED = -1, DVM_CS_LINKED = 0, DVM_CS_INITIALIZING = 1, DVM_CS_INITIALIZED = 2 };
@@ -445,6 +447,8 @@ void hk_dvm_register_fallback(const hk_jhle *table);
 
 /* Runs a method, bytecode or native, from C. `params` holds one value per parameter. False when it threw. */
 bool hk_dvm_invoke(hk_dvm_method *m, hk_jobj *self, const hk_jvalue *params, hk_jvalue *ret);
+/* On libcore, once its classes are there: marks the methods the interpreter does itself when it can (intrinsics). */
+void hk_dvm_intrinsics_start(void);
 
 /* ------------------------------------------------------------ hk_dvm_gc.c */
 

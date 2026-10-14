@@ -1380,6 +1380,51 @@ every register that holds it. On libcore the constructor called is not
 `String.<init>` (which only throws there) but the `StringFactory.newStringFrom...`
 method of the same parameters.
 
+### Calls done in place: intrinsics
+
+On libcore, some of the library's methods are done by the interpreter itself
+where an invoke names them, with no frame and no native call. Android's own
+runtime does the same with these methods (its intrinsics).
+`hk_dvm_intrinsics_start` marks them (`hk_dvm_method.intrinsic`) once libcore's
+classes are there:
+
+- `String.charAt`, a native call each time;
+- `String.length` and `isEmpty`: a call that reads a field the runtime owns
+  (`count`);
+- `String.equals`: a loop of `charAt` calls in libcore;
+- `String.hashCode`: the same loop, once; the result is kept in the string's
+  `hash` field, as libcore keeps it;
+- `System.arraycopy`;
+- `Math.min`, `max` and `abs` of `int` and `long`, and `Math.sqrt`;
+- `Object.getClass`;
+- `Thread.currentThread`.
+
+**An intrinsic only does the ordinary case.** For anything else it declines,
+and the method is called as before:
+- an index out of range;
+- a null;
+- arrays of two kinds, or references whose element types might not fit;
+- a class whose `Class` object or a thread whose `Thread` is not made yet.
+
+So every exception is still the method's own, thrown from its own frame. While
+every instruction is watched (the trace at level 3, a step limit, the profile),
+nothing is done in place.
+
+`bench.Edges` (beside the benchmark) is the test. It runs each intrinsic at its
+edges twice: once as the interpreter runs it, and once with every instruction
+watched. The two reports must be the same text, and must match the JVM's
+answers where those do not depend on the runtime's messages (`test_in_place`
+in `hk_dvm_tests_libcore.c`).
+
+Benchmark on x64 in ns a turn, before and after:
+- `String.charAt` with `length`: 24.2 to 13.5;
+- `String.equals` of 23 characters: 1045 to 15.2;
+- `String.hashCode`: 36.8 to 11.6;
+- `Math.min`, `max` and `abs`: 48.8 to 25.3;
+- `System.arraycopy`: 28.6 to 14.8;
+- `getClass` with a cast: 49.1 to 40.2;
+- `StringBuilder`: 873 to 811.
+
 ### Exceptions
 
 One exception can be pending on a thread, for bytecode and native code alike.

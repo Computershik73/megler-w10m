@@ -243,6 +243,151 @@ static bool invoke_native(hk_dvm_thread *t, hk_dvm_method *m, hk_jobj *self, con
     return t->pending == NULL;
 }
 
+/* ---------------------------------------------------------------- intrinsics */
+
+/*
+ * Methods of libcore's that Android's own runtime does without calling them (its intrinsics), done here the same way:
+ * an invoke whose target is one of them does its work in place, with no frame and no native call, when the arguments
+ * are ordinary. When they are not -- an index out of range, a null, arrays of two kinds -- the intrinsic declines and the
+ * method is called as it always was, so every exception is the method's own, from its own frame. Marked on libcore
+ * only (hk_dvm_intrinsics_start), where the classes are Android's.
+ *
+ * They are the ones the benchmark and the phone's profiles showed calls of, a native call each or a Java loop around
+ * one: String.charAt (a native call), length and isEmpty (a field the runtime owns, read by a call), equals (a loop of
+ * charAt calls), hashCode (the same, once); System.arraycopy; Math.min, max and abs of int and long, and sqrt;
+ * Object.getClass; Thread.currentThread.
+ */
+enum {
+    INTR_NONE, INTR_STRING_CHARAT, INTR_STRING_LENGTH, INTR_STRING_ISEMPTY, INTR_STRING_EQUALS, INTR_STRING_HASHCODE, INTR_ARRAYCOPY,
+    INTR_MIN_I, INTR_MAX_I, INTR_ABS_I, INTR_MIN_J, INTR_MAX_J, INTR_ABS_J, INTR_SQRT, INTR_GETCLASS, INTR_CURRENT_THREAD,
+};
+
+/* String's hash field, the slot String.hashCode keeps its result in. */
+static u32 g_string_hash_slot = ~0u;
+
+static void mark_intrinsic(const char *cls, const char *name, const char *sig, bool is_static, u8 id)
+{
+    hk_dvm_class *c = hk_dvm_find_class(cls);
+    hk_dvm_method *m = c ? hk_dvm_find_method(c, name, sig, is_static) : NULL;
+    if (!c) hk_dvm_clear_pending();
+    if (m) m->intrinsic = id;
+    else hk_warn("dvm: %s.%s%s is not there to be done in place", cls, name, sig);
+}
+
+void hk_dvm_intrinsics_start(void)
+{
+    hk_dvm_class *s = g_dvm.c_string;
+    hk_dvm_field *hash = s ? hk_dvm_find_field_typed(s, "hash", "I", false) : NULL;
+    if (hash && hash->slot < s->nslots) g_string_hash_slot = hash->slot;
+    mark_intrinsic("java/lang/String", "charAt", "(I)C", false, INTR_STRING_CHARAT);
+    mark_intrinsic("java/lang/String", "length", "()I", false, INTR_STRING_LENGTH);
+    mark_intrinsic("java/lang/String", "isEmpty", "()Z", false, INTR_STRING_ISEMPTY);
+    mark_intrinsic("java/lang/String", "equals", "(Ljava/lang/Object;)Z", false, INTR_STRING_EQUALS);
+    if (g_string_hash_slot != ~0u) mark_intrinsic("java/lang/String", "hashCode", "()I", false, INTR_STRING_HASHCODE);
+    mark_intrinsic("java/lang/System", "arraycopy", "(Ljava/lang/Object;ILjava/lang/Object;II)V", true, INTR_ARRAYCOPY);
+    mark_intrinsic("java/lang/Math", "min", "(II)I", true, INTR_MIN_I);
+    mark_intrinsic("java/lang/Math", "max", "(II)I", true, INTR_MAX_I);
+    mark_intrinsic("java/lang/Math", "abs", "(I)I", true, INTR_ABS_I);
+    mark_intrinsic("java/lang/Math", "min", "(JJ)J", true, INTR_MIN_J);
+    mark_intrinsic("java/lang/Math", "max", "(JJ)J", true, INTR_MAX_J);
+    mark_intrinsic("java/lang/Math", "abs", "(J)J", true, INTR_ABS_J);
+    mark_intrinsic("java/lang/Math", "sqrt", "(D)D", true, INTR_SQRT);
+    mark_intrinsic("java/lang/Object", "getClass", "()Ljava/lang/Class;", false, INTR_GETCLASS);
+    mark_intrinsic("java/lang/Thread", "currentThread", "()Ljava/lang/Thread;", true, INTR_CURRENT_THREAD);
+}
+
+/* System.arraycopy's work when nothing about it can throw: false to have the method called instead. */
+static bool arraycopy_in_place(hk_jobj *src, i32 sp, hk_jobj *dst, i32 dp, i32 n)
+{
+    u32 len_s, len_d, esz;
+    if (!src || !dst || sp < 0 || dp < 0 || n < 0 || src->kind != dst->kind) return false;
+    if (src->kind == HK_J_PRIM_ARRAY) {
+        if (src->u.arr.esz != dst->u.arr.esz || src->u.arr.etype != dst->u.arr.etype) return false;
+        esz = src->u.arr.esz;
+        len_s = src->u.arr.len;
+        len_d = dst->u.arr.len;
+        if ((u32)sp > len_s || (u32)n > len_s - (u32)sp || (u32)dp > len_d || (u32)n > len_d - (u32)dp) return false;
+        if (n) memmove((u8 *)dst->u.arr.data + (size_t)dp * esz, (const u8 *)src->u.arr.data + (size_t)sp * esz, (size_t)n * esz);
+        return true;
+    }
+    if (src->kind != HK_J_OBJ_ARRAY) return false;
+    /* References: only where every element of the one is sure to fit the other (no element is looked at). */
+    if (hk_dvm_class_of(src) != hk_dvm_class_of(dst)) {
+        hk_dvm_class *from = hk_dvm_class_of(src)->component, *to = hk_dvm_class_of(dst)->component;
+        if (!from || !to || (to != g_dvm.c_object && !hk_dvm_assignable(from, to))) return false;
+    }
+    len_s = src->u.oarr.len;
+    len_d = dst->u.oarr.len;
+    if ((u32)sp > len_s || (u32)n > len_s - (u32)sp || (u32)dp > len_d || (u32)n > len_d - (u32)dp) return false;
+    if (n) memmove(dst->u.oarr.v + dp, src->u.oarr.v + sp, (size_t)n * sizeof(hk_jobj *));
+    return true;
+}
+
+/* An intrinsic's work on the invoke's arguments as the registers hold them: false to call the method instead. */
+static bool intrinsic(hk_dvm_thread *t, u8 id, const hk_dvm_reg *a, hk_jvalue *r)
+{
+    hk_jobj *s = (hk_jobj *)a[0];
+    r->j = 0;
+    switch (id) {
+    case INTR_STRING_CHARAT:
+        if ((u32)a[1] >= (u32)s->u.str.len16) return false;
+        r->i = s->u.str.u16[(u32)a[1]];
+        return true;
+    case INTR_STRING_LENGTH: r->i = s->u.str.len16; return true;
+    case INTR_STRING_ISEMPTY: r->i = s->u.str.len16 == 0; return true;
+    case INTR_STRING_EQUALS: {
+        hk_jobj *o = (hk_jobj *)a[1];
+        if (o == s) r->i = 1;
+        else if (!o || hk_dvm_class_of(o) != hk_dvm_class_of(s)) r->i = 0;
+        else r->i = o->u.str.len16 == s->u.str.len16 && !memcmp(o->u.str.u16, s->u.str.u16, (size_t)s->u.str.len16 * 2);
+        return true;
+    }
+    case INTR_STRING_HASHCODE: {
+        hk_jvalue *slot = &hk_dvm_slots(s)[g_string_hash_slot];
+        i32 h = slot->i, i;
+        if (h == 0 && s->u.str.len16 > 0) {
+            u32 x = 0;
+            for (i = 0; i < s->u.str.len16; i++) x = x * 31u + s->u.str.u16[i];
+            h = (i32)x;
+            slot->i = h;
+        }
+        r->i = h;
+        return true;
+    }
+    case INTR_ARRAYCOPY: return arraycopy_in_place(s, (i32)(u32)a[1], (hk_jobj *)a[2], (i32)(u32)a[3], (i32)(u32)a[4]);
+    case INTR_MIN_I: r->i = (i32)(u32)a[0] < (i32)(u32)a[1] ? (i32)(u32)a[0] : (i32)(u32)a[1]; return true;
+    case INTR_MAX_I: r->i = (i32)(u32)a[0] > (i32)(u32)a[1] ? (i32)(u32)a[0] : (i32)(u32)a[1]; return true;
+    case INTR_ABS_I: r->i = (i32)(u32)a[0] < 0 ? (i32)(0u - (u32)a[0]) : (i32)(u32)a[0]; return true;
+    case INTR_MIN_J: {
+        i64 x = hk_dvm_get_wide(a, 0), y = hk_dvm_get_wide(a, 2);
+        r->j = x < y ? x : y;
+        return true;
+    }
+    case INTR_MAX_J: {
+        i64 x = hk_dvm_get_wide(a, 0), y = hk_dvm_get_wide(a, 2);
+        r->j = x > y ? x : y;
+        return true;
+    }
+    case INTR_ABS_J: {
+        i64 x = hk_dvm_get_wide(a, 0);
+        r->j = x < 0 ? (i64)(0 - (u64)x) : x;
+        return true;
+    }
+    case INTR_SQRT: r->j = (i64)hk_db(sqrt(hk_d((u64)hk_dvm_get_wide(a, 0)))); return true;
+    case INTR_GETCLASS: {
+        hk_jobj *mirror = hk_dvm_class_of(s)->mirror;
+        if (!mirror) return false;
+        r->l = mirror;
+        return true;
+    }
+    case INTR_CURRENT_THREAD:
+        if (!t->peer) return false;
+        r->l = t->peer;
+        return true;
+    default: return false;
+    }
+}
+
 /* ---------------------------------------------------------------- exceptions */
 
 /* The handler in method `m` for exception `e` thrown at `pc`, if it has one. */
@@ -1020,6 +1165,8 @@ static bool interpret(hk_dvm_thread *t, hk_dvm_frame *f, hk_jvalue *ret)
             }
             break;
         }
+        /* One the interpreter does itself, when its arguments allow (not while every instruction is watched: the trace, the profile). */
+        if (target->intrinsic && !g_dvm.slow && intrinsic(t, target->intrinsic, inv_argv, &result)) NEXT(3);
         if (!target->insns) {
             if (!(target->flags & DVM_ACC_NATIVE)) {
                 hk_dvm_throw("java/lang/AbstractMethodError", "%s.%s%s", target->cls->name, target->name, target->sig);

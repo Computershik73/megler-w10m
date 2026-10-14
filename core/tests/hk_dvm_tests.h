@@ -82,7 +82,10 @@ void test_d8(const char *fixtures);
  * milliseconds; its table through say(). Printed, not checked.
  */
 #define hk_dvm_bench_run hk_dvmt_bench_run
+#define hk_dvm_bench_add hk_dvmt_bench_add
 void hk_dvm_bench_run(const char *fixtures, int ms);
+/* bench.dex added to the class path, once; false when it is not there. */
+bool hk_dvm_bench_add(const char *fixtures);
 /* hk_dvm_tests_libcore.c: what only a run on Android's libcore is asked. */
 struct hk_dvm_stats;
 void test_libcore(const hk_dvm_test_config *config, u64 started_ns, const struct hk_dvm_stats *at_start);

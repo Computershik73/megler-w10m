@@ -22,7 +22,7 @@ SRC="$ROOT/core/tests/dvm/bench"
 OUT="$ROOT/build/dvm/bench"
 rm -rf "$OUT"
 mkdir -p "$OUT/classes" "$OUT/dex"
-"$JDK/bin/javac" -nowarn -source 8 -target 8 -encoding UTF-8 -bootclasspath "$(w "$LIB")" -d "$(w "$OUT/classes")" "$(w "$SRC/src/bench/Bench.java")"
+"$JDK/bin/javac" -nowarn -source 8 -target 8 -encoding UTF-8 -bootclasspath "$(w "$LIB")" -d "$(w "$OUT/classes")" $(for f in "$SRC"/src/bench/*.java; do printf "%s " "$(w "$f")"; done)
 CLASSES=()
 for c in "$OUT"/classes/bench/*.class; do CLASSES+=("$(w "$c")"); done
 "$JDK/bin/java" -cp "$(w "$D8")" com.android.tools.r8.D8 --release --min-api 26 --lib "$(w "$LIB")" --output "$(w "$OUT/dex")" "${CLASSES[@]}"

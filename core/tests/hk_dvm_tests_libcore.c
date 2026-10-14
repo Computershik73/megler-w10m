@@ -195,6 +195,34 @@ static void test_in_memory_dex(const char *fixtures)
     CHECK_INT(call("t/FromMemory", "answer", "()I").i, 42);
 }
 
+/*
+ * What the interpreter does in place of a call (its intrinsics, the trivial methods) is what the call does, at the edges
+ * too: bench.Edges.run() reports each case, first as the interpreter runs it and then with every instruction watched (a
+ * step limit no run reaches), when nothing is done in place. The two reports must be the same text, and the JVM's
+ * answers where they do not depend on the runtime's messages. The first run is the one that meets Late uninitialised.
+ */
+static void test_in_place(const char *fixtures)
+{
+    char fast[2048], watched[2048];
+    say("what is done in place of a call: intrinsics and trivial methods, at their edges");
+    CHECK(hk_dvm_bench_add(fixtures));
+    hk_strlcpy(fast, text_of(call("bench/Edges", "run", "()Ljava/lang/String;").l), sizeof(fast));
+    CHECK_STR(thrown(), "");
+    hk_dvm_set_step_limit(1000000000000ull);
+    hk_strlcpy(watched, text_of(call("bench/Edges", "run", "()Ljava/lang/String;").l), sizeof(watched));
+    hk_dvm_set_step_limit(0);
+    CHECK_STR(thrown(), "");
+    CHECK_STR(fast, watched);
+    CHECK(strstr(fast, "charAt ac StringIndexOutOfBoundsException: ") != NULL);
+    CHECK(strstr(fast, "length 3 0 truefalse\n") != NULL);
+    CHECK(strstr(fast, "equals truetruefalsefalsefalsefalsetrue\n") != NULL);
+    CHECK(strstr(fast, "hashCode 0 96354 96354 73471\n") != NULL);
+    CHECK(strstr(fast, "arraycopy 11234 y ArrayStoreException: ") != NULL);
+    CHECK(strstr(fast, "math -5 3 -2147483648 9 -9223372036854775808 1099511627776 -9223372036854775808 1.4142135623730951 NaN\n") != NULL);
+    CHECK(strstr(fast, "getClass java.lang.String Box true\n") != NULL);
+    CHECK(strstr(fast, "trivial -12 r -2 233 34359738368 false 7 -3 41 1 41 0 NullPointerException: ") != NULL);
+}
+
 void test_libcore(const hk_dvm_test_config *config, u64 started_ns, const hk_dvm_stats *at_start)
 {
     const char *fixtures = config->fixtures, *scratch = config->scratch;
@@ -326,6 +354,7 @@ void test_libcore(const hk_dvm_test_config *config, u64 started_ns, const hk_dvm
     if (natives) test_timezone();
     /* (InMemoryDexClassLoader goes through java.io, whose native half is libcore's.) */
     if (natives) test_in_memory_dex(fixtures);
+    test_in_place(fixtures);
     /* The interpreter's speed on this machine, said and not checked: so the phone's Self-test brings the phone's own numbers. */
     say("the interpreter's benchmark (printed, not checked)");
     /* With the collector as an app has it (the tests' own is poisoned and runs every megabyte), and as the tests have it after. */

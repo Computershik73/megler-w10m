@@ -245,6 +245,7 @@ bool hk_dvm_start(const char *const *boot, int nboot)
         return false;
     }
     hk_dvm_objects_start();
+    if (g_dvm.libcore) hk_dvm_intrinsics_start();
     /* From here on allocation collects when enough has been made (hk_dvm_gc.c). */
     hk_dvm_gc_enable(true);
     return true;
