@@ -149,6 +149,8 @@ static HK_THREAD_LOCAL u64 t_host_ns;
 static struct {
     void (*fn)(void *user, const void *pixels, int width, int height, int stride);
     void *user;
+    bool (*canvas_fn)(void *user, void *canvas, int width, int height);
+    void *canvas_user;
 } g_present;
 /* The bitmaps' counts, each bitmap's list of canvases and their two flags, and the typefaces made. */
 static hk_lock g_lock = HK_LOCK_INIT;
@@ -2477,6 +2479,20 @@ N(G_present)
         g_present.fn(g_present.user, NULL, 0, 0, 0);
         return;
     }
+    /*
+     * Shown from the shell's own picture of the bitmap where it can (megler_gfx_host.present): when one canvas draws the bitmap
+     * and nothing was written into the memory behind it. The canvas is then not flushed, and stays dirty: whatever reads
+     * the memory later flushes it first (bm_settle), as it always has.
+     */
+    if (g_present.canvas_fn) {
+        gcanvas *only;
+        bool shown = false;
+        hk_lock_acquire(&g_lock);
+        only = b->canvases;
+        if (only && !only->next && only->host && !only->stale && !b->rgba_locks) shown = g_present.canvas_fn(g_present.canvas_user, only->host, b->w, b->h);
+        hk_lock_release(&g_lock);
+        if (shown) return;
+    }
     bm_settle(b);
     g_present.fn(g_present.user, b->px, b->w, b->h, b->stride);
 }
@@ -2556,6 +2572,12 @@ void hk_java_gfx_set_present(void (*fn)(void *user, const void *pixels, int widt
 {
     g_present.fn = fn;
     g_present.user = user;
+}
+
+void hk_java_gfx_set_present_canvas(bool (*fn)(void *user, void *canvas, int width, int height), void *user)
+{
+    g_present.canvas_fn = fn;
+    g_present.canvas_user = user;
 }
 
 void hk_java_gfx_stats(uint64_t *bitmap_bytes, uint32_t *bitmaps)

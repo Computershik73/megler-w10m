@@ -13,8 +13,14 @@
 extern "C" {
 #endif
 
-/* The host, every function of it filled in; `user` is not used. */
+/* The host, every function of it filled in but `present`; `user` is not used. */
 const megler_gfx_host *hk_gfx_standin(void);
+
+/*
+ * The memory a canvas of the stand-in's draws into, which always holds its picture: for a test that shows a canvas's
+ * picture as a shell with megler_gfx_host.present would, from the canvas and not from a flushed bitmap.
+ */
+bool hk_gfx_standin_pixels(void *canvas, const void **pixels, int *width, int *height, int *stride);
 
 /*
  * A bitmap of the layer's (B, G, R, A premultiplied, top row first) as a

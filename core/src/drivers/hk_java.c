@@ -603,6 +603,30 @@ static void present(void *user, const void *pixels, int width, int height, int s
     t_present_ns += hk_time_monotonic_ns() - started;
 }
 
+/*
+ * Gfx.present, the window's views, shown by the shell from its own picture of the canvas that draws them, without the memory
+ * (megler_gfx_host.present): what hk_java_gfx.c tries before it brings the memory up to date. Not while OpenGL frames are
+ * composed under the views, which needs the views' memory; and false when the shell cannot, the memory's way then following.
+ */
+static bool present_canvas(void *user, void *canvas, int width, int height)
+{
+    u64 started;
+    bool shown;
+    (void)user;
+    if (!J.config->gfx.present || hk_java_gl_composing()) return false;
+    started = hk_time_monotonic_ns();
+    if (t_part[2] > t_part[0] && t_part[3] > t_part[1])
+        shown = J.config->gfx.present(J.config->gfx.user, canvas, t_part[0], t_part[1], t_part[2] - t_part[0], t_part[3] - t_part[1]);
+    else
+        shown = J.config->gfx.present(J.config->gfx.user, canvas, 0, 0, width, height);
+    if (!shown) return false;
+    t_part[0] = t_part[1] = t_part[2] = t_part[3] = 0;
+    hk_run_count_frame();
+    hk_atomic_add(&J.stats.frames, 1);
+    t_present_ns += hk_time_monotonic_ns() - started;
+    return true;
+}
+
 void hk_java_get_stats(hk_java_stats *out) { *out = J.stats; }
 
 static bool g_check_partial;
@@ -1002,6 +1026,7 @@ static void main_thread(void *arg)
         hk_dvm_register(hk_java_sqlite_natives());
         hk_java_gfx_set_host(&J.config->gfx);
         hk_java_gfx_set_present(present, NULL);
+        hk_java_gfx_set_present_canvas(present_canvas, NULL);
         /* What C keeps of the app's objects across calls: the collector keeps it too. */
         hk_dvm_add_root(&J.clipboard);
         hk_dvm_register(hk_java_gfx_natives());

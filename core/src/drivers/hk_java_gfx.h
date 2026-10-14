@@ -20,6 +20,12 @@ const hk_jhle *hk_java_gfx_natives(void);
 void hk_java_gfx_set_host(const megler_gfx_host *host);
 /* What Gfx.present(bm) hands on: the bitmap's memory, with everything drawn into it there, or NULL pixels when bm is 0. */
 void hk_java_gfx_set_present(void (*fn)(void *user, const void *pixels, int width, int height, int stride), void *user);
+/*
+ * What Gfx.present(bm) tries first, when it is set: the shell's canvas that alone draws the bitmap, unflushed, to be shown
+ * from the shell's own picture (megler_gfx_host.present). True: shown, and the memory is left as it is. False: the memory is
+ * brought up to date and handed to the function above, as without this. Called under the bitmaps' lock.
+ */
+void hk_java_gfx_set_present_canvas(bool (*fn)(void *user, void *canvas, int width, int height), void *user);
 /* Bytes of bitmap memory now allocated and bitmaps alive, for the memory report. */
 void hk_java_gfx_stats(uint64_t *bitmap_bytes, uint32_t *bitmaps);
 /* Nanoseconds the calling thread has spent in the shell's drawing (the megler_gfx_host's calls), summed: the frame meter's. */

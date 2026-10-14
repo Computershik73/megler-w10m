@@ -861,6 +861,15 @@ void hk_java_gl_reset(void)
     hk_java_gles_forget();
 }
 
+bool hk_java_gl_composing(void)
+{
+    bool used;
+    hk_lock_acquire(&g_window_lock);
+    used = C.used;
+    hk_lock_release(&g_window_lock);
+    return used;
+}
+
 bool hk_java_gl_views(const void *pixels, int width, int height, int stride, const i32 part[4])
 {
     i32 x0 = 0, y0 = 0, x1 = width, y1 = height, r, sx0, sy0, sx1, sy1;

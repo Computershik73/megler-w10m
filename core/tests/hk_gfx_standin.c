@@ -1225,6 +1225,17 @@ bool hk_gfx_write_bmp(const char *host_path, const void *pixels, int width, int 
     return ok;
 }
 
+bool hk_gfx_standin_pixels(void *canvas, const void **pixels, int *width, int *height, int *stride)
+{
+    scanvas *v = (scanvas *)canvas;
+    if (!v) return false;
+    *pixels = v->px;
+    *width = v->w;
+    *height = v->h;
+    *stride = v->stride;
+    return true;
+}
+
 /* ---------------------------------------------------------------- the host */
 
 const megler_gfx_host *hk_gfx_standin(void)

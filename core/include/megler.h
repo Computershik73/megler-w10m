@@ -148,7 +148,11 @@ bool megler_apk_icon(const char *apk_path, uint8_t **data, size_t *size);
  *                    `pixels` NULL would mean the app has nothing
  *                    to show any more; the layer does not pass that on today,
  *                    and a shell that is handed it leaves the last picture.
- *                    May be NULL: such an app then runs unseen.
+ *                    May be NULL: such an app then runs unseen. A picture the
+ *                    shell's drawing shows itself (megler_gfx_host.present)
+ *                    does not come here; pictures that do come after such
+ *                    ones are whole and right as ever, the part given as what
+ *                    changed since the last picture shown either way.
  *   present_pixels_part  the same picture, whole as present_pixels hands it,
  *                    of which only the rectangle [x, x + part_width) x [y, y +
  *                    part_height) differs from the picture handed before: the
@@ -420,6 +424,26 @@ typedef struct megler_storage_host {
  *                 Android, where a layer is a picture of its own until its
  *                 restore; the layers stay open and what is drawn next still
  *                 goes into them.
+ *   present       optional: the window's picture, as this canvas has drawn
+ *                 it, shown on the screen from the shell's own surface and
+ *                 not through the memory: in place of flushing the window's
+ *                 bitmap and handing its memory to present_pixels(_part)
+ *                 (megler_window_host). For a shell that draws elsewhere than
+ *                 in the memory, which would otherwise read its picture back
+ *                 at every frame. [x, x + width) x [y, y + height) is what
+ *                 changed since the picture shown before; the whole bitmap
+ *                 for the first picture, or when all of it changed. True:
+ *                 shown. False: nothing was done, and the layer flushes and
+ *                 calls present_pixels as it would without this. The canvas
+ *                 is not flushed by it: the memory keeps what the last flush
+ *                 put there, and the layer flushes, as always, before
+ *                 anything reads the memory. The layer calls it for the
+ *                 window's bitmap only, when this canvas is that bitmap's
+ *                 only one, nothing has been written into the memory behind
+ *                 it, and no OpenGL ES frames are composed under the views
+ *                 (the layer then needs the memory itself); on the thread
+ *                 that draws the canvas, never on the UI thread, one call at
+ *                 a time with present_pixels. NULL: never; the layer flushes.
  *
  *   save          remembers the clip. restore brings back the clip of the
  *                 matching save. They nest; the layer never calls restore
@@ -863,6 +887,8 @@ typedef struct megler_gfx_host {
     bool (*image_decode)(void *user, const void *data, size_t size, void *pixels, int width, int height, int stride);
     bool (*image_encode)(void *user, const void *pixels, int width, int height, int stride, int format, int quality, megler_gfx_write write, void *sink);
     void (*bitmap_gone)(void *user, uint32_t id);
+
+    bool (*present)(void *user, void *canvas, int x, int y, int width, int height);
 } megler_gfx_host;
 
 /*

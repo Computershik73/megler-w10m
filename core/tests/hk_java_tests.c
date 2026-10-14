@@ -169,7 +169,9 @@ static struct {
     /* Pictures that came as a part (present_pixels_part), and pixels outside the part they said had changed that had changed. */
     i32 parts;
     long stale;
-} W = { HK_LOCK_INIT, NULL, 0, 0, 0, 0, NULL, 0, 0 };
+    /* Pictures shown from a canvas, unflushed (megler_gfx_host.present), as a shell that draws elsewhere than in memory shows them. */
+    volatile i32 from_canvas;
+} W = { HK_LOCK_INIT, NULL, 0, 0, 0, 0, NULL, 0, 0, 0 };
 
 static void present_pixels(void *user, const void *pixels, int width, int height, int stride)
 {
@@ -224,6 +226,22 @@ static void present_pixels_part(void *user, const void *pixels, int width, int h
     W.parts++;
     hk_lock_release(&W.lock);
     hk_atomic_add(&W.pictures, 1);
+}
+
+/*
+ * megler_gfx_host.present, as a shell that draws on a graphics processor has it: the window's picture shown from the canvas that
+ * drew it, which the layer has not flushed. The stand-in's canvas draws straight into the memory, which is its picture, so that
+ * is shown, the same way as a picture handed over by present_pixels(_part): the same checks hold for both.
+ */
+static bool present_canvas(void *user, void *canvas, int x, int y, int width, int height)
+{
+    const void *pixels;
+    int w, h, stride;
+    if (!hk_gfx_standin_pixels(canvas, &pixels, &w, &h, &stride)) return false;
+    if (x == 0 && y == 0 && width == w && height == h) present_pixels(user, pixels, w, h, stride);
+    else present_pixels_part(user, pixels, w, h, stride, x, y, width, height);
+    hk_atomic_add(&W.from_canvas, 1);
+    return true;
 }
 
 /* A pixel of the last picture as 0xRRGGBB (the picture is opaque). */
@@ -400,6 +418,7 @@ static bool start(const char *apk, const char *android_root)
     cfg.window.present_pixels = present_pixels;
     cfg.window.present_pixels_part = present_pixels_part;
     cfg.gfx = *hk_gfx_standin();
+    cfg.gfx.present = present_canvas;
     cfg.keyboard.show = keyboard_show;
     cfg.keyboard.hide = keyboard_hide;
     /* The framework says which window each touch went to when it finds this in the environment: asked for with verbose 2. */
@@ -1558,8 +1577,11 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
      * Pictures drawn in part: none may differ from the screen drawn whole (the window's dirty region missed nothing), and none
      * may have changed outside the part it said (the clip held).
      */
-    say("  %d pictures, %d of them presented as a part; %ld pixels changed outside the part said", (int)W.pictures, (int)W.parts, W.stale);
+    say("  %d pictures, %d of them presented as a part, %d shown from the window's canvas without a flush; %ld pixels changed outside the part said",
+        (int)W.pictures, (int)W.parts, (int)W.from_canvas, W.stale);
     CHECK(W.stale == 0);
+    /* An app that shows pictures and composes no OpenGL frames has them shown from its canvas (megler_gfx_host.present). */
+    if (W.pictures > 0 && count_lines("java: the app draws with EGL on a view") == 0) CHECK(W.from_canvas > 0);
     if (!g_any_app) CHECK(count_lines("a frame drawn in part missed") == 0);
     say("%d checks, %d failed", g_checks, g_failed);
     return g_failed;
