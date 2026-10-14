@@ -6,9 +6,10 @@
 # strongest random generator is "SHA1PRNG:AndroidOpenSSL". What it offers under the name is the little that can be had
 # without BoringSSL: random bytes from the system (SystemRandom.smali), and the six digests, which are BouncyCastle's own
 # classes written in Java. And an SSLContext of every name Android 9's has (TLS, Default, SSL, TLSv1 to TLSv1.2) whose
-# connections fail politely (NoTlsContext.smali): there is no TLS, and an app asking for it must get a failed connection,
-# not the AssertionError Android's HTTP client throws when it finds no SSLContext at all. Anything else asked of
-# "AndroidOpenSSL" is NoSuchAlgorithmException.
+# connections fail politely (NoTlsContext.smali), and a TrustManagerFactory "PKIX" that trusts nothing
+# (NoTlsTrustManagerFactory.smali): there is no TLS, and an app asking for it must get a failed connection, not the
+# AssertionError Android's HTTP client throws when it finds no SSLContext at all, nor the NoSuchAlgorithmException an app's
+# own client fails its start on. Anything else asked of "AndroidOpenSSL" is NoSuchAlgorithmException.
 .class public final Lmegler/security/RuntimeProvider;
 .super Ljava/security/Provider;
 
@@ -59,6 +60,12 @@
     invoke-virtual {p0, v0, v1}, Ljava/security/Provider;->put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
     const-string v0, "SSLContext.TLSv1.2"
     const-string v1, "megler.security.NoTlsContext"
+    invoke-virtual {p0, v0, v1}, Ljava/security/Provider;->put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+    const-string v0, "TrustManagerFactory.PKIX"
+    const-string v1, "megler.security.NoTlsTrustManagerFactory"
+    invoke-virtual {p0, v0, v1}, Ljava/security/Provider;->put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+    const-string v0, "Alg.Alias.TrustManagerFactory.X509"
+    const-string v1, "PKIX"
     invoke-virtual {p0, v0, v1}, Ljava/security/Provider;->put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
     return-void
 .end method

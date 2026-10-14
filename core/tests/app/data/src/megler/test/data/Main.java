@@ -515,8 +515,21 @@ public class Main extends Activity {
             } catch (java.io.IOException e) {
                 https = "IOException";
             }
-            detail = "there=" + there + " direct=" + direct + " https=" + https;
-            return there && "no TLS on this phone yet".equals(direct) && "IOException".equals(https);
+            /* The platform's trust managers, which an HTTP client of an app's own asks for first: one, trusting nothing. */
+            javax.net.ssl.TrustManagerFactory trust = javax.net.ssl.TrustManagerFactory.getInstance(javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm());
+            trust.init((java.security.KeyStore) null);
+            javax.net.ssl.TrustManager[] managers = trust.getTrustManagers();
+            String trusts;
+            try {
+                ((javax.net.ssl.X509TrustManager) managers[0]).checkServerTrusted(new java.security.cert.X509Certificate[0], "RSA");
+                trusts = "trusted";
+            } catch (java.security.cert.CertificateException e) {
+                trusts = e.getMessage();
+            }
+            detail = "there=" + there + " direct=" + direct + " https=" + https + " trust=" + managers.length + " " + trusts;
+            return there && "no TLS on this phone yet".equals(direct) && "IOException".equals(https) && managers.length == 1
+                    && managers[0] instanceof javax.net.ssl.X509TrustManager && "no TLS on this phone yet".equals(trusts)
+                    && ((javax.net.ssl.X509TrustManager) managers[0]).getAcceptedIssuers().length == 0;
         });
     }
 

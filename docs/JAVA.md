@@ -1280,12 +1280,16 @@ Android's own HTTP client, behind `URL.openConnection` for an https URL,
 threw `AssertionError` ("the system has no TLS") and ended the thread that
 asked; Firebase's threads in MX Player and an ad SDK's in Super S22 Launcher
 died that way. Now the app sees a failed connection, as for a name that does
-not resolve. (An `SSLEngine` or a server socket factory is
-`UnsupportedOperationException`; `TrustManagerFactory` and `KeyManagerFactory`
-are not there, which an app with an HTTP client of its own may ask for
-first.) The data app's `tls` step asks for the contexts and the defaults, has
-the factory refuse a socket with that message, and opens an https URL whose
-connection must fail as an `IOException`. A cipher asked of "AndroidOpenSSL"
+not resolve. And a `TrustManagerFactory` "PKIX" (also "X509") whose one trust
+manager trusts no certificate (`NoTlsTrustManagerFactory.smali`): an app's
+own HTTP client asks for the platform's trust managers first, and Amazon's
+MAP library in MX Player failed its static initialiser on "PKIX
+TrustManagerFactory not available". (An `SSLEngine` or a server socket
+factory is `UnsupportedOperationException`; `KeyManagerFactory` is not
+there.) The data app's `tls` step asks for the contexts and the defaults, has
+the factory refuse a socket with that message, opens an https URL whose
+connection must fail as an `IOException`, and has the trust manager refuse a
+certificate. A cipher asked of "AndroidOpenSSL"
 by name is not there.
 
 **The built-in `java.lang` stays** as the first way to start
