@@ -380,7 +380,8 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
     null), so the licence was never accepted; the files were not the cause.
     It lasts: four minutes of redrawing twenty times a second were run. The
     line under each name that says a size and a date shows "..." on the
-    phone. Its Settings open; its switches are whole.
+    phone. Its Settings open and their switches are whole under qemu; on
+    the phone that has not been looked at since.
   - *Device Info 3.4.3.4* (Kotlin, AndroidX, Material, two native libraries;
     its target is Android 15): runs on the phone since 0.1.0.122, the build
     with the WebP decoder -- its dashboard with the memory chart, the
