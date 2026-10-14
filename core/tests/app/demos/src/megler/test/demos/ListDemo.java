@@ -12,6 +12,8 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.util.Log;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
@@ -27,6 +29,8 @@ public class ListDemo extends Activity implements AdapterView.OnItemClickListene
     private ListView list;
     private int step = -1;
     private boolean shown, chain = true;
+    /* Rows the adapter has been asked for (getView), from the start. */
+    private int bound;
 
     private static void say(String what) {
         Log.i("DemoTest", what);
@@ -36,7 +40,13 @@ public class ListDemo extends Activity implements AdapterView.OnItemClickListene
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         list = new ListView(this);
-        list.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, getResources().getStringArray(R.array.rows)));
+        list.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, getResources().getStringArray(R.array.rows)) {
+            @Override
+            public View getView(int position, View convert, ViewGroup parent) {
+                bound++;
+                return super.getView(position, convert, parent);
+            }
+        });
         list.setOnItemClickListener(this);
         setContentView(list);
         say("list: created with " + list.getAdapter().getCount() + " rows");
@@ -51,6 +61,16 @@ public class ListDemo extends Activity implements AdapterView.OnItemClickListene
         int[] at = new int[2];
         row.getLocationOnScreen(at);
         say("list: shown rows=" + list.getChildCount() + " row0=" + at[0] + "," + at[1] + "," + row.getWidth() + "x" + row.getHeight());
+        // A layout with the data unchanged puts the rows back as they are: the adapter is not asked for any of them again.
+        final int before = bound;
+        list.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+            @Override
+            public void onGlobalLayout() {
+                list.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                say("list: laid out again, rows bound again " + (bound - before) + " rows=" + list.getChildCount());
+            }
+        });
+        list.requestLayout();
     }
 
     @Override

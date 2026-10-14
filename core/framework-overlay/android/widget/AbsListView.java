@@ -15,7 +15,17 @@
 // as for an enabled row), not public, and AppCompat's DropDownListView -- every popup menu and spinner of an app built with
 // AppCompat -- takes it by reflection in its constructor and writes it when a row is pressed. Without it each such list
 // logged a NoSuchFieldException with its stack (Apktool M on the phone). Nothing here reads it: this list draws its
-// selector by the pressed row's own state. Everything else is the original's, unchanged.
+// selector by the pressed row's own state.
+//
+// And in the rows a layout puts back. ListView's and GridView's layoutChildren put every row on the screen into the scrap heap
+// and fill the list again through obtainView, which asks the adapter's getView for every position: every layout of the window
+// bound every row again. Android keeps the rows of a layout whose data has not changed as "active views" and puts each back at
+// its position without asking the adapter (RecycleBin.fillActiveViews, getActiveView). Here addScrapView keeps them so while
+// layoutChildren runs from onLayout and mDataChanged is not set, obtainView gives them back, and what the pass did not put back
+// goes to the scrap heap after it. The difference was felt: Apktool M's file list starts a task in getView that sets a row's
+// size text when it ends; the text asked for a layout, the layout bound every row again, every row started its task again --
+// a layout and a picture every frame, the main thread never idle and the heap growing by megabytes a second, on the phone
+// until it ran out of memory. Everything else is the original's, unchanged.
 package android.widget;
 
 import android.content.Context;
@@ -259,8 +269,23 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Fi
         mInLayout = true;
         final int childCount = getChildCount();
         if (changed) for (int i = 0; i < childCount; i++) getChildAt(i).forceLayout();
-        layoutChildren();
+        // megler-w10m: the rows on the screen are kept for the positions they show while the data is unchanged (see the top of the file)
+        mMeglerLayoutPass = true;
+        try { layoutChildren(); } finally { mMeglerLayoutPass = false; meglerScrapActiveViews(); }
         mInLayout = false;
+    }
+    /** megler-w10m: while layoutChildren runs from onLayout. */
+    private boolean mMeglerLayoutPass;
+    /** megler-w10m: Android's RecycleBin.mActiveViews: the rows layoutChildren took off the screen, by position, to be put back as they are. */
+    private final android.util.SparseArray<View> mMeglerActiveViews = new android.util.SparseArray<>();
+    /** A row taken off by layoutChildren that the same pass did not put back: to the scrap heap, and out of the window, as the leftover scrap is. */
+    private void meglerScrapActiveViews() {
+        for (int i = 0; i < mMeglerActiveViews.size(); i++) {
+            View v = mMeglerActiveViews.valueAt(i);
+            mRecycler.addScrapView(v, mMeglerActiveViews.keyAt(i));
+            if (v.getParent() == null && v.isAttachedToWindow()) v.meglerDetach();
+        }
+        mMeglerActiveViews.clear();
     }
     @Override public void requestLayout() { if (!mBlockLayoutRequests && !mInLayout) super.requestLayout(); }
     /** Lay the visible items out again from the data (subclasses). */
@@ -283,6 +308,11 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Fi
     /** Get (or make) the view for a position, from the recycler when one of its type is waiting. */
     View obtainView(int position, boolean[] outMetadata) {
         outMetadata[0] = false;
+        if (mMeglerLayoutPass && !mDataChanged) {
+            // megler-w10m: the row this position had before the layout, as it is: the adapter is not asked again (Android's getActiveView)
+            View active = mMeglerActiveViews.get(position);
+            if (active != null) { mMeglerActiveViews.remove(position); outMetadata[0] = true; return active; }
+        }
         final View scrapView = mRecycler.getScrapView(position);
         final View child = mAdapter.getView(position, scrapView, this);
         if (scrapView != null) { if (child != scrapView) mRecycler.addScrapView(scrapView, position); else outMetadata[0] = true; }
@@ -597,6 +627,8 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Fi
         void addScrapView(View scrap, int position) {
             final LayoutParams lp = (LayoutParams) scrap.getLayoutParams();
             if (lp == null || mScrapViews == null) return;
+            // megler-w10m: a row layoutChildren takes off while the data is unchanged is kept for its position (Android's fillActiveViews)
+            if (mMeglerLayoutPass && !mDataChanged && position >= 0 && lp.viewType != ITEM_VIEW_TYPE_HEADER_OR_FOOTER) { mMeglerActiveViews.put(position, scrap); return; }
             lp.scrappedFromPosition = position;
             final int viewType = lp.viewType;
             if (!shouldRecycleViewType(viewType)) { if (viewType != ITEM_VIEW_TYPE_HEADER_OR_FOOTER) { if (mSkippedScrap == null) mSkippedScrap = new ArrayList<>(); mSkippedScrap.add(scrap); } return; }

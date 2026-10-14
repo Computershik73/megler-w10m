@@ -93,7 +93,7 @@ bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-f
     4172 checks, 0 failed          on the built-in java.lang
     4227 checks, 0 failed          on libcore with its native libraries
       47 checks, 0 failed          the Java test app hello, through megler_run
-      75 checks, 0 failed          the Java test app demos, the keyboard's 25 and the frame meter's 3 among them
+      76 checks, 0 failed          the Java test app demos, the keyboard's 25 and the frame meter's 3 among them
       43 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
       13 checks, 0 failed          the Java test app crash: an exception nothing catches, launcher aliases, an app written for Android 6
       48 checks, 0 failed          the Java test app data: a database, the storage, the battery, the time zone, TLS, key pairs and codecs, the first run
@@ -2073,7 +2073,23 @@ the context that knows.
   another and come back. And one field, `mIsChildViewEnabled`: Android's own,
   not public, which AppCompat's `DropDownListView` (every popup menu and
   spinner of an AppCompat app) takes by reflection; without it each such list
-  logged a `NoSuchFieldException` with its stack.
+  logged a `NoSuchFieldException` with its stack. And the rows a layout puts
+  back: `ListView`'s and `GridView`'s `layoutChildren` scrapped every row and
+  filled the list again through the adapter's `getView`, so every layout of
+  the window bound every row again. Android keeps the rows of a layout whose
+  data has not changed as "active views" and puts each back at its position
+  without asking the adapter; here `addScrapView` keeps them so while
+  `layoutChildren` runs from `onLayout` and the data is unchanged, and
+  `obtainView` gives them back. The first numbers of the frame meter on the
+  phone found it: Apktool M laid out in every frame, 30 to 150 ms of measure
+  and layout, the main thread never idle and the heap growing by about 5 MB a
+  second until the process ran out of memory after three and a half minutes.
+  Its file list starts a task in `getView` that sets the row's size text when
+  it ends; the text asked for a layout, the layout bound every row again, and
+  every row started its task again. Under qemu, after its licence, the meter
+  said "measure and layout 15.3" per frame and "3 more" MB of objects every
+  five seconds before; 0.0 and 0 after. The demos app checks that a layout of
+  its list with the data unchanged asks the adapter for no row.
 - `android/os/Message.java`, seven methods that were signatures answering
   null or nothing: `obtain(Message)`, `copyFrom`, `getWhen`, `peekData`,
   `setCallback`, `setTarget`, `setWhat`. The first is the one that was felt.

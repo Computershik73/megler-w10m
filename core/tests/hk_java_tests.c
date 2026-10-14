@@ -835,6 +835,8 @@ static int run_demos(void)
     expect_line("I/DemoTest: list: created with 40 rows", &at, 120);
     shown = wait_line("I/DemoTest: list: shown rows=", 0, 60);
     CHECK(shown >= 0 && rect_in(line_at(shown), "row0", row));
+    /* A layout of the list whose data has not changed puts its rows back without asking the adapter for any of them again. */
+    CHECK(wait_line("I/DemoTest: list: laid out again, rows bound again 0 rows=", 0, 30) >= 0);
     settle();
     write_picture("demos-1-list");
     profile_end("start");
