@@ -17,9 +17,12 @@
 # They run in the PC's build of the tests (build/tests-win/hk_tests.exe), where
 # libcore's native libraries cannot be loaded; `arm` runs the first two under
 # qemu-arm in WSL, with those libraries. The folder libcore is started from is
-# build/android9/root (tools/dvm-android-root.sh).
+# build/android9/root (tools/dvm-android-root.sh). MEGLER_WSL_BUILD names the
+# WSL folder of that build, as for tools/build-tests.sh (~/megler-w10m-build).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+WB="${MEGLER_WSL_BUILD:-}"
+[ -n "$WB" ] || WB='~/megler-w10m-build'
 WHAT="${1:-}"
 shift || true
 w() { cygpath -w "$1"; }
@@ -33,7 +36,7 @@ pc() {
 arm() { # the mode
   local wroot="/mnt/${ROOT:1:1}${ROOT:2}"
   bash "$ROOT/tools/build-tests.sh" arm --no-run > /dev/null
-  MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "mkdir -p ~/megler-w10m-build/android-root && cp -ru '$wroot/build/android9/root/.' ~/megler-w10m-build/android-root/ && qemu-arm -L /usr/arm-linux-gnueabihf ~/megler-w10m-build/hk_tests $1 ~/megler-w10m-build/android-root 2>&1"
+  MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "mkdir -p $WB/android-root && cp -ru '$wroot/build/android9/root/.' $WB/android-root/ && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests $1 $WB/android-root 2>&1"
 }
 case "$WHAT" in
   natives|init)
