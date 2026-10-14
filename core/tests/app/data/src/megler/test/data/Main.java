@@ -289,6 +289,7 @@ public class Main extends Activity {
         tasks();
         wrapperReceiver();
         viewGroupFlag();
+        textDrawables();
         network();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
@@ -691,6 +692,31 @@ public class Main extends Activity {
             w.unregisterReceiver(r);
             detail = "registered and unregistered through the wrapper";
             return true;
+        });
+    }
+
+    /**
+     * An EditText's cursor and selection handles (API 29), which Chromium's omnibox tints: none of the four is null, each
+     * takes a tint, and what is set is what is given back.
+     */
+    private void textDrawables() {
+        step("text-drawables", () -> {
+            android.widget.EditText e = new android.widget.EditText(this);
+            java.lang.reflect.Method[] get = new java.lang.reflect.Method[4];
+            String[] names = { "getTextCursorDrawable", "getTextSelectHandle", "getTextSelectHandleLeft", "getTextSelectHandleRight" };
+            StringBuilder seen = new StringBuilder();
+            boolean held = true;
+            for (int i = 0; i < 4; i++) {
+                android.graphics.drawable.Drawable d = (android.graphics.drawable.Drawable) android.widget.TextView.class.getMethod(names[i]).invoke(e);
+                seen.append(names[i]).append('=').append(d == null ? "null" : d.getClass().getSimpleName()).append(' ');
+                if (d == null) held = false;
+                else d.mutate().setTint(0xFF00FF00);
+            }
+            android.graphics.drawable.ColorDrawable mine = new android.graphics.drawable.ColorDrawable(0xFF0000FF);
+            android.widget.TextView.class.getMethod("setTextSelectHandleLeft", android.graphics.drawable.Drawable.class).invoke(e, mine);
+            held &= android.widget.TextView.class.getMethod("getTextSelectHandleLeft").invoke(e) == mine;
+            detail = seen.toString();
+            return held;
         });
     }
 

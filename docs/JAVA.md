@@ -2918,7 +2918,7 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: thirty-eight files** in the overlay,
+**What differs from the original's framework: thirty-nine files** in the overlay,
 most of them a statement or a few methods each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and eight files of members added** to classes of the original's.
@@ -3346,7 +3346,20 @@ had only the top.
   `FrameLayout` whose override needs a field of its own: it is not called,
   and the group does not draw itself.
 
-The original has all twenty-six faults; they are its author's to take back.
+- `android/widget/TextView.java`, the cursor's and the selection handles'
+  drawables (API 29): `getTextCursorDrawable` gives what the style or
+  `setTextCursorDrawable` set, else a stand-in made once (2 dp wide, in the
+  text's colour); `getTextSelectHandle`, `Left` and `Right` give what was set,
+  else a stand-in 22 dp square; their setters keep what they are given. The
+  original's getters returned null, which Android's never do for an
+  `EditText` of a platform theme, and its setters dropped what they were
+  given or kept an `Integer` the getter cast to a `Drawable`. Chromium's
+  omnibox (Brave 1.97) tints all four with `mutate().setTint(...)` and the
+  browser's activity ended there. Nothing draws them here; the cursor is
+  drawn as before. The data app's step "text-drawables" asks an `EditText`
+  for all four, tints them, and sets one.
+
+The original has all twenty-seven faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in
