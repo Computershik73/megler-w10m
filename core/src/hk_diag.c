@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 
+#include "../tests/hk_net_tests.h"
 #include "../tests/hk_storage_tests.h"
 #include "../tests/hk_tests.h"
 #include "arm/hk_stubs.h"
@@ -80,6 +81,18 @@ int megler_storage_check(const megler_storage_host *storage, megler_line_fn out,
     snprintf(line, sizeof(line), "the phone's folders in an app's storage: %d to go through%s", count, skipped ? ", and some that are only to be read are left alone" : "");
     if (out) out(line, user);
     return hk_storage_check_run(names, count, out, user, checks);
+}
+
+/*
+ * megler_net_check: the steps are the tests' own (tests/hk_net_tests.c,
+ * hk_net_check_run), which the tests run without the internet. Here the
+ * internet is asked too: the name and the path Android's own connectivity
+ * check asks for, which answers 204 and nothing else.
+ */
+int megler_net_check(megler_line_fn out, void *user, int *checks, int *refused)
+{
+    if (out) out("the network as an app finds it", user);
+    return hk_net_check_run("connectivitycheck.gstatic.com", "/generate_204", out, user, checks, refused);
 }
 
 static megler_line_fn g_out;

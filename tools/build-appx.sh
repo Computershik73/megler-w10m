@@ -14,7 +14,11 @@
 #              leaves them in LocalState as shot-gfx-*.bmp; `storage` goes
 #              through the phone's folders in an app's storage as an app
 #              would (player/StorageHost.cpp, megler_storage_check), in a
-#              folder of its own that it removes again; `play` opens the
+#              folder of its own that it removes again; `net` goes through
+#              the network as an app would (megler_net_check): a public name,
+#              a connection to its port 80 and a HEAD request, the same
+#              against a server of its own on loopback, a UDP round trip on
+#              loopback, and the interfaces; `play` opens the
 #              library's game; `java` starts the packaged Java test app hello.apk, takes
 #              its picture every five seconds, taps its button and presses
 #              Back (it brings --java with it). Default: none -- the normal
@@ -91,6 +95,7 @@ AUTO_PLAY=0
 AUTO_JAVA=0
 AUTO_GFX=0
 AUTO_STORAGE=0
+AUTO_NET=0
 LIBCORE=0
 JAVA=0
 while [ $# -gt 0 ]; do
@@ -112,8 +117,9 @@ while [ $# -gt 0 ]; do
           java) AUTO_JAVA=1 ;;
           gfx) AUTO_GFX=1 ;;
           storage) AUTO_STORAGE=1 ;;
+          net) AUTO_NET=1 ;;
           none) ;;
-          *) echo "unknown --auto mode: $mode (probe, selftest, gfx, storage, play, java)" >&2; exit 2 ;;
+          *) echo "unknown --auto mode: $mode (probe, selftest, gfx, storage, net, play, java)" >&2; exit 2 ;;
         esac
       done ;;
     --libcore) LIBCORE=1 ;;
@@ -129,6 +135,7 @@ AUTO_MODES=""
 [ "$AUTO_SELFTEST" = 1 ] && AUTO_MODES="${AUTO_MODES:+$AUTO_MODES,}selftest"
 [ "$AUTO_GFX" = 1 ] && AUTO_MODES="${AUTO_MODES:+$AUTO_MODES,}gfx"
 [ "$AUTO_STORAGE" = 1 ] && AUTO_MODES="${AUTO_MODES:+$AUTO_MODES,}storage"
+[ "$AUTO_NET" = 1 ] && AUTO_MODES="${AUTO_MODES:+$AUTO_MODES,}net"
 [ "$AUTO_PLAY" = 1 ] && AUTO_MODES="${AUTO_MODES:+$AUTO_MODES,}play"
 [ "$AUTO_JAVA" = 1 ] && AUTO_MODES="${AUTO_MODES:+$AUTO_MODES,}java"
 # The self-test starts a small app of its own, and one app is all a start of Megler can run.
@@ -283,7 +290,7 @@ echo "=== shell (C++/WinRT, C++20) ==="
 # change of modes recompiles what includes it and nothing else.
 AUTO_CONFIG="$OBJ/auto-config"
 mkdir -p "$AUTO_CONFIG"
-AUTO_HEADER="$(printf '#define MEGLER_AUTO_PROBE %s\n#define MEGLER_AUTO_SELFTEST %s\n#define MEGLER_AUTO_PLAY %s\n#define MEGLER_AUTO_JAVA %s\n#define MEGLER_AUTO_GFX %s\n#define MEGLER_AUTO_STORAGE %s\n' "$AUTO_PROBE" "$AUTO_SELFTEST" "$AUTO_PLAY" "$AUTO_JAVA" "$AUTO_GFX" "$AUTO_STORAGE")"
+AUTO_HEADER="$(printf '#define MEGLER_AUTO_PROBE %s\n#define MEGLER_AUTO_SELFTEST %s\n#define MEGLER_AUTO_PLAY %s\n#define MEGLER_AUTO_JAVA %s\n#define MEGLER_AUTO_GFX %s\n#define MEGLER_AUTO_STORAGE %s\n#define MEGLER_AUTO_NET %s\n' "$AUTO_PROBE" "$AUTO_SELFTEST" "$AUTO_PLAY" "$AUTO_JAVA" "$AUTO_GFX" "$AUTO_STORAGE" "$AUTO_NET")"
 if [ "$(cat "$AUTO_CONFIG/AutoConfig.h" 2>/dev/null)" != "$AUTO_HEADER" ]; then
   echo "$AUTO_HEADER" > "$AUTO_CONFIG/AutoConfig.h"
   rm -f "$OBJ/shell/AutoRun.obj"
