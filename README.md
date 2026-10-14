@@ -120,6 +120,15 @@ logs from LocalState). Then, in the app:
    and a cross under each finger, and a tone for the first second and then while a finger is down. Back ends it.
 4. **Add APK**, then **Play**.
 
+Android's shared storage (`/sdcard`) is one folder for all apps, and the phone's
+music, pictures and videos are in it as `Music`, `Pictures` and `Movies` (the
+camera's as `DCIM`). **Settings › Android Storage** lists them and adds any
+other folder under a name of your choosing -- the phone's Documents or
+Downloads, a folder of a memory card -- and **Check the Folders** there tries
+in each what an app will do to files, in a folder of its own that it removes
+again; every step is in the Log. None of this has run on a phone yet
+([docs/STATUS.md](docs/STATUS.md)).
+
 One app runs per start of Megler: Android libraries cannot be unloaded, so the app has
 to be closed and opened again to play another.
 

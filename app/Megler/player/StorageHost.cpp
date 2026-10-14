@@ -409,8 +409,12 @@ void StorageHost::search() {
         shellLog::write(format("storage: the folders you added cannot be read back (0x%08X)", unsigned(e.code())));
     }
     std::lock_guard<std::mutex> lock(mutex_);
-    // (A folder added while the search ran is in found_ already.)
-    for (Root& root : roots) found_.push_back(std::move(root));
+    // (A folder added in Settings while the search ran is in found_ already, and may have been read back here as well.)
+    for (Root& root : roots) {
+        const bool twice = !root.link.token.empty() &&
+                           std::any_of(found_.begin(), found_.end(), [&root](const Root& other) { return other.link.token == root.link.token; });
+        if (!twice) found_.push_back(std::move(root));
+    }
 }
 
 std::vector<StorageHost::Link> StorageHost::links() {
