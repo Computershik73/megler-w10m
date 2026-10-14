@@ -630,6 +630,8 @@ static bool interpret(hk_dvm_thread *t, hk_dvm_frame *f, hk_jvalue *ret)
             f->pc = pc;
             if (!e) hk_dvm_throw("java/lang/NullPointerException", "throw with null exception");
             else t->pending = e;
+            /* With the trace on, every exception bytecode throws is a line, with where: one that is caught and dropped is otherwise never seen. */
+            if (e && g_dvm.trace >= 1) hk_info("dvm: throw %s in %s.%s", hk_dvm_class_of(e)->name, f->m->cls->name, f->m->name);
             goto exception;
         }
         case 0x28: JUMP((i8)(w >> 8));

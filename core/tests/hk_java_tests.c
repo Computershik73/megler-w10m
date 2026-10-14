@@ -409,7 +409,8 @@ static void profile_end(const char *step)
     if (!profiled(step)) return;
     hk_dvm_profile(false);
     say("  the profile of \"%s\":", step);
-    hk_dvm_profile_report(20, profile_line, NULL);
+    /* The twenty methods that cost most; HK_JAVA_PROFILE_TOP asks for more (every method that ran, with a large number). */
+    hk_dvm_profile_report(getenv("HK_JAVA_PROFILE_TOP") && atoi(getenv("HK_JAVA_PROFILE_TOP")) > 0 ? atoi(getenv("HK_JAVA_PROFILE_TOP")) : 20, profile_line, NULL);
 }
 
 /* ------------------------------------------------------------------ hello */
@@ -1130,6 +1131,8 @@ static int run_app(void)
         write_picture(name);
     }
     if (!running()) say("  the app ended with status %d%s%s", g_status, g_reason[0] ? ": " : "", g_reason);
+    /* With HK_JAVA_PROFILE=start: what ran from the app's start to the end of the script. */
+    profile_end("start");
     return g_failed;
 }
 
@@ -1137,6 +1140,8 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
 {
     g_verbose = verbose;
     g_profile_step = getenv("HK_JAVA_PROFILE");
+    /* HK_JAVA_TRACE=1: the runtime's trace, which names every class it links and every exception thrown, caught or not. */
+    if (getenv("HK_JAVA_TRACE") && atoi(getenv("HK_JAVA_TRACE")) > 0) hk_dvm_set_trace(atoi(getenv("HK_JAVA_TRACE")));
     profile_begin("start");
     W.dir = picture_dir;
     if (picture_dir) hk_path_mkdirs(picture_dir);

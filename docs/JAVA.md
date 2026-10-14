@@ -505,6 +505,17 @@ still and one more after each step of the script, and checks nothing. Verbose
 (`build/apps`, not in the repository) were run this way at 720 x 1280 and 280
 dpi; each starts in under half a minute.
 
+Two things for an app that does nothing where it should do something, which
+is what a swallowed exception or a call that never happens looks like.
+`HK_JAVA_TRACE=1` turns the runtime's trace on: every class as it is linked,
+every static initialiser, and a line for every exception thrown, by bytecode
+(`dvm: throw <class> in <class>.<method>`) or by the runtime, caught or not.
+`HK_JAVA_PROFILE=start` profiles the whole run of `--java app`, from the
+app's start to the end of the script, and `HK_JAVA_PROFILE_TOP=<n>` prints
+that many methods instead of twenty: with a large number it is the list of
+every method that ran and how often, in which a listener that should have
+run is there or is not.
+
 **QuickShortcutMaker 2.5.0** (no native code; ActionBarSherlock, Flurry).
 Starts to its tabbed main screen; the overflow menu, Settings (a
 `PreferenceActivity`, which scrolls) and About open; its database opens when
