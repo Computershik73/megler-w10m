@@ -98,6 +98,27 @@ static void run_expected(const char *fixtures, const char *expected_name, const 
     free(overrides);
 }
 
+/*
+ * Java 9's covariant returns of java.nio's buffers (t/Nio): ByteBuffer.position(I)Ljava/nio/ByteBuffer; and the rest, as
+ * code built against a later android.jar names them, resolved to Buffer's, which return the same buffer. A name that is
+ * not one of them is still not found.
+ */
+void test_libcore_nio(void)
+{
+    hk_jvalue r;
+    say("java.nio's covariant returns (ByteBuffer.position(I)Ljava/nio/ByteBuffer; and the rest) on Android 9's libcore");
+    memset(&r, 0, sizeof(r));
+    CHECK(hk_dvm_call_static("t/Nio", "chain", "()I", NULL, &r));
+    CHECK_INT(r.i, 6576);
+    CHECK_STR(thrown(), "");
+    memset(&r, 0, sizeof(r));
+    CHECK(hk_dvm_call_static("t/Nio", "chars", "()I", NULL, &r));
+    CHECK_INT(r.i, 6);
+    CHECK_STR(thrown(), "");
+    CHECK(!hk_dvm_call_static("t/Nio", "stranger", "()I", NULL, &r));
+    CHECK(strstr(thrown(), "NoSuchMethodError") != NULL);
+}
+
 void test_libcore_link_all(void)
 {
     u32 total = hk_dvm_defined_count(), i, linked = 0, failed = 0;

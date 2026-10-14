@@ -287,6 +287,13 @@ public class Main extends Activity {
         xml();
         assetFd();
         tasks();
+        wrapperReceiver();
+        viewGroupFlag();
+        textDrawables();
+        pfdDup();
+        themeSelfRef();
+        queueNext();
+        storageStats();
         network();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
@@ -833,6 +840,159 @@ public class Main extends Activity {
             int fd = pfd != null ? pfd.detachFd() : -1;
             detail = "pfd=" + (pfd != null) + " fd=" + fd + " at " + afd.getStartOffset() + " length " + afd.getLength() + " head " + java.util.Arrays.toString(head);
             return pfd != null && fd >= 0 && got == 4 && head[0] == 2 && head[1] == 0 && head[2] == 12 && head[3] == 0 && afd.getLength() > 12;
+        });
+    }
+
+    /**
+     * registerReceiver with a permission and a handler, or flags, through a ContextWrapper whose two-argument form throws,
+     * as Chromium's does: each form goes to the wrapped context, as on Android, not through the two-argument one.
+     */
+    private void wrapperReceiver() {
+        step("wrapper-receiver", () -> {
+            android.content.ContextWrapper w = new android.content.ContextWrapper(this) {
+                @Override public android.content.Intent registerReceiver(android.content.BroadcastReceiver r, android.content.IntentFilter f) {
+                    throw new RuntimeException("the two-argument form");
+                }
+            };
+            android.content.BroadcastReceiver r = new android.content.BroadcastReceiver() {
+                @Override public void onReceive(android.content.Context c, android.content.Intent i) { }
+            };
+            android.content.IntentFilter f = new android.content.IntentFilter("megler.test.WRAPPED");
+            w.registerReceiver(r, f, null, null);
+            w.registerReceiver(r, new android.content.IntentFilter("megler.test.WRAPPED2"), null, null, 0);
+            w.registerReceiver(r, new android.content.IntentFilter("megler.test.WRAPPED3"), 0);
+            w.unregisterReceiver(r);
+            detail = "registered and unregistered through the wrapper";
+            return true;
+        });
+    }
+
+    /**
+     * An EditText's cursor and selection handles (API 29), which Chromium's omnibox tints: none of the four is null, each
+     * takes a tint, and what is set is what is given back.
+     */
+    private void textDrawables() {
+        step("text-drawables", () -> {
+            android.widget.EditText e = new android.widget.EditText(this);
+            java.lang.reflect.Method[] get = new java.lang.reflect.Method[4];
+            String[] names = { "getTextCursorDrawable", "getTextSelectHandle", "getTextSelectHandleLeft", "getTextSelectHandleRight" };
+            StringBuilder seen = new StringBuilder();
+            boolean held = true;
+            for (int i = 0; i < 4; i++) {
+                android.graphics.drawable.Drawable d = (android.graphics.drawable.Drawable) android.widget.TextView.class.getMethod(names[i]).invoke(e);
+                seen.append(names[i]).append('=').append(d == null ? "null" : d.getClass().getSimpleName()).append(' ');
+                if (d == null) held = false;
+                else d.mutate().setTint(0xFF00FF00);
+            }
+            android.graphics.drawable.ColorDrawable mine = new android.graphics.drawable.ColorDrawable(0xFF0000FF);
+            android.widget.TextView.class.getMethod("setTextSelectHandleLeft", android.graphics.drawable.Drawable.class).invoke(e, mine);
+            held &= android.widget.TextView.class.getMethod("getTextSelectHandleLeft").invoke(e) == mine;
+            detail = seen.toString();
+            return held;
+        });
+    }
+
+    /**
+     * ParcelFileDescriptor's descriptors, as GeckoView hands its crash helper a socket pair's ends: dup makes a descriptor
+     * of its own, which outlives the original's close and writes where it did; detachFd gives the number away, so that
+     * closing the ParcelFileDescriptor leaves it; adoptFd takes it over, and closing that closes it.
+     */
+    private void pfdDup() {
+        step("pfd-dup", () -> {
+            java.io.FileDescriptor a = new java.io.FileDescriptor(), b = new java.io.FileDescriptor();
+            android.system.Os.socketpair(android.system.OsConstants.AF_UNIX, android.system.OsConstants.SOCK_SEQPACKET, 0, a, b);
+            android.os.ParcelFileDescriptor da = android.os.ParcelFileDescriptor.dup(a);
+            android.system.Os.close(a);
+            java.io.File file = new java.io.File(getCacheDir(), "pfd-dup.txt");
+            java.io.FileOutputStream out = new java.io.FileOutputStream(file);
+            android.os.ParcelFileDescriptor d = android.os.ParcelFileDescriptor.dup(out.getFD());
+            out.close();
+            new java.io.FileOutputStream(d.getFileDescriptor()).write("kept".getBytes("UTF-8"));
+            int n = d.detachFd();
+            d.close();
+            android.os.ParcelFileDescriptor adopted = android.os.ParcelFileDescriptor.adoptFd(n);
+            boolean open = adopted.getFileDescriptor().valid();
+            adopted.close();
+            int na = da.detachFd();
+            detail = "socket end " + na + ", file " + n + " (" + file.length() + " bytes), open before adoptFd's close " + open
+                + ", after " + adopted.getFileDescriptor().valid();
+            android.system.Os.close(b);
+            return na >= 0 && n >= 0 && file.length() == 4 && open && !adopted.getFileDescriptor().valid() && file.delete();
+        });
+    }
+
+    /**
+     * A theme with android.R.style.TextAppearance applied, as GeckoView asks the system's colours: TextAppearance's
+     * textColorHighlight names itself, which leaves it out rather than an attribute getColor cannot take; every colour that
+     * is there can be had.
+     */
+    private void themeSelfRef() {
+        step("theme-selfref", () -> {
+            android.view.ContextThemeWrapper w = new android.view.ContextThemeWrapper(getApplicationContext(), android.R.style.TextAppearance);
+            int[] attrs = { android.R.attr.textColorPrimary, android.R.attr.textColorHighlight, android.R.attr.colorForeground };
+            android.content.res.TypedArray a = w.getTheme().obtainStyledAttributes(attrs);
+            StringBuilder seen = new StringBuilder();
+            for (int i = 0; i < a.getIndexCount(); i++) {
+                int at = a.getIndex(i);
+                seen.append(at).append('=').append(Integer.toHexString(a.getColor(at, 0))).append(' ');
+            }
+            boolean highlight = a.hasValue(1);
+            a.recycle();
+            detail = seen + "highlight there=" + highlight;
+            return true;
+        });
+    }
+
+    /**
+     * MessageQueue.next(), hidden API, as Gecko takes the Java looper's messages on its own thread: a message sent on a
+     * looper thread of the step's own comes back from it.
+     */
+    private void queueNext() {
+        step("queue-next", () -> {
+            final Object[] got = new Object[1];
+            Thread t = new Thread(() -> {
+                android.os.Looper.prepare();
+                new android.os.Handler().sendEmptyMessage(42);
+                try {
+                    java.lang.reflect.Method next = android.os.MessageQueue.class.getDeclaredMethod("next");
+                    next.setAccessible(true);
+                    android.os.Message m = (android.os.Message) next.invoke(android.os.Looper.myQueue());
+                    got[0] = m == null ? null : m.what;
+                } catch (Throwable e) {
+                    got[0] = e;
+                }
+            }, "queue-next");
+            t.start();
+            t.join(5000);
+            detail = "next() gave " + got[0];
+            return Integer.valueOf(42).equals(got[0]);
+        });
+    }
+
+    /** The app's own storage statistics, as Firefox times them for its telemetry: there, not null. */
+    private void storageStats() {
+        step("storage-stats", () -> {
+            android.app.usage.StorageStatsManager m = (android.app.usage.StorageStatsManager) getSystemService(STORAGE_STATS_SERVICE);
+            android.app.usage.StorageStats s = m.queryStatsForUid(android.os.storage.StorageManager.UUID_DEFAULT, android.os.Process.myUid());
+            detail = "queryStatsForUid gave " + s;
+            return s != null && s.getAppBytes() >= 0 && s.getDataBytes() >= 0;
+        });
+    }
+
+    /** A FrameLayout whose setWillNotDraw needs what its own constructor makes, as Chromium's CompositorView does. */
+    private static final class WillNotDrawProbe extends android.widget.FrameLayout {
+        private final Object made = new Object();
+        int calls;
+        WillNotDrawProbe(android.content.Context c) { super(c); }
+        @Override public void setWillNotDraw(boolean w) { made.hashCode(); calls++; super.setWillNotDraw(w); }
+    }
+
+    /** A ViewGroup's constructor marks it as not drawing itself without calling setWillNotDraw, which a subclass may override. */
+    private void viewGroupFlag() {
+        step("viewgroup-flag", () -> {
+            WillNotDrawProbe p = new WillNotDrawProbe(this);
+            detail = "willNotDraw=" + p.willNotDraw() + " calls=" + p.calls;
+            return p.willNotDraw() && p.calls == 0;
         });
     }
 

@@ -16,7 +16,6 @@
 
 #include "../ld/hk_ld_internal.h"
 
-void hk_gthread_release_tid(i32 tid);
 
 #define G_EBUSY 16
 #define G_ETIMEDOUT 110
@@ -493,8 +492,6 @@ static void thread_main(void *p)
     thread_finish(t);
 }
 
-i32 hk_gthread_take_tid(void);
-
 static int g_create(hk_gthread **out, const g_attr *attr, hk_addr start, void *arg)
 {
     hk_gthread *t = (hk_gthread *)hk_alloc(sizeof(*t));
@@ -503,7 +500,7 @@ static int g_create(hk_gthread **out, const g_attr *attr, hk_addr start, void *a
     t->start = start;
     t->arg = arg;
     t->detached = attr && (attr->flags & 1) ? 1 : 0;
-    t->tid = hk_gthread_take_tid();
+    t->tid = hk_gthread_take_tid(t);
     /* Before the thread runs: pthread_create's caller may use the id at once, and so may the new thread. */
     *out = t;
     t->host = hk_thread_start(thread_main, t, stack, "guest");
@@ -671,6 +668,18 @@ static int g_sched_getaffinity(int pid, size_t n, u8 *mask)
     /* The raw system call returns the mask's size; the wrapper returns 0. */
     return 0;
 }
+/*
+ * pthread_getcpuclockid: the clock of the thread's processor time, numbered as bionic numbers it -- the tid negated in the
+ * high bits, CPUCLOCK_SCHED (2) and the per-thread bit (4) below -- which clock_gettime and clock_getres read back
+ * (hk_libc_time.c).
+ */
+static int g_pthread_getcpuclockid(hk_gthread *t, i32 *clock)
+{
+    if (!t) return G_ESRCH;
+    *clock = (i32)((~(u32)t->tid) << 3) | 2 | 4;
+    return 0;
+}
+
 /* CPU_COUNT: the bits set in a cpu_set_t of `size` bytes. */
 static int g_sched_cpucount(size_t size, const u8 *set)
 {
@@ -759,7 +768,7 @@ const hk_sym hk_tab_pthread[] = {
     HK_WRAP("gettid", g_gettid), HK_WRAP("__gettid", g_gettid),
     HK_WRAP("sched_yield", g_sched_yield), HK_WRAP("sched_get_priority_max", g_sched_get_priority),
     HK_WRAP("sched_get_priority_min", g_sched_get_priority), HK_WRAP("sched_getcpu", g_sched_getcpu),
-    HK_WRAP("sched_setaffinity", g_sched_setaffinity), HK_WRAP("sched_getaffinity", g_sched_getaffinity), HK_WRAP("__sched_cpucount", g_sched_cpucount),
+    HK_WRAP("pthread_getcpuclockid", g_pthread_getcpuclockid), HK_WRAP("sched_setaffinity", g_sched_setaffinity), HK_WRAP("sched_getaffinity", g_sched_getaffinity), HK_WRAP("__sched_cpucount", g_sched_cpucount),
     HK_WRAP("sched_setscheduler", g_sched_setscheduler), HK_WRAP("sched_getscheduler", g_sched_getscheduler),
     HK_WRAP("sched_getparam", g_sched_getparam), HK_WRAP("sched_setparam", g_sched_setscheduler),
     HK_END

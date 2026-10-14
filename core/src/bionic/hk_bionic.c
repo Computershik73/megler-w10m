@@ -85,9 +85,10 @@ int hk_errno_of(int host_err)
 
 static hk_lock g_thread_lock = HK_LOCK_INIT;
 static u8 g_tid_used[4096];             /* a bit per thread id; ids are reused, as the kernel's are */
+static hk_gthread *g_tid_thread[32761];  /* the live thread of each id in use */
 static i32 g_tid_next = 1;
 
-i32 hk_gthread_take_tid(void)
+i32 hk_gthread_take_tid(hk_gthread *thread)
 {
     i32 n;
     hk_lock_acquire(&g_thread_lock);
@@ -96,6 +97,7 @@ i32 hk_gthread_take_tid(void)
         g_tid_next = g_tid_next >= 32760 ? 1 : g_tid_next + 1;
         if (!(g_tid_used[t >> 3] & (1 << (t & 7)))) {
             g_tid_used[t >> 3] |= (u8)(1 << (t & 7));
+            g_tid_thread[t] = thread;
             hk_lock_release(&g_thread_lock);
             return t;
         }
@@ -108,7 +110,18 @@ void hk_gthread_release_tid(i32 tid)
 {
     hk_lock_acquire(&g_thread_lock);
     g_tid_used[tid >> 3] &= (u8)~(1 << (tid & 7));
+    g_tid_thread[tid] = NULL;
     hk_lock_release(&g_thread_lock);
+}
+
+hk_thread *hk_gthread_host_of_tid(i32 tid)
+{
+    /* (A host thread's record lives as long as the process; the guest thread's goes at its join, hence the lock.) */
+    hk_thread *h = NULL;
+    hk_lock_acquire(&g_thread_lock);
+    if (tid > 0 && tid < (i32)HK_COUNT(g_tid_thread) && g_tid_thread[tid]) h = g_tid_thread[tid]->sig_thread;
+    hk_lock_release(&g_thread_lock);
+    return h;
 }
 
 bool hk_app_threads_give_way(void)
@@ -125,7 +138,7 @@ hk_gthread *hk_gthread_self(void)
     if (t) return t;
     t = (hk_gthread *)hk_alloc(sizeof(*t));
     t->tp = tp;
-    t->tid = hk_gthread_take_tid();
+    t->tid = hk_gthread_take_tid(t);
     hk_thread_stack_bounds(&t->stack_lo, &t->stack_hi);
     t->sig_thread = hk_thread_current();
     /* bionic's slots: 1 is the thread, 2 its errno. */

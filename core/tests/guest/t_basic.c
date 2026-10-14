@@ -626,6 +626,249 @@ int t_shm(void)
 }
 
 /*
+ * ashmem as libcutils drives it (Chromium has a copy): /dev/ashmem opened, named and sized by ioctl, mapped; a region is
+ * ashmem's character device, with /dev/ashmem's device number, which is how that code knows one -- a region from
+ * ASharedMemory_create too; its protection mask through ioctl, narrowed and then binding mmap. And memfd's seals: one
+ * against writing takes PROT_WRITE away. 10, or the negated step that failed.
+ */
+int ioctl(int, unsigned, ...);
+int fcntl(int, int, ...);
+int fstat(int, void *);
+int stat(const char *, void *);
+
+int t_ashmem(void)
+{
+    unsigned st[32], dev_rdev;
+    int fd = open("/dev/ashmem", 2), shm, m;           /* O_RDWR */
+    unsigned char *p;
+    char name[256];
+    if (fd < 0) return -1;
+    if (ioctl(fd, 0x41007701, "t_ashmem") != 0 || ioctl(fd, 0x40047703, 4096) != 0 || ioctl(fd, 0x7704) != 4096) return -2;
+    if (ioctl(fd, 0x81007702, name) != 0 || strcmp(name, "t_ashmem") != 0) return -3;
+    if (stat("/dev/ashmem", st) != 0 || (st[4] & 0170000) != 0020000 || !st[8]) return -4;     /* S_IFCHR, st_rdev */
+    dev_rdev = st[8];
+    if (fstat(fd, st) != 0 || (st[4] & 0170000) != 0020000 || st[8] != dev_rdev) return -5;
+    p = mmap(0, 4096, 3, 1, fd, 0);
+    if (p == (unsigned char *)-1) return -6;
+    p[7] = 9;
+    munmap(p, 4096);
+    if (ioctl(fd, 0x7706) != 7 || ioctl(fd, 0x40047705, 1) != 0 || ioctl(fd, 0x7706) != 1 || ioctl(fd, 0x40047705, 3) == 0) return -7;
+    p = mmap(0, 4096, 1, 1, fd, 0);
+    if (p == (unsigned char *)-1 || p[7] != 9 || mmap(0, 4096, 3, 1, fd, 0) != (void *)-1) return -8;
+    munmap(p, 4096);
+    close(fd);
+    shm = ASharedMemory_create("t_ashmem2", 4096);
+    if (shm < 0 || fstat(shm, st) != 0 || st[8] != dev_rdev || ioctl(shm, 0x7704) != 4096) return -9;
+    close(shm);
+    m = memfd_create("t_seals", 2);                           /* MFD_ALLOW_SEALING */
+    if (m < 0 || ftruncate(m, 4096) != 0 || fcntl(m, 1034) != 0 || fcntl(m, 1033, 0x10) != 0 || fcntl(m, 1034) != 0x10 ||
+        mmap(0, 4096, 3, 1, m, 0) != (void *)-1)
+        return -10;
+    close(m);
+    return 10;
+}
+
+/*
+ * mremap, as an allocator grows and shrinks a block it mapped: grown with MREMAP_MAYMOVE, the bytes are there and the
+ * new pages zero; shrunk, it stays where it is; grown without leave to move, ENOMEM. 5, or the negated step that failed.
+ */
+void *mremap(void *, size_t, size_t, int, ...);
+
+int t_mremap(void)
+{
+    unsigned char *p = mmap(0, 8192, 3, 0x22, -1, 0), *q;
+    if (p == (unsigned char *)-1) return -1;
+    p[0] = 1;
+    p[8191] = 2;
+    q = mremap(p, 8192, 5 * 4096, 1);
+    if (q == (unsigned char *)-1 || q[0] != 1 || q[8191] != 2 || q[8192] != 0 || q[5 * 4096 - 1] != 0) return -2;
+    q[5 * 4096 - 1] = 3;
+    if (mremap(q, 5 * 4096, 4096, 0) != q || q[0] != 1) return -3;
+    if (mremap(q, 4096, 3 * 4096, 0) != (void *)-1 || *__errno() != 12) return -4;
+    if (munmap(q, 4096) != 0) return -5;
+    return 5;
+}
+
+/*
+ * Clocks of processor time, as Gecko's profiler and Chromium's tracing read them: pthread_getcpuclockid's clock for this
+ * thread, which advances while the thread computes; CLOCK_THREAD_CPUTIME_ID; the process's through clock_getcpuclockid;
+ * clock_getres for each; and the clock of a thread id nobody has, which is refused. 6, or the negated step that failed.
+ */
+pthread_t pthread_self(void);
+int pthread_getcpuclockid(pthread_t, int *);
+int clock_getres(int, struct t_timespec *);
+int clock_getcpuclockid(int, int *);
+
+int t_cpuclock(void)
+{
+    int c, p;
+    struct t_timespec a, b, r;
+    volatile unsigned x = 0;
+    long until;
+    unsigned i;
+    if (pthread_getcpuclockid(pthread_self(), &c) != 0 || c >= 0 || !(c & 4)) return -1;
+    if (clock_gettime(c, &a) != 0 || clock_getres(c, &r) != 0) return -2;
+    /* (Windows adds to a thread's time at its clock's ticks, some 15.6 ms apart.) */
+    for (until = now_ms() + 3000;;) {
+        for (i = 0; i < 200000; i++) x += i;
+        clock_gettime(c, &b);
+        if (b.tv_sec != a.tv_sec || b.tv_nsec != a.tv_nsec || now_ms() > until) break;
+    }
+    if (b.tv_sec * 1000000000LL + b.tv_nsec <= a.tv_sec * 1000000000LL + a.tv_nsec) return -3;
+    if (clock_gettime(3, &r) != 0 || r.tv_sec * 1000000000LL + r.tv_nsec < b.tv_sec * 1000000000LL + b.tv_nsec) return -4;
+    if (clock_getcpuclockid(0, &p) != 0 || p >= 0 || (p & 4) || clock_gettime(p, &r) != 0 || clock_getres(p, &r) != 0) return -5;
+    if (clock_gettime((int)((~32000u) << 3) | 6, &r) != -1) return -6;
+    return 6;
+}
+
+/*
+ * What Firefox's libraries import of libc that was not there: sigaction by its old system call, as mozglue installs its
+ * handlers, and rt_sigaction (a handler for a fault's signal refused that way); syslog; fputwc, fgetwc and ungetwc in UTF-8; posix_fadvise and posix_fallocate; and
+ * process_vm_readv on the process's own memory. 7, or the negated step that failed.
+ */
+long syscall(long, ...);
+void openlog(const char *, int, int);
+void syslog(int, const char *, ...);
+void closelog(void);
+unsigned fputwc(unsigned, void *);
+unsigned fgetwc(void *);
+unsigned ungetwc(unsigned, void *);
+int posix_fadvise(int, long, long, int);
+int posix_fallocate(int, long, long);
+int process_vm_readv(int, const void *, unsigned long, const void *, unsigned long, unsigned long);
+int getpid(void);
+
+static void ff_handler(int sig) { (void)sig; }
+
+int t_ffcalls(const char *dir)
+{
+    struct { void (*handler)(int); unsigned mask; int flags; void *restorer; } act, old;    /* bionic's, and the old call's */
+    unsigned rt[5], st[32];
+    char path[256], src[8] = "copied", dst[8] = { 0 };
+    struct { void *base; size_t len; } local = { dst, 7 }, remote = { src, 7 };
+    void *f;
+    int fd;
+    unsigned w;
+    memset(&act, 0, sizeof(act));
+    act.handler = ff_handler;
+    memset(&old, 0, sizeof(old));
+    if (syscall(67, 10, &act, 0) != 0 || syscall(67, 10, 0, &old) != 0 || old.handler != ff_handler) return -1;     /* SIGUSR1 */
+    memset(rt, 0xEE, sizeof(rt));
+    if (syscall(174, 10, 0, rt, 8) != 0 || rt[0] != (unsigned)(size_t)ff_handler) return -2;
+    act.handler = 0;
+    syscall(67, 10, &act, 0);
+    act.handler = ff_handler;
+    if (syscall(67, 11, &act, 0) != -1 || syscall(67, 11, 0, &old) != 0) return -2;     /* SIGSEGV: refused, asking allowed */
+    openlog("t_basic", 0, 0);
+    syslog(4, "syslog at %s, %d: %m", "warning", 7);
+    closelog();
+    snprintf(path, sizeof(path), "%s/wide.txt", dir);
+    f = fopen(path, "w+");
+    if (!f) return -3;
+    if (fputwc(0x416, f) != 0x416 || fputwc('a', f) != 'a') return -4;
+    fseek(f, 0, 0);
+    w = fgetwc(f);
+    if (w != 0x416 || ungetwc(w, f) != w || fgetwc(f) != 0x416 || fgetwc(f) != 'a' || fgetwc(f) != 0xFFFFFFFFu) return -5;
+    fclose(f);
+    fd = open(path, 2);
+    if (fd < 0 || posix_fadvise(fd, 0, 0, 2) != 0 || posix_fallocate(fd, 0, 4096) != 0 || fstat(fd, st) != 0 || st[12] != 4096) return -6;
+    close(fd);
+    unlink(path);
+    if (process_vm_readv(getpid(), &local, 1, &remote, 1, 0) != 7 || strcmp(dst, "copied") != 0) return -7;
+    /* munmap by number (91), as Gecko's allocator calls it */
+    {
+        void *p = mmap(0, 4096, 3, 0x22, -1, 0);
+        if (p == (void *)-1 || syscall(91, p, 4096) != 0) return -7;
+    }
+    return 7;
+}
+
+/*
+ * The system's fonts as Gecko and Chromium enumerate them (API 29): an iterator, each font's file under /system/fonts
+ * with a weight and a slant, and the end. Where there is no /system/fonts (the tests without an Android root) the
+ * iterator is empty. The number of fonts, or the negated step that failed.
+ */
+void *ASystemFontIterator_open(void);
+void *ASystemFontIterator_next(void *);
+void ASystemFontIterator_close(void *);
+void AFont_close(void *);
+const char *AFont_getFontFilePath(const void *);
+unsigned short AFont_getWeight(const void *);
+int AFont_isItalic(const void *);
+size_t AFont_getAxisCount(const void *);
+int strncmp(const char *, const char *, size_t);
+
+int t_fonts(void)
+{
+    void *it = ASystemFontIterator_open(), *f;
+    int n = 0;
+    if (!it) return -1;
+    while ((f = ASystemFontIterator_next(it)) != 0) {
+        const char *path = AFont_getFontFilePath(f);
+        unsigned short w = AFont_getWeight(f);
+        if (!path || strncmp(path, "/system/fonts/", 14) || w < 100 || w > 900 || AFont_getAxisCount(f) != 0) return -2;
+        if (strstr(path, "Italic") && !AFont_isItalic(f)) return -3;
+        AFont_close(f);
+        n++;
+    }
+    ASystemFontIterator_close(it);
+    return n;
+}
+
+/*
+ * Byte-range locks as SQLite's WAL takes them on its -shm file: a write lock set (F_SETLK), then F_GETLK on the same
+ * range, which a process's own locks never block: F_UNLCK, in the 32-bit struct and in flock64. 3, or the negated step.
+ */
+int t_flock(const char *dir)
+{
+    struct { short type, whence; long start, len; int pid; } lk;
+    struct { short type, whence; int pad; long long start, len; int pid; } lk64;
+    char path[256];
+    int fd;
+    snprintf(path, sizeof(path), "%s/lock.db-shm", dir);
+    fd = open(path, 0102, 0600);                        /* O_RDWR | O_CREAT */
+    if (fd < 0) return -1;
+    memset(&lk, 0, sizeof(lk));
+    lk.type = 1;                                         /* F_WRLCK */
+    lk.start = 128;
+    lk.len = 1;
+    if (fcntl(fd, 6, &lk) != 0) return -1;               /* F_SETLK */
+    lk.type = 1;
+    if (fcntl(fd, 5, &lk) != 0 || lk.type != 2) return -2;                /* F_GETLK: F_UNLCK */
+    memset(&lk64, 0, sizeof(lk64));
+    lk64.type = 1;
+    lk64.start = 120;
+    lk64.len = 8;
+    if (fcntl(fd, 12, &lk64) != 0 || lk64.type != 2) return -3;           /* F_GETLK64 */
+    close(fd);
+    unlink(path);
+    return 3;
+}
+
+/*
+ * fnmatch, which Chromium's FileEnumerator asks of every name it lists: the number of the 16 cases that came out as POSIX
+ * and bionic have them.
+ */
+int fnmatch(const char *, const char *, int);
+
+int t_fnmatch(void)
+{
+    static const struct { const char *pattern, *s; int flags, want; } cases[] = {
+        { "*.pak", "resources.pak", 0, 0 },          { "*.pak", "resources.dat", 0, 1 },
+        { "a?c", "abc", 0, 0 },                      { "a?c", "ac", 0, 1 },
+        { "[a-c]x", "bx", 0, 0 },                    { "[!a-c]x", "bx", 0, 1 },
+        { "[]]", "]", 0, 0 },                        { "[", "[", 0, 0 },
+        { "\\*", "*", 0, 0 },                        { "\\*", "\\*", 1, 0 },     /* FNM_NOESCAPE */
+        { "*", "a/b", 2, 1 },                        { "*/b", "a/b", 2, 0 },     /* FNM_PATHNAME */
+        { "*", ".hidden", 4, 1 },                    { ".*", ".hidden", 4, 0 },  /* FNM_PERIOD */
+        { "a", "a/b/c", 8, 0 },                      { "ABC", "abc", 0x10, 0 },  /* FNM_LEADING_DIR, FNM_CASEFOLD */
+    };
+    int i, right = 0;
+    for (i = 0; i < (int)(sizeof(cases) / sizeof(cases[0])); i++) right += fnmatch(cases[i].pattern, cases[i].s, cases[i].flags) == cases[i].want;
+    return right;
+}
+
+/*
  * timerfd, as Chromium's message pump keeps its delayed work: nothing to read before its time, readable when it comes
  * (poll and epoll both wake for it, though nothing writes to it), the count of expirations read, a repeating one counting
  * each, an absolute time on CLOCK_MONOTONIC, and disarmed by a zero time. 8, or the negated step that failed.

@@ -455,6 +455,7 @@ typedef struct gobj {
     /* OBJ_MEM made as shared memory (hk_fd_shm_create): writable, resized by ftruncate, and the protection mmap allows. */
     bool shm;
     int shm_prot;
+    int shm_seals;                 /* memfd's F_ADD_SEALS */
 } gobj;
 
 #define G_O_ACCMODE 3
@@ -657,6 +658,13 @@ static int g_open(const char *path, int flags, int mode)
         o->type = OBJ_NULL;
     } else if (!strcmp(g, "/dev/urandom") || !strcmp(g, "/dev/random")) {
         o->type = OBJ_RANDOM;
+    } else if (!strcmp(g, "/dev/ashmem")) {
+        /* ashmem as libcutils (and Chromium's copy of it) opens it: a region of no size yet, named and sized by ioctl. */
+        o->type = OBJ_MEM;
+        o->shm = true;
+        o->shm_prot = 7;
+        o->mem = (u8 *)hk_alloc(1);
+        o->mem_size = 0;
     } else if (!strncmp(g, "/proc/", 6) || !strncmp(g, "/sys/", 5)) {
         size_t n = 0;
         o->mem = (u8 *)synthetic(g, &n);
@@ -1193,6 +1201,18 @@ static int g_ftruncate64(int fd, i64 size)
 }
 static int g_ftruncate(int fd, i32 size) { return g_ftruncate64(fd, size); }
 
+/* posix_fadvise: advice, taken and not acted on; the descriptor must be one. Returns the error, as POSIX has it. */
+static int g_posix_fadvise64(int fd, i64 offset, i64 len, int advice)
+{
+    gobj *o = fd_get(fd);
+    (void)offset;
+    (void)len;
+    if (!o) return GE_BADF;
+    fd_put(o);
+    return advice < 0 || advice > 5 ? GE_INVAL : 0;
+}
+static int g_posix_fadvise(int fd, i32 offset, i32 len, int advice) { return g_posix_fadvise64(fd, offset, len, advice); }
+
 static int g_fsync(int fd)
 {
     WITH_FD(fd, o, -1)
@@ -1258,6 +1278,18 @@ static void fill_special(g_stat *out, u32 mode, u64 size, const char *gpath)
     out->st_mode = mode;
 }
 
+/*
+ * ashmem's character device, misc 10:58 here: /dev/ashmem, and every region of shared memory, which is what
+ * ASharedMemory_create gives on Android. libcutils' ashmem code (Chromium has a copy) takes a descriptor for a region only
+ * when its device number is /dev/ashmem's.
+ */
+#define G_ASHMEM_RDEV ((10u << 8) | 58u)
+static void fill_ashmem(g_stat *out, u64 size, const char *gpath)
+{
+    fill_special(out, G_S_IFCHR | 0600, size, gpath);
+    out->st_rdev = G_ASHMEM_RDEV;
+}
+
 static int g_stat_path(const char *path, g_stat *out)
 {
     char *g, *h;
@@ -1272,6 +1304,11 @@ static int g_stat_path(const char *path, g_stat *out)
     g = normalize(path);
     if (!strncmp(g, "/dev/", 5) && (!strcmp(g, "/dev/null") || !strcmp(g, "/dev/zero") || !strcmp(g, "/dev/urandom") || !strcmp(g, "/dev/random"))) {
         fill_special(out, G_S_IFCHR | 0666, 0, g);
+        free(g);
+        return 0;
+    }
+    if (!strcmp(g, "/dev/ashmem")) {
+        fill_ashmem(out, 0, g);
         free(g);
         return 0;
     }
@@ -1316,7 +1353,10 @@ static int g_fstat(int fd, g_stat *out)
             fill_stat(out, &st, o->path);
         }
         break;
-    case OBJ_MEM: fill_special(out, G_S_IFREG | 0444, o->mem_size, o->path); break;
+    case OBJ_MEM:
+        if (o->shm) fill_ashmem(out, o->mem_size, o->path);
+        else fill_special(out, G_S_IFREG | 0444, o->mem_size, o->path);
+        break;
     case OBJ_DIRFD: fill_special(out, G_S_IFDIR | 0771, 4096, o->path); break;
     case OBJ_PIPE_R: case OBJ_PIPE_W: fill_special(out, G_S_IFIFO | 0600, 0, "pipe"); break;
     case OBJ_EXT:
@@ -1593,6 +1633,8 @@ static int g_ok_path(const char *path, int a) { (void)path; (void)a; return 0; }
 static int g_ok_fd(int fd, int a) { (void)fd; (void)a; return 0; }
 static int g_chown(const char *path, int u, int g) { (void)path; (void)u; (void)g; return 0; }
 static int g_utime(const char *path, const void *times) { (void)path; (void)times; return 0; }
+/* (The times of a file are not set here, by any of the utime calls: an app is told they were.) */
+static int g_futimes(int fd, const void *times) { (void)fd; (void)times; return 0; }
 static int g_fail_link(const char *a, const char *b)
 {
     (void)a; (void)b;
@@ -1675,6 +1717,8 @@ static int g_posix_fallocate64(int fd, i64 offset, i64 len)
     *hk_errno_ptr() = saved;
     return err ? err : GE_IO;
 }
+/* (The 32-bit offsets' form, which bionic has beside it.) */
+static int g_posix_fallocate(int fd, i32 offset, i32 len) { return g_posix_fallocate64(fd, offset, len); }
 
 /* What this file system does not have: pipes spliced in the kernel, FIFOs and device files, extended attributes, watches. */
 static int g_io_nosys(void) { hk_set_errno(GE_NOSYS); return -1; }
@@ -2177,14 +2221,91 @@ static int g_fcntl(int fd, int cmd, int arg)
     case 1: r = g_cloexec[fd]; break;              /* F_GETFD */
     case 2: g_cloexec[fd] = (u8)(arg & 1); break;  /* F_SETFD */
     case 3: r = o->flags; break;                   /* F_GETFL */
+    case 1033: /* F_ADD_SEALS: shared memory; a seal against writing takes PROT_WRITE away from later mappings */
+    case 1034: /* F_GET_SEALS */
+        if (o->type != OBJ_MEM || !o->shm) {
+            hk_set_errno(GE_INVAL);
+            r = -1;
+        } else if (cmd == 1033) {
+            o->shm_seals |= arg & 0x1F;
+            if (arg & (0x08 | 0x10)) o->shm_prot &= ~2;  /* F_SEAL_WRITE, F_SEAL_FUTURE_WRITE */
+        } else {
+            r = o->shm_seals;
+        }
+        break;
     case 4: /* F_SETFL: only these two can change */
         o->flags = (o->flags & ~(G_O_NONBLOCK | G_O_APPEND)) | (arg & (G_O_NONBLOCK | G_O_APPEND));
         if (o->type == OBJ_EXT && o->ops->set_nonblock) o->ops->set_nonblock(o->ext, (arg & G_O_NONBLOCK) != 0);
         break;
-    default: break;                                /* locks and the rest: granted */
+    case 5:  /* F_GETLK */
+    case 12: /* F_GETLK64 */
+        /*
+         * The lock that would stop the one described: none. Every lock here is this process's, and a process's own locks
+         * never stop it (POSIX), so the answer is l_type F_UNLCK, the struct's first field in both forms. SQLite in WAL
+         * mode asks this of its -shm file before it uses it; the struct came back as it was asked, F_WRLCK, which says
+         * another process holds the lock: SQLITE_BUSY at every try, then SQLITE_PROTOCOL ("locking protocol").
+         */
+        if (!arg) {
+            hk_set_errno(GE_FAULT);
+            r = -1;
+        } else {
+            hk_wr16((u8 *)(hk_addr)(u32)arg, 2);
+        }
+        break;
+    default: break;                                /* setting locks, and the rest: granted */
     }
     fd_put(o);
     return r;
+}
+
+/*
+ * ashmem's ioctls on shared memory (linux/ashmem.h), for code that drives the region itself, as libcutils does: its name,
+ * its size (set while nothing maps it), its protection (only ever narrowed), and pinning, which is always granted with
+ * nothing purged, since nothing is ever taken back here.
+ */
+static int shm_ioctl(gobj *o, unsigned request, void *arg)
+{
+    switch (request) {
+    case 0x41007701: {                             /* ASHMEM_SET_NAME */
+        char name[256];
+        snprintf(name, sizeof(name), "%.*s", 255, arg ? (const char *)arg : "");
+        free(o->path);
+        o->path = hk_sprintf("/dev/ashmem/%s", name);
+        return 0;
+    }
+    case 0x81007702:                               /* ASHMEM_GET_NAME */
+        snprintf((char *)arg, 256, "%s", o->path && !strncmp(o->path, "/dev/ashmem/", 12) ? o->path + 12 : "");
+        return 0;
+    case 0x40047703: {                             /* ASHMEM_SET_SIZE */
+        size_t size = (size_t)(hk_addr)arg;
+        u8 *mem;
+        if (size > 0x40000000u) break;
+        mem = (u8 *)realloc(o->mem, size ? size : 1);
+        if (!mem) {
+            hk_set_errno(GE_NOMEM);
+            return -1;
+        }
+        if (size > o->mem_size) memset(mem + o->mem_size, 0, size - o->mem_size);
+        o->mem = mem;
+        o->mem_size = size;
+        return 0;
+    }
+    case 0x7704: return (int)o->mem_size;          /* ASHMEM_GET_SIZE */
+    case 0x40047705:                               /* ASHMEM_SET_PROT_MASK */
+        if ((u32)(hk_addr)arg & ~(u32)o->shm_prot & 7u) break;
+        o->shm_prot = (int)((u32)(hk_addr)arg & 7u);
+        return 0;
+    case 0x7706: return o->shm_prot;               /* ASHMEM_GET_PROT_MASK */
+    case 0x40087707: return 0;                     /* ASHMEM_PIN: ASHMEM_NOT_PURGED */
+    case 0x40087708: return 0;                     /* ASHMEM_UNPIN */
+    case 0x7709: return 1;                         /* ASHMEM_GET_PIN_STATUS: ASHMEM_IS_PINNED */
+    case 0x770A: return 0;                         /* ASHMEM_PURGE_ALL_CACHES */
+    default:
+        hk_set_errno(GE_NOTTY);
+        return -1;
+    }
+    hk_set_errno(GE_INVAL);
+    return -1;
 }
 
 static int g_ioctl(int fd, unsigned request, void *arg)
@@ -2205,6 +2326,8 @@ static int g_ioctl(int fd, unsigned request, void *arg)
         else o->flags &= ~G_O_NONBLOCK;
         if (o->type == OBJ_EXT && o->ops->set_nonblock) o->ops->set_nonblock(o->ext, *(int *)arg != 0);
         r = 0;
+    } else if (o->type == OBJ_MEM && o->shm && (request & 0xFF00) == 0x7700) {
+        r = shm_ioctl(o, request, arg);
     } else if (o->type == OBJ_EXT && o->ops->ioctl) {
         r = o->ops->ioctl(o->ext, request, arg);
     } else {
@@ -2640,6 +2763,7 @@ const hk_sym hk_tab_io[] = {
     IO("tcgetattr", g_io_notty), IO("tcsetattr", g_io_notty), IO("tcdrain", g_io_notty), IO("tcsendbreak", g_io_notty),
     IO("readv", g_readv), IO("writev", g_writev), IO("lseek", g_lseek), IO("lseek64", g_lseek64),
     IO("ftruncate", g_ftruncate), IO("ftruncate64", g_ftruncate64), IO("truncate", g_truncate),
+    IO("posix_fadvise", g_posix_fadvise), IO("posix_fadvise64", g_posix_fadvise64), IO("posix_fallocate", g_posix_fallocate),
     IO("fsync", g_fsync), IO("fdatasync", g_fsync), IO("sync", g_sync),
     IO("stat", g_stat_path), IO("stat64", g_stat_path), IO("lstat", g_stat_path), IO("lstat64", g_stat_path),
     IO("fstat", g_fstat), IO("fstat64", g_fstat), IO("fstatat", g_fstatat), IO("fstatat64", g_fstatat),
@@ -2652,7 +2776,8 @@ const hk_sym hk_tab_io[] = {
     IO("remove", g_remove), IO("rename", g_rename), IO("renameat", g_renameat),
     IO("chdir", g_chdir), IO("getcwd", g_getcwd), IO("realpath", g_realpath), IO("readlink", g_readlink),
     IO("chmod", g_ok_path), IO("fchmod", g_fchmod), IO("chown", g_chown), IO("lchown", g_chown), IO("utime", g_utime),
-    IO("utimes", g_utime), IO("link", g_fail_link), IO("symlink", g_fail_link), IO("umask", g_umask), IO("flock", g_flock),
+    IO("utimes", g_utime), IO("lutimes", g_utime), IO("futimes", g_futimes), IO("link", g_fail_link), IO("symlink", g_fail_link),
+    IO("umask", g_umask), IO("flock", g_flock),
     IO("fchown", g_ok_fd),
     IO("opendir", g_opendir), IO("fdopendir", g_fdopendir), IO("readdir", g_readdir), IO("readdir64", g_readdir),
     IO("readdir_r", g_readdir_r), IO("readdir64_r", g_readdir_r), IO("closedir", g_closedir), IO("rewinddir", g_rewinddir),

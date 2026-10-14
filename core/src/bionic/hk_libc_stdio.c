@@ -423,6 +423,71 @@ static int g_fputc(int c, void *fp)
     u8 b = (u8)c;
     return file_write(fp, &b, 1) == 1 ? b : -1;
 }
+
+/*
+ * fputwc, fgetwc and ungetwc: a wide character on a stream as UTF-8, bionic's only multibyte encoding. WEOF is
+ * 0xFFFFFFFF; a byte sequence that is not UTF-8 is EILSEQ. ungetwc puts back a character just read, or any one byte.
+ */
+#define G_WEOF 0xFFFFFFFFu
+static u32 utf8_encode(u32 c, u8 *out)
+{
+    if (c < 0x80) { out[0] = (u8)c; return 1; }
+    if (c < 0x800) { out[0] = (u8)(0xC0 | c >> 6); out[1] = (u8)(0x80 | (c & 0x3F)); return 2; }
+    if (c < 0x10000) { out[0] = (u8)(0xE0 | c >> 12); out[1] = (u8)(0x80 | (c >> 6 & 0x3F)); out[2] = (u8)(0x80 | (c & 0x3F)); return 3; }
+    if (c < 0x110000) {
+        out[0] = (u8)(0xF0 | c >> 18); out[1] = (u8)(0x80 | (c >> 12 & 0x3F)); out[2] = (u8)(0x80 | (c >> 6 & 0x3F)); out[3] = (u8)(0x80 | (c & 0x3F));
+        return 4;
+    }
+    return 0;
+}
+
+static u32 g_fputwc(u32 c, void *fp)
+{
+    u8 b[4];
+    u32 n = utf8_encode(c, b);
+    if (!n) {
+        hk_set_errno(GE_ILSEQ);
+        return G_WEOF;
+    }
+    return file_write(fp, b, n) == n ? c : G_WEOF;
+}
+
+static u32 g_fgetwc(void *fp)
+{
+    int c = file_getc(fp), more, i;
+    u32 w;
+    if (c < 0) return G_WEOF;
+    if (c < 0x80) return (u32)c;
+    if ((c & 0xE0) == 0xC0) { more = 1; w = (u32)c & 0x1F; }
+    else if ((c & 0xF0) == 0xE0) { more = 2; w = (u32)c & 0x0F; }
+    else if ((c & 0xF8) == 0xF0) { more = 3; w = (u32)c & 0x07; }
+    else { hk_set_errno(GE_ILSEQ); return G_WEOF; }
+    for (i = 0; i < more; i++) {
+        c = file_getc(fp);
+        if (c < 0 || (c & 0xC0) != 0x80) {
+            hk_set_errno(GE_ILSEQ);
+            return G_WEOF;
+        }
+        w = w << 6 | ((u32)c & 0x3F);
+    }
+    return w;
+}
+
+static u32 g_ungetwc(u32 c, void *fp)
+{
+    fstate *f = fs_of(fp);
+    u8 b[4];
+    u32 n;
+    if (c == G_WEOF) return G_WEOF;
+    if (c < 0x80) return g_ungetc((int)c, fp) < 0 ? G_WEOF : c;
+    n = utf8_encode(c, b);
+    /* Back over the bytes just read, when they are still in the buffer as they were. */
+    if (!n || f->unget >= 0 || f->rpos < n || memcmp(f->rbuf + f->rpos - n, b, n)) return G_WEOF;
+    f->rpos -= n;
+    f->eof = false;
+    sync_head(fp, f);
+    return c;
+}
 static int g_putchar(int c) { return g_fputc(c, g_stdout_ptr); }
 
 static char *g_fgets(char *buf, int n, void *fp)
@@ -891,6 +956,7 @@ const hk_sym hk_tab_stdio[] = {
     ST("__fread_chk", g_fread), ST("__fwrite_chk", g_fwrite),
     ST("fgetc", g_fgetc), ST("getc", g_fgetc), ST("getc_unlocked", g_fgetc), ST("getchar", g_getchar), ST("ungetc", g_ungetc),
     ST("fputc", g_fputc), ST("putc", g_fputc), ST("putc_unlocked", g_fputc), ST("putchar", g_putchar),
+    ST("fputwc", g_fputwc), ST("putwc", g_fputwc), ST("fgetwc", g_fgetwc), ST("getwc", g_fgetwc), ST("ungetwc", g_ungetwc),
     ST("fgets", g_fgets), ST("__fgets_chk", g_fgets_chk), ST("fputs", g_fputs), ST("puts", g_puts),
     ST("getline", g_getline), ST("getdelim", g_getdelim), ST("__srget", g_srget), ST("__swbuf", g_swbuf),
     ST("fseek", g_fseek), ST("fseeko", g_fseek), ST("fseeko64", g_fseeko64), ST("ftell", g_ftell), ST("ftello", g_ftell),

@@ -129,6 +129,11 @@ typedef struct hk_gthread {
 
 /* The calling thread's guest state, made on first use (a host thread that walks into guest code is adopted). */
 hk_gthread *hk_gthread_self(void);
+/* A thread id for `t`, which is the live thread of that id until hk_gthread_release_tid. */
+i32 hk_gthread_take_tid(hk_gthread *t);
+void hk_gthread_release_tid(i32 tid);
+/* The host thread of the live guest thread whose gettid() is `tid`, or NULL (its processor time, hk_libc_time.c). */
+hk_thread *hk_gthread_host_of_tid(i32 tid);
 
 /*
  * Signals between the guest's threads: pthread_kill and the handlers it

@@ -421,6 +421,36 @@ static int g_munmap(void *addr, size_t len)
     return 0;
 }
 
+/*
+ * mremap, as allocators use it to shrink or grow a block they mapped (NSS's arenas, Chromium's): shrinking unmaps the
+ * tail; growing moves the block (MREMAP_MAYMOVE) to a new private anonymous mapping, readable and writable, with the old
+ * bytes copied, since nothing here grows a mapping in place; without MREMAP_MAYMOVE growing fails with ENOMEM, which a
+ * caller must expect on Linux too when the pages after are taken. MREMAP_FIXED is not done. A shared file mapping moved
+ * so is a private copy from then on.
+ */
+static void *g_mremap(void *old, size_t old_size, size_t new_size, int flags)
+{
+    size_t o = HK_ALIGN_UP(old_size, HK_PAGE), n = HK_ALIGN_UP(new_size, HK_PAGE);
+    void *p;
+    if (((hk_addr)old & (HK_PAGE - 1)) || !o || !n || (flags & ~1)) {
+        hk_set_errno(GE_INVAL);
+        return G_MAP_FAILED;
+    }
+    if (n <= o) {
+        if (n < o) g_munmap((u8 *)old + n, o - n);
+        return old;
+    }
+    if (!(flags & 1)) {
+        hk_set_errno(GE_NOMEM);
+        return G_MAP_FAILED;
+    }
+    p = g_mmap_common(NULL, n, G_PROT_READ | G_PROT_WRITE, 0x02 | G_MAP_ANONYMOUS, -1, 0);   /* MAP_PRIVATE */
+    if (p == G_MAP_FAILED) return p;
+    memcpy(p, old, o);
+    g_munmap(old, o);
+    return p;
+}
+
 static int g_mprotect(void *addr, size_t len, int prot)
 {
     size_t size = HK_ALIGN_UP(len + ((hk_addr)addr & (HK_PAGE - 1)), HK_PAGE);
@@ -531,7 +561,7 @@ const hk_sym hk_tab_mem[] = {
     HK_WRAP("_ZdaPvj", g_delete_sized),
     HK_WRAP("mmap", g_mmap), HK_WRAP("__mmap2", hk_g_mmap2),
     HK_WRAP("mmap64", g_mmap64),
-    HK_WRAP("munmap", g_munmap),
+    HK_WRAP("munmap", g_munmap), HK_WRAP("mremap", g_mremap),
     HK_WRAP("mprotect", g_mprotect),
     HK_WRAP("madvise", g_madvise),
     HK_WRAP("posix_madvise", g_madvise),

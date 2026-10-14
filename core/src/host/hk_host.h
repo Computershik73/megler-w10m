@@ -72,6 +72,10 @@ u32 hk_thread_self_id(void);
 void hk_thread_runs_app_code(void);
 /* The calling thread, however it was started; lives as long as the process. */
 hk_thread *hk_thread_current(void);
+/* The processor time a thread has used, user and kernel, in nanoseconds; the calling thread's when `t` is NULL. 0 when unknown. */
+u64 hk_thread_cpu_ns(hk_thread *t);
+/* The processor time the process has used, all its threads, in nanoseconds; 0 when unknown. */
+u64 hk_process_cpu_ns(void);
 /*
  * Interrupting a thread in the middle of guest code, which is what a signal
  * sent to it does on Android. `fn` is then called on that thread, and the

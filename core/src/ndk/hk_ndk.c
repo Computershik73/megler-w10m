@@ -675,6 +675,92 @@ static size_t g_ashmem_size(int fd)
 static int g_ashmem_set_prot(int fd, int prot) { return hk_fd_shm_set_prot(fd, prot); }
 static int g_ashmem_from_java(void *env, void *pfd) { (void)env; (void)pfd; return -1; }
 
+/*
+ * The system's fonts (API 29, <android/font.h>, <android/system_fonts.h>): the font files in /system/fonts, the Android
+ * root's, one AFont each, in the folder's order. A file's weight and slant are read from its name as Android's own are
+ * named (Roboto-BoldItalic.ttf: 700, italic); no locale, the first face of a collection, no variation axes. Gecko and
+ * Chromium enumerate the fonts so; their imports are weak in Gecko, and a call to one nobody provides went to address 0.
+ */
+typedef struct g_font_iter {
+    char **paths;
+    int n, at;
+} g_font_iter;
+
+typedef struct g_font {
+    char *path;
+    u16 weight;
+    bool italic;
+} g_font;
+
+static g_font_iter *g_font_iter_open(void)
+{
+    typedef void *(*opendir_fn)(const char *);
+    typedef u8 *(*readdir_fn)(void *);
+    typedef int (*closedir_fn)(void *);
+    g_font_iter *it = (g_font_iter *)hk_alloc(sizeof(*it));
+    void *dir = ((opendir_fn)hk_bionic_find("opendir"))("/system/fonts");
+    u8 *e;
+    int cap = 0;
+    if (!dir) return it;
+    while ((e = ((readdir_fn)hk_bionic_find("readdir"))(dir)) != NULL) {
+        const char *name = (const char *)e + 19, *dot = strrchr(name, '.');   /* struct dirent's d_name */
+        if (!dot || (strcmp(dot, ".ttf") && strcmp(dot, ".otf") && strcmp(dot, ".ttc"))) continue;
+        if (it->n == cap) {
+            cap = cap ? cap * 2 : 64;
+            it->paths = (char **)hk_realloc(it->paths, sizeof(char *) * (size_t)cap);
+        }
+        it->paths[it->n++] = hk_sprintf("/system/fonts/%s", name);
+    }
+    ((closedir_fn)hk_bionic_find("closedir"))(dir);
+    return it;
+}
+
+static void g_font_iter_close(g_font_iter *it)
+{
+    int i;
+    if (!it) return;
+    for (i = 0; i < it->n; i++) free(it->paths[i]);
+    free(it->paths);
+    free(it);
+}
+
+static g_font *g_font_iter_next(g_font_iter *it)
+{
+    static const struct { const char *word; u16 weight; } weights[] = {
+        { "Thin", 100 }, { "ExtraLight", 200 }, { "Light", 300 }, { "Medium", 500 }, { "SemiBold", 600 }, { "ExtraBold", 800 },
+        { "Bold", 700 }, { "Black", 900 },
+    };
+    g_font *f;
+    const char *name;
+    size_t i;
+    if (!it || it->at >= it->n) return NULL;
+    f = (g_font *)hk_alloc(sizeof(*f));
+    f->path = hk_strdup(it->paths[it->at++]);
+    name = strrchr(f->path, '/') + 1;
+    f->weight = 400;
+    for (i = 0; i < HK_COUNT(weights); i++)
+        if (strstr(name, weights[i].word)) {
+            f->weight = weights[i].weight;
+            break;
+        }
+    f->italic = strstr(name, "Italic") != NULL;
+    return f;
+}
+
+static void g_font_close(g_font *f)
+{
+    if (!f) return;
+    free(f->path);
+    free(f);
+}
+static const char *g_font_path(const g_font *f) { return f ? f->path : NULL; }
+static u32 g_font_weight(const g_font *f) { return f ? f->weight : 400; }
+static int g_font_italic(const g_font *f) { return f && f->italic; }
+static const char *g_font_locale(const g_font *f) { (void)f; return NULL; }
+static u32 g_font_zero(const g_font *f) { (void)f; return 0; }
+static u32 g_font_axis_tag(const g_font *f, u32 i) { (void)f; (void)i; return 0; }
+static u32 g_font_axis_value(const g_font *f, u32 i) { (void)f; (void)i; return hk_fb(0.0f); }
+
 /* Tracing: off. */
 static int g_trace_enabled(void) { return 0; }
 static void g_trace_begin(const char *name) { (void)name; }
@@ -683,6 +769,11 @@ static void g_trace_end(void) { }
 #define N(n, f) HK_WRAP(n, f)
 
 const hk_sym hk_tab_ndk[] = {
+    N("ASystemFontIterator_open", g_font_iter_open), N("ASystemFontIterator_next", g_font_iter_next),
+    N("ASystemFontIterator_close", g_font_iter_close), N("AFont_close", g_font_close), N("AFont_getFontFilePath", g_font_path),
+    N("AFont_getWeight", g_font_weight), N("AFont_isItalic", g_font_italic), N("AFont_getLocale", g_font_locale),
+    N("AFont_getCollectionIndex", g_font_zero), N("AFont_getAxisCount", g_font_zero), N("AFont_getAxisTag", g_font_axis_tag),
+    N("AFont_getAxisValue", g_font_axis_value),
     N("ASharedMemory_create", g_ashmem_create), N("ASharedMemory_getSize", g_ashmem_size), N("ASharedMemory_setProt", g_ashmem_set_prot),
     N("ASharedMemory_dupFromJava", g_ashmem_from_java),
     N("ANativeWindow_acquire", hk_nwindow_acquire), N("ANativeWindow_release", hk_nwindow_release),

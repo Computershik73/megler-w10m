@@ -21,6 +21,7 @@
 #define test_real_apk hk_dvmt_real_apk
 #define test_libcore hk_dvmt_libcore
 #define test_libcore_link_all hk_dvmt_libcore_link_all
+#define test_libcore_nio hk_dvmt_libcore_nio
 #define g_libcore hk_dvmt_on_libcore
 
 extern int g_checks, g_failed;
@@ -90,6 +91,7 @@ bool hk_dvm_bench_add(const char *fixtures);
 struct hk_dvm_stats;
 void test_libcore(const hk_dvm_test_config *config, u64 started_ns, const struct hk_dvm_stats *at_start);
 void test_libcore_link_all(void);
+void test_libcore_nio(void);
 /* hk_dvm_tests_real.c: a real app's DEX. */
 void test_real_apk(const char *apk);
 

@@ -887,6 +887,31 @@ hk_dvm_class *hk_dvm_resolve_type(hk_dvm_dex *d, u32 idx)
     return c;
 }
 
+/*
+ * java.nio's covariant returns. Java 9 gave ByteBuffer, CharBuffer and the other buffers their own position(int),
+ * limit(int), mark(), reset(), clear(), flip() and rewind(), returning the buffer's own type, and code compiled against
+ * it names those: java/nio/ByteBuffer.position(I)Ljava/nio/ByteBuffer;. Android 9's libcore has only Buffer's, returning
+ * Buffer (Android's own libcore has the overrides from a later release). Each of them returns the buffer it was called
+ * on, so Buffer's is the same call: a reference to one of them in a buffer class resolves to Buffer's when the class has
+ * no method of that exact signature. Code built for Android 10 and later calls them without asking the version (Brave
+ * 1.97's Mojo bindings); NULL when this is not that case.
+ */
+static hk_dvm_method *nio_covariant(hk_dvm_class *c, const char *name, const char *sig)
+{
+    static const char *const names[] = { "position", "limit", "mark", "reset", "clear", "flip", "rewind" };
+    const char *close = strchr(sig, ')');
+    char want[96];
+    size_t n, cn = strlen(c->name), i;
+    if (strncmp(c->name, "java/nio/", 9) || !close || close[1] != 'L' || strncmp(close + 2, c->name, cn) || strcmp(close + 2 + cn, ";")) return NULL;
+    for (i = 0; i < HK_COUNT(names); i++)
+        if (!strcmp(name, names[i])) break;
+    n = (size_t)(close + 1 - sig);
+    if (i == HK_COUNT(names) || n + sizeof("Ljava/nio/Buffer;") > sizeof(want)) return NULL;
+    memcpy(want, sig, n);
+    memcpy(want + n, "Ljava/nio/Buffer;", sizeof("Ljava/nio/Buffer;"));
+    return find_method_interned(c, name, hk_dvm_intern(want), false);
+}
+
 hk_dvm_method *hk_dvm_resolve_method(hk_dvm_dex *d, u32 idx, int kind)
 {
     bool want_static = kind == DVM_INVOKE_STATIC;
@@ -906,6 +931,7 @@ hk_dvm_method *hk_dvm_resolve_method(hk_dvm_dex *d, u32 idx, int kind)
         name = hk_dvm_intern(hk_dvm_dex_string(d, hk_dvm_rd32(mi + 4), NULL));
         sig = hk_dvm_dex_proto_sig(d, hk_dvm_rd16(mi + 2));
         m = find_method_interned(c, name, sig, want_static);
+        if (!m && !want_static) m = nio_covariant(c, name, sig);
         if (!m) {
             if (find_method_interned(c, name, sig, !want_static)) {
                 hk_dvm_throw("java/lang/IncompatibleClassChangeError", "%s.%s%s is %s", c->name, name, sig, want_static ? "not static" : "static");

@@ -10,6 +10,8 @@
 //  - setScrollContainer is kept and isScrollContainer says it (the original said false whatever was set). ViewRoot asks it
 //    when a window's softInputMode leaves to the system whether the keyboard resizes or pans it, as Android's window
 //    manager does: a window with a scroll container is resized.
+//  - meglerWillNotDraw, which the original does not have: setWillNotDraw's flag, set without calling it, for ViewGroup's
+//    constructor (overlaid; see there).
 //
 // Why. The original's invalidate asked the window to be drawn again whole, and the window cleared the screen and drew every
 // view, so a blinking cursor cost a whole screen. ViewRoot (overlaid) now keeps each window's dirty rectangle and draws only
@@ -548,6 +550,8 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         return b;
     }
     public void setWillNotDraw(boolean w) { if (w) mPrivateFlags |= PFLAG_WILL_NOT_DRAW; else mPrivateFlags &= ~PFLAG_WILL_NOT_DRAW; }
+    /** Megler: the flag set as a ViewGroup's constructor sets it, directly: not through setWillNotDraw, which a subclass may override. */
+    final void meglerWillNotDraw(boolean w) { if (w) mPrivateFlags |= PFLAG_WILL_NOT_DRAW; else mPrivateFlags &= ~PFLAG_WILL_NOT_DRAW; }
     public boolean willNotDraw() { return (mPrivateFlags & PFLAG_WILL_NOT_DRAW) != 0; }
     public void setWillNotCacheDrawing(boolean w) {}
     public boolean willNotCacheDrawing() { return true; }

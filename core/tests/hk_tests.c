@@ -972,7 +972,15 @@ static void test_library(hk_lib *lib, const char *what, const char *scratch)
     CHECK_INT(FN(lib, int (*)(void), "t_dl")(), 4);
     CHECK_INT(FN(lib, int (*)(void), "t_libc_more")(), 6);
     CHECK_INT(FN(lib, int (*)(void), "t_shm")(), 9);
+    CHECK_INT(FN(lib, int (*)(void), "t_ashmem")(), 10);
+    CHECK_INT(FN(lib, int (*)(void), "t_mremap")(), 5);
+    CHECK_INT(FN(lib, int (*)(void), "t_cpuclock")(), 6);
+    CHECK_INT(FN(lib, int (*)(const char *), "t_ffcalls")(buf), 7);
+    CHECK_INT(FN(lib, int (*)(const char *), "t_flock")(buf), 3);
+    /* (No Android root here, so no /system/fonts: an empty iterator, opened and closed; the fonts themselves under the apps' runs.) */
+    CHECK(FN(lib, int (*)(void), "t_fonts")() >= 0);
     CHECK_INT(FN(lib, int (*)(void), "t_timerfd")(), 8);
+    CHECK_INT(FN(lib, int (*)(void), "t_fnmatch")(), 16);
     CHECK_INT(FN(lib, int (*)(const char *), "t_stack")("a string that fits"), 18);
 }
 
@@ -1016,6 +1024,8 @@ static void test_guest_kinds(const char *libdir)
     /* Each got the libt_same.so of its own kind. */
     CHECK_INT(FN(ruser, int (*)(void), "t_ruser_which")(), 202);
     CHECK_INT(FN(user, int (*)(void), "t_user_which")(), 101);
+    /* Its thread-local pointer, relocated, in this thread's block, which existed before the library did. */
+    CHECK_INT(FN(user, int (*)(void), "t_user_tls_len")(), 19);
     /* A name only the other kind exports is not bound across: the weak import stays zero on both sides. */
     CHECK_INT(FN(ruser, int (*)(void), "t_ruser_stray")(), -1);
     CHECK_INT(FN(user, int (*)(void), "t_user_stray")(), -1);

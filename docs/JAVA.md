@@ -294,6 +294,22 @@ work: `libjavacore`, `libopenjdk`, `libicuuc`, `libicui18n`, `libnativehelper`,
   derivation, `Base64`. All give the JVM's answers. Under qemu, with
   conscrypt's library in the root, it is conscrypt's; on the PC's build the
   runtime's stand-in's: see "The security providers".
+- **java.nio's covariant returns.** Java 9 gave `ByteBuffer`, `CharBuffer`
+  and the other buffers their own `position(int)`, `limit(int)`, `mark()`,
+  `reset()`, `clear()`, `flip()` and `rewind()`, each returning the buffer's
+  own type, and Android's libcore has them from a later release than 9 (the
+  framework says it is API 34). Code compiled against such an `android.jar`
+  names them: `java/nio/ByteBuffer.position(I)Ljava/nio/ByteBuffer;`, which
+  Android 9's libcore does not have, and every such call was a
+  `NoSuchMethodError` (Brave 1.97's Mojo bindings, on its first IPC message).
+  Each of them returns the buffer it was called on, so `Buffer`'s method is
+  the same call: the runtime resolves a reference to one of these seven, in a
+  class of `java.nio` and returning that class, to `Buffer`'s
+  (`nio_covariant` in `core/src/dvm/hk_dvm_class.c`) when the class has no
+  method of that exact signature. Nothing else is looked up that way.
+  Fixture `t/Nio`, on libcore only: a `ByteBuffer` through all seven and a
+  `CharBuffer`'s `position`, through their own types; a name that is not one
+  of them (`capacity()Ljava/nio/ByteBuffer;`) is still a `NoSuchMethodError`.
 
 ### A Java app with an Activity (qemu-arm)
 
@@ -2940,10 +2956,10 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: thirty-seven files** in the overlay,
+**What differs from the original's framework: forty files** in the overlay,
 most of them a statement or a few methods each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
-**and eight files of members added** to classes of the original's.
+**and nine files of members added** to classes of the original's.
 
 The second kind is for the platform's public members that the original's
 class does not have and an app calls -- a `NoSuchMethodError` where Android
@@ -2974,13 +2990,28 @@ files folder) for the first and the files folder itself for the second.
 `android/content/ContextWrapper.java.members`: a wrapper passes these, and
 `getExternalCacheDir(s)` and `getExternalFilesDirs`, on to the context it
 wraps; an Activity is a wrapper, and asked of an Activity they never reached
-the context that knows.
+the context that knows. And `registerReceiver` with flags, a permission or a
+handler: the original's wrapper passed on only the two-argument form, and
+`Context`'s defaults for the others call `this.registerReceiver(r, f)`, which
+reaches a subclass of the wrapper that overrides that form. Chromium's
+wrapper makes it throw so that every caller uses the others, and Brave
+1.97's `SmsProviderGms` ended the app with a `RuntimeException`; each form now
+goes to the base, as on Android. The data app's step "wrapper-receiver"
+registers through such a wrapper in all three forms.
 
 `megler/AppRunner.java.members`, like those of `megler/Native`, `Gfx` and
 `EGLNative` (each described with what uses it), adds to one of Megler's own
 classes: `meglerBase()`, the activity at the bottom of the stack, which
 `ActivityManager` (below) gives as the root of the app's task; the original
 had only the top.
+
+`android/os/MessageQueue.java.members` adds `next()`, Android's own name
+for what `Looper.loop` takes the next message with (it calls the original's
+`next(boolean main)` as `loop` does). It is hidden API, and code that runs its
+own event loop takes the Java looper's messages with it: Gecko asks for it by
+JNI on its own thread, and without it ended on a `NoSuchMethodError`
+(`MOZ_CRASH()`) as it started. The data app's step "queue-next" sends a message
+on a looper thread of its own and takes it back with `next()`.
 
 - `android/webkit/MimeTypeMap.java`: the original hands its table to
   `libcore.content.type.MimeMap`, an Android 10 class; Android 9's `MimeUtils`
@@ -3036,6 +3067,11 @@ had only the top.
   Android gives it, rounded up to a size storage is sold in (1, 2, 4 ... 512
   of the next decimal unit, `FileUtils.roundStorageSize`), the free space as
   it is. The figures are the C library's `statvfs` under `java.io.File`.
+  And the `queryStatsFor*` methods, which answered null: they answer a
+  `StorageStats` with nothing counted. Firefox 152 times `queryStatsForUid` for
+  its telemetry, Kotlin checks that the result is not null, and the
+  `NullPointerException` on its worker thread ended the app. The data app's
+  step "storage-stats" asks for its own.
 - `android/os/storage/StorageManager.java`, the old way to list the storage:
   `getVolumeList`, `getVolumePaths`, `getVolumeState` and the static
   `getVolumeList(userId, flags)` were signatures answering null. They are
@@ -3186,6 +3222,17 @@ had only the top.
   a colour that refers to it). Choosing as a phone with Android 9 chooses is
   the only choice that fits the resources that are there. The constant must
   follow the Android root.
+- `android/content/res/Resources.java`, besides: a theme attribute whose
+  value names an attribute that names another with no end -- a style's item
+  that names itself, as Android's `TextAppearance` does with
+  `textColorHighlight` -- is not there, as `AssetManager2`'s
+  `Theme::GetAttribute` gives up after twenty steps: `obtainStyledAttributes`
+  leaves it out and `resolveAttribute` says false. The original kept it as an
+  unresolved attribute, which `TypedArray.getColor` throws on: GeckoView's
+  `getSystemColors` applies `android.R.style.TextAppearance` to a theme and
+  asks its colours, and Gecko ended on the Java exception (`MOZ_CRASH(JNI
+  exception)`). The data app's step "theme-selfref" asks such a theme for its
+  colours.
 - `android/graphics/drawable/RippleDrawable.java` and `megler/ResInflate.java`,
   a method and a statement: a ripple inflated from XML is told that it has a
   mask. Android's commonest ripple is nothing but a mask (the background of
@@ -3348,7 +3395,46 @@ had only the top.
   the platform never does is a fault of this kind wherever an app calls it
   without asking the version first; this is the one a run has met.
 
-The original has all twenty-five faults; they are its author's to take back.
+- `android/view/ViewGroup.java`, one statement of the constructors' `init()`:
+  the flag that says a group does not draw itself is set directly
+  (`View.meglerWillNotDraw`, which the overlay's `View` adds), as Android's
+  `ViewGroup` sets it, where the original called `setWillNotDraw(true)`.
+  That method is public and not final; called from the constructor it runs a
+  subclass's override before the subclass's own constructor has set
+  anything up. Chromium's `CompositorView` (Brave 1.97) overrides it to pass
+  the call on to its surfaces, made later in its constructor, and the
+  browser's main activity ended inflating its layout with a
+  `NullPointerException` there. The data app's step "viewgroup-flag" makes a
+  `FrameLayout` whose override needs a field of its own: it is not called,
+  and the group does not draw itself.
+
+- `android/widget/TextView.java`, the cursor's and the selection handles'
+  drawables (API 29): `getTextCursorDrawable` gives what the style or
+  `setTextCursorDrawable` set, else a stand-in made once (2 dp wide, in the
+  text's colour); `getTextSelectHandle`, `Left` and `Right` give what was set,
+  else a stand-in 22 dp square; their setters keep what they are given. The
+  original's getters returned null, which Android's never do for an
+  `EditText` of a platform theme, and its setters dropped what they were
+  given or kept an `Integer` the getter cast to a `Drawable`. Chromium's
+  omnibox (Brave 1.97) tints all four with `mutate().setTint(...)` and the
+  browser's activity ended there. Nothing draws them here; the cursor is
+  drawn as before. The data app's step "text-drawables" asks an `EditText`
+  for all four, tints them, and sets one.
+
+- `android/os/ParcelFileDescriptor.java`, what `dup` and the descriptors it
+  is given own, which is now Android's: `dup(FileDescriptor)`, `dup()` and
+  `fromFd(int)` make a descriptor of their own (`Os.dup`) that closing the
+  result closes; `adoptFd(int)` takes the number over; `detachFd()` gives it
+  away, so that closing no longer closes it. The original's wrapped the same
+  descriptor and owned nothing. GeckoView's `startCrashHelper` (Firefox 152)
+  makes two socket pairs, wraps each end with `dup`, closes the four
+  originals and hands the duplicates' numbers to Gecko: with no duplicate
+  those were the closed ones' -1, and Gecko stopped on `MOZ_CRASH: fd != -1`
+  as it started. The data app's step "pfd-dup" duplicates a socket pair's end
+  and a file's descriptor, closes the originals, writes through the
+  duplicate, detaches it and adopts it again.
+
+The original has all thirty-one faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in
