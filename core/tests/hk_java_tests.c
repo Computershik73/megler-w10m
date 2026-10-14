@@ -1431,8 +1431,10 @@ static int run_data(void)
                                             the APK as a descriptor whose number is taken from its ParcelFileDescriptor. And the app's task as
                                             ActivityManager describes it. And registerReceiver's other forms through a ContextWrapper. And a
                                             ViewGroup made without its constructor calling an overridable setWillNotDraw. And an EditText's
-                                            cursor and selection handles. And ParcelFileDescriptor's dup, detachFd and adoptFd. */
+                                            cursor and selection handles. And ParcelFileDescriptor's dup, detachFd and adoptFd. And a theme
+                                            attribute that names itself. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup",
+                                         "theme-selfref",
                                          /* And the network from Java, on loopback: names, an HTTP server of the app's own and HttpURLConnection, UDP, a server
                                             socket closed under the thread waiting in accept, a java.nio selector, the interfaces, ConnectivityManager. */
                                          "net-localhost", "net-http", "net-udp", "net-close", "net-nio", "net-interfaces", "net-connectivity" };

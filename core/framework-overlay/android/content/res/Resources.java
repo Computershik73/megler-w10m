@@ -1,7 +1,12 @@
 // megler-w10m overlay of Megler/src/java-framework/src/android/content/res/Resources.java (tools/build-framework.sh).
-// It differs in two things. The class Bag (a style's items): put and indexOf find a key by hashing. And updateCfg: resources
+// It differs in three things. The class Bag (a style's items): put and indexOf find a key by hashing. And updateCfg: resources
 // are chosen for the API level of the platform's own resources (PLATFORM_RESOURCES_SDK), not for Build.VERSION.SDK_INT.
-// Everything else is the original's, unchanged, and so are a bag's contents and their order.
+// And a theme attribute whose value names an attribute that names another, with no end -- a style's item that names
+// itself, as Android's TextAppearance does with textColorHighlight -- is not there: obtainStyledAttributes leaves it out and
+// resolveAttribute says false, as AssetManager2's Theme::GetAttribute gives up after twenty steps. The original kept it as an
+// unresolved attribute, and TypedArray.getColor threw on it: GeckoView's getSystemColors (Firefox 152) applies
+// android.R.style.TextAppearance to a theme and asks its colours, and Gecko ended on the Java exception (MOZ_CRASH(JNI
+// exception)). Everything else is the original's, unchanged, and so are a bag's contents and their order.
 //
 // Why the second. The framework says it is Android 14 (SDK_INT 34); the platform's resources here are Android 9's
 // framework-res.apk, because libcore is Android 9's (tools/dvm-android-root.sh). An app's resources qualified -v29 to -v34 are
@@ -444,7 +449,7 @@ public class Resources {
         public boolean resolveAttribute(int attr, TypedValue out, boolean resolveRefs) {
             TypedValue v = mAttrs.get(attr);
             for (int depth = 0; v != null && v.type == TypedValue.TYPE_ATTRIBUTE && depth < 20; depth++) v = mAttrs.get(v.data);
-            if (v == null) return false;
+            if (v == null || v.type == TypedValue.TYPE_ATTRIBUTE) return false;    /* (a chain with no end: unresolved, as Android has it) */
             out.setTo(v);
             out.resourceId = 0;
             if (resolveRefs && out.type == TypedValue.TYPE_REFERENCE && out.data != 0) {
@@ -517,6 +522,8 @@ public class Resources {
                     if (tv == null) { v.type = TypedValue.TYPE_NULL; break; }
                     v.setTo(tv);
                 }
+                // one that still names an attribute after twenty (one that names itself) is not there, as AttributeResolution has it
+                if (v.type == TypedValue.TYPE_ATTRIBUTE) continue;
                 // @null: a reference to nothing, set explicitly (it hides whatever a style or the theme says)
                 if (v.type == TypedValue.TYPE_REFERENCE && v.data == 0) { v.type = TypedValue.TYPE_NULL; v.data = TypedValue.DATA_NULL_UNDEFINED; }
                 if (v.type == TypedValue.TYPE_NULL && v.data != TypedValue.DATA_NULL_EMPTY) continue;

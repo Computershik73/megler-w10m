@@ -3171,6 +3171,17 @@ had only the top.
   a colour that refers to it). Choosing as a phone with Android 9 chooses is
   the only choice that fits the resources that are there. The constant must
   follow the Android root.
+- `android/content/res/Resources.java`, besides: a theme attribute whose
+  value names an attribute that names another with no end -- a style's item
+  that names itself, as Android's `TextAppearance` does with
+  `textColorHighlight` -- is not there, as `AssetManager2`'s
+  `Theme::GetAttribute` gives up after twenty steps: `obtainStyledAttributes`
+  leaves it out and `resolveAttribute` says false. The original kept it as an
+  unresolved attribute, which `TypedArray.getColor` throws on: GeckoView's
+  `getSystemColors` applies `android.R.style.TextAppearance` to a theme and
+  asks its colours, and Gecko ended on the Java exception (`MOZ_CRASH(JNI
+  exception)`). The data app's step "theme-selfref" asks such a theme for its
+  colours.
 - `android/graphics/drawable/RippleDrawable.java` and `megler/ResInflate.java`,
   a method and a statement: a ripple inflated from XML is told that it has a
   mask. Android's commonest ripple is nothing but a mask (the background of
@@ -3372,7 +3383,7 @@ had only the top.
   and a file's descriptor, closes the originals, writes through the
   duplicate, detaches it and adopts it again.
 
-The original has all twenty-eight faults; they are its author's to take back.
+The original has all twenty-nine faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in

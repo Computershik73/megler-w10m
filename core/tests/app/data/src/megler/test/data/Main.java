@@ -291,6 +291,7 @@ public class Main extends Activity {
         viewGroupFlag();
         textDrawables();
         pfdDup();
+        themeSelfRef();
         network();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
@@ -747,6 +748,28 @@ public class Main extends Activity {
                 + ", after " + adopted.getFileDescriptor().valid();
             android.system.Os.close(b);
             return na >= 0 && n >= 0 && file.length() == 4 && open && !adopted.getFileDescriptor().valid() && file.delete();
+        });
+    }
+
+    /**
+     * A theme with android.R.style.TextAppearance applied, as GeckoView asks the system's colours: TextAppearance's
+     * textColorHighlight names itself, which leaves it out rather than an attribute getColor cannot take; every colour that
+     * is there can be had.
+     */
+    private void themeSelfRef() {
+        step("theme-selfref", () -> {
+            android.view.ContextThemeWrapper w = new android.view.ContextThemeWrapper(getApplicationContext(), android.R.style.TextAppearance);
+            int[] attrs = { android.R.attr.textColorPrimary, android.R.attr.textColorHighlight, android.R.attr.colorForeground };
+            android.content.res.TypedArray a = w.getTheme().obtainStyledAttributes(attrs);
+            StringBuilder seen = new StringBuilder();
+            for (int i = 0; i < a.getIndexCount(); i++) {
+                int at = a.getIndex(i);
+                seen.append(at).append('=').append(Integer.toHexString(a.getColor(at, 0))).append(' ');
+            }
+            boolean highlight = a.hasValue(1);
+            a.recycle();
+            detail = seen + "highlight there=" + highlight;
+            return true;
         });
     }
 
