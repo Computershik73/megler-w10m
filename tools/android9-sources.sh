@@ -23,12 +23,15 @@
 #   external/expat           whole
 #   external/zlib            whole
 #   system/core              base, liblog/include, libcutils/include
-#   external/boringssl       src/include (headers for java.math's NativeBN)
+#   external/boringssl       src/include (headers for java.math's NativeBN and
+#                            for conscrypt)
+#   external/conscrypt       common/src/jni (the native half of conscrypt,
+#                            libjavacrypto.so) and Android.bp (its build rule)
 #   art                      runtime and openjdkjvm: not built -- they are what says
 #                            how ART answers the native methods libcore leaves to
 #                            the runtime, and what libopenjdkjvm.so's JVM_* do
-#   prebuilts/vndk/v28       libcrypto.so for ARMv7, Android 9's own (BoringSSL
-#                            is not compiled here)
+#   prebuilts/vndk/v28       libcrypto.so and libssl.so for ARMv7, Android 9's
+#                            own (BoringSSL is not compiled here)
 #
 # gitiles makes each archive when asked, so there are no sizes to check against;
 # the whole comes to about 150 MB unpacked. A part already there is not
@@ -85,7 +88,10 @@ part system/core base
 part system/core liblog/include
 part system/core libcutils/include
 part external/boringssl src/include
+part external/conscrypt common/src/jni
+file external/conscrypt "refs/tags/$TAG" Android.bp
 part art runtime
 part art openjdkjvm
 file prebuilts/vndk/v28 refs/heads/main arm/arch-arm-armv7-a-neon/shared/vndk-core/libcrypto.so
+file prebuilts/vndk/v28 refs/heads/main arm/arch-arm-armv7-a-neon/shared/vndk-core/libssl.so
 du -sh "$OUT" | sed 's/^/in all: /'
