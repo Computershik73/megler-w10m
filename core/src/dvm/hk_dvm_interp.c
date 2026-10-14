@@ -757,7 +757,12 @@ static const u16 *payload_at(const hk_dvm_method *m, u32 pc, i32 off, u16 ident)
         WR_(A4, expr);                                                                  \
         NEXT(1);
 
-static bool interpret(hk_dvm_thread *t, hk_dvm_frame *f, hk_jvalue *ret)
+/*
+ * Not static, and so a function the linker can place by name: the benchmark's build puts it first in the program's code
+ * (tools/dvm-bench.sh), where the alignment of its loop does not move with every change elsewhere.
+ */
+bool hk_dvm_interpret(hk_dvm_thread *t, hk_dvm_frame *f, hk_jvalue *ret);
+bool hk_dvm_interpret(hk_dvm_thread *t, hk_dvm_frame *f, hk_jvalue *ret)
 {
     hk_dvm_method *m = f->m;
     const u16 *insns = m->insns;
@@ -1424,7 +1429,7 @@ bool hk_dvm_invoke(hk_dvm_method *m, hk_jobj *self, const hk_jvalue *params, hk_
             if (f->sync) hk_dvm_monitor_enter(f->sync);
         }
         if (g_dvm.trace >= 2) hk_info("dvm: %*s-> %s.%s%s (from C)", t->depth, "", m->cls->name, m->name, m->sig);
-        ok = interpret(t, f, ret);
+        ok = hk_dvm_interpret(t, f, ret);
     }
     t->c_depth--;
     return ok;

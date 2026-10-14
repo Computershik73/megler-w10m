@@ -254,6 +254,10 @@ elif [ "$MODE" = win ]; then
   # (MEGLER_TESTS_MAP=1: a linker map beside it, hk_tests.map, which tools/dvm-bench.sh profile reads.)
   MAPOPT=()
   [ "${MEGLER_TESTS_MAP:-0}" = 1 ] && MAPOPT=("/MAP:$(w "$OUT/hk_tests.map")")
+  # (MEGLER_TESTS_ORDER=<file>: the functions it names first in the program's code, in that order (link /ORDER). The
+  # interpreter's speed moves by half when unrelated code before it shifts its loop's alignment; tools/dvm-bench.sh puts
+  # `hk_dvm_interpret` first, so that what it measures is the change and not where the loop fell.)
+  [ -n "${MEGLER_TESTS_ORDER:-}" ] && MAPOPT+=("/ORDER:@$(w "$MEGLER_TESTS_ORDER")")
   "$VC/bin/Hostx64/x64/link.exe" /nologo ${MAPOPT[@]+"${MAPOPT[@]}"} "/OUT:$(w "$OUT/hk_tests.exe")" "$(w "$OUT/obj")\\*.obj" "$(w "$OUT/zobj")\\*.obj" "$(w "$OUT/gfxobj")\\*.obj" \
     "$(w "$OUT/storageobj")\\*.obj" bcrypt.lib synchronization.lib d2d1.lib dwrite.lib ole32.lib oleaut32.lib ws2_32.lib iphlpapi.lib
   echo "built $OUT/hk_tests.exe"

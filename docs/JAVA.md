@@ -1220,6 +1220,17 @@ included. It needs libcore. It is printed, never checked:
   the phone's own table, with the collector set as an app has it.
 - Each item is timed as the best of three runs: other work on the machine
   only ever adds time.
+- **Where the interpreter's loop falls in the program moves its speed by
+  half.** With nothing in the interpreter changed, a change elsewhere took
+  the arithmetic item from 8.4 to 14 ns on x64. Other code before the loop
+  had shifted its alignment, so that its dispatch now straddled a 64-byte
+  fetch window. The benchmark's build therefore puts the interpreter
+  (`hk_dvm_interpret`, not static for this reason) first in the program's
+  code with link `/ORDER` (`MEGLER_TESTS_ORDER`). Every build then
+  measures it at the same place, and a change is measured, not where the
+  loop happened to fall. That place happens to be a slow one (13.7 ns). The
+  phone's package does not do this yet, so its speed can move from one build
+  to the next for no reason in the code.
 - `tools/dvm-bench.sh profile <item> [function]` shows where one item's time
   goes. A second thread samples where the running one is, about every 20 µs
   (`HK_BENCH_PROFILE`). `tools/dvm-profile.py` names the functions from the

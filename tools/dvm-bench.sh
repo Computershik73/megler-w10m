@@ -15,16 +15,20 @@
 #
 #   profile  the x64 /O2 program with a linker map, the item run ten times as long while a second thread samples where
 #            it is (hk_dvm_bench.c); tools/dvm-profile.py names the functions the samples fall in and, for the function
-#            named (the interpreter's `interpret` by default), shows its hottest instructions.
+#            named (the interpreter's `hk_dvm_interpret` by default), shows its hottest instructions.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MODE="${1:-both}"
 MS="${2:-300}"
 bash "$ROOT/tools/dvm-android-root.sh" > /dev/null
+# The interpreter's loop first in the program's code, where nothing else moves it (tools/build-tests.sh, MEGLER_TESTS_ORDER).
+mkdir -p "$ROOT/build/tests-win-o2"
+ORDER="$ROOT/build/tests-win-o2/order.txt"
+echo hk_dvm_interpret > "$ORDER"
 if [ "$MODE" = profile ]; then
   ITEM="$2"
-  FUNC="${3:-interpret}"
-  MEGLER_TESTS_OPT=/O2 MEGLER_TESTS_OUT="$ROOT/build/tests-win-o2" MEGLER_TESTS_MAP=1 bash "$ROOT/tools/build-tests.sh" win --no-run --no-libcore > /dev/null
+  FUNC="${3:-hk_dvm_interpret}"
+  MEGLER_TESTS_OPT=/O2 MEGLER_TESTS_OUT="$ROOT/build/tests-win-o2" MEGLER_TESTS_MAP=1 MEGLER_TESTS_ORDER="$ORDER" bash "$ROOT/tools/build-tests.sh" win --no-run --no-libcore > /dev/null
   OUTF="$ROOT/build/tests-win-o2/samples-$ITEM.txt"
   HK_BENCH_PROFILE="$ITEM" HK_BENCH_PROFILE_OUT="$(cygpath -w "$OUTF")" "$ROOT/build/tests-win-o2/hk_tests.exe" --dvm-bench \
     "$(cygpath -w "$ROOT/build/guest/armeabi-v7a/dvm")" "$(cygpath -w "$ROOT/build/android9/root")" 200 | grep -E "samples|$ITEM" || true
@@ -35,7 +39,7 @@ if [ "$MODE" = profile ]; then
   exit 0
 fi
 if [ "$MODE" = win ] || [ "$MODE" = both ]; then
-  MEGLER_TESTS_OPT=/O2 MEGLER_TESTS_OUT="$ROOT/build/tests-win-o2" bash "$ROOT/tools/build-tests.sh" win --no-run --no-libcore > /dev/null
+  MEGLER_TESTS_OPT=/O2 MEGLER_TESTS_OUT="$ROOT/build/tests-win-o2" MEGLER_TESTS_ORDER="$ORDER" bash "$ROOT/tools/build-tests.sh" win --no-run --no-libcore > /dev/null
   echo "== x64, /O2"
   "$ROOT/build/tests-win-o2/hk_tests.exe" --dvm-bench "$(cygpath -w "$ROOT/build/guest/armeabi-v7a/dvm")" "$(cygpath -w "$ROOT/build/android9/root")" "$MS"
 fi
