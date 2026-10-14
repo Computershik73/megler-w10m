@@ -1,7 +1,8 @@
-// Settings: the size of the surface apps draw to, and what this build and
-// this phone are.
+// Settings: the size of the surface apps draw to, the phone's folders that
+// are in Android's storage, and what this build and this phone are.
 #include "pch.h"
 
+#include "player/StorageHost.h"
 #include "shell/Platform.h"
 #include "shell/Settings.h"
 #include "shell/ShellLog.h"
@@ -49,12 +50,142 @@ public:
     }
 
     void refresh() override {
+        // The phone's folders are looked for while Megler starts: shown once they are known.
+        if (view_ && !linksShown_ && StorageHost::shared().searched()) rebuild();
         // Memory moves; once a second is plenty.
         if (++ticks_ % 4 != 0 || !memory_) return;
         if (auto value = memory_.Children().GetAt(1).try_as<TextBlock>()) value.Text(hs(platform::memorySummary()));
     }
 
 private:
+    /// The section "Android Storage": every link with where it is, the
+    /// added ones with a button to take them out again, and "Add a Folder".
+    StackPanel storageSection() {
+        const auto& p = palette();
+        StorageHost& storage = StorageHost::shared();
+        std::vector<UIElement> rows;
+        linksShown_ = storage.searched();
+        if (!linksShown_) {
+            auto looking = text("Looking for the phone's folders...", font::body, weightNormal(), p.secondaryLabel);
+            looking.Margin(ThicknessHelper::FromLengths(16, 11, 16, 11));
+            rows.push_back(looking);
+        }
+        for (const StorageHost::Link& link : storage.links()) {
+            Grid row;
+            ColumnDefinition c0, c1;
+            c0.Width(GridLengthHelper::FromValueAndType(1, GridUnitType::Star));
+            c1.Width(GridLengthHelper::Auto());
+            row.ColumnDefinitions().Append(c0);
+            row.ColumnDefinitions().Append(c1);
+            auto titles = vstack(2);
+            add(titles, monospace("/sdcard/" + link.name, font::subheadline, p.label));
+            auto where = text(link.path.empty() ? link.what : link.path, font::caption, weightNormal(), p.secondaryLabel);
+            where.TextWrapping(TextWrapping::Wrap);
+            add(titles, where);
+            // What it is, where the line above is its path; and why an app will not see it, when it will not.
+            const std::string state = link.answers ? (link.path.empty() ? link.note : link.what + ", " + link.note) : "Left out: " + link.note;
+            auto note = text(state, font::caption, weightNormal(), link.answers ? p.tertiaryLabel : p.orange);
+            note.TextWrapping(TextWrapping::Wrap);
+            add(titles, note);
+            row.Children().Append(titles);
+            if (!link.token.empty()) {
+                const std::string token = link.token, name = link.name;
+                auto forget = button(glyph(glyphs::trash, font::body, p.red), [this, token, name] {
+                    shell_.confirm("Take /sdcard/" + name + " Out?",
+                                   "The folder and what is in it stay on the phone. Android apps no longer see it.", "Take Out", true, [this, token] {
+                                       StorageHost::shared().remove(token);
+                                       rebuild();
+                                   });
+                }, ButtonKind::plain, "Take " + name + " out");
+                forget.HorizontalAlignment(HorizontalAlignment::Right);
+                forget.VerticalAlignment(VerticalAlignment::Center);
+                Grid::SetColumn(forget, 1);
+                row.Children().Append(forget);
+            }
+            row.Padding(ThicknessHelper::FromLengths(16, 10, 8, 10));
+            rows.push_back(row);
+        }
+        auto addLabel = label("Add a Folder", glyphs::add, font::body, weightNormal(), p.accentText);
+        addLabel.Margin(ThicknessHelper::FromLengths(16, 11, 16, 11));
+        rows.push_back(button(addLabel, [this] { addFolder(); }, ButtonKind::plain, "Add a Folder"));
+        return listSection("Android Storage", rows,
+                           "Folders of the phone that every Android app finds in its storage. The music, pictures and videos are there by themselves. "
+                           "Add a Folder puts any other folder there under a name you give it: the phone's Documents or Downloads, a folder of a "
+                           "memory card. An app is given them when it starts.");
+    }
+
+    /// The folder picker, then a name for the folder in Android's storage,
+    /// then StorageHost::add, which has Windows remember the folder.
+    winrt::fire_and_forget addFolder() {
+        using namespace winrt::Windows::Storage;
+        using namespace winrt::Windows::Storage::Pickers;
+        // (A second picker while one is up throws.)
+        if (adding_) co_return;
+        adding_ = true;
+        const std::shared_ptr<Page> keep = shared_from_this();
+        std::string error;
+        try {
+            FolderPicker picker;
+            picker.ViewMode(PickerViewMode::List);
+            picker.SuggestedStartLocation(PickerLocationId::DocumentsLibrary);
+            // (A folder picker with no file type named throws; any type will do.)
+            picker.FileTypeFilter().Append(L"*");
+            const StorageFolder folder = co_await picker.PickSingleFolderAsync();
+            if (folder) {
+                const std::string own = narrow(std::wstring(folder.Name()));
+                const std::vector<std::string> names = StorageHost::shared().namesFor(own);
+                // The name to start from: Android's own for the phone's Documents and Downloads while it is free, else the folder's.
+                std::string first = names.empty() ? own : names.back();
+                for (const std::string& name : names) {
+                    const bool documents = name == "Documents" && _stricmp(own.c_str(), "Documents") == 0;
+                    const bool downloads = name == "Download" && (_stricmp(own.c_str(), "Downloads") == 0 || _stricmp(own.c_str(), "Download") == 0);
+                    if (documents || downloads) first = name;
+                }
+                ContentDialog dialog;
+                dialog.Title(box_value(hs("Name in Android's Storage")));
+                auto content = vstack(10);
+                auto about = text("Apps will find " + (folder.Path().empty() ? own : narrow(std::wstring(folder.Path()))) + " as /sdcard/ and this name.", font::subheadline,
+                                  weightNormal(), palette().secondaryLabel);
+                about.TextWrapping(TextWrapping::Wrap);
+                add(content, about);
+                TextBox box;
+                box.Text(hs(first));
+                box.MaxLength(60);
+                box.IsSpellCheckEnabled(false);
+                add(content, box);
+                if (names.size() > 1) {
+                    auto offers = hstack(8);
+                    for (const std::string& name : names) {
+                        auto offer = button(text(name, font::subheadline, weightNormal(), palette().accentText), [box, name] { box.Text(hs(name)); }, ButtonKind::pill, name);
+                        offer.HorizontalAlignment(HorizontalAlignment::Left);
+                        add(offers, offer);
+                    }
+                    add(content, offers);
+                }
+                dialog.Content(content);
+                dialog.PrimaryButtonText(L"Add");
+                dialog.SecondaryButtonText(L"Cancel");
+                dialog.RequestedTheme(ElementTheme::Dark);
+                dialog.Background(brush(palette().card));
+                dialog.Foreground(brush(palette().label));
+                if (co_await dialog.ShowAsync() == ContentDialogResult::Primary) {
+                    std::string name = narrow(std::wstring(box.Text()));
+                    while (!name.empty() && name.back() == ' ') name.pop_back();
+                    while (!name.empty() && name.front() == ' ') name.erase(name.begin());
+                    error = StorageHost::shared().add(folder, name);
+                }
+            }
+        } catch (const hresult_error& e) {
+            error = format("0x%08X %s", unsigned(e.code()), narrow(e.message()).c_str());
+        }
+        adding_ = false;
+        if (!error.empty()) {
+            shellLog::write("settings: a folder was not added: " + error);
+            shell_.alert("The Folder Was Not Added", error);
+        }
+        rebuild();
+    }
+
     void rebuild() {
         const auto& p = palette();
         auto column = vstack(0);
@@ -90,6 +221,8 @@ private:
                                 "The longer side of the picture an app draws, in pixels; the phone scales it to the screen. "
                                 "Smaller is faster. It applies to the next app started."));
 
+        add(column, storageSection());
+
         memory_ = labeledContent("Memory", platform::memorySummary());
         const auto& angle = platform::angle();
         add(column, listSection("About",
@@ -119,6 +252,8 @@ private:
     ContentControl host_{nullptr};
     Grid memory_{nullptr};
     int ticks_ = 0;
+    bool linksShown_ = false; // the Android Storage section was built after the search for the links was over
+    bool adding_ = false;     // the folder picker or the name's dialog is up
 };
 
 } // namespace
