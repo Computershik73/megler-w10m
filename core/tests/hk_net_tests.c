@@ -323,9 +323,10 @@ static void test_nonblocking_connect(void)
     hk_pollfd p;
     u8 sa[16];
     u16 port = 0;
-    int l = listener(false, &port), s, r, e, v = -1, c;
+    int l = listener(false, &port), s, r, e, v = -1, c, n;
     u32 len = sizeof(v);
     u64 t0;
+    bool answered;
     say("network: a connection made without blocking: EINPROGRESS, poll for writability, SO_ERROR");
     s = N.socket(AF_INET_, SOCK_STREAM_ | SOCK_NONBLOCK_, 0);
     CHECK(l >= 0 && s >= 0);
@@ -350,30 +351,48 @@ static void test_nonblocking_connect(void)
     N.close(s);
     N.close(l);
 
-    say("network: refused: a port nobody listens on, blocking and not");
+    /*
+     * Without blocking first, with a short wait. The phone (0.1.0.138) does not refuse a connection to a closed
+     * port of its own loopback: the SYN goes unanswered, a non-blocking attempt is still EINPROGRESS after 5 s, and
+     * a blocking one ended only after 127 s. There "no answer within 2 s" is the phone's behaviour, said and not
+     * counted, and the blocking attempt is left out so the Self-test does not wait two minutes. Anywhere else it is
+     * refused at once, and no answer is a failure.
+     */
+    say("network: refused: a port nobody listens on, not blocking and blocking");
     l = listener(false, &port);
     N.close(l);
-    s = N.socket(AF_INET_, SOCK_STREAM_, 0);
+    s = N.socket(AF_INET_, SOCK_STREAM_ | SOCK_NONBLOCK_, 0);
     t0 = now_ms();
     r = N.connect(s, sa, sa4(sa, k_lo4, port));
-    CHECK(r == -1 && err() == GE_CONNREFUSED);
-    say("  refused after %d ms", (int)(now_ms() - t0));
-    N.close(s);
-    s = N.socket(AF_INET_, SOCK_STREAM_ | SOCK_NONBLOCK_, 0);
-    r = N.connect(s, sa, 16);
     e = err();
+    answered = true;
     if (r == -1 && e == GE_INPROGRESS) {
         p.fd = s;
         p.events = POLLOUT_;
-        CHECK(N.poll(&p, 1, 5000) == 1 && (p.revents & POLLERR_));
-        len = sizeof(v);
-        CHECK(N.getsockopt(s, SOL_SOCKET_, SO_ERROR_, &v, &len) == 0 && v == GE_CONNREFUSED);
-        /* Asked for, the error is gone. */
-        len = sizeof(v);
-        CHECK(N.getsockopt(s, SOL_SOCKET_, SO_ERROR_, &v, &len) == 0 && v == 0);
+        n = N.poll(&p, 1, 2000);
+        if (n == 0 && !strcmp(hk_host_name(), "win32-arm")) {
+            answered = false;
+            say("  no answer within 2 s: this phone does not refuse a connection to a closed port of its own loopback but lets it "
+                "time out (a blocking one took about two minutes); the phone's behaviour, not counted, and the blocking attempt left out");
+        } else {
+            CHECK(n == 1 && (p.revents & POLLERR_));
+            len = sizeof(v);
+            CHECK(N.getsockopt(s, SOL_SOCKET_, SO_ERROR_, &v, &len) == 0 && v == GE_CONNREFUSED);
+            /* Asked for, the error is gone. */
+            len = sizeof(v);
+            CHECK(N.getsockopt(s, SOL_SOCKET_, SO_ERROR_, &v, &len) == 0 && v == 0);
+        }
     } else {
         CHECK(r == -1 && e == GE_CONNREFUSED);
     }
+    if (answered) say("  refused without blocking after %d ms", (int)(now_ms() - t0));
+    N.close(s);
+    if (!answered) return;
+    s = N.socket(AF_INET_, SOCK_STREAM_, 0);
+    t0 = now_ms();
+    r = N.connect(s, sa, 16);
+    CHECK(r == -1 && err() == GE_CONNREFUSED);
+    say("  refused after %d ms", (int)(now_ms() - t0));
     N.close(s);
 }
 

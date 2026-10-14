@@ -481,6 +481,16 @@ process included (Microsoft's documents allow it within a process).
 `tools/build-appx.sh arm --auto net` asks. No TLS: an https connection fails
 with an `SSLException`, as it did before there were sockets.
 
+*Seen on the phone* (the Self-test of 0.1.0.138): a connection to a closed
+port on 127.0.0.1 is not refused. The SYN goes unanswered: a non-blocking
+connect is still `EINPROGRESS` after 5 s, and a blocking one ended with
+`ECONNREFUSED` only after about two minutes (127 s). The PC and Linux refuse
+it at once. This is the phone's app-container loopback, not the layer's. The
+test now tries without blocking first. On the phone it counts "no answer
+within 2 s" as the phone's behaviour, says so, and leaves out the blocking
+attempt. An app that probes a local port that is not open waits that long
+too.
+
 ## The Java side
 
 No Java runs. `jni/hk_jni.c` is a `JNIEnv` over classes, methods and fields that are
