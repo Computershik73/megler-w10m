@@ -50,10 +50,179 @@ void hk_run_ended(int status, const char *reason)
 static void on_guest_exit(int status) { hk_run_ended(status, NULL); }
 static void on_crash(const char *report) { hk_run_ended(-1, report); }
 
+/* ------------------------------------------------- the app's files
+ *
+ * The shell's storage host (megler.h) is the owner of the host layer's foreign
+ * roots: link n is root n. The flags, kinds and errors of the two are the
+ * same numbers, so a call passes through as it is. One thing is decided
+ * here: a link the shell did not mark writable is not written to, whoever
+ * asks -- the libc, or a part of the layer that goes to the host layer
+ * itself.
+ */
+/* (Each of the two against the number itself: one enumeration compared with another draws a warning from MSVC, cast or not.) */
+#define BOTH(a, b, n) ((a) == (n) && (b) == (n))
+_Static_assert(BOTH(MEGLER_STORAGE_READ, HK_O_READ, 1) && BOTH(MEGLER_STORAGE_WRITE, HK_O_WRITE, 2) && BOTH(MEGLER_STORAGE_CREATE, HK_O_CREATE, 4) &&
+               BOTH(MEGLER_STORAGE_TRUNCATE, HK_O_TRUNC, 8) && BOTH(MEGLER_STORAGE_APPEND, HK_O_APPEND, 16) && BOTH(MEGLER_STORAGE_EXCLUSIVE, HK_O_EXCL, 32),
+               "megler.h's storage flags are the host layer's");
+_Static_assert(BOTH(MEGLER_STORAGE_FILE, HK_FOREIGN_FILE, 0) && BOTH(MEGLER_STORAGE_FOLDER, HK_FOREIGN_DIR, 1) && BOTH(MEGLER_STORAGE_ANY, HK_FOREIGN_ANY, 2),
+               "megler.h's storage kinds are the host layer's");
+_Static_assert(BOTH(MEGLER_STORAGE_OK, HK_E_OK, 0) && BOTH(MEGLER_STORAGE_NOT_FOUND, HK_E_NOENT, 1) && BOTH(MEGLER_STORAGE_DENIED, HK_E_ACCESS, 2) &&
+               BOTH(MEGLER_STORAGE_EXISTS, HK_E_EXIST, 3) && BOTH(MEGLER_STORAGE_NOT_A_FOLDER, HK_E_NOTDIR, 4) && BOTH(MEGLER_STORAGE_IS_A_FOLDER, HK_E_ISDIR, 5) &&
+               BOTH(MEGLER_STORAGE_FULL, HK_E_NOSPC, 6) && BOTH(MEGLER_STORAGE_FAILED, HK_E_IO, 7) && BOTH(MEGLER_STORAGE_INVALID, HK_E_INVAL, 8) &&
+               BOTH(MEGLER_STORAGE_NOT_EMPTY, HK_E_NOTEMPTY, 9) && BOTH(MEGLER_STORAGE_BUSY, HK_E_BUSY, 10) && BOTH(MEGLER_STORAGE_OTHER_DEVICE, HK_E_XDEV, 11),
+               "megler.h's storage errors are the host layer's");
+#undef BOTH
+
+static megler_storage_host g_storage;
+static megler_storage_link g_links[MEGLER_STORAGE_MAX_LINKS];
+static char *g_link_names[MEGLER_STORAGE_MAX_LINKS];
+
+/* A link the shell gave and this layer took (one with a name that could not be is not there, whatever its number). */
+static bool link_there(int link) { return link >= 0 && link < g_storage.link_count && g_links[link].name; }
+static bool link_writable(int link) { return link_there(link) && g_links[link].writable; }
+
+/* What a change to a link is refused with before the shell is asked, or 0. */
+static int link_refuses(int link, bool has_function)
+{
+    if (!link_there(link)) return HK_E_NOENT;
+    return link_writable(link) && has_function ? 0 : HK_E_ACCESS;
+}
+
+static void *storage_open(void *user, int link, const char *path, int flags, int kind, int *err)
+{
+    bool changes = kind == HK_FOREIGN_FILE && (flags & (HK_O_WRITE | HK_O_CREATE | HK_O_TRUNC | HK_O_APPEND));
+    (void)user;
+    *err = changes ? link_refuses(link, true) : link_there(link) ? 0 : HK_E_NOENT;
+    return *err ? NULL : g_storage.open(g_storage.user, link, path, flags, kind, err);
+}
+
+static bool storage_mkdir(void *user, int link, const char *path, int *err)
+{
+    (void)user;
+    *err = link_refuses(link, g_storage.make_folder != NULL);
+    return !*err && g_storage.make_folder(g_storage.user, link, path, err);
+}
+
+static bool storage_remove(void *user, int link, const char *path, bool dir, int *err)
+{
+    (void)user;
+    *err = link_refuses(link, g_storage.remove != NULL);
+    return !*err && g_storage.remove(g_storage.user, link, path, dir, err);
+}
+
+static bool storage_rename(void *user, int from_link, const char *from, int to_link, const char *to, int *err)
+{
+    (void)user;
+    *err = link_refuses(from_link, g_storage.rename != NULL);
+    if (!*err) *err = link_refuses(to_link, true);
+    return !*err && g_storage.rename(g_storage.user, from_link, from, to_link, to, err);
+}
+
+/* Whether a link's name can be a folder of /sdcard: one part of a path, and not the folder the apps' own parts are in. */
+static bool link_name_ok(const char *name)
+{
+    static const char android[] = "android";
+    size_t n = name ? strlen(name) : 0, i;
+    bool is_android = n == sizeof(android) - 1;
+    if (!n || n > 200 || !strcmp(name, ".") || !strcmp(name, "..")) return false;
+    for (i = 0; i < n; i++) {
+        char c = name[i];
+        if (c == '/' || c == '\\' || c == ':' || (unsigned char)c < 32) return false;
+        if (is_android && (c | 32) != android[i]) is_android = false;
+    }
+    return !is_android;
+}
+
+void hk_run_storage(const char *data_dir, const megler_storage_host *storage)
+{
+    static const hk_foreign foreign = { NULL, storage_open, storage_mkdir, storage_remove, storage_rename };
+    hk_fs_link links[MEGLER_STORAGE_MAX_LINKS];
+    char *shared = hk_sprintf("%s/sdcard", data_dir);
+    int i, k, n = 0;
+    hk_foreign_set(NULL);
+    for (i = 0; i < MEGLER_STORAGE_MAX_LINKS; i++) {
+        free(g_link_names[i]);
+        g_link_names[i] = NULL;
+    }
+    memset(&g_storage, 0, sizeof(g_storage));
+    memset(g_links, 0, sizeof(g_links));
+    if (storage && storage->links && storage->link_count > 0 && storage->open) {
+        g_storage = *storage;
+        if (g_storage.link_count > MEGLER_STORAGE_MAX_LINKS) {
+            hk_warn("storage: %d links were given and %d is as many as there can be: the rest are left out", g_storage.link_count, MEGLER_STORAGE_MAX_LINKS);
+            g_storage.link_count = MEGLER_STORAGE_MAX_LINKS;
+        }
+        g_storage.links = g_links;
+        for (i = 0; i < g_storage.link_count; i++) {
+            const char *name = storage->links[i].name, *taken = NULL;
+            /* (A link that is left out keeps its number: the numbers are the shell's.) */
+            if (!link_name_ok(name)) {
+                hk_warn("storage: link %d is left out: \"%s\" cannot be the name of a folder in the shared storage", i, name ? name : "");
+                continue;
+            }
+            /* The shared storage does not tell A from a: nor may two links' names differ in that alone. */
+            for (k = 0; k < n && !taken; k++) {
+                const char *other = links[k].name;
+                size_t a = strlen(name), b = 0;
+                if (a != strlen(other)) continue;
+                while (b < a && (name[b] == other[b] || ((name[b] ^ other[b]) == 32 && (name[b] | 32) >= 'a' && (name[b] | 32) <= 'z'))) b++;
+                if (b == a) taken = other;
+            }
+            if (taken) {
+                hk_warn("storage: link %d (\"%s\") is left out: link \"%s\" has that name already", i, name, taken);
+                continue;
+            }
+            g_link_names[i] = hk_strdup(name);
+            g_links[i].name = g_link_names[i];
+            g_links[i].writable = storage->links[i].writable;
+            links[n].name = g_link_names[i];
+            links[n].root = i;
+            links[n].read_only = !g_links[i].writable;
+            n++;
+        }
+        if (n) hk_foreign_set(&foreign);
+    }
+    hk_fs_shared_storage(shared, links, n);
+    for (i = 0; i < n; i++) hk_info("storage: /sdcard/%s is a folder of the phone's own (link %d%s)", links[i].name, links[i].root, links[i].read_only ? ", to read only" : "");
+    free(shared);
+}
+
+/* What is in a folder besides one name: counted, the first few named. */
+typedef struct left_behind {
+    int count;
+    char names[160];
+} left_behind;
+
+static void left_one(const char *name, bool is_dir, void *user)
+{
+    left_behind *l = (left_behind *)user;
+    size_t at = strlen(l->names);
+    (void)is_dir;
+    if (!strcmp(name, "Android")) return;
+    if (l->count++ < 6 && at + strlen(name) + 3 < sizeof(l->names)) snprintf(l->names + at, sizeof(l->names) - at, "%s%s", at ? ", " : "", name);
+}
+
+void hk_run_files(const char *data_dir, const char *package, const megler_storage_host *storage)
+{
+    char *internal = hk_sprintf("%s/apps/%s/data", data_dir, package), *own = hk_sprintf("%s/apps/%s/sdcard", data_dir, package);
+    left_behind left;
+    hk_fs_configure(package, internal, own);
+    hk_run_storage(data_dir, storage);
+    /*
+     * Until the storage was shared every app had a whole one to itself, in the folder its own part is still kept in. What an app put
+     * there outside Android/data and Android/obb is still on the disk and no longer in /sdcard. Nothing is moved; it is said.
+     */
+    memset(&left, 0, sizeof(left));
+    if (hk_path_list(own, left_one, &left, NULL) && left.count)
+        hk_warn("storage: %d thing(s) this app kept in a storage of its own are not in the shared one, where it now looks: %s%s (still in %s)", left.count, left.names,
+                left.count > 6 ? ", ..." : "", own);
+    free(internal);
+    free(own);
+}
+
 bool hk_run_start(const megler_run_config *config)
 {
     hk_apk_info info;
-    char *internal, *external;
     int i;
     g_error[0] = 0;
     if (g_started_once) {
@@ -95,12 +264,8 @@ bool hk_run_start(const megler_run_config *config)
     }
     for (i = 0; i < config->split_count; i++) hk_ld_add_apk(config->split_apks[i]);
 
-    /* Each app gets its own Android data directories under ours. */
-    internal = hk_sprintf("%s/apps/%s/data", megler_data_dir(), info.package);
-    external = hk_sprintf("%s/apps/%s/sdcard", megler_data_dir(), info.package);
-    hk_fs_configure(info.package, internal, external);
-    free(internal);
-    free(external);
+    /* Each app gets its own Android data directories under ours, and all of them one shared storage. */
+    hk_run_files(megler_data_dir(), info.package, &g_config.storage);
 
     hk_guest_exit_hook = on_guest_exit;
     hk_core_set_crash_hook(on_crash);

@@ -255,6 +255,9 @@ typedef struct hk_map {
 bool hk_map_open(hk_map *m, const char *path);
 void hk_map_close(hk_map *m);
 
+/* How much the volume a folder is on holds and how much of that this process may still fill, in bytes; false where it cannot be asked (of a foreign path: never). */
+bool hk_path_space(const char *path, u64 *total, u64 *available);
+
 /* ---------------------------------------------------------- foreign paths
  *
  * Files the operating system will not open by path for this process but

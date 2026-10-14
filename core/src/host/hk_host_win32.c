@@ -1267,6 +1267,21 @@ bool hk_map_open(hk_map *m, const char *path)
     return true;
 }
 
+bool hk_path_space(const char *path, u64 *total, u64 *available)
+{
+    wchar_t *w;
+    ULARGE_INTEGER mine, all, unused;
+    BOOL ok;
+    if (hk_path_is_foreign(path)) return false;
+    w = wide_path(path);
+    ok = GetDiskFreeSpaceExW(w, &mine, &all, &unused);
+    free(w);
+    if (!ok) return false;
+    *total = all.QuadPart;
+    *available = mine.QuadPart;
+    return true;
+}
+
 void hk_map_close(hk_map *m)
 {
     if (m->data) UnmapViewOfFile(m->data);

@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <sys/syscall.h>
 #include <sys/time.h>
 #include <time.h>
@@ -607,6 +608,15 @@ bool hk_map_open(hk_map *m, const char *path)
     if (p == MAP_FAILED) return false;
     m->data = (const u8 *)p;
     m->size = (u64)s.st_size;
+    return true;
+}
+
+bool hk_path_space(const char *path, u64 *total, u64 *available)
+{
+    struct statvfs s;
+    if (hk_path_is_foreign(path) || statvfs(path, &s) != 0) return false;
+    *total = (u64)s.f_blocks * s.f_frsize;
+    *available = (u64)s.f_bavail * s.f_frsize;
     return true;
 }
 

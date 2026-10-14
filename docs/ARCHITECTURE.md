@@ -188,7 +188,7 @@ an app will reach it.
 | `FILE` | `__sF[3]`, 84 bytes apart, fields old headers read inline | this layer's own, with that layout at its start |
 | `malloc`/`memalign`/`free` | one `free` for all | every block has a header saying where the host's block starts |
 | file descriptors | pipes, eventfd, epoll | this layer's own table; pipes and eventfds are implemented here |
-| paths | `/data/data/<pkg>`, `/sdcard`, `/proc/cpuinfo` | a mount table onto the app's folder under `LocalState`; the `/proc` and `/sys` files code reads are made up |
+| paths | `/data/data/<pkg>`, `/sdcard`, `/proc/cpuinfo` | a mount table onto folders under `LocalState` (see "Files and the shared storage"); the `/proc` and `/sys` files code reads are made up |
 | signals | delivered asynchronously | between the app's own threads they are: a thread in the middle of Android code is stopped, sent to the handler and put back (`SuspendThread`, `SetThreadContext`, the vectored handler); one that waits or sleeps in this layer is woken for it. Nothing comes from outside the process |
 | a thread's stack | all there from the start; code moves `sp` by any amount and writes | Windows hands a stack out a page at a time, through a guard page that code built for Windows touches in order. Android code does not, and a write beyond the guard page ends the process with no handler run. So the whole stack is committed, down to a guard page of its own, the first time a thread is given a guest thread pointer (`hk_thread_whole_stack`) |
 | `mmap`/`munmap` | any range of pages, unmapped in any pieces | a reservation of the host's, which gives addresses back only whole: a region remembers which of its pages the app still has, decommits what is unmapped, and is released with its last page |
@@ -274,6 +274,57 @@ thread, and `updateTexImage`, on the thread with the app's context, uploads it a
 binds it to the app's external texture through an EGLImage. The shell's side is
 `player/MediaHost.cpp`: Media Foundation's source reader, two readers to a film
 (one stream each), on a thread of its own.
+
+## Files and the shared storage
+
+Android's paths are looked up in a mount table (`bionic/hk_libc_io.c`). What an
+app sees, and where it is under the data folder (`LocalState` on a phone):
+
+| Android | Here |
+|---|---|
+| `/data/data/<package>`, `/data/user/0/<package>` | `apps/<package>/data` |
+| `/storage/emulated/0`, and its other names `/sdcard`, `/mnt/sdcard`, `/storage/self/primary`, `/storage/sdcard0` | `sdcard`: **one storage for every app**, with Android's standard folders in it from the start (`Alarms`, `DCIM`, `Documents`, `Download`, `Movies`, `Music`, `Notifications`, `Pictures`, `Podcasts`, `Ringtones`) |
+| `/storage/emulated/0/Android/data/<package>`, `.../Android/obb/<package>` | `apps/<package>/sdcard/Android/data/<package>`, `.../obb/<package>`: the app's own part stays with the app. Another package's is not there |
+| `/storage/emulated/0/<name>` for a link | a folder of the phone's own, through the shell |
+
+The other names of the storage are rewritten to the one before a path is looked
+up, as Android's symbolic links would be followed, so `realpath` and `getcwd`
+give `/storage/emulated/0/...`. A directory that exists only because something
+is mounted below it (`/storage`, `/storage/emulated`, `/mnt`) can be stat'ed,
+opened and listed, and a listing shows what is mounted in a directory whether
+or not the host's folder has an entry of that name, once. A mount's own name
+cannot be removed or renamed (`EBUSY`) and making it finds it there (`EEXIST`).
+Below the shared storage a mount's name is matched without regard to the case
+of ASCII letters, as Android's storage does not tell `Music` from `music`.
+`statfs` and `statvfs` answer for every path with the real size and free room
+of the volume the data folder is on, in 4 KB blocks.
+
+**Links.** The user's music, pictures and videos are not the app's to open: on
+the phone tried, `CreateFile2` and `FindFirstFileExW` are refused there (error
+5) with every library capability declared. What Windows gives an app is
+handles, through Windows.Storage's broker. So the host layer has *foreign
+paths* (`host/hk_host.h`): `megler-link:/2/Camera Roll/a.jpg` is a file of root
+2, and whoever owns the roots is asked for the operating system's own handle
+for it -- a file's, a directory's to list, or whichever is there for its size
+and times -- and to make, remove and rename by name. Every function of the
+host layer that takes a path takes these, and from the handle on a file in a
+link is read, written, mapped and listed by the same code as any other. A
+link is a mount whose host path is such a root. The owner of the roots is the
+shell, through `megler_storage_host` in `megler.h`: its links by name, each
+writable or not, and four functions. A link that is not writable is refused
+every change in `run/hk_run.c`, before the shell is asked, whichever part of
+the layer wanted it. A rename between a link and anything else is `EXDEV`, as
+between two file systems: the app copies and removes.
+
+*Proven:* with a stand-in for the shell that opens folders of the tests'
+scratch folder with the plain calls (`core/tests/hk_storage_tests.c`), on both
+hosts, through the C library's functions as an app binds them: the five names
+of the storage, the standard folders and each link once in a listing, files
+and folders in a link, renames in a link, between links and refused across,
+the app's own part where it was, a link that is only to be read, two threads
+at once. *Expected:* that the broker's handles do on a phone what the probe
+saw them do there (read, write, seek, size and times, removal, a folder's
+listing) for everything an app does to a file.
 
 ## The Java side
 

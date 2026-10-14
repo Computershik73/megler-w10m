@@ -18,65 +18,205 @@
 #include "../elf/hk_elf.h"
 #include "hk_fd.h"
 
-/* --------------------------------------------------------------- the paths */
+/* --------------------------------------------------------------- the paths
+ *
+ * The shared storage, Android's "SD card", is one folder for every app:
+ * /storage/emulated/0. The other names it goes by are that path written
+ * another way and are rewritten to it before anything else looks at a path,
+ * as the symbolic links they are on Android would be followed.
+ *
+ * Below it some names are mounts of their own: the app's own part
+ * (Android/data/<package>, Android/obb/<package>), which stays in the app's
+ * folder on the host, and the links -- folders of the phone itself, whose
+ * host paths are foreign ones (host/hk_host.h). Android's shared storage
+ * does not tell A from a, so the part of a path below it is matched without
+ * regard to the case of ASCII letters.
+ */
+#define EXTERNAL "/storage/emulated/0"
+#define EXTERNAL_LEN (sizeof(EXTERNAL) - 1)
 
 typedef struct mount {
     char *guest, *host;
     size_t glen;
+    size_t exact;                      /* how much of `guest` is matched letter for letter: all of it, or as far as the shared storage */
+    bool link;                         /* one of the phone's own folders */
+    bool read_only;
 } mount;
-static mount g_mounts[32];
+static mount g_mounts[96];
 static int g_nmounts;
 static char g_package[160] = "com.example.app";
 static char g_internal[256] = "/data/data/com.example.app";
-static char g_external[64] = "/storage/emulated/0";
+static char g_external[64] = EXTERNAL;
 static char g_cwd[512] = "/";
+static char *g_space_dir;              /* a host folder on the volume everything is kept on: what statfs asks about */
+
+static const struct {
+    const char *path;
+    bool listed;                       /* whether its parent's listing shows it */
+} k_aliases[] = {
+    { "/sdcard", true }, { "/mnt/sdcard", true }, { "/storage/self/primary", true },
+    /* What older apps were told; Android 9 has no such name, and neither has a listing of /storage. */
+    { "/storage/sdcard0", false },
+};
+
+/* The folders Android's shared storage has from the start (Environment.DIRECTORY_*). */
+static const char *const k_standard_dirs[] = { "Alarms", "DCIM", "Documents", "Download", "Movies", "Music", "Notifications", "Pictures", "Podcasts", "Ringtones" };
+
+static bool ascii_same(const char *a, const char *b, size_t n, bool any_case)
+{
+    size_t i;
+    if (!any_case) return !strncmp(a, b, n);
+    for (i = 0; i < n; i++) {
+        char x = a[i], y = b[i];
+        if (x >= 'A' && x <= 'Z') x = (char)(x + 32);
+        if (y >= 'A' && y <= 'Z') y = (char)(y + 32);
+        if (x != y) return false;
+        if (!x) break;
+    }
+    return true;
+}
+
+/* Whether the first n characters of a guest path are those of a mount's, n being no more than either has. */
+static bool mount_same(const mount *m, const char *g, size_t n)
+{
+    size_t strict = n < m->exact ? n : m->exact;
+    return !strncmp(g, m->guest, strict) && ascii_same(g + strict, m->guest + strict, n - strict, true);
+}
+
+static mount *mount_find(const char *guest_prefix)
+{
+    int i;
+    for (i = 0; i < g_nmounts; i++)
+        if (!strcmp(g_mounts[i].guest, guest_prefix)) return &g_mounts[i];
+    return NULL;
+}
 
 void hk_fs_mount(const char *guest_prefix, const char *host_dir)
 {
-    mount *m;
-    int i;
-    for (i = 0; i < g_nmounts; i++) {
-        if (!strcmp(g_mounts[i].guest, guest_prefix)) {
-            free(g_mounts[i].host);
-            g_mounts[i].host = hk_strdup(host_dir);
-            return;
-        }
+    mount *m = mount_find(guest_prefix);
+    if (m) {
+        free(m->host);
+        m->host = hk_strdup(host_dir);
+        m->link = m->read_only = false;
+        return;
     }
-    if (g_nmounts >= (int)HK_COUNT(g_mounts)) return;
+    if (g_nmounts >= (int)HK_COUNT(g_mounts)) {
+        hk_err("files: no room for one more mount: %s does not exist", guest_prefix);
+        return;
+    }
     m = &g_mounts[g_nmounts++];
+    memset(m, 0, sizeof(*m));
     m->guest = hk_strdup(guest_prefix);
     m->host = hk_strdup(host_dir);
     m->glen = strlen(guest_prefix);
+    m->exact = !strncmp(guest_prefix, EXTERNAL "/", EXTERNAL_LEN + 1) ? EXTERNAL_LEN + 1 : m->glen;
 }
 
 void hk_fs_configure(const char *package, const char *internal_dir, const char *external_dir)
 {
-    char *p;
+    static const char *const own[] = { "data", "obb" };
+    char *p, *h;
+    size_t i;
     hk_strlcpy(g_package, package, sizeof(g_package));
     snprintf(g_internal, sizeof(g_internal), "/data/data/%s", package);
     hk_path_mkdirs(internal_dir);
-    hk_path_mkdirs(external_dir);
     hk_fs_mount(g_internal, internal_dir);
     p = hk_sprintf("/data/user/0/%s", package);
     hk_fs_mount(p, internal_dir);
     free(p);
-    hk_fs_mount("/storage/emulated/0", external_dir);
-    hk_fs_mount("/sdcard", external_dir);
-    hk_fs_mount("/mnt/sdcard", external_dir);
-    hk_fs_mount("/storage/sdcard0", external_dir);
+    /*
+     * The app's own part of the shared storage. The folders are made now: a mount with nothing behind it would not exist, and its
+     * parents are the shared storage's, so an app making the path one name at a time could not make it either.
+     */
+    for (i = 0; i < HK_COUNT(own); i++) {
+        p = hk_sprintf(EXTERNAL "/Android/%s/%s", own[i], package);
+        h = hk_sprintf("%s/Android/%s/%s", external_dir, own[i], package);
+        hk_path_mkdirs(h);
+        hk_fs_mount(p, h);
+        free(p);
+        free(h);
+    }
     p = hk_sprintf("%s/tmp", internal_dir);
     hk_path_mkdirs(p);
     hk_fs_mount("/data/local/tmp", p);
     hk_fs_mount("/tmp", p);
     free(p);
     hk_strlcpy(g_cwd, g_internal, sizeof(g_cwd));
+    if (!g_space_dir) g_space_dir = hk_strdup(internal_dir);
+}
+
+void hk_fs_shared_storage(const char *shared_dir, const hk_fs_link *links, int count)
+{
+    char *p, *h;
+    size_t i;
+    int k, n = 0;
+    /* The links there were are gone: the table is what this call says. */
+    for (k = 0; k < g_nmounts; k++) {
+        if (g_mounts[k].link) {
+            free(g_mounts[k].guest);
+            free(g_mounts[k].host);
+        } else {
+            g_mounts[n++] = g_mounts[k];
+        }
+    }
+    g_nmounts = n;
+    hk_path_mkdirs(shared_dir);
+    hk_fs_mount(EXTERNAL, shared_dir);
+    free(g_space_dir);
+    g_space_dir = hk_strdup(shared_dir);
+    /* Real folders, so that an app can make what Android lets it make beside its own part (Android/media/<package>). */
+    p = hk_sprintf("%s/Android/data", shared_dir);
+    hk_path_mkdirs(p);
+    free(p);
+    p = hk_sprintf("%s/Android/obb", shared_dir);
+    hk_path_mkdirs(p);
+    free(p);
+    for (i = 0; i < HK_COUNT(k_standard_dirs); i++) {
+        bool linked = false;
+        for (k = 0; k < count && !linked; k++) linked = strlen(links[k].name) == strlen(k_standard_dirs[i]) && ascii_same(links[k].name, k_standard_dirs[i], strlen(k_standard_dirs[i]), true);
+        if (linked) continue;
+        p = hk_sprintf("%s/%s", shared_dir, k_standard_dirs[i]);
+        hk_path_mkdir(p, NULL);
+        free(p);
+    }
+    for (k = 0; k < count; k++) {
+        mount *m;
+        p = hk_sprintf(EXTERNAL "/%s", links[k].name);
+        h = hk_sprintf(HK_FOREIGN_PREFIX "%d", links[k].root);
+        hk_fs_mount(p, h);
+        m = mount_find(p);
+        if (m) {
+            m->link = true;
+            m->read_only = links[k].read_only;
+        }
+        free(p);
+        free(h);
+    }
 }
 
 const char *hk_fs_internal_dir(void) { return g_internal; }
 const char *hk_fs_external_dir(void) { return g_external; }
 const char *hk_fs_package(void) { return g_package; }
 
-/* An absolute guest path with ".", ".." and doubled slashes resolved; malloc'd. */
+/* A path that begins with one of the shared storage's other names, said with its own; else the path as it is. Takes `g`. */
+static char *without_alias(char *g)
+{
+    size_t i;
+    for (i = 0; i < HK_COUNT(k_aliases); i++) {
+        size_t n = strlen(k_aliases[i].path);
+        if (!strncmp(g, k_aliases[i].path, n) && (!g[n] || g[n] == '/')) {
+            char *out = hk_sprintf(EXTERNAL "%s", g + n);
+            free(g);
+            return out;
+        }
+    }
+    return g;
+}
+
+/*
+ * An absolute guest path with ".", ".." and doubled slashes resolved, and the
+ * shared storage called by its one name; malloc'd.
+ */
 static char *normalize(const char *path)
 {
     size_t cap = strlen(path) + strlen(g_cwd) + 4, n = 0;
@@ -105,22 +245,64 @@ static char *normalize(const char *path)
     if (!n) out[n++] = '/';
     out[n] = 0;
     free(full);
-    return out;
+    return without_alias(out);
 }
 
-static char *host_of_normal(const char *g)
+/* The mount a normalized path is in: the one with the longest prefix. */
+static const mount *mount_of(const char *g)
 {
     const mount *best = NULL;
+    size_t len = strlen(g);
     int i;
     for (i = 0; i < g_nmounts; i++) {
         const mount *m = &g_mounts[i];
-        if (strncmp(g, m->guest, m->glen)) continue;
+        if (len < m->glen || !mount_same(m, g, m->glen)) continue;
         /* A whole component: "/sdcard" is not a prefix of "/sdcard2". */
         if (m->glen > 1 && g[m->glen] && g[m->glen] != '/') continue;
         if (!best || m->glen > best->glen) best = m;
     }
+    return best;
+}
+
+static char *host_of_normal(const char *g)
+{
+    const mount *best = mount_of(g);
     if (!best) return NULL;
     return hk_sprintf("%s%s%s", best->host, (best->glen == 1 && g[1]) ? "/" : "", g + (best->glen == 1 ? 1 : best->glen));
+}
+
+/* Whether a normalized path is a mount's own name. */
+static bool is_mount_point(const char *g)
+{
+    const mount *m = mount_of(g);
+    return m && !g[m->glen];
+}
+
+/*
+ * Whether a normalized path is a directory because something is mounted
+ * below it: "/storage/emulated" exists for /storage/emulated/0, whether or
+ * not a folder of the host stands behind it. `g` is "/" or has no slash at
+ * its end.
+ */
+static bool leads_to_mount(const char *g)
+{
+    size_t len = strlen(g), i;
+    int k;
+    if (len == 1) return g_nmounts > 0;
+    for (k = 0; k < g_nmounts; k++) {
+        const mount *m = &g_mounts[k];
+        if (m->glen > len && m->guest[len] == '/' && mount_same(m, g, len)) return true;
+    }
+    for (i = 0; i < HK_COUNT(k_aliases); i++)
+        if (strlen(k_aliases[i].path) > len && k_aliases[i].path[len] == '/' && !strncmp(k_aliases[i].path, g, len)) return true;
+    return false;
+}
+
+/* Whether a normalized path is in a link that may only be read. */
+static bool in_read_only(const char *g)
+{
+    const mount *m = mount_of(g);
+    return m && m->read_only;
 }
 
 char *hk_fs_host_path(const char *guest_path)
@@ -444,27 +626,25 @@ static int g_open(const char *path, int flags, int mode)
         o->mem_size = n;
         o->type = OBJ_MEM;
     } else {
+        bool is_dir, asked = true;
+        int why = 0;
         h = host_of_normal(g);
+        /*
+         * Whether it is a directory decides the rest, and an ordinary path is asked first. A foreign one is not: asking costs it a
+         * call to whoever owns it (on a phone, Windows' broker), and so does opening. It is opened as a file, and the answer to
+         * that says when it was a directory after all.
+         */
         if (!h) {
-            obj_destroy(o);
-            hk_set_errno(acc ? GE_ACCES : GE_NOENT);
-            return -1;
-        }
-        if (hk_path_stat(h, &st, NULL) && st.is_dir) {
-            free(h);
-            if (acc) {
-                obj_destroy(o);
-                hk_set_errno(GE_ISDIR);
-                return -1;
-            }
-            o->type = OBJ_DIRFD;
+            is_dir = leads_to_mount(g);
+            if (!is_dir) why = acc ? GE_ACCES : GE_NOENT;
+        } else if (hk_path_is_foreign(h) && !(flags & G_O_DIRECTORY)) {
+            is_dir = asked = false;
         } else {
-            if (flags & G_O_DIRECTORY) {
-                free(h);
-                obj_destroy(o);
-                hk_set_errno(GE_NOTDIR);
-                return -1;
-            }
+            /* (A directory that is only the way to a mount is one with nothing of the host's behind it.) */
+            is_dir = hk_path_stat(h, &st, NULL) ? st.is_dir : leads_to_mount(g);
+        }
+        if (!why && !is_dir && (flags & G_O_DIRECTORY)) why = GE_NOTDIR;
+        if (!why && !is_dir) {
             if (acc == 0) hf = HK_O_READ;
             else if (acc == 1) hf = HK_O_WRITE;
             else hf = HK_O_READ | HK_O_WRITE;
@@ -473,13 +653,19 @@ static int g_open(const char *path, int flags, int mode)
             if (flags & G_O_TRUNC) hf |= HK_O_TRUNC;
             if (flags & G_O_APPEND) hf |= HK_O_APPEND;
             o->file = hk_file_open(h, hf, &err);
-            free(h);
-            if (!o->file) {
-                obj_destroy(o);
-                hk_set_errno(hk_errno_of(err));
-                return -1;
-            }
-            o->type = OBJ_FILE;
+            if (o->file) o->type = OBJ_FILE;
+            else if (!asked && err == HK_E_ISDIR) is_dir = true;
+            else why = hk_errno_of(err);
+        }
+        if (!why && is_dir) {
+            if (acc) why = GE_ISDIR;
+            else o->type = OBJ_DIRFD;
+        }
+        free(h);
+        if (why) {
+            obj_destroy(o);
+            hk_set_errno(why);
+            return -1;
         }
     }
     fd = fd_new(o);
@@ -944,15 +1130,11 @@ static int g_stat_path(const char *path, g_stat *out)
     h = host_of_normal(g);
     if (!h || !hk_path_stat(h, &st, &err)) {
         /* A directory that is only the way to a mount ("/data", "/storage/emulated") exists too. */
-        size_t len = strlen(g);
-        int i;
-        for (i = 0; i < g_nmounts; i++) {
-            if (!strncmp(g_mounts[i].guest, g, len) && (len == 1 || g_mounts[i].guest[len] == '/')) {
-                fill_special(out, G_S_IFDIR | 0771, 4096, g);
-                free(h);
-                free(g);
-                return 0;
-            }
+        if (leads_to_mount(g)) {
+            fill_special(out, G_S_IFDIR | 0771, 4096, g);
+            free(h);
+            free(g);
+            return 0;
         }
         hk_set_errno(h ? hk_errno_of(err) : GE_NOENT);
         free(h);
@@ -1009,21 +1191,44 @@ static int g_fstatat(int dirfd, const char *path, g_stat *out, int flags)
     return g_stat_path(path, out);
 }
 
+/* Everything that is there can be read. What cannot be written is what lies in a link the shell marked so. */
+static int access_of(const char *path, int mode, int r)
+{
+    if (r == 0 && (mode & 2)) {
+        char *g = normalize(path);
+        bool no = in_read_only(g);
+        free(g);
+        if (no) {
+            hk_set_errno(GE_ACCES);
+            return -1;
+        }
+    }
+    return r;
+}
+
 static int g_access(const char *path, int mode)
 {
     g_stat st;
-    (void)mode;
-    return g_stat_path(path, &st);
+    return access_of(path, mode, g_stat_path(path, &st));
 }
 
 static int g_faccessat(int dirfd, const char *path, int mode, int flags)
 {
     g_stat st;
-    (void)mode;
-    return g_fstatat(dirfd, path, &st, flags);
+    int r = g_fstatat(dirfd, path, &st, flags);
+    /* (A path relative to a directory other than the current one is not looked up again: such a one is only said to be there.) */
+    return dirfd == -100 || (path && path[0] == '/') ? access_of(path, mode, r) : r;
 }
 
-/* statfs / statvfs: plenty of room, always. */
+/*
+ * statfs / statvfs. Every path is on one volume as far as an app can tell:
+ * the one Megler keeps its data on, whose real size and free room are the
+ * answer wherever the path is -- in the app's own folders, in the shared
+ * storage, in a link to one of the phone's folders (which is on that volume
+ * unless the user keeps the library on a memory card; nobody can be asked
+ * through a handle). 4 KB blocks. Where the host cannot say: 16 GB, 4 GB of
+ * them free, which is what was always said before.
+ */
 typedef struct g_statfs {
     u32 f_type, f_bsize;
     u64 f_blocks, f_bfree, f_bavail, f_files, f_ffree;
@@ -1031,14 +1236,27 @@ typedef struct g_statfs {
     u32 f_namelen, f_frsize, f_flags, f_spare[4];
 } g_statfs;
 
+static void volume_blocks(u64 *blocks, u64 *free_blocks)
+{
+    u64 total = 0, available = 0;
+    *blocks = 4u * 1024 * 1024;
+    *free_blocks = 1024 * 1024;
+    if (g_space_dir && hk_path_space(g_space_dir, &total, &available) && total) {
+        *blocks = total / 4096;
+        *free_blocks = available / 4096;
+    }
+}
+
 static int g_statfs_fn(const char *path, g_statfs *out)
 {
+    u64 blocks, free_blocks;
     (void)path;
+    volume_blocks(&blocks, &free_blocks);
     memset(out, 0, sizeof(*out));
     out->f_type = 0xEF53;
     out->f_bsize = out->f_frsize = 4096;
-    out->f_blocks = 4u * 1024 * 1024;
-    out->f_bfree = out->f_bavail = 1024 * 1024;
+    out->f_blocks = blocks;
+    out->f_bfree = out->f_bavail = free_blocks;
     out->f_files = out->f_ffree = 1000000;
     out->f_namelen = 255;
     return 0;
@@ -1052,11 +1270,14 @@ typedef struct g_statvfs {
 
 static int g_statvfs_fn(const char *path, g_statvfs *out)
 {
+    u64 blocks, free_blocks;
     (void)path;
+    volume_blocks(&blocks, &free_blocks);
     memset(out, 0, sizeof(*out));
     out->f_bsize = out->f_frsize = 4096;
-    out->f_blocks = 4u * 1024 * 1024;
-    out->f_bfree = out->f_bavail = 1024 * 1024;
+    /* (32-bit counts: 16 TB in 4 KB blocks before they would not fit.) */
+    out->f_blocks = blocks > 0xFFFFFFFFu ? 0xFFFFFFFFu : (u32)blocks;
+    out->f_bfree = out->f_bavail = free_blocks > 0xFFFFFFFFu ? 0xFFFFFFFFu : (u32)free_blocks;
     out->f_files = out->f_ffree = out->f_favail = 1000000;
     out->f_namemax = 255;
     return 0;
@@ -1065,14 +1286,31 @@ static int g_fstatvfs_fn(int fd, g_statvfs *out) { (void)fd; return g_statvfs_fn
 
 /* ------------------------------------------------- names: make, remove, move */
 
-#define PATH_OP(name, call)                         \
+/*
+ * A name that is not the app's to take away or to give: a mount's own (the
+ * shared storage, a link to one of the phone's folders, the APK) and the
+ * directories that exist because something is mounted below them. Making one
+ * finds it there (EEXIST); removing or renaming one is refused as for a mount
+ * point (EBUSY). 0 for any other name.
+ */
+static int fixed_name(const char *g, int why) { return is_mount_point(g) || leads_to_mount(g) ? why : 0; }
+
+#define PATH_OP(name, fixed, call)                  \
     static int name(const char *path)               \
     {                                               \
-        char *h = hk_fs_host_path(path);            \
-        int err = 0;                                \
+        char *g, *h;                                \
+        int err = 0, why;                           \
         bool ok;                                    \
+        if (!path || !*path) {                      \
+            hk_set_errno(GE_NOENT);                 \
+            return -1;                              \
+        }                                           \
+        g = normalize(path);                        \
+        why = fixed_name(g, fixed);                 \
+        h = why ? NULL : host_of_normal(g);         \
+        free(g);                                    \
         if (!h) {                                   \
-            hk_set_errno(GE_ACCES);                 \
+            hk_set_errno(why ? why : GE_ACCES);     \
             return -1;                              \
         }                                           \
         ok = call;                                  \
@@ -1084,9 +1322,9 @@ static int g_fstatvfs_fn(int fd, g_statvfs *out) { (void)fd; return g_statvfs_fn
         return 0;                                   \
     }
 
-PATH_OP(g_unlink, hk_path_remove(h, &err))
-PATH_OP(g_rmdir, hk_path_rmdir(h, &err))
-PATH_OP(mkdir_host, hk_path_mkdir(h, &err))
+PATH_OP(g_unlink, GE_BUSY, hk_path_remove(h, &err))
+PATH_OP(g_rmdir, GE_BUSY, hk_path_rmdir(h, &err))
+PATH_OP(mkdir_host, GE_EXIST, hk_path_mkdir(h, &err))
 
 static int g_mkdir(const char *path, int mode) { (void)mode; return mkdir_host(path); }
 static int g_mkdirat(int dirfd, const char *path, int mode) { (void)dirfd; (void)mode; return mkdir_host(path); }
@@ -1101,10 +1339,24 @@ static int g_remove(const char *path)
 
 static int g_rename(const char *from, const char *to)
 {
-    char *a = hk_fs_host_path(from), *b = hk_fs_host_path(to);
-    int err = 0;
-    bool ok = a && b && hk_path_rename(a, b, &err);
-    if (!ok) hk_set_errno(a && b ? hk_errno_of(err) : GE_ACCES);
+    char *ga, *gb, *a, *b;
+    int err = 0, why;
+    bool ok;
+    if (!from || !*from || !to || !*to) {
+        hk_set_errno(GE_NOENT);
+        return -1;
+    }
+    ga = normalize(from);
+    gb = normalize(to);
+    why = fixed_name(ga, GE_BUSY);
+    if (!why) why = fixed_name(gb, GE_BUSY);
+    a = why ? NULL : host_of_normal(ga);
+    b = why ? NULL : host_of_normal(gb);
+    free(ga);
+    free(gb);
+    /* (Between a link and anything else the host layer says EXDEV, as between two file systems: the app copies and removes.) */
+    ok = a && b && hk_path_rename(a, b, &err);
+    if (!ok) hk_set_errno(why ? why : a && b ? hk_errno_of(err) : GE_ACCES);
     free(a);
     free(b);
     return ok ? 0 : -1;
@@ -1321,30 +1573,84 @@ static void dir_add(const char *name, bool is_dir, void *user)
     d->count++;
 }
 
+/*
+ * One name directly below the directory `g` that is there because of a mount
+ * or an alias: `below` is that mount's (or alias's) path and `host` what the
+ * mount stands for (NULL for an alias, and where it is known to be a
+ * directory). The listing shows it once: a folder of the host by the same
+ * name, which the mount hides, is not a second entry.
+ */
+static void dir_add_mounted(g_dir *d, const char *g, const char *below, const char *host, bool any_case)
+{
+    size_t glen = strlen(g), from = glen == 1 ? 1 : glen + 1, n = 0;
+    bool is_dir = true;
+    char name[256];
+    u32 i;
+    while (below[from + n] && below[from + n] != '/' && n < sizeof(name) - 1) n++;
+    if (!n) return;
+    memcpy(name, below + from, n);
+    name[n] = 0;
+    /* The mount itself and not the way to one: it is what its host path is, and is not there when that is not. */
+    if (!below[from + n] && host) {
+        hk_stat st;
+        if (!hk_path_stat(host, &st, NULL)) return;
+        is_dir = st.is_dir;
+    }
+    for (i = 0; i < d->count; i++) {
+        if (strlen(d->names[i]) == n && ascii_same(d->names[i], name, n, any_case)) {
+            d->types[i] = is_dir ? 4 : 8;
+            return;
+        }
+    }
+    dir_add(name, is_dir, d);
+}
+
 static g_dir *g_opendir(const char *path)
 {
-    char *h = hk_fs_host_path(path);
+    char *g, *h;
     g_dir *d;
-    int err = 0;
-    if (!h) {
+    int err = 0, k;
+    size_t glen, i;
+    bool listed, any_case, has_host;
+    if (!path || !*path) {
         hk_set_errno(GE_NOENT);
         return NULL;
     }
+    g = normalize(path);
+    h = host_of_normal(g);
+    has_host = h != NULL;
     d = (g_dir *)hk_alloc(sizeof(*d));
     d->fd = -1;
     dir_add(".", true, d);
     dir_add("..", true, d);
-    if (!hk_path_list(h, dir_add, d, &err)) {
-        u32 i;
-        free(h);
-        for (i = 0; i < d->count; i++) free(d->names[i]);
+    listed = h && hk_path_list(h, dir_add, d, &err);
+    free(h);
+    /* A directory that is only the way to a mount has no folder of the host's to list, and is one all the same. */
+    if (!listed && !leads_to_mount(g)) {
+        u32 n;
+        for (n = 0; n < d->count; n++) free(d->names[n]);
         free(d->names);
         free(d->types);
         free(d);
-        hk_set_errno(hk_errno_of(err));
+        free(g);
+        hk_set_errno(has_host ? hk_errno_of(err) : GE_NOENT);
         return NULL;
     }
-    free(h);
+    /* What is mounted below it is in it, whether or not the host's folder has an entry of that name. */
+    glen = strlen(g);
+    any_case = !strncmp(g, EXTERNAL, EXTERNAL_LEN) && (!g[EXTERNAL_LEN] || g[EXTERNAL_LEN] == '/');
+    for (k = 0; k < g_nmounts; k++) {
+        const mount *m = &g_mounts[k];
+        if (m->glen <= glen || (glen > 1 && m->guest[glen] != '/') || !mount_same(m, g, glen)) continue;
+        /* (A link is a folder, and asking whether it is costs a call to whoever owns it.) */
+        dir_add_mounted(d, g, m->guest, m->link ? NULL : m->host, any_case);
+    }
+    for (i = 0; i < HK_COUNT(k_aliases); i++) {
+        const char *a = k_aliases[i].path;
+        if (!k_aliases[i].listed || strlen(a) <= glen || (glen > 1 && a[glen] != '/') || strncmp(a, g, glen)) continue;
+        dir_add_mounted(d, g, a, NULL, false);
+    }
+    free(g);
     return d;
 }
 

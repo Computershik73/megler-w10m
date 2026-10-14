@@ -20,6 +20,20 @@ void hk_run_set_focused(bool focused);
 void hk_run_stop(void);
 u32 hk_run_frames(void);
 
+/*
+ * Where an app's files are, set before its code runs: its own folders,
+ * <data_dir>/apps/<package>/data and .../sdcard (which holds its own part of
+ * the shared storage), and the shared storage. hk_run_start calls this with
+ * megler_data_dir().
+ */
+void hk_run_files(const char *data_dir, const char *package, const megler_storage_host *storage);
+/*
+ * The shared storage alone: <data_dir>/sdcard as /storage/emulated/0, and the
+ * shell's links in it (megler.h, megler_storage_host; NULL or all zero: none).
+ * The links and their names are copied. Not while an app runs.
+ */
+void hk_run_storage(const char *data_dir, const megler_storage_host *storage);
+
 /* The running app's configuration and window host, for the layers below (EGL presents through the host). */
 const megler_run_config *hk_run_config(void);
 void hk_run_count_frame(void);
