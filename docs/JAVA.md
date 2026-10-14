@@ -2952,7 +2952,14 @@ files folder) for the first and the files folder itself for the second.
 `android/content/ContextWrapper.java.members`: a wrapper passes these, and
 `getExternalCacheDir(s)` and `getExternalFilesDirs`, on to the context it
 wraps; an Activity is a wrapper, and asked of an Activity they never reached
-the context that knows.
+the context that knows. And `registerReceiver` with flags, a permission or a
+handler: the original's wrapper passed on only the two-argument form, and
+`Context`'s defaults for the others call `this.registerReceiver(r, f)`, which
+reaches a subclass of the wrapper that overrides that form. Chromium's
+wrapper makes it throw so that every caller uses the others, and Brave
+1.97's `SmsProviderGms` ended the app with a `RuntimeException`; each form now
+goes to the base, as on Android. The data app's step "wrapper-receiver"
+registers through such a wrapper in all three forms.
 
 `megler/AppRunner.java.members`, like those of `megler/Native`, `Gfx` and
 `EGLNative` (each described with what uses it), adds to one of Megler's own

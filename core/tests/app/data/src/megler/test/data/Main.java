@@ -287,6 +287,7 @@ public class Main extends Activity {
         xml();
         assetFd();
         tasks();
+        wrapperReceiver();
         network();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
@@ -665,6 +666,30 @@ public class Main extends Activity {
             int fd = pfd != null ? pfd.detachFd() : -1;
             detail = "pfd=" + (pfd != null) + " fd=" + fd + " at " + afd.getStartOffset() + " length " + afd.getLength() + " head " + java.util.Arrays.toString(head);
             return pfd != null && fd >= 0 && got == 4 && head[0] == 2 && head[1] == 0 && head[2] == 12 && head[3] == 0 && afd.getLength() > 12;
+        });
+    }
+
+    /**
+     * registerReceiver with a permission and a handler, or flags, through a ContextWrapper whose two-argument form throws,
+     * as Chromium's does: each form goes to the wrapped context, as on Android, not through the two-argument one.
+     */
+    private void wrapperReceiver() {
+        step("wrapper-receiver", () -> {
+            android.content.ContextWrapper w = new android.content.ContextWrapper(this) {
+                @Override public android.content.Intent registerReceiver(android.content.BroadcastReceiver r, android.content.IntentFilter f) {
+                    throw new RuntimeException("the two-argument form");
+                }
+            };
+            android.content.BroadcastReceiver r = new android.content.BroadcastReceiver() {
+                @Override public void onReceive(android.content.Context c, android.content.Intent i) { }
+            };
+            android.content.IntentFilter f = new android.content.IntentFilter("megler.test.WRAPPED");
+            w.registerReceiver(r, f, null, null);
+            w.registerReceiver(r, new android.content.IntentFilter("megler.test.WRAPPED2"), null, null, 0);
+            w.registerReceiver(r, new android.content.IntentFilter("megler.test.WRAPPED3"), 0);
+            w.unregisterReceiver(r);
+            detail = "registered and unregistered through the wrapper";
+            return true;
         });
     }
 
