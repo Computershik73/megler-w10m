@@ -465,8 +465,22 @@ int hk_net_interfaces_android(hk_gif **out)
     int n = hk_net_interfaces(host, MAX), kept = 0, pass, i, wlan = 0, eth = 0, rmnet = 0, ppp = 0, other = 0;
     *out = NULL;
     if (n < 0) {
-        free(host);
-        return -1;
+        /* The host would not list them. The loopback is there all the same, and an app that lists interfaces at its start (java.net.NetworkInterface) had better find it than fail. */
+        hk_note_once("network: the host would not list its network interfaces; an app is shown the loopback alone");
+        memset(host, 0, sizeof(hk_netif));
+        host[0].index = 1;
+        host[0].kind = HK_IF_LOOPBACK;
+        host[0].flags = HK_IFF_UP | HK_IFF_RUNNING;
+        host[0].mtu = 65536;
+        host[0].naddrs = 2;
+        host[0].addrs[0].addr.family = HK_AF_INET;
+        host[0].addrs[0].addr.addr[0] = 127;
+        host[0].addrs[0].addr.addr[3] = 1;
+        host[0].addrs[0].prefix = 8;
+        host[0].addrs[1].addr.family = HK_AF_INET6;
+        host[0].addrs[1].addr.addr[15] = 1;
+        host[0].addrs[1].prefix = 128;
+        n = 1;
     }
     if (n > MAX) n = MAX;
     list = (hk_gif *)hk_alloc(sizeof(hk_gif) * (size_t)(n + 1));

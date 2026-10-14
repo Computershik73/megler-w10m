@@ -44,7 +44,10 @@ typedef struct hk_gif {
     char name[16];
     hk_netif host;
 } hk_gif;
-/* A malloc'd array, the loopback first; -1 when they cannot be listed. Interfaces of the host's that Android would not have (tunnels of its own, ones that are down) are left out. */
+/*
+ * A malloc'd array, the loopback first, and how many. Interfaces of the host's that Android would not have (tunnels of its own, ones
+ * that are down) are left out. When the host will not list them, the loopback alone (and the log says so once).
+ */
 int hk_net_interfaces_android(hk_gif **out);
 /* Android's IFF_* flags of an interface. */
 u32 hk_net_if_flags(const hk_gif *f);
