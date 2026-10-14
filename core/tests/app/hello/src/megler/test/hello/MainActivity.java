@@ -59,7 +59,12 @@ public class MainActivity extends Activity {
         Log.i("HelloTest", "row unlimited=" + unlimited + " exact=" + row.getMeasuredWidth() + ":" + narrow.getMeasuredWidth() + "+" + wide.getMeasuredWidth());
         /* A launcher's questions: the platform's padding around a widget's frame, and the activities there are to list -- this app's own, by its label. */
         android.graphics.Rect padding = android.appwidget.AppWidgetHostView.getDefaultPaddingForWidget(this, getComponentName(), null);
+        android.content.pm.LauncherApps apps = (android.content.pm.LauncherApps) getSystemService(LAUNCHER_APPS_SERVICE);
+        java.util.List<android.content.pm.LauncherActivityInfo> launchable = apps.getActivityList(getPackageName(), android.os.Process.myUserHandle());
+        android.content.pm.LauncherActivityInfo own = launchable.isEmpty() ? null : launchable.get(0);
         Log.i("HelloTest", "launcher padding=" + padding);
+        Log.i("HelloTest", "launcher activities=" + launchable.size() + (own == null ? "" : " first=" + own.getComponentName().getClassName() + " label=" + own.getLabel() + " icon="
+                + (own.getIcon(0) != null) + " resolved=" + (apps.resolveActivity(getIntent(), own.getUser()) != null)));
         /* A switch of the theme's, measured with nothing to constrain it: its width is made of its thumb and its track's padding, not of the track picture's own width. */
         android.widget.Switch sw = new android.widget.Switch(this);
         sw.measure(0, 0);

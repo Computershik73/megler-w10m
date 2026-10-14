@@ -92,13 +92,13 @@ bash tools/build-tests.sh win      (MSVC x64, run on the PC; libcore's native li
 bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-float, under qemu-arm)
     4154 checks, 0 failed          on the built-in java.lang
     4204 checks, 0 failed          on libcore with its native libraries
-      44 checks, 0 failed          the Java test app hello, through megler_run
+      45 checks, 0 failed          the Java test app hello, through megler_run
       72 checks, 0 failed          the Java test app demos, the keyboard's 25 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
       13 checks, 0 failed          the Java test app crash: an exception nothing catches, launcher aliases, an app written for Android 6
       44 checks, 0 failed          the Java test app data: a database, the storage, the battery and the time zone, the first run
       45 checks, 0 failed          data again, on what the first run left, with another battery and a time zone that is none
-      44 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
+      45 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
     (then each app once more, its drawing recorded for the PC's run to draw again)
 ```
 
@@ -290,7 +290,7 @@ its resources (a `LinearLayout` with a `TextView`, a `Button`, a view of its own
 that draws with `Canvas`, and an `ImageView` of a PNG), strings and colours. It
 has no native library. `hk_tests --java hello ...` starts it through
 `megler_run`, on a 480 x 800 screen at 160 dpi so that a dp is a pixel, with a
-stand-in for the shell's drawing, and checks (44 checks):
+stand-in for the shell's drawing, and checks (45 checks):
 
 - **What the shell reads first**, `megler_apk_report`: the engine is `java`, the
   APK is runnable, and how its launcher activity asks to be held
@@ -314,7 +314,9 @@ stand-in for the shell's drawing, and checks (44 checks):
   100.) With an exact 200 they have 100 each in both.
 - **A launcher's questions**: `AppWidgetHostView.getDefaultPaddingForWidget`
   is Android 9's 8 dp each way (framework-res, found by its name: the
-  numbers of the original's `megler.IR` are a later Android's).
+  numbers of the original's `megler.IR` are a later Android's); and
+  `LauncherApps.getActivityList` lists the app's one launcher activity with
+  its label and icon, and `resolveActivity` finds it.
 - **A switch measured by itself**: two thumbs and the track's padding wide, as
   Android's `Switch.onMeasure` has it, wider than it is high and wider than
   the picture of its track (38 x 27 with a thumb of 19 at 160 dpi; the track
@@ -1804,8 +1806,8 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: twenty files** in the overlay,
-eighteen of them a statement or a method each inside an otherwise untouched copy
+**What differs from the original's framework: twenty-two files** in the overlay,
+twenty of them a statement or a method each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and five files of members added** to classes of the original's.
 
@@ -1959,6 +1961,20 @@ the context that knows.
   the class that answered nothing: two constructors that gave `FrameLayout`
   no Context, `generateLayoutParams(Context, AttributeSet)`, and
   `dispatchDraw`, which drew none of the view's children.
+- `android/content/pm/LauncherApps.java` and `LauncherActivityInfo.java`
+  (one fault, two files): since Android 5 a launcher lists the apps it shows
+  by `LauncherApps.getActivityList`, which answered an empty list, and a
+  `LauncherActivityInfo` answered nothing at all. Super S22 Launcher found its
+  own activity through `PackageManager`, looked it up there for its title,
+  found none, and the thread that loads the home screen ended on a null
+  title. Now the list is the activities with MAIN and LAUNCHER that the
+  framework's `PackageManager` resolves (the app's own; it knows no other),
+  each with its label, icon, component and application, and
+  `resolveActivity`, `isPackageEnabled`, `isActivityEnabled`,
+  `getApplicationInfo` and `startMainActivity` answer from the same. The
+  service is made by the constructor with the fewest arguments (that is how
+  `megler.ContextImpl` makes a service it has no class for), and the original's
+  one without arguments passed a null Context: it takes the application's.
 - `android/content/res/ResTable.java`, two methods: a resource is found by
   its name without indexing the whole package ("What an AlertDialog cost").
 - `android/content/res/Resources.java`, the class `Bag`: a style's items are
@@ -2026,7 +2042,7 @@ the context that knows.
   was empty on the second; it shows its seven headers and their screens.
   Not done: two panes, bread crumbs.
 
-The original has all eighteen faults; they are its author's to take back.
+The original has all nineteen faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in

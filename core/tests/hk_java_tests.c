@@ -477,6 +477,7 @@ static int run_hello(void)
         char want[200];
         snprintf(want, sizeof(want), "I/HelloTest: launcher padding=Rect(%d, %d - %d, %d)", 8 * dp, 8 * dp, 8 * dp, 8 * dp);
         CHECK(find_line(want, 0) >= 0);
+        CHECK(find_line("I/HelloTest: launcher activities=1 first=megler.test.hello.MainActivity label=Hello icon=true resolved=true", 0) >= 0);
     }
     /* A row of no fixed width shares what its weighted, widthless children asked for equally among them, as Android does for an app written for Android 7 or later. */
     CHECK(find_line("I/HelloTest: row unlimited=140:70+70 exact=200:100+100", 0) >= 0);
