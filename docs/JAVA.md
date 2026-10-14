@@ -515,9 +515,11 @@ are empty because the framework's `PackageManager` knows no other app.
 **Apktool M 2.4.0** (AndroidX appcompat views, jadx and apktool inside;
 `libpngquantandroid.so`, `librmdir.so`). Starts through its launcher alias,
 shows its licence dialog with both buttons, and after a tap its main screen:
-a toolbar and an empty file list. Fixed on the way: the launcher
-`<activity-alias>`, and the height of a dialog's content (the overlay's
-`LinearLayout`). Both libraries load with nothing unresolved (the APK
+a toolbar and, open over it, the drawer that is its file manager, empty.
+Settings opens: seven headers, each with its screen of preferences. Fixed on
+the way: the launcher `<activity-alias>`, the height of a dialog's content
+(the overlay's `LinearLayout`), the content and the headers of a
+`PreferenceActivity`. Both libraries load with nothing unresolved (the APK
 report's "2 imports not in the system" are weak references of libgcc's
 unwinder to the C++ runtime, null here as on Android without libc++); neither
 is called until the app compresses a PNG or deletes a folder, which the test
@@ -1594,7 +1596,7 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: eight files** in the overlay,
+**What differs from the original's framework: nine files** in the overlay,
 seven of them a statement or a method each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and two files of members added** to classes of the original's.
@@ -1680,7 +1682,20 @@ version checks.
   at full length and put the buttons below the screen: Apktool M's first
   dialog could not be answered.
 
-The original has all seven faults; they are its author's to take back.
+- `android/preference/PreferenceActivity.java`, the largest: the activity's
+  content and preference headers. Android's `onCreate` sets a layout in which
+  the list (`android.R.id.list`) lies three layouts deep, and apps rely on it
+  (`findViewById(android.R.id.list).getParent().getParent().getParent()` is
+  how a `PreferenceActivity` is given a toolbar); the original had no list
+  until asked. And `loadHeadersFromResource` was empty, so a settings screen
+  made of headers -- the usual kind from Android 3 to 9 -- was an empty list.
+  Now the headers are read, listed in the platform's row layout, and opened
+  as Android opens them on a phone (the same activity again with
+  `EXTRA_SHOW_FRAGMENT`). Apktool M's Settings ended the app on the first and
+  was empty on the second; it shows its seven headers and their screens.
+  Not done: two panes, bread crumbs.
+
+The original has all eight faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in
