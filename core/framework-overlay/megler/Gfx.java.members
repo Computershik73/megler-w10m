@@ -1,0 +1,5 @@
+    // megler-w10m: members added to the original's megler.Gfx (tools/build-framework.sh, "X.java.members").
+    // A comparison of two bitmaps in C, for the tests' check that a window drawn in part (megler.ViewRoot, overlaid) looks as it
+    // would drawn whole: done in Java it would be two arrays of a screen's pixels a frame in a runtime that collects nothing.
+    /** How many pixels differ between two bitmaps of one size (-1: they are not) outside the rectangles box[0..3] and box[4..7] (left, top, right, bottom), and then the box round them in box[0..3]. */
+    public static native int bmDiffer(long a, long b, int[] box);

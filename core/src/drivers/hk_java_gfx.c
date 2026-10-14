@@ -2428,6 +2428,45 @@ N(G_pathLength)
 /* ------------------------------------------------------------ Gfx: present */
 
 /* (long bm): the window's views are drawn, in the screen's bitmap; 0 when there is nothing to show. */
+/*
+ * Gfx.bmDiffer(a, b, box): how many pixels differ between two bitmaps of one size outside the rectangles box[0..3] and
+ * box[4..7] (left, top, right, bottom) as they are given, and then the box round them in box[0..3]. For the tests' check of a
+ * window drawn in part (megler.ViewRoot): the screen outside the part drawn against the whole drawn again.
+ */
+N(G_bmDiffer)
+{
+    gbitmap *a = bm_of(c->args[0].j), *b = bm_of(c->args[1].j);
+    i32 *box = (i32 *)elements(c->args[2].l, 'I', 8);
+    i32 x, y, n = 0, skip[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    c->ret.j = 0;
+    if (!a || !b || a->w != b->w || a->h != b->h) {
+        c->ret.i = -1;
+        return;
+    }
+    bm_settle(a);
+    bm_settle(b);
+    if (box) {
+        memcpy(skip, box, sizeof(skip));
+        box[0] = box[1] = box[2] = box[3] = 0;
+    }
+    for (y = 0; y < a->h; y++) {
+        const u32 *ra = bm_row(a, y), *rb = bm_row(b, y);
+        if (!memcmp(ra, rb, (size_t)a->w * 4)) continue;
+        for (x = 0; x < a->w; x++) {
+            if (ra[x] == rb[x] || (x >= skip[0] && x < skip[2] && y >= skip[1] && y < skip[3]) || (x >= skip[4] && x < skip[6] && y >= skip[5] && y < skip[7]))
+                continue;
+            if (box) {
+                if (n == 0 || x < box[0]) box[0] = x;
+                if (n == 0 || y < box[1]) box[1] = y;
+                if (n == 0 || x + 1 > box[2]) box[2] = x + 1;
+                if (n == 0 || y + 1 > box[3]) box[3] = y + 1;
+            }
+            n++;
+        }
+    }
+    c->ret.i = n;
+}
+
 N(G_present)
 {
     gbitmap *b = bm_of(c->args[0].j);
@@ -2444,6 +2483,7 @@ static const hk_jhle k_gfx[] = {
     { "megler/Gfx", "bmNew", "(II)J", G_bmNew },
     { "megler/Gfx", "bmFree", "(J)V", G_bmFree },
     { "megler/Gfx", "bmErase", "(JI)V", G_bmErase },
+    { "megler/Gfx", "bmDiffer", NULL, G_bmDiffer },
     { "megler/Gfx", "bmGetPixel", "(JII)I", G_bmGetPixel },
     { "megler/Gfx", "bmSetPixel", "(JIII)V", G_bmSetPixel },
     { "megler/Gfx", "bmPixels", "(J[IIIIIIIZ)V", G_bmPixels },

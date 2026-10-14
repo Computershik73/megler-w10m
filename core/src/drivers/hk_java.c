@@ -264,6 +264,8 @@ N(Native_screenHeight) { c->ret.i = J.config->height; }
 N(Native_density) { c->ret.f = (float)(J.config->density_dpi > 0 ? J.config->density_dpi : 160) / 160.0f; }
 N(Native_uptimeNanos) { c->ret.j = (i64)hk_time_monotonic_ns(); }
 static void Native_frameMark(hk_jcall *c);
+static void Native_presentRect(hk_jcall *c);
+static void Native_checkPartial(hk_jcall *c);
 
 /*
  * The battery has been set to something else since the app was last told (hk_battery_set, from any thread; this is the
@@ -483,6 +485,8 @@ static const hk_jhle k_native[] = {
     { "megler/Native", "exit", NULL, Native_exit },
     { "megler/Native", "uptimeNanos", NULL, Native_uptimeNanos },
     { "megler/Native", "frameMark", NULL, Native_frameMark },
+    { "megler/Native", "presentRect", NULL, Native_presentRect },
+    { "megler/Native", "checkPartial", NULL, Native_checkPartial },
     { NULL, NULL, NULL, NULL },
 };
 
@@ -562,6 +566,14 @@ static const hk_jhle k_absent[] = {
 
 /* The time each thread has spent in present: the frame meter's. */
 static HK_THREAD_LOCAL u64 t_present_ns;
+/* Native.presentRect: what the next present on this thread changed, left, top, right, bottom; right 0: not said, all of it. */
+static HK_THREAD_LOCAL i32 t_part[4];
+
+N(Native_presentRect)
+{
+    int i;
+    for (i = 0; i < 4; i++) t_part[i] = c->args[i].i;
+}
 
 /* Gfx.present: the window's views, drawn. The shell is handed the picture; a frame is counted either way, so that a run with no shell can be followed. */
 static void present(void *user, const void *pixels, int width, int height, int stride)
@@ -570,13 +582,22 @@ static void present(void *user, const void *pixels, int width, int height, int s
     (void)user;
     if (!pixels) return;
     started = hk_time_monotonic_ns();
-    if (J.config->window.present_pixels) J.config->window.present_pixels(J.config->window.user, pixels, width, height, stride);
+    if (t_part[2] > t_part[0] && t_part[3] > t_part[1] && J.config->window.present_pixels_part)
+        J.config->window.present_pixels_part(J.config->window.user, pixels, width, height, stride, t_part[0], t_part[1], t_part[2] - t_part[0],
+                                             t_part[3] - t_part[1]);
+    else if (J.config->window.present_pixels)
+        J.config->window.present_pixels(J.config->window.user, pixels, width, height, stride);
+    t_part[0] = t_part[1] = t_part[2] = t_part[3] = 0;
     hk_run_count_frame();
     hk_atomic_add(&J.stats.frames, 1);
     t_present_ns += hk_time_monotonic_ns() - started;
 }
 
 void hk_java_get_stats(hk_java_stats *out) { *out = J.stats; }
+
+static bool g_check_partial;
+void hk_java_check_partial(bool on) { g_check_partial = on; }
+N(Native_checkPartial) { c->ret.z = g_check_partial; }
 
 /* ------------------------------------------------------- the frame meter */
 

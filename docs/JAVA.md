@@ -1062,10 +1062,9 @@ What each figure is, all in milliseconds per frame except where said:
   collected (and how much of it was made in the time the line covers) -- and
   the bitmaps' memory now; and the process's own use where the host knows it
   (the phone does, a test program does not).
-- **redrawn**: the share of the screen drawn per frame drawn. It is 100% and
-  will stay so until the framework keeps a dirty region: `drawAll` clears the
-  screen's bitmap and draws every window again whenever anything was
-  invalidated, so a cursor that blinks costs a whole screen.
+- **redrawn**: the share of the screen drawn per frame drawn. Each window
+  draws only its dirty region (below, "Drawing only what changed"); a frame
+  that adds, removes, moves or resizes a window draws the whole screen.
 
 What the demos run says. Under qemu the shell's drawing is the test program's
 stand-in, in C, emulated: 62 of 78 ms, which says nothing about Direct2D on the
@@ -1092,7 +1091,59 @@ second in all; listing directories 0.3 s); a fifth of all instructions were
 every frame.
 
 `hk_tests --java demos` checks that the meter's lines are there with the whole
-run's last, that the run drew at least ten frames, and that the share is 100%.
+run's last, that the run drew at least ten frames, and that the share is
+under 100%. (The test apps' frames are checked against the screen drawn
+whole, which draws every partial frame twice; the demos run's times are
+inflated by that.)
+
+### Drawing only what changed (the test apps under qemu-arm)
+
+Each window keeps the rectangle its views asked to have drawn again, and a
+frame draws only the union of the windows' rectangles, as Android's software
+rendering does.
+- `View.invalidate()`, `invalidate(Rect)`, `invalidate(l, t, r, b)`,
+  `invalidateDrawable` and the moves and transforms that invalidate the
+  parent pass a rectangle up (`View.meglerDirty`, in the overlay's `View`).
+  It goes through each view's transform, position and its parent's
+  scrolling, and is clipped where a parent clips its children. A rectangle
+  clipped away asks for nothing, and so does a view that is not visible. A
+  view with an `Animation` on the way asks for the whole window.
+- `megler.ViewRoot` (overlaid) keeps it per window (`mDirty`). `drawAll` clips
+  the screen's canvas to the union, clears it there and draws every window
+  through the clip. `View.drawFromParent` skips a child that lies wholly
+  outside it.
+- It tells the shell the rectangle (`Native.presentRect`, then
+  `megler_window_host.present_pixels_part`, an optional call added to
+  `megler.h`; a shell without it is handed the picture by `present_pixels` as
+  before).
+- A frame in which nothing visible changed draws and presents nothing.
+- The whole screen is drawn when a window is added, removed, moved or
+  resized, when a window is invalidated without a rectangle, and at the
+  first frame.
+
+The test apps check it two ways:
+- The test program's `present_pixels_part` copies only the rectangle, as a
+  shell that keeps its last picture would, and counts pixels that changed
+  outside it. That must be none: the clip held.
+- `hk_java_check_partial` has every partial frame drawn again whole into a
+  second bitmap (`ViewRoot.checkPart`), and compared outside the part
+  (`Gfx.bmDiffer`, a native added by `megler/Gfx.java.members`). A difference
+  is a line, "a frame drawn in part missed N pixels", and there must be
+  none: the dirty region missed nothing.
+- The focused text field is left out of that comparison. It blinks its
+  cursor by the clock on a timer of its own, so drawn again a moment later
+  it can be in the other phase. Inside the part both are drawn, and they
+  differ only where drawing depends on the time (an overscroll glow).
+
+The check's first runs found exactly those time-dependent differences, and
+nothing else. demos: 85 pictures, 72 of them partial, redrawn 53% of the
+screen a frame over the run. hello: 37 pictures, 36 partial, 16%.
+
+Apktool M under qemu after its licence, with the old lists fixed: before,
+16 frames every 5 s at 306 ms each and idle 12%, the whole screen each time.
+That was a running `AnimationDrawable` in its closed drawer, off the screen.
+After: 8 frames every 5.6 s at 16 ms each, idle 97%, redrawn 3% of the
+screen a frame.
 
 ### Measured, not tests
 
@@ -1528,9 +1579,11 @@ no native code or has it for 32-bit ARM.
   and call `Gfx.present`. That is `megler_window_host.present_pixels`: the
   picture as memory (B, G, R, A premultiplied, top row first), which the shell
   must copy before it returns. Nothing goes through OpenGL. A picture comes
-  when something changed, not at a steady rate. Where a frame's time goes is
-  said in the log every five seconds while the app draws ("The frame meter",
-  above).
+  when something changed, not at a steady rate. A picture of which only part
+  was drawn again is handed with its rectangle through `present_pixels_part`
+  when the shell has that call ("Drawing only what changed", above). Where a
+  frame's time goes is said in the log every five seconds while the app draws
+  ("The frame meter", above).
 - **The end**: when its last activity is gone the framework calls
   `Native.exit`, which has the main `Looper` quit; `AppRunner.run` returns and
   the app is reported ended with status 0. `megler_stop` sets a flag the next
@@ -2264,10 +2317,10 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: twenty-eight files** in the overlay,
-twenty-six of them a statement or a method each inside an otherwise untouched copy
+**What differs from the original's framework: twenty-nine files** in the overlay,
+twenty-seven of them a statement or a few methods each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
-**and five files of members added** to classes of the original's.
+**and six files of members added** to classes of the original's.
 
 The second kind is for the platform's public members that the original's
 class does not have and an app calls -- a `NoSuchMethodError` where Android
@@ -2525,6 +2578,14 @@ the context that knows.
 - `megler/ViewRoot.java`, three calls and a field, and no fault of the
   original's: `doFrame` tells the driver where a frame's phases begin and how
   much of the screen it drew, for the frame meter ("The frame meter", above).
+  And a window's dirty rectangle, which `drawAll` draws alone, with the tests'
+  check of it ("Drawing only what changed").
+- `android/view/View.java`, the invalidations and one statement of
+  `drawFromParent`: each invalidation passes its rectangle up to the window,
+  clipped on the way, and a child outside a partial frame's clip is not
+  drawn. The original asked for the whole window each time, which the window
+  then drew whole. (`megler/Gfx.java.members` adds `bmDiffer`, the tests'
+  comparison of two bitmaps in C.)
 - `megler/KeyStoreProvider.java`, one method, and this port's circumstance
   rather than the original's fault: `PairGen.generateKeyPair` takes another
   provider's key pair generator from its service, because

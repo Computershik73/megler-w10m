@@ -1,8 +1,17 @@
 // megler-w10m overlay of Megler/src/java-framework/src/megler/ViewRoot.java (tools/build-framework.sh).
 // It differs in three calls of megler.Native.frameMark in doFrame, which tell the Java driver where a frame's measure and
 // layout begin, where its draw traversal begins, and where it ends with how much of the screen it drew (sRedrawn, a field
-// drawAll sets: the whole screen whenever it drew, for it clears the screen and draws every window again; this framework
-// keeps no dirty region).
+// drawAll sets).
+//
+// And in what a frame draws. Each window keeps the rectangle its views asked to have drawn again (mDirty: View.meglerDirty,
+// in the overlay's View, passes each invalidation up as a rectangle, clipped as it goes), and drawAll draws only the union
+// of those: the screen's canvas clipped to it and cleared there, every window drawn through that clip (View.drawFromParent
+// skips children wholly outside it), and the rectangle told to the shell with the picture (Native.presentRect). A frame in
+// which nothing visible changed draws nothing and presents nothing. The whole screen is drawn as before when a window was
+// added, removed, moved or resized, when a window asked without a rectangle (ViewRoot.invalidate, invalidateFromAnyThread),
+// and at the first frame. The original drew the whole screen in every frame: Android's software rendering draws the dirty
+// region only (ViewRootImpl.mDirty), and so a blinking cursor cost a whole screen here. For the tests (Native.checkPartial),
+// checkPart draws each partial frame again whole into a second bitmap and says what differs outside the part.
 //
 // Why. Where a frame's time goes -- in Java and in which part of the frame, in the shell's drawing, in handing the picture
 // over -- is measured from the core's side (core/src/drivers/hk_java.c, "the frame meter", a line in the log every five
@@ -37,6 +46,12 @@ public final class ViewRoot implements ViewParent {
     private int mX, mY, mW, mH;
     private boolean mDumpTimer;
     private boolean mLayoutRequested = true, mFirst = true, mRemoved, mHasFocus = true, mInLayout, mInsetsDirty = true;
+    /** What of this window is to be drawn again, in its own coordinates; or all of it. */
+    private final Rect mDirty = new Rect();
+    private boolean mDirtyAll = true;
+    /** The whole screen is to be drawn at the next frame: a window came, went, moved or changed its size. */
+    private static boolean sFullRedraw = true, sDrawingPart;
+    private static final Rect sPart = new Rect(), sScratch = new Rect();
     private View mFocused;
     private final ViewTreeObserver mObserver = new ViewTreeObserver();
     private final android.os.IBinder mToken = new android.os.Binder();
@@ -65,6 +80,7 @@ public final class ViewRoot implements ViewParent {
         sRoots.add(at, r);
         if (under) for (int i = at + 1; i < sRoots.size(); i++) if (sRoots.get(i).focusable()) { r.mHasFocus = false; break; }
         if (v.getLayoutParams() == null) v.setLayoutParams(r.mLp);
+        sFullRedraw = true;
         r.attach();
         android.webkit.WebView.meglerWindowsChanged();
         if (r.mHasFocus) for (ViewRoot o : sRoots) if (o != r && o.mHasFocus && r.focusable()) { o.mHasFocus = false; o.mView.dispatchWindowFocusChanged(false); o.mObserver.meglerWindowFocus(false); }
@@ -84,6 +100,7 @@ public final class ViewRoot implements ViewParent {
     public void remove() {
         if (mRemoved) return;
         mRemoved = true;
+        sFullRedraw = true;
         boolean hadFocus = mHasFocus;
         sRoots.remove(this);
         if (sTouchTarget == this) sTouchTarget = null;
@@ -98,7 +115,7 @@ public final class ViewRoot implements ViewParent {
         }
         scheduleFrame();
     }
-    public void setLayoutParams(WindowManager.LayoutParams lp) { mLp.copyFrom(lp); mView.setLayoutParams(mLp); mLayoutRequested = true; scheduleFrame(); }
+    public void setLayoutParams(WindowManager.LayoutParams lp) { mLp.copyFrom(lp); mView.setLayoutParams(mLp); mLayoutRequested = true; sFullRedraw = true; scheduleFrame(); }
     public WindowManager.LayoutParams layoutParams() { return mLp; }
     private boolean focusable() { return (mLp.flags & WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) == 0; }
 
@@ -120,8 +137,21 @@ public final class ViewRoot implements ViewParent {
     public int windowY() { return mY; }
     public KeyEvent.DispatcherState keyDispatcherState() { return mKeyState; }
     public void keepScreenOn(boolean on) {}
-    public void invalidate() { scheduleFrame(); }
-    public void invalidateFromAnyThread() { if (Looper.myLooper() == Looper.getMainLooper()) scheduleFrame(); else mainHandler().post(ViewRoot::scheduleFrame); }
+    /** All of the window is to be drawn again. */
+    public void invalidate() { mDirtyAll = true; scheduleFrame(); }
+    public void invalidateFromAnyThread() { if (Looper.myLooper() == Looper.getMainLooper()) invalidate(); else mainHandler().post(this::invalidate); }
+    /** A rectangle of the window, in its own coordinates (View.meglerDirty), is to be drawn again; nothing when none of it is in the window. */
+    public void meglerDirty(RectF box) {
+        if (!mDirtyAll) {
+            int l = Math.max(0, (int) Math.floor(box.left)), t = Math.max(0, (int) Math.floor(box.top));
+            int r = Math.min(mW, (int) Math.ceil(box.right)), b = Math.min(mH, (int) Math.ceil(box.bottom));
+            if (l >= r || t >= b) return;
+            mDirty.union(l, t, r, b);
+        }
+        scheduleFrame();
+    }
+    /** Whether the frame being drawn draws only part of the screen (View.drawFromParent then skips what lies outside it). */
+    public static boolean meglerDrawingPart() { return sDrawingPart; }
     public void requestLayout() { mLayoutRequested = true; scheduleFrame(); }
     public void requestApplyInsets() { mInsetsDirty = true; mLayoutRequested = true; scheduleFrame(); }
     public WindowInsets insets() { return mWindowInsets; }
@@ -169,7 +199,7 @@ public final class ViewRoot implements ViewParent {
         for (ViewRoot r : roots) if (!r.mRemoved) r.mObserver.dispatchOnDraw();
         Native.frameMark(3, sRedrawn);
     }
-    /** Pixels of the screen the last drawAll drew: all of them whenever it drew anything, for the screen is cleared and every window drawn again. */
+    /** Pixels of the screen the last drawAll drew: its dirty rectangle, or all of them when it drew the whole screen. */
     private static int sRedrawn;
     private static Boolean sDump;
     private long mLastDump;
@@ -251,6 +281,7 @@ public final class ViewRoot implements ViewParent {
                     area.set(sInsets[0], sInsets[1], sw - sInsets[2], sh - Math.max(sInsets[3], sImeBottom));
                 Gravity.apply(g, w, h, area, mLp.x, mLp.y, out);
             }
+            if (out.left != mX || out.top != mY || w != mW || h != mH) sFullRedraw = true;
             mX = out.left; mY = out.top; mW = w; mH = h;
             mView.layout(0, 0, w, h);
         } finally { mInLayout = false; }
@@ -274,13 +305,81 @@ public final class ViewRoot implements ViewParent {
     }
     private static void drawAll(ArrayList<ViewRoot> roots) {
         int sw = screenW(), sh = screenH();
+        boolean whole = sFullRedraw;
         if (sScreen == null || sScreen.getWidth() != sw || sScreen.getHeight() != sh) {
             if (sCanvas != null) sCanvas.meglerRelease();
             sScreen = Bitmap.createBitmap(sw, sh, Bitmap.Config.ARGB_8888);
             sCanvas = new Canvas(sScreen);
+            whole = true;
+        }
+        // What the windows asked for, on the screen
+        Rect part = sPart;
+        part.setEmpty();
+        for (ViewRoot r : roots) {
+            if (r.mRemoved) continue;
+            if (r.mDirtyAll) whole = true;
+            else if (!r.mDirty.isEmpty()) { sScratch.set(r.mDirty); sScratch.offset(r.mX, r.mY); part.union(sScratch); }
+        }
+        for (ViewRoot r : roots) { r.mDirty.setEmpty(); r.mDirtyAll = false; }
+        sFullRedraw = false;
+        if (!whole) {
+            sRedrawn = 0;
+            if (!sPresentedAny || !part.intersect(0, 0, sw, sh)) return;      /* nothing visible changed: the screen is as it was */
+            int save = sCanvas.save();
+            sCanvas.clipRect(part);
+            sCanvas.drawColor(0, PorterDuff.Mode.CLEAR);
+            sDrawingPart = true;
+            try { drawWindows(sCanvas, roots, sw, sh); } finally { sDrawingPart = false; sCanvas.restoreToCount(save); }
+            sRedrawn = part.width() * part.height();
+            if (sCheck == 0) sCheck = Native.checkPartial() ? 1 : -1;
+            if (sCheck > 0) checkPart(roots, sw, sh, part);
+            Native.presentRect(part.left, part.top, part.right, part.bottom);
+            Gfx.present(sScreen.meglerNative());
+            return;
         }
         sScreen.eraseColor(0);
         int gen = sScreen.getGenerationId();
+        boolean drew = drawWindows(sCanvas, roots, sw, sh);
+        // a window drawn counts even when its drawing left the generation alone (the screen must lose a closed dialog)
+        boolean any = drew || sScreen.getGenerationId() != gen;
+        sRedrawn = any ? sw * sh : 0;
+        if (any || sPresentedAny) Gfx.present(any ? sScreen.meglerNative() : 0);
+        sPresentedAny = any;
+    }
+    /** For the tests (Native.checkPartial): 1 a frame drawn in part is checked against the same frame drawn whole, -1 not, 0 not asked yet. */
+    private static int sCheck;
+    private static Bitmap sWhole;
+    private static Canvas sWholeCanvas;
+    private static final int[] sBox = new int[8];
+    /**
+     * The screen drawn whole into a bitmap of its own and compared, outside the part, with the screen drawn in part: a difference
+     * there is what the dirty region missed. (Inside the part both are drawn, and differ only where drawing depends on the time;
+     * so does a focused text field's cursor, whose field is left out too.)
+     */
+    private static void checkPart(ArrayList<ViewRoot> roots, int sw, int sh, Rect part) {
+        if (sWhole == null || sWhole.getWidth() != sw || sWhole.getHeight() != sh) {
+            if (sWholeCanvas != null) sWholeCanvas.meglerRelease();
+            sWhole = Bitmap.createBitmap(sw, sh, Bitmap.Config.ARGB_8888);
+            sWholeCanvas = new Canvas(sWhole);
+        }
+        sWhole.eraseColor(0);
+        drawWindows(sWholeCanvas, roots, sw, sh);
+        sBox[0] = part.left; sBox[1] = part.top; sBox[2] = part.right; sBox[3] = part.bottom;
+        sBox[4] = sBox[5] = sBox[6] = sBox[7] = 0;
+        // A focused text field blinks its cursor by the clock, on a timer of its own: drawn again now it can be in the other phase
+        for (ViewRoot r : roots) {
+            View f = r.mRemoved ? null : r.mFocused;
+            if (!(f instanceof android.widget.TextView) || !f.isShown()) continue;
+            int[] at = new int[2];
+            f.getLocationOnScreen(at);
+            sBox[4] = at[0]; sBox[5] = at[1]; sBox[6] = at[0] + f.getWidth(); sBox[7] = at[1] + f.getHeight();
+        }
+        int n = Gfx.bmDiffer(sScreen.meglerNative(), sWhole.meglerNative(), sBox);
+        if (n != 0) android.util.Log.w("ViewRoot", "a frame drawn in part missed " + n + " pixels, in " + sBox[0] + "," + sBox[1] + "-" + sBox[2] + "," + sBox[3]
+                + " (the part drawn was " + part.toShortString() + ")");
+    }
+    /** Every window, bottom first, into a canvas of the screen as it is clipped; whether any was drawn. */
+    private static boolean drawWindows(Canvas c, ArrayList<ViewRoot> roots, int sw, int sh) {
         Paint dim = null;
         boolean drew = false;
         for (ViewRoot r : roots) {
@@ -288,25 +387,21 @@ public final class ViewRoot implements ViewParent {
             if ((r.mLp.flags & WindowManager.LayoutParams.FLAG_DIM_BEHIND) != 0 && r.mLp.dimAmount > 0) {
                 if (dim == null) dim = new Paint();
                 dim.setColor(Color.argb(Math.round(Math.min(1, r.mLp.dimAmount) * 0.6f * 255), 0, 0, 0));
-                sCanvas.drawRect(0, 0, sw, sh, dim);
+                c.drawRect(0, 0, sw, sh, dim);
             }
-            int save = sCanvas.save();
-            sCanvas.translate(r.mX, r.mY);
-            sCanvas.clipRect(0, 0, r.mW, r.mH);
-            if (r.mLp.alpha < 1f) sCanvas.saveLayerAlpha(0, 0, r.mW, r.mH, Math.round(r.mLp.alpha * 255));
+            int save = c.save();
+            c.translate(r.mX, r.mY);
+            c.clipRect(0, 0, r.mW, r.mH);
+            if (r.mLp.alpha < 1f) c.saveLayerAlpha(0, 0, r.mW, r.mH, Math.round(r.mLp.alpha * 255));
             drew = true;
             try {
-                r.mView.draw(sCanvas);
+                r.mView.draw(c);
             } catch (RuntimeException e) {
                 android.util.Log.e("ViewRoot", "drawing the window threw", e);
             }
-            sCanvas.restoreToCount(save);
+            c.restoreToCount(save);
         }
-        // a window drawn counts even when its drawing left the generation alone (the screen must lose a closed dialog)
-        boolean any = drew || sScreen.getGenerationId() != gen;
-        sRedrawn = any ? sw * sh : 0;
-        if (any || sPresentedAny) Gfx.present(any ? sScreen.meglerNative() : 0);
-        sPresentedAny = any;
+        return drew;
     }
 
     // ---- input

@@ -16,6 +16,12 @@ typedef struct hk_java_stats {
 } hk_java_stats;
 void hk_java_get_stats(hk_java_stats *out);
 /*
+ * For the tests: every frame a window draws in part (its dirty region) is checked against the same frame drawn whole, and a
+ * difference is a line in the log ("ViewRoot: ... drawn in part missed"). Set before the app starts. Costs a second drawing
+ * of the screen per frame.
+ */
+void hk_java_check_partial(bool on);
+/*
  * Whether the app's main thread has ended, and how: the status and the
  * reason hk_run_ended was given. For a test that starts the driver itself, on
  * a host where megler_run refuses every app because guest code cannot run

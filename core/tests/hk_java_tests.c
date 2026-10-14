@@ -159,7 +159,10 @@ static struct {
     int width, height, stride;
     volatile i32 pictures;
     const char *dir;
-} W = { HK_LOCK_INIT, NULL, 0, 0, 0, 0, NULL };
+    /* Pictures that came as a part (present_pixels_part), and pixels outside the part they said had changed that had changed. */
+    i32 parts;
+    long stale;
+} W = { HK_LOCK_INIT, NULL, 0, 0, 0, 0, NULL, 0, 0 };
 
 static void present_pixels(void *user, const void *pixels, int width, int height, int stride)
 {
@@ -173,6 +176,45 @@ static void present_pixels(void *user, const void *pixels, int width, int height
         W.stride = stride;
     }
     memcpy(W.pixels, pixels, (size_t)stride * (size_t)height);
+    hk_lock_release(&W.lock);
+    hk_atomic_add(&W.pictures, 1);
+}
+
+/* Pixels that differ between two runs of `n` pixels. */
+static long pixels_differing(const u8 *a, const u8 *b, int n)
+{
+    long d = 0;
+    int i;
+    if (n <= 0 || !memcmp(a, b, (size_t)n * 4)) return 0;
+    for (i = 0; i < n; i++) d += memcmp(a + 4 * i, b + 4 * i, 4) != 0;
+    return d;
+}
+
+/*
+ * A picture of which the layer says only a rectangle changed: that rectangle is copied, as a shell that keeps its last picture
+ * would, and the rest is compared with what was kept. A pixel that changed outside the rectangle would be stale on such a
+ * shell: the window's dirty region missed it.
+ */
+static void present_pixels_part(void *user, const void *pixels, int width, int height, int stride, int x, int y, int part_width, int part_height)
+{
+    const u8 *src = (const u8 *)pixels;
+    int row;
+    if (!W.pixels || W.width != width || W.height != height || W.stride != stride || x < 0 || y < 0 || x + part_width > width || y + part_height > height) {
+        present_pixels(user, pixels, width, height, stride);
+        return;
+    }
+    hk_lock_acquire(&W.lock);
+    for (row = 0; row < height; row++) {
+        const u8 *s = src + (size_t)row * (size_t)stride;
+        u8 *d = W.pixels + (size_t)row * (size_t)stride;
+        if (row < y || row >= y + part_height) {
+            W.stale += pixels_differing(s, d, width);
+            continue;
+        }
+        W.stale += pixels_differing(s, d, x) + pixels_differing(s + 4 * (x + part_width), d + 4 * (x + part_width), width - x - part_width);
+        memcpy(d + 4 * x, s + 4 * x, (size_t)part_width * 4);
+    }
+    W.parts++;
     hk_lock_release(&W.lock);
     hk_atomic_add(&W.pictures, 1);
 }
@@ -334,6 +376,7 @@ static bool start(const char *apk, const char *android_root)
     cfg.density_dpi = g_screen_dpi;
     cfg.on_exit = on_exit_cb;
     cfg.window.present_pixels = present_pixels;
+    cfg.window.present_pixels_part = present_pixels_part;
     cfg.gfx = *hk_gfx_standin();
     cfg.keyboard.show = keyboard_show;
     cfg.keyboard.hide = keyboard_hide;
@@ -1013,13 +1056,14 @@ static int run_demos(void)
     {
         /*
          * The frame meter (hk_java.c): a line every five seconds while the app draws, and at its end one for the whole run,
-         * with the frames drawn and the share of the screen drawn again in each -- all of it, in this framework.
+         * with the frames drawn and the share of the screen drawn again in each: less than all of it, since the windows draw
+         * their dirty regions (the typing screen's cursor and fields, a row pressed).
          */
         int meter = find_line("java: frames in all, ", 0);
-        const char *counts = strstr(line_at(meter), " s: ");
-        unsigned drawn = 0;
+        const char *counts = strstr(line_at(meter), " s: "), *share = strstr(line_at(meter), "redrawn ");
+        unsigned drawn = 0, percent = 100;
         CHECK(meter >= 0 && counts && sscanf(counts + 4, "%u drawn", &drawn) == 1 && drawn >= 10);
-        CHECK(strstr(line_at(meter), "redrawn 100% of the screen a frame") != NULL);
+        CHECK(share && sscanf(share, "redrawn %u%%", &percent) == 1 && percent < 100);
         CHECK(find_line("java: frames ", 0) >= 0 && find_line("java: frames ", 0) < meter);
         if (meter >= 0) say("  %s", line_at(meter));
     }
@@ -1294,6 +1338,8 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
     if (!strcmp(which, "data")) megler_set_timezone(g_script_count && !strcmp(g_script[0], "run:2") ? "Nowhere/At_All" : "Europe/Berlin");
     /* For an app that is not a test's, HK_JAVA_TIMEZONE names the zone it is started in: a real app as on a phone that has one. */
     if (!strcmp(which, "app") && getenv("HK_JAVA_TIMEZONE")) megler_set_timezone(getenv("HK_JAVA_TIMEZONE"));
+    /* The test apps' frames drawn in part are each checked against the whole screen drawn again (megler.ViewRoot.checkPart). */
+    hk_java_check_partial(!g_any_app);
     if (start(apk, android_root)) {
         if (!strcmp(which, "demos")) run_demos();
         else if (!strcmp(which, "natives")) run_natives();
@@ -1307,6 +1353,13 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
             hk_sleep_ns(500000000ull);
         }
     }
+    /*
+     * Pictures drawn in part: none may differ from the screen drawn whole (the window's dirty region missed nothing), and none
+     * may have changed outside the part it said (the clip held).
+     */
+    say("  %d pictures, %d of them presented as a part; %ld pixels changed outside the part said", (int)W.pictures, (int)W.parts, W.stale);
+    CHECK(W.stale == 0);
+    if (!g_any_app) CHECK(count_lines("a frame drawn in part missed") == 0);
     say("%d checks, %d failed", g_checks, g_failed);
     return g_failed;
 }

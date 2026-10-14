@@ -144,6 +144,15 @@ bool megler_apk_icon(const char *apk_path, uint8_t **data, size_t *size);
  *                    and a shell that is handed it leaves the last picture.
  *                    May be NULL: such an app then runs unseen. An app that
  *                    draws both ways, views over OpenGL, is not provided for.
+ *   present_pixels_part  the same picture, whole as present_pixels hands it,
+ *                    of which only the rectangle [x, x + part_width) x [y, y +
+ *                    part_height) differs from the picture handed before: the
+ *                    app drew that part of the screen again and left the rest
+ *                    as it was. A shell that keeps its last picture copies that
+ *                    rectangle only. Optional: when NULL the layer calls
+ *                    present_pixels for such a picture as well. Same thread
+ *                    and same rule (copy before returning) as present_pixels;
+ *                    the first picture always comes through present_pixels.
  */
 typedef struct megler_window_host {
     void *user;
@@ -152,6 +161,8 @@ typedef struct megler_window_host {
     void (*present)(void *user);
     void (*release_target)(void *user);
     void (*present_pixels)(void *user, const void *pixels, int width, int height, int stride);
+    void (*present_pixels_part)(void *user, const void *pixels, int width, int height, int stride, int x, int y, int part_width,
+                                int part_height);
 } megler_window_host;
 
 /*
