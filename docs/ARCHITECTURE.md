@@ -314,7 +314,7 @@ can share (`eglGetCurrentContext` as the share of a context made elsewhere).
 The configuration `onSurfaceCreated` is given is what the app's
 `EGLConfigChooser` chose, or one of the sizes it asked for.
 
-**Composition, as built (the first way).** A window surface is a pbuffer on
+**Composition, as built (the first way; `hk_java_gl.c`).** A window surface is a pbuffer on
 ANGLE's device. At each swap its frame is read back into memory (`glReadPixels`
 on the default framebuffer, whatever the app had bound; as B, G, R, A where
 ANGLE offers `GL_EXT_read_format_bgra`, so that rows are copied as they are).
@@ -343,8 +343,19 @@ a renderer in `RENDERMODE_CONTINUOUSLY` draws about sixty frames a second and
 not as many as it can. The shell's own `Present(1)` paces the screen as well.
 A swap of a pbuffer does nothing and returns at once, as on Android.
 
-**What a swap costs** (the log says it every five seconds while GL frames are
-shown: reading back, composing, the shell's part): see STATUS.md.
+**What a swap costs.** The log says it every five seconds while GL frames
+are shown (`java: OpenGL frames ...`: reading back, composing, the shell's
+part, the longest). Measured so far only without ANGLE, on the stand-in that
+draws, whose read-back is a copy of memory: at 720 x 1280 with a 720 x 1182
+surface under the views (AIDA64's main screen), 1.45 ms of a swap's own work
+on this PC -- 1.27 reading back, 0.12 composing (the hole's rows are copied
+as they come), 0.06 the shell's copy of the rectangle -- and 0.9 ms to
+compose a new picture of the views over the last frame; under qemu (an
+emulated ARM core) AIDA64's 720 x 1182 surface, 8.1 ms reading back and 0.4
+composing. On the phone the read-back is ANGLE's: a copy of the surface to
+a staging texture and a wait for the GPU to finish the frame, on top of
+copying 3.4 MB out of it. That is the number to read in the phone's log
+before deciding on the faster way.
 
 **The faster way (not built).** Reading back stalls the CPU until the GPU has
 finished the frame, and composing is the CPU's work. Both go if the GPU

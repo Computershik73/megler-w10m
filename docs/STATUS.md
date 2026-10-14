@@ -28,6 +28,7 @@ Back. No real app has been tried.
 | Films: `libmediandk.so` (extractor, decoders, formats) over the shell's Media Foundation reader; pictures onto a `SurfaceTexture` | **works on the phone** with Hollow Knight's two opening films (H.264 360x202, AAC): every picture decoded and shown full screen, the sound in step with them; watched and heard by the phone's owner, played through and skipped |
 | The shared storage: one `/sdcard` for every app, the app's own `Android/data` and `obb` in it, and links to folders of the phone's own through handles the shell hands over | **passes under qemu and on PC** with a stand-in for the shell (`core/tests/hk_storage_tests.c`, 424 checks), and on PC with the shell's own host over Windows.Storage (`player/StorageHost.cpp`, the same checks; a test program is no app container). **On the phone** (HP Elite x3, 0.1.0.126, `tools/build-appx.sh arm --auto storage`): Music, Pictures, Movies and DCIM are found and answer, and the check's 102 steps pass -- 24 in each link, in a folder of its own: files made, written, read back, appended to, emptied, renamed, moved, removed, folders likewise, and a file moved from one link to another. One thing the PC did not show: an open straight after a close is at times refused with a sharing violation, something of Windows' own having the new file for a moment (2 steps of 102, different ones each run); the host asks again for up to a second. A folder is not moved into another folder by renaming (the app is told EXDEV, and copies). **Not tried**: the Settings section (the list, Add a Folder with the folder picker, the folders Windows remembers across starts), Documents, Downloads, a memory card |
 | The network: TCP and UDP sockets, servers included, blocking and not; the app's own AF_UNIX sockets; names (`getaddrinfo`, `getnameinfo`, `gethostbyname`); the interfaces; poll, select and epoll over sockets with pipes, eventfds and files (docs/ARCHITECTURE.md, "The network") | **passes under qemu and on PC** over loopback (`core/tests/hk_net_tests.c`: 234 checks under qemu, 225 on the PC, which cannot run the test of signal 34 ending a blocked call), and from Java under qemu (the test app `data`: `InetAddress`, `HttpURLConnection` against a `ServerSocket` of the app's own, `DatagramSocket`, a `ServerSocket` closed under the thread in `accept`, a `java.nio` selector, `NetworkInterface`). The check a phone is to run (`megler_net_check`: a public name, `HEAD /generate_204` on its port 80, a server of its own on 127.0.0.1, UDP on 127.0.0.1) passes on both with the internet. **Not tried on a phone at all**: `tools/build-appx.sh arm --auto net` is the run to make; whether an app container's Winsock lets an app reach its own server on loopback is the first thing it answers. No TLS: https fails with an `SSLException` as before |
+| OpenGL ES from an app's Java: the 832 natives of `GLES10` to `GLES32` (793 generated, 39 by hand), EGL14 and EGL10 over `megler.EGLNative`, a `GLSurfaceView`'s renderer on a GL thread of the layer's own, the window composed in the core of the views over the frames read back (docs/ARCHITECTURE.md, "OpenGL ES from an app's Java") | **passes under qemu and on PC** on a stand-in for OpenGL ES that draws (`core/tests/hk_gl_tests.c`: 86 checks on libcore, 67 on the built-in java.lang; the test app `gl`: 49 checks under qemu -- a renderer's calls in Android's order, sixty frames a second at most, `RENDERMODE_WHEN_DIRTY`, `queueEvent`, a fixed size, pause and resume, EGL14 on a pbuffer, EGL10 and GL10 on a `SurfaceView`, and the picture). AIDA64 and Device Info read the GPU's strings and show them under qemu. A swap of a 720 x 1182 surface costs 1.45 ms on the PC with the stand-in's read-back (a copy of memory); ANGLE's waits for the GPU and **has not been measured: nothing of it has run on a phone** (the log's `java: OpenGL frames` line will say it there) |
 | Sound out of the phone (XAudio2) | **heard on the phone** with build 0.1.0.21, the Probe's tone and the demo's; XAudio2 played every frame it was given. With 0.1.0.19 nothing was heard and the log could not say why: the engine was built on the app's own thread then, and nothing was counted |
 | ANGLE: its DLLs, a display, a context | **works on the phone**: Direct3D 11 at feature level 11_1, EGL 1.5, OpenGL ES 3.0; 16384-pixel textures, DXT, depth textures, NPOT; no ETC1, no ASTC |
 | A window surface over the shell's texture, the copy to the swap chain, the picture on screen | **works on the phone**: the right way up, the right colours, 1280x720 scaled to a 2560x1440 screen, 59 frames a second paced by `Present(1)` |
@@ -389,8 +390,9 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
     processor's cores, the display. Since 0.1.0.129 the selected tab has its
     pill, the storage card the phone's real room (59.6 GB, 34.1 free) and the
     battery card the phone's battery (100 % on the cable; the voltage and
-    the temperature are made up, Windows saying neither). Its GPU page needs
-    OpenGL from Java.
+    the temperature are made up, Windows saying neither). Its GPU (on its
+    CPU tab) is asked through EGL14 and GLES20 and shown, under qemu with
+    the stand-in's strings; not yet on the phone.
   Also since then: databases (`android.database.sqlite` on SQLite compiled
   into the core over the host layer's files, `tools/sqlite-fetch.sh`); WebP
   (libwebp's decoder in the core, `tools/webp-fetch.sh`: Windows 10 Mobile
@@ -427,8 +429,14 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   changes (`megler_set_timezone`, `megler_set_battery`; `player/PhoneState.cpp`);
   a Java app's default zone is the phone's and a receiver of
   ACTION_BATTERY_CHANGED hears each change. The language is still English.
-  Not there: garbage collection (an app that animates lasts minutes); sound,
-  WebView and OpenGL from Java; a `SurfaceView` drawn by native code; method
+  **OpenGL ES from Java** (2026-10-14): the GLES classes' natives, EGL14
+  and EGL10, a `GLSurfaceView`'s renderer on a GL thread of the layer's
+  own, and the window composed in the core of the views over the frames read
+  back at each swap (the table above; docs/JAVA.md, "OpenGL ES from Java").
+  Under qemu AIDA64 lists the stand-in's vendor, renderer and version on its
+  Display page and Device Info on its CPU tab. Not tried on a phone.
+  Not there: garbage collection (an app that animates lasts minutes); sound
+  and WebView from Java; a `SurfaceView` drawn by native code; method
   handles; conscrypt's native half (no TLS, so no https: plain sockets and
   http are there, above, and not yet tried on a phone); other apps (the
   package manager knows only the one running); Kotlin has run only as part of
