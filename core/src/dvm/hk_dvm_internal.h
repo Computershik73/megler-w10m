@@ -252,6 +252,13 @@ struct hk_dvm_thread {
      */
     int native_depth;
     volatile u64 native_ticks, natives, alloc_ticks, allocs, blocked_ticks;
+    /*
+     * What it has made (hk_dvm_get_stats sums every thread's), and the bytes not yet counted toward the next collection:
+     * counted by the thread alone, and handed to the collector a few kilobytes at a time (alloc_raw), so that an
+     * allocation needs no atomic operation of its own.
+     */
+    u32 made_objects, gc_unsaid;
+    u64 made_bytes;
     /* For the collector: the thread as the host knows it, to stop it; its C stack's limits, [stack_lo, stack_hi). */
     hk_thread *host;
     hk_addr stack_lo, stack_hi;

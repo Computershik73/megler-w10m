@@ -33,6 +33,7 @@ typedef struct block {
     u32 magic;
     i32 cls;                           /* index into k_classes; -1: not in use yet */
     u32 cell, ncells, used, bump;      /* bytes a cell, cells it holds, cells in use, cells handed out from the start */
+    u32 recip;                         /* 2^32 / cell, rounded up: a cell's index without a division (cell_index) */
     u8 *first;                         /* the first cell */
     free_cell *free;                   /* cells given back, to hand out again */
     struct block *next;                /* the next block of the same class that has room */
@@ -110,6 +111,13 @@ static bool add_arena(void)
     return true;
 }
 
+/*
+ * The index of the cell an offset into a block's cells falls in: the offset times the cell size's reciprocal, which is
+ * exact for offsets under a block's 64 KB and cells of 16 bytes and more (every offset and size was tried). A division
+ * is a call of the C library's on 32-bit ARM, and this is done for every allocation and every object a collection marks.
+ */
+static inline u32 cell_index(const block *b, size_t off) { return (u32)(((u64)(u32)off * b->recip) >> 32); }
+
 /* A spare block made into one of class `c`. */
 static block *new_block(int c)
 {
@@ -121,6 +129,7 @@ static block *new_block(int c)
     header = (u32)HK_ALIGN_UP(sizeof(block), (size_t)16);
     b->cls = c;
     b->cell = k_classes[c];
+    b->recip = (u32)(0xFFFFFFFFu / b->cell) + 1u;
     b->ncells = (BLOCK_SIZE - header) / b->cell;
     b->used = b->bump = 0;
     b->first = (u8 *)b + header;
@@ -160,7 +169,7 @@ static void *small_alloc(size_t size)
         b->next = NULL;
     }
     if (cell) {
-        index = (u32)((size_t)(cell - b->first) / b->cell);
+        index = cell_index(b, (size_t)(cell - b->first));
         b->inuse[index >> 5] |= 1u << (index & 31);
         b->used++;
         g_objects++;
@@ -240,7 +249,7 @@ void *hk_dvm_heap_find(hk_addr p)
     if (b) {
         u32 index;
         if (p < (hk_addr)b->first) return NULL;
-        index = (u32)((p - (hk_addr)b->first) / b->cell);
+        index = cell_index(b, (size_t)(p - (hk_addr)b->first));
         if (index >= b->bump || !(b->inuse[index >> 5] & (1u << (index & 31)))) return NULL;
         return b->first + (size_t)index * b->cell;
     }
@@ -277,8 +286,9 @@ bool hk_dvm_heap_set_mark(void *o)
     b = block_of((hk_addr)o);
     if (b) {
         u32 index, bit;
-        if ((u8 *)o < b->first || (size_t)((u8 *)o - b->first) % b->cell) return false;
-        index = (u32)((size_t)((u8 *)o - b->first) / b->cell);
+        if ((u8 *)o < b->first) return false;
+        index = cell_index(b, (size_t)((u8 *)o - b->first));
+        if ((size_t)index * b->cell != (size_t)((u8 *)o - b->first)) return false;
         bit = 1u << (index & 31);
         if (index >= b->bump || !(b->inuse[index >> 5] & bit) || (b->mark[index >> 5] & bit)) return false;
         b->mark[index >> 5] |= bit;
@@ -295,7 +305,7 @@ bool hk_dvm_heap_is_marked(const void *o)
 {
     block *b = block_of((hk_addr)o);
     if (b) {
-        u32 index = (u32)((size_t)((const u8 *)o - b->first) / b->cell);
+        u32 index = cell_index(b, (size_t)((const u8 *)o - b->first));
         return (b->mark[index >> 5] & (1u << (index & 31))) != 0;
     } else {
         large *l = large_at(o);

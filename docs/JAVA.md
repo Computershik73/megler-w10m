@@ -2237,6 +2237,23 @@ a zeroed allocation from the runtime's own heap (`hk_dvm_heap.c`). Allocation
 goes through one function, `alloc_raw` in `hk_dvm_object.c`, which also asks
 for a collection when enough has been made. (The original does not collect.)
 
+**An allocation takes the heap's lock and no other atomic operation.**
+- Each thread counts what it has made itself (`made_objects`, `made_bytes`);
+  `hk_dvm_get_stats` sums them under the runtime's lock. Before, five
+  atomic additions per object kept global counts.
+- A thread tells the collector what it made in pieces of at least 32 KB
+  (`gc_unsaid`, `hk_dvm_gc_counted`), so a collection comes late by less
+  than a piece per thread.
+- A cell's index in its block is the offset times the cell size's
+  reciprocal (`cell_index`), not a division. 32-bit ARM divides in a library
+  routine, and this is done for every allocation and every object a
+  collection marks.
+
+Benchmark on x64 in ns a turn, the interpreter at the same place in both
+builds: a small object 60.5 to 52.7; an `int[16]` 40.1 to 33.0;
+`Integer.valueOf` 92.1 to 81.2; `StringBuilder` 955 to 897; `HashMap.get`
+329 to 307; an exception made and caught 345 to 315.
+
 ### The collector (design, round 7; built in steps)
 
 Why now: the frame meter's first lines from the phone. Apktool M's heap grew by

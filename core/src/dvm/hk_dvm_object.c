@@ -14,6 +14,8 @@
 
 static HK_THREAD_LOCAL hk_dvm_thread *t_self;
 static hk_dvm_thread *g_threads;
+/* What threads that have ended had made (the living ones keep their own counts: hk_dvm_thread.made_objects). */
+static u64 g_gone_objects, g_gone_bytes;
 
 void hk_dvm_thread_costs(hk_dvm_costs *out)
 {
@@ -49,6 +51,8 @@ static void thread_ends(void)
             break;
         }
     hk_dvm_gc_thread_gone(t);
+    g_gone_objects += t->made_objects;
+    g_gone_bytes += t->made_bytes;
     hk_dvm_unlock();
     t_self = NULL;
     /* Its frame stack goes; the small rest stays, for whoever still holds its address (a Thread whose nativePeer was read a moment ago). */
@@ -93,8 +97,9 @@ hk_dvm_thread *hk_dvm_self(void)
 /* --------------------------------------------------------------- allocation */
 
 static hk_jobj *g_out_of_memory;       /* made at the start, for when nothing more can be made */
-static volatile i32 g_objects;
-static volatile i32 g_object_kb, g_object_bytes_low;
+
+/* An allocation's bytes go to the collector's count in pieces of at least this much (hk_dvm_thread.gc_unsaid). */
+#define GC_PIECE (32u * 1024u)
 
 void hk_dvm_object_roots(void (*fn)(hk_jobj *o, void *user), void *user)
 {
@@ -106,20 +111,28 @@ static hk_jobj *alloc_raw(hk_dvm_class *c, int kind, u64 body)
 {
     hk_dvm_obj *o = NULL;
     size_t size = HK_DVM_HEADER + (size_t)body;
-    i32 low;
     hk_dvm_thread *self = hk_dvm_self();
     /*
      * The time it takes, for bytecode's own allocations (those made inside a native method are in that method's time). A
      * collection that runs here is timed whole. The heap's own work is timed for one allocation in 32, which counts for
      * 32: reading the clock twice costs more than an allocation does.
      */
-    bool bytecode = self->native_depth == 0, sampled = bytecode && (self->allocs & 31) == 0;
+    bool bytecode = self->native_depth == 0, sampled = bytecode && (self->allocs & 31) == 0, due = false;
     u64 started = 0;
     self->allocs++;
     /* What the collector will follow in objects of the class, known before the first of them exists (it may allocate nothing). */
     if (kind != HK_J_PRIM_ARRAY && kind != HK_J_OBJ_ARRAY && kind != HK_J_STRING && !c->ref_slots_ready) hk_dvm_gc_class_ready(c);
-    /* A collection, when enough has been made since the last one (hk_dvm_gc.c), before this one is. */
-    if (hk_dvm_gc_counted(size)) {
+    /*
+     * A collection, when enough has been made since the last one (hk_dvm_gc.c), before this one is. The thread tells the
+     * collector what it made a piece at a time; a collection is then late by less than a piece a thread.
+     */
+    self->gc_unsaid += size > 0x7FFFFFFFu ? 0x7FFFFFFFu : (u32)size;
+    if (self->gc_unsaid >= GC_PIECE) {
+        u32 piece = self->gc_unsaid;
+        self->gc_unsaid = 0;
+        due = hk_dvm_gc_counted(piece);
+    }
+    if (due) {
         started = bytecode ? hk_time_ticks() : 0;
         hk_dvm_gc("allocation", NULL);
         if (started) self->alloc_ticks += hk_time_ticks() - started;
@@ -154,14 +167,8 @@ static hk_jobj *alloc_raw(hk_dvm_class *c, int kind, u64 body)
     o->j.cls = c->jc;
     o->cls = c;
     o->size = (u32)size;
-    hk_atomic_add(&g_objects, 1);
-    /* Bytes as kilobytes and a remainder: two 32-bit counters that atomic adds can keep, where one would wrap at 2 GB. */
-    low = hk_atomic_add(&g_object_bytes_low, (i32)(size & 1023));
-    if (low >= 1024) {
-        hk_atomic_add(&g_object_bytes_low, -1024);
-        hk_atomic_add(&g_object_kb, 1);
-    }
-    hk_atomic_add(&g_object_kb, (i32)(size >> 10));
+    self->made_objects++;
+    self->made_bytes += size;
     if (c->finalizable || c->gc_ref) hk_dvm_gc_born(&o->j);
     return &o->j;
 }
@@ -174,8 +181,19 @@ void hk_dvm_get_stats(hk_dvm_stats *out)
     out->classes_linked = (u32)g_dvm.n_linked;
     out->classes_initialised = (u32)g_dvm.n_initialised;
     out->strings_interned = (u32)g_dvm.n_interned;
-    out->objects = (u32)g_objects;
-    out->object_bytes = (u64)(u32)g_object_kb * 1024 + (u64)(u32)g_object_bytes_low;
+    {
+        /* Every thread's own counts, read without stopping it: each is a word or two only that thread writes. */
+        hk_dvm_thread *t;
+        u64 objects = g_gone_objects, bytes = g_gone_bytes;
+        hk_dvm_lock();
+        for (t = g_threads; t; t = t->next) {
+            objects += t->made_objects;
+            bytes += t->made_bytes;
+        }
+        hk_dvm_unlock();
+        out->objects = objects;
+        out->object_bytes = bytes;
+    }
     out->instructions = g_dvm.steps;
     out->meta_bytes = (u64)(u32)g_dvm.meta_units * 16;
 }
