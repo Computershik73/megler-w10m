@@ -301,8 +301,9 @@ made it. So the window's picture is not read back:
 - The core (`G_present` in `drivers/hk_java_gfx.c`, `present_canvas` in
   `drivers/hk_java.c`) calls it in place of flushing the window's bitmap and
   calling `present_pixels(_part)`, when one canvas alone draws the bitmap,
-  nothing was written into its memory behind it, and no OpenGL frames are
-  composed under the views (`hk_java_gl_composing`). The canvas then stays
+  nothing was written into its memory behind it, and the core does not compose
+  OpenGL frames under the views itself (`hk_java_gl_composing`; where the shell
+  composes them, "OpenGL ES from an app's Java" below). The canvas then stays
   unflushed: whatever reads the window's memory later flushes it first, as the
   core always does before a read (`bm_settle`), and the shell reads back then.
   Flush keeps its meaning; nothing else in the contract changed.
@@ -438,43 +439,47 @@ a staging texture and a wait for the GPU to finish the frame, on top of
 copying 3.4 MB out of it. That is the number to read in the phone's log
 before deciding on the faster way.
 
-**The faster way (not built).** Reading back stalls the CPU until the GPU has
-finished the frame, and composing is the CPU's work. Both go if the GPU
-composes, on one Direct3D device:
+Measured on the phone (AIDA64, two GLSurfaceViews, 2026-10-14): 14 ms of a
+swap's own work, 11 of it reading back; and every picture of the views flushed
+and read back as well (15-20 ms a frame in the shell's drawing), since the
+composition needs the views in memory.
 
-- The shell would use ANGLE's device for a Java app as it does for a game. Today
-  a Java app's pictures are put on a device of the shell's own, made at the
-  first picture (`WindowHost::makeOwnDevice`); a game's frames come on ANGLE's,
-  through `attach_device` and `acquire_target`. At feature level 9_3, where most
-  of these phones stop, two devices cannot share a texture, so it has to be
-  ANGLE's. The core would make ANGLE's display when the app starts (or at its
-  first EGL surface), call `attach_device`, and take a target texture with
-  `acquire_target`, as for a game.
-- The core would compose with OpenGL ES itself, in a context of its own on a
-  window surface over that target (exactly a game's window surface): each
-  frame, the app's surface as a texture (its pbuffer bound with
-  `eglBindTexImage`, or a texture shared through a share group) drawn as a quad
-  at its view's rectangle, then the views' picture as a texture drawn over it
-  with premultiplied blending, then `present` -- what the original Megler's
-  render thread does on iOS. The views' picture is uploaded only where it
-  changed (`glTexSubImage2D` of the changed rectangle), which the shell does by
-  `UpdateSubresource` today.
-- Two threads use the GPU then (the app's GL thread renders, the compositor
-  samples its result): a fence (`glFenceSync`, or `EGL_KHR_fence_sync`) or a
-  `glFinish` on the app's thread before the frame is handed over, and two
-  surfaces a view in turn so that the app draws the next frame while the last
-  is composed.
-- What it saves per frame: the read-back (a GPU flush and a copy of the
-  surface into memory the CPU can read), the swizzle and composition on the
-  CPU, and the shell's flip of the composed rectangle and its upload. What it
-  costs: the views' picture must be composed every GL frame on the GPU (cheap),
-  a fourth way for the window host to be driven (a Java app on ANGLE's
-  device), and the order of who makes the device (today ANGLE is never loaded
-  for a Java app that draws no OpenGL; it would be, at its first surface).
-- The core's side would be in `hk_java_gl.c` and `hk_egl.c` (a window surface
-  of the core's own on the shell's texture already exists for games); the
-  shell's side is a few lines (`attach_device` arriving for a Java app too,
-  and `present_pixels` no longer used while it is).
+**The window composed by the shell, on the graphics processor (built).** Where
+the shell's drawing is on the graphics processor (`GfxHost`), the window is
+composed there and nothing is read back, neither the frames nor the views:
+
+- megler_gfx_host has `gl_frame(layer, share_handle, width, height)` and
+  `gl_place(layer, x, y, width, height)` beside `present`. A view that draws
+  with EGL is a layer, 0..7. ANGLE's pbuffers have Direct3D textures with DXGI
+  shared handles (`EGL_ANGLE_surface_d3d_texture_2d_share_handle`, which the
+  phone's ANGLE offers): at a swap the core finishes the frame (`glFinish`, on
+  the GL thread, which may wait) and hands the handle over. Where the views say
+  their surfaces are (`EGLNative.place`) reaches the shell by `gl_place`,
+  before the picture of the views it belongs to.
+- The core decides at the first window surface (`use_window`): the shell
+  composes when it has the three callbacks and EGL shares the textures. The
+  views then go through `present` as for an app without GL. Should the shell
+  refuse a frame, or not show the views, the core composes the window itself
+  from then on, the way described above, said in the log.
+- The shell (`GfxHost.cpp`, "The window composed of OpenGL ES frames and the
+  views") opens each surface's texture on its own device (both are ANGLE's
+  and the shell's devices on the one adapter), copies the frame into a texture
+  of the layer's own, and waits for that copy with an event query -- on the GL
+  thread, so that the app can draw the next frame into the same texture; no
+  other thread waits. It keeps the views' picture as `present` last showed it
+  (a copy on the processor of the part that changed), and composes the window
+  into the window host's texture: the views copied in, turned over (the texture
+  keeps a game's bottom-up rows, as does a GL frame, which therefore goes in as
+  it is), and in each layer's rectangle the frame, scaled and opaque, with the
+  views over it. A new frame composes its rectangle again; a picture of the
+  views composes the part that changed; a GL view that stopped drawing costs
+  nothing. One surface a view is enough, since the copy is made before the
+  swap returns: the app never draws into a frame being shown.
+- Tests: under qemu the Java test app `gl` runs twice, once with a test shell
+  that composes from what the core hands it (the GL stand-in's surfaces by
+  their "share handles"), once with a shell that refuses frames, the core
+  composing; the same picture checks hold for both. On the PC's graphics
+  processor a second Direct3D device stands for ANGLE's (`hk_gfx_windows.cpp`).
 
 ## Sound
 

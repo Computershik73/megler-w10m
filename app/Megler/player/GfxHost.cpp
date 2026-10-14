@@ -328,6 +328,7 @@ struct State {
     Ref<ID2D1Bitmap1> windowBitmap;
     uint64_t windowCanvas = 0; // the serial of the canvas whose picture was shown last
     std::atomic<uint64_t> canvasSerial{1};
+    std::atomic<uint64_t> glFrames{0}, glWaitTicks{0}; // OpenGL ES frames taken (gl_frame), and the waits for their copies
     Ref<ID2D1Factory> d2d;
     Ref<ID2D1Factory1> d2d1;
     Ref<IDWriteFactory> dwrite;
@@ -386,7 +387,7 @@ struct State {
         uint64_t sessions = 0, direct = 0, composed = 0, layers = 0, partTargets = 0, targetsMade = 0, makeTicks = 0, endTicks = 0, composeTicks = 0,
                  composedPixels = 0, sessionPixels = 0, uploads = 0, uploadPixels = 0, uploadTicks = 0, readBacks = 0, readBackPixels = 0,
                  readBackTicks = 0, byEffects = 0, throughMemory = 0, keptMade = 0, keptReused = 0, shown = 0, showTicks = 0, windowReadBacks = 0,
-                 windowReadBackPixels = 0, windowReadBackTicks = 0;
+                 windowReadBackPixels = 0, windowReadBackTicks = 0, glFrames = 0, glWaitTicks = 0;
     } statsLast;
 };
 
@@ -2939,6 +2940,8 @@ void noteDrawing() {
     t.windowReadBacks = s.windowReadBacks;
     t.windowReadBackPixels = s.windowReadBackPixels;
     t.windowReadBackTicks = s.windowReadBackTicks;
+    t.glFrames = s.glFrames;
+    t.glWaitTicks = s.glWaitTicks;
     const State::Totals& l = s.statsLast;
     typedef unsigned long long ull;
     if (s.statsAt && t.sessions != l.sessions && s.gpu && !gpuGone()) {
@@ -2955,12 +2958,14 @@ void noteDrawing() {
         }
         const uint64_t windowBacks = t.windowReadBacks - l.windowReadBacks;
         say("%.1f s (graphics processor): %llu drawings begun and ended (%.1f ms ending them), %llu calls drawn by Direct2D, %llu by its effects, %llu "
-            "through memory (%.1f ms), %llu layers; %llu pictures shown without the memory (%.1f ms); %llu uploads of %.2f Mpx (%.1f ms); read-backs "
+            "through memory (%.1f ms), %llu layers; %llu pictures shown without the memory (%.1f ms), %llu OpenGL ES frames composed under them (%.1f "
+            "ms waiting for their copies); %llu uploads of %.2f Mpx (%.1f ms); read-backs "
             "(the wait for the processor in them): %llu of other canvases, %.2f Mpx (%.1f ms), %llu of the shown window's, %.2f Mpx (%.1f ms); bitmaps: "
             "%llu uploaded, %llu drawn from those kept, %zu kept in %.1f MB",
             seconds, ull(t.sessions - l.sessions), ticksToMs(t.endTicks - l.endTicks), ull(t.direct - l.direct), ull(t.byEffects - l.byEffects),
             ull(t.throughMemory - l.throughMemory), ticksToMs(t.composeTicks - l.composeTicks), ull(t.layers - l.layers), ull(t.shown - l.shown),
-            ticksToMs(t.showTicks - l.showTicks), ull(t.uploads - l.uploads), double(t.uploadPixels - l.uploadPixels) / 1e6,
+            ticksToMs(t.showTicks - l.showTicks), ull(t.glFrames - l.glFrames), ticksToMs(t.glWaitTicks - l.glWaitTicks), ull(t.uploads - l.uploads),
+            double(t.uploadPixels - l.uploadPixels) / 1e6,
             ticksToMs(t.uploadTicks - l.uploadTicks), ull(t.readBacks - l.readBacks - windowBacks),
             double((t.readBackPixels - l.readBackPixels) - (t.windowReadBackPixels - l.windowReadBackPixels)) / 1e6,
             ticksToMs((t.readBackTicks - l.readBackTicks) - (t.windowReadBackTicks - l.windowReadBackTicks)), ull(windowBacks),
@@ -3046,6 +3051,233 @@ Ref<ID2D1Bitmap1> windowBitmapFor(ID3D11Texture2D* texture, bool* fresh) {
     return s.windowBitmap;
 }
 
+// MARK: The window composed of OpenGL ES frames and the views (megler_gfx_host.gl_frame, gl_place)
+
+/// What the window is composed of once an app draws with EGL on a view and
+/// the core leaves the composing to the shell: each layer's place and last
+/// frame, and the views' picture as present last showed it. All of it under
+/// `mutex`, on the app's main thread (present, gl_place) and the GL threads
+/// (gl_frame, gl_place).
+struct Composition {
+    struct Layer {
+        Box rect;                    // where its frames go, in the window's (the views') pixels; empty: nowhere
+        void* handle = nullptr;      // the shared handle its surface's texture was opened by
+        Ref<ID3D11Texture2D> shared; // ANGLE's texture of the surface, opened on this device
+        Ref<ID3D11Texture2D> copy;   // its last frame, copied out of it
+        Ref<ID2D1Bitmap1> frame;     // the copy as Direct2D draws it: rows bottom first, alpha ignored (a frame is opaque)
+    };
+    std::mutex mutex;
+    bool layered = false;            // frames or places have come: present keeps the views and composes the window here
+    Layer layers[8];
+    Ref<ID2D1Bitmap1> views;         // the views' picture as present last showed it, rows top first
+    int width = 0, height = 0;
+    bool haveViews = false;
+    Box pending;                     // composed again at the next showing: where a layer was, or is now
+    Ref<ID2D1DeviceContext> dc;      // what composes, on any of those threads
+    Ref<ID3D11Query> copied;         // signalled when a frame's copy is done
+};
+
+Composition& composition() {
+    // Never destroyed, as State is not.
+    static Composition* const c = new Composition();
+    return *c;
+}
+
+/// With the composition's lock held: `part` of the window (the views'
+/// pixels, rows top first) composed into the window host's texture, whose
+/// rows are bottom first: the views copied in, turned over; and in each
+/// layer's rectangle that has a frame, the frame -- bottom row first already,
+/// so put in as it is, scaled to the rectangle, opaque -- with the views over
+/// it. An unchanged frame costs this and nothing else.
+bool composeWindow(ID2D1Bitmap1* onto, Box part) {
+    State& s = G();
+    Composition& c = composition();
+    Box all;
+    all.r = c.width;
+    all.b = c.height;
+    part.intersect(all);
+    if (part.empty() || !c.views) return true;
+    if (!c.dc) {
+        const HRESULT hr = s.d2dDevice->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, c.dc.put());
+        if (FAILED(hr)) {
+            gpuFailed("ID2D1Device::CreateDeviceContext", hr);
+            c.dc.reset();
+            return false;
+        }
+    }
+    ID2D1DeviceContext* dc = c.dc.get();
+    const float h = float(c.height);
+    const Matrix3x2F turned(1, 0, 0, -1, 0, h);
+    dc->SetTarget(onto);
+    dc->BeginDraw();
+    dc->SetTransform(turned);
+    dc->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
+    const D2D1_RECT_F whole = D2D1::RectF(float(part.l), float(part.t), float(part.r), float(part.b));
+    dc->DrawBitmap(c.views.get(), &whole, 1.0f, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, &whole, nullptr);
+    for (Composition::Layer& layer : c.layers) {
+        if (!layer.frame || layer.rect.empty()) continue;
+        Box b = layer.rect;
+        b.intersect(part);
+        if (b.empty()) continue;
+        dc->SetTransform(Matrix3x2F::Identity());
+        dc->PushAxisAlignedClip(D2D1::RectF(float(b.l), h - float(b.b), float(b.r), h - float(b.t)), D2D1_ANTIALIAS_MODE_ALIASED);
+        const D2D1_RECT_F at = D2D1::RectF(float(layer.rect.l), h - float(layer.rect.b), float(layer.rect.r), h - float(layer.rect.t));
+        dc->DrawBitmap(layer.frame.get(), &at, 1.0f, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, nullptr, nullptr);
+        dc->PopAxisAlignedClip();
+        dc->SetTransform(turned);
+        const D2D1_RECT_F over = D2D1::RectF(float(b.l), float(b.t), float(b.r), float(b.b));
+        dc->PushAxisAlignedClip(over, D2D1_ANTIALIAS_MODE_ALIASED);
+        dc->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_SOURCE_OVER);
+        dc->DrawBitmap(c.views.get(), &over, 1.0f, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, &over, nullptr);
+        dc->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
+        dc->PopAxisAlignedClip();
+    }
+    dc->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_SOURCE_OVER);
+    const HRESULT hr = dc->EndDraw();
+    if (FAILED(hr)) {
+        gpuFailed("ID2D1DeviceContext::EndDraw", hr);
+        return false;
+    }
+    return true;
+}
+
+/// With the composition's lock held: the window shown again, `part` of it
+/// composed (all of it on a texture or a canvas not composed into before).
+bool showComposed(Box part, bool fresh) {
+    State& s = G();
+    Composition& c = composition();
+    GfxHost::Window window;
+    {
+        std::lock_guard<std::mutex> lock(s.windowMutex);
+        window = s.window;
+    }
+    if (!window.target || !window.show || !c.views) return false;
+    ID3D11Texture2D* texture = window.target(window.user, c.width, c.height);
+    if (!texture) return false;
+    bool newTexture = false;
+    Ref<ID2D1Bitmap1> onto = windowBitmapFor(texture, &newTexture);
+    if (!onto) return false;
+    if (fresh || newTexture) {
+        part.l = part.t = 0;
+        part.r = c.width;
+        part.b = c.height;
+    }
+    part.include(c.pending);
+    c.pending = Box();
+    if (!composeWindow(onto.get(), part)) return false;
+    window.show(window.user);
+    return true;
+}
+
+/// megler_gfx_host.gl_frame: a GL view's new frame, in ANGLE's texture of its
+/// surface, opened here by its shared handle and copied into a texture of
+/// the layer's own. The copy is waited for (an event query: this is the GL
+/// thread, which may wait; ANGLE draws the next frame into the same texture
+/// when this returns); then the layer's rectangle is composed again, when
+/// the views have been shown and it has one.
+bool glFrame(void*, int layer, void* handle, int width, int height) {
+    State& s = G();
+    if (layer < 0 || layer >= 8 || !handle || !s.gpu || gpuGone() || width <= 0 || height <= 0) return false;
+    bool taken = false;
+    guarded("gl_frame", [&] {
+        Composition& c = composition();
+        std::lock_guard<std::mutex> lock(c.mutex);
+        c.layered = true;
+        Composition::Layer& l = c.layers[layer];
+        if (l.handle != handle || !l.shared || !l.frame) {
+            l = Composition::Layer{l.rect};
+            HRESULT hr = s.d3d->OpenSharedResource(handle, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(l.shared.put()));
+            if (FAILED(hr)) {
+                note("gl-shared", "an OpenGL ES surface's texture could not be opened by its shared handle (0x%08lX): the core composes the window",
+                     static_cast<unsigned long>(hr));
+                l = Composition::Layer{l.rect};
+                return;
+            }
+            D3D11_TEXTURE2D_DESC desc = {};
+            l.shared->GetDesc(&desc);
+            // (A texture made typeless, to be seen in more than one format, is copied into one of the format it is drawn in.)
+            if (desc.Format == DXGI_FORMAT_R8G8B8A8_TYPELESS) desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+            if (desc.Format == DXGI_FORMAT_B8G8R8A8_TYPELESS) desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+            desc.MipLevels = 1;
+            desc.ArraySize = 1;
+            desc.Usage = D3D11_USAGE_DEFAULT;
+            desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+            desc.CPUAccessFlags = 0;
+            desc.MiscFlags = 0;
+            hr = s.d3d->CreateTexture2D(&desc, nullptr, l.copy.put());
+            Ref<IDXGISurface> surface;
+            if (SUCCEEDED(hr)) hr = l.copy->QueryInterface(__uuidof(IDXGISurface), reinterpret_cast<void**>(surface.put()));
+            if (SUCCEEDED(hr))
+                hr = s.gpuResource->CreateBitmapFromDxgiSurface(
+                    surface.get(), D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE, D2D1::PixelFormat(desc.Format, D2D1_ALPHA_MODE_IGNORE), 96.0f, 96.0f),
+                    l.frame.put());
+            if (FAILED(hr)) {
+                note("gl-frame", "an OpenGL ES frame of format %u cannot be drawn here (0x%08lX): the core composes the window", unsigned(desc.Format),
+                     static_cast<unsigned long>(hr));
+                l = Composition::Layer{l.rect};
+                return;
+            }
+            l.handle = handle;
+        }
+        if (!c.copied) {
+            D3D11_QUERY_DESC query = {D3D11_QUERY_EVENT, 0};
+            if (FAILED(s.d3d->CreateQuery(&query, c.copied.put()))) c.copied.reset();
+        }
+        Ref<ID3D11DeviceContext> context;
+        s.d3d->GetImmediateContext(context.put());
+        const uint64_t from = ticksNow();
+        GfxHost& host = GfxHost::shared();
+        host.lockDevice();
+        context->CopyResource(l.copy.get(), l.shared.get());
+        if (c.copied) context->End(c.copied.get());
+        context->Flush();
+        host.unlockDevice();
+        // The copy waited for, half a second at the most: ANGLE's device may draw into its texture as soon as this returns.
+        while (c.copied) {
+            host.lockDevice();
+            const HRESULT hr = context->GetData(c.copied.get(), nullptr, 0, 0);
+            host.unlockDevice();
+            if (hr != S_FALSE) break;
+            if (ticksToMs(ticksNow() - from) > 500.0) {
+                note("gl-wait", "a copy of an OpenGL ES frame was not done after half a second: not waited for any longer (said once)");
+                break;
+            }
+            SwitchToThread();
+        }
+        s.glWaitTicks += ticksNow() - from;
+        ++s.glFrames;
+        taken = true;
+        if (c.haveViews && !l.rect.empty()) {
+            Box part = l.rect;
+            showComposed(part, false);
+        }
+    });
+    return taken;
+}
+
+/// megler_gfx_host.gl_place: where a layer's frames go; nowhere, and its frame
+/// dropped, for width 0. What it covered and covers now is composed again
+/// at the next showing.
+void glPlace(void*, int layer, int x, int y, int width, int height) {
+    if (layer < 0 || layer >= 8) return;
+    guarded("gl_place", [&] {
+        Composition& c = composition();
+        std::lock_guard<std::mutex> lock(c.mutex);
+        c.layered = true;
+        Composition::Layer& l = c.layers[layer];
+        c.pending.include(l.rect);
+        if (width > 0 && height > 0) {
+            l.rect.l = x;
+            l.rect.t = y;
+            l.rect.r = x + width;
+            l.rect.b = y + height;
+            c.pending.include(l.rect);
+        } else {
+            l = Composition::Layer();
+        }
+    });
+}
+
 /// megler_gfx_host.present: the canvas's picture on the graphics processor,
 /// the part that changed, drawn into the window host's texture -- bottom row
 /// first, as the panel shows it flipped, and copied as it is, alpha and all,
@@ -3080,6 +3312,43 @@ bool present(void*, void* canvas, int x, int y, int width, int height) {
         part.b = y + height;
         if (width <= 0 || height <= 0) part = base.bounds();
         part.intersect(base.bounds());
+        {
+            // OpenGL ES views under the views: the views' part kept as the composition's picture of them, and the window
+            // composed of that and the layers' frames.
+            Composition& comp = composition();
+            std::lock_guard<std::mutex> lock(comp.mutex);
+            if (comp.layered) {
+                cv->gc->finish();
+                bool fresh = false;
+                if (!comp.views || comp.width != cv->memoryW || comp.height != cv->memoryH) {
+                    comp.views = gpuBitmap(cv->memoryW, cv->memoryH, D2D1_BITMAP_OPTIONS_NONE);
+                    comp.width = cv->memoryW;
+                    comp.height = cv->memoryH;
+                    fresh = true;
+                }
+                if (!comp.views) return;
+                {
+                    std::lock_guard<std::mutex> windowLock(s.windowMutex);
+                    if (s.windowCanvas != cv->serial) fresh = true;
+                    s.windowCanvas = cv->serial;
+                }
+                if (fresh) part = base.bounds();
+                const D2D1_POINT_2U at = D2D1::Point2U(UINT32(part.l), UINT32(part.t));
+                const D2D1_RECT_U source = D2D1::RectU(UINT32(part.l), UINT32(part.t), UINT32(part.r), UINT32(part.b));
+                const HRESULT hr = comp.views->CopyFromBitmap(&at, base.gpu.get(), &source);
+                if (FAILED(hr)) {
+                    gpuFailed("ID2D1Bitmap::CopyFromBitmap", hr);
+                    return;
+                }
+                comp.haveViews = true;
+                if (!showComposed(part, fresh)) return;
+                base.window = true;
+                ++s.shown;
+                s.showTicks += ticksNow() - from;
+                shown = true;
+                return;
+            }
+        }
         ID3D11Texture2D* texture = window.target(window.user, cv->memoryW, cv->memoryH);
         if (!texture) return;
         bool fresh = false;
@@ -5610,6 +5879,8 @@ megler_gfx_host GfxHost::callbacks() {
     host.image_encode = &imageEncode;
     host.bitmap_gone = &bitmapGone;
     host.present = &present;
+    host.gl_frame = &glFrame;
+    host.gl_place = &glPlace;
     return host;
 }
 

@@ -44,6 +44,12 @@
 //     window host's texture on the same device (setWindow) and shown. The
 //     canvas stays unflushed; the core flushes it, and it is read back, only
 //     when something reads the window's memory.
+//   - An app that draws with EGL on a view has its window composed here too
+//     (megler_gfx_host.gl_frame, gl_place): each GL frame is ANGLE's texture,
+//     opened on this device by its shared handle and copied into one of the
+//     layer's own (the GL thread waits for that copy, nothing else waits),
+//     and the window is the views' picture -- as present last showed it --
+//     over the frames at their views' rectangles.
 //   - A layer (save_layer) is a target bitmap of its extent, cleared, drawn
 //     into, and put onto the picture under it at its restore.
 //   - Bitmaps drawn from the core's memory (draw_bitmap, shader_bitmap) are

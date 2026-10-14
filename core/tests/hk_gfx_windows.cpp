@@ -146,6 +146,142 @@ int hk_gfx_windows_on_gpu(void) {
 /// The graphics processor's device taken as lost, for the test of what a canvas does then.
 void hk_gfx_windows_lose_device(void) { megler::app::GfxHost::shared().loseDevice(); }
 
+/// The window composed of an OpenGL ES view's frames and the views
+/// (megler_gfx_host.gl_frame, gl_place): a second Direct3D device stands for
+/// ANGLE's, a texture of it shared by handle for a GL surface, its rows
+/// bottom first as OpenGL's are. The frame shows where the views leave a
+/// hole, the right way up, under what the views have there; a new frame is
+/// shown without the views being shown again; a layer taken away leaves the
+/// views alone; nothing is read back. Lines to `line`; checks that failed.
+int hk_gfx_windows_check_gl(const megler_gfx_host* h, void (*line)(const char* text, void* user), int* checks) {
+    megler::app::GfxHost& gfx = megler::app::GfxHost::shared();
+    int failed = 0;
+    char text[300];
+    auto check = [&](bool ok, const char* what) {
+        ++*checks;
+        if (ok) return;
+        ++failed;
+        snprintf(text, sizeof(text), "  FAIL the window composed of OpenGL ES frames and the views: %s", what);
+        line(text, nullptr);
+    };
+    line("  the window composed on the graphics processor of an OpenGL ES view's frames and the views (megler_gfx_host.gl_frame, gl_place)", nullptr);
+    // ANGLE's device, on the adapter GfxHost's is on (a texture is shared on one adapter only, and ANGLE and the shell use the
+    // phone's one), and the surface's texture: 32 x 24, its bottom half (rows 0 to 11, the picture's bottom) blue, its top yellow.
+    ID3D11Device* angle = nullptr;
+    ID3D11DeviceContext* angleContext = nullptr;
+    IDXGIDevice* drawing = nullptr;
+    IDXGIAdapter* adapter = nullptr;
+    if (gfx.device()) gfx.device()->QueryInterface(__uuidof(IDXGIDevice), reinterpret_cast<void**>(&drawing));
+    if (drawing) drawing->GetAdapter(&adapter);
+    const HRESULT made = D3D11CreateDevice(adapter, adapter ? D3D_DRIVER_TYPE_UNKNOWN : D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                                           nullptr, 0, D3D11_SDK_VERSION, &angle, nullptr, &angleContext);
+    if (adapter) adapter->Release();
+    if (drawing) drawing->Release();
+    if (FAILED(made)) {
+        check(false, "no second Direct3D device");
+        return failed;
+    }
+    const int fw = 32, fh = 24;
+    std::vector<uint32_t> frame(size_t(fw) * fh);
+    for (int y = 0; y < fh; y++)
+        for (int x = 0; x < fw; x++) frame[size_t(y) * fw + x] = y < fh / 2 ? 0xFF0000FFu : 0xFFFFFF00u;
+    D3D11_TEXTURE2D_DESC td = {};
+    td.Width = UINT(fw);
+    td.Height = UINT(fh);
+    td.MipLevels = 1;
+    td.ArraySize = 1;
+    td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    td.SampleDesc.Count = 1;
+    td.Usage = D3D11_USAGE_DEFAULT;
+    td.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+    td.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
+    D3D11_SUBRESOURCE_DATA data = {frame.data(), UINT(fw * 4), 0};
+    ID3D11Texture2D* surface = nullptr;
+    IDXGIResource* resource = nullptr;
+    HANDLE handle = nullptr;
+    if (FAILED(angle->CreateTexture2D(&td, &data, &surface)) || FAILED(surface->QueryInterface(__uuidof(IDXGIResource), reinterpret_cast<void**>(&resource))) ||
+        FAILED(resource->GetSharedHandle(&handle))) {
+        check(false, "no shared texture on the second device");
+        if (resource) resource->Release();
+        if (surface) surface->Release();
+        angleContext->Release();
+        angle->Release();
+        return failed;
+    }
+    angleContext->Flush();
+    megler::app::GfxHost::Window window;
+    window.target = windowTarget;
+    window.show = windowShow;
+    gfx.setWindow(window);
+    // The views: white, a hole where the GL view is (16, 8, 32 x 24), and over the hole's lower right a half transparent red.
+    const int w = 64, hgt = 48;
+    std::vector<uint32_t> memory(size_t(w) * hgt, 0), shown;
+    void* cv = h->canvas_new(h->user, memory.data(), w, hgt, w * 4);
+    megler_gfx_paint p = {};
+    p.miter_limit = 4;
+    p.text_size = 12;
+    p.text_scale_x = 1;
+    p.blend = MEGLER_GFX_BLEND_SRC_OVER;
+    p.filter_mode = -1;
+    h->draw_color(h->user, cv, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    p.blend = MEGLER_GFX_BLEND_CLEAR;
+    h->draw_rect(h->user, cv, 16, 8, 48, 32, &p, nullptr);
+    p.blend = MEGLER_GFX_BLEND_SRC_OVER;
+    p.color = 0x80FF0000u;
+    h->draw_rect(h->user, cv, 40, 20, 48, 32, &p, nullptr);
+    const megler::app::GfxHost::Counts before = gfx.counts();
+    // The frame comes before the views have been shown with the layer placed: kept, not shown.
+    const int shownBefore = g_window.shown;
+    check(h->gl_frame(h->user, 0, handle, fw, fh), "the first frame was not taken");
+    check(g_window.shown == shownBefore, "a frame was shown before the views were");
+    h->gl_place(h->user, 0, 16, 8, 32, 24);
+    check(h->present(h->user, cv, 0, 0, w, hgt) && readWindow(shown), "the views were not shown");
+    // (Within two steps a channel: the mix is the processor's arithmetic.)
+    const auto alike = [](uint32_t a, uint32_t b) {
+        for (int s = 0; s < 32; s += 8)
+            if (abs(int((a >> s) & 255) - int((b >> s) & 255)) > 2) return false;
+        return true;
+    };
+    check(shown.size() == memory.size() && (shown[2 * w + 2] | 0xFF000000u) == 0xFFFFFFFFu, "the views are not white beside the GL view");
+    check(shown.size() == memory.size() && (shown[10 * w + 20] & 0x00FFFFFFu) == 0x00FFFF00u, "the frame's top (yellow) is not at the GL view's top");
+    check(shown.size() == memory.size() && (shown[30 * w + 20] & 0x00FFFFFFu) == 0x000000FFu, "the frame's bottom (blue) is not at the GL view's bottom");
+    check(shown.size() == memory.size() && alike(shown[30 * w + 44] | 0xFF000000u, 0xFF80007Fu), "half transparent red over the frame's blue is not their mix");
+    // A new frame: green all over. Shown without the views being shown again.
+    for (uint32_t& px : frame) px = 0xFF00FF00u;
+    angleContext->UpdateSubresource(surface, 0, nullptr, frame.data(), UINT(fw * 4), 0);
+    angleContext->Flush();
+    {
+        // (What glFinish does on ANGLE's side: the frame is in the texture before it is handed over.)
+        D3D11_QUERY_DESC qd = {D3D11_QUERY_EVENT, 0};
+        ID3D11Query* done = nullptr;
+        if (SUCCEEDED(angle->CreateQuery(&qd, &done))) {
+            angleContext->End(done);
+            while (angleContext->GetData(done, nullptr, 0, 0) == S_FALSE) SwitchToThread();
+            done->Release();
+        }
+    }
+    const int shownAgain = g_window.shown;
+    check(h->gl_frame(h->user, 0, handle, fw, fh) && g_window.shown == shownAgain + 1 && readWindow(shown), "the new frame was not shown");
+    check(shown.size() == memory.size() && (shown[10 * w + 20] & 0x00FFFFFFu) == 0x0000FF00u && (shown[2 * w + 2] | 0xFF000000u) == 0xFFFFFFFFu,
+          "the new frame (green) is not under the views' hole, or the views changed");
+    // The layer taken away: the views alone there again, at the next showing.
+    h->gl_place(h->user, 0, 0, 0, 0, 0);
+    check(h->present(h->user, cv, 16, 8, 32, 24) && readWindow(shown) && shown[10 * w + 20] == 0u, "the views' hole does not show nothing once the layer is gone");
+    const megler::app::GfxHost::Counts after = gfx.counts();
+    check(after.readBacks == before.readBacks, "something was read back");
+    snprintf(text, sizeof(text), "    %d pictures shown, %llu read-backs", g_window.shown, static_cast<unsigned long long>(after.readBacks - before.readBacks));
+    line(text, nullptr);
+    h->canvas_free(h->user, cv);
+    gfx.setWindow(megler::app::GfxHost::Window());
+    if (g_window.texture) g_window.texture->Release();
+    g_window = TestWindow();
+    resource->Release();
+    surface->Release();
+    angleContext->Release();
+    angle->Release();
+    return failed;
+}
+
 /// The window's picture shown from its canvas without the memory
 /// (megler_gfx_host.present), into a window of the test's own: shown with no
 /// read-back and the memory left alone; of a part, that part alone; and,

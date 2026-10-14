@@ -444,6 +444,7 @@ void hk_gfx_windows_counts(char *out, size_t size);
 int hk_gfx_windows_on_gpu(void);
 void hk_gfx_windows_lose_device(void);
 int hk_gfx_windows_check_present(const megler_gfx_host *h, void (*line)(const char *text, void *user), int *checks);
+int hk_gfx_windows_check_gl(const megler_gfx_host *h, void (*line)(const char *text, void *user), int *checks);
 
 /* A pixel of a 32 x 32 picture, as a check: a line when it is not what it should be. */
 static int gfx_loss_pixel(const u32 *px, int x, int y, u32 want, const char *what)
@@ -549,6 +550,7 @@ static int gfx_windows_mode(int argc, char **argv)
     failed = hk_gfx_scenes_run(&config, NULL, NULL, &checks);
     if ((way == 0 || way == 3) && hk_gfx_windows_on_gpu()) {
         failed += hk_gfx_windows_check_present(config.host, print_line, &checks);
+        failed += hk_gfx_windows_check_gl(config.host, print_line, &checks);
         failed += gfx_windows_loss(config.host, &checks);
     } else if (config.host->present) {
         /* Drawn in memory there is no picture of the shell's own to show: the layer is told no, and flushes as before. */
