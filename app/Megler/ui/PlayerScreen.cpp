@@ -157,6 +157,13 @@ public:
                         e.Handled(true);
                         return;
                     }
+                    if (e.VirtualKey() == winrt::Windows::System::VirtualKey::Back && keyboardWanted_ && editFocused_) {
+                        // The text service does not delete for a text-edit context: Backspace comes as a key, and the
+                        // field it belongs to deletes (as Windows' own sample control does).
+                        keyboardBackspace();
+                        e.Handled(true);
+                        return;
+                    }
                     if (e.VirtualKey() != winrt::Windows::System::VirtualKey::Escape) return;
                     if (session::snapshot().state == session::State::running) showMenu(!menuShown_);
                 });
@@ -698,6 +705,32 @@ private:
                 });
             } catch (const hresult_error&) {
             }
+        }
+    }
+
+    /// Backspace: the app's field loses the character before its cursor, and
+    /// the edit context the one before its caret -- while there is one after
+    /// the fixed beginning; with only that left the app is told all the same.
+    void keyboardBackspace() {
+        session::textKey(MEGLER_TEXT_BACKSPACE);
+        if (!typingSaid_) {
+            typingSaid_ = true;
+            shellLog::write("player: typing (a Backspace) reaches the app");
+        }
+        if (editCaret_ <= int32_t(keyboardStartLength) || editCaret_ > int32_t(keyboardText_.size())) return;
+        int32_t from = editCaret_ - 1;
+        // (A character outside the basic plane is two halves, and one Backspace.)
+        if (from > 0 && IS_LOW_SURROGATE(keyboardText_[size_t(from)]) && IS_HIGH_SURROGATE(keyboardText_[size_t(from - 1)])) --from;
+        const int32_t to = editCaret_;
+        keyboardText_.erase(size_t(from), size_t(to - from));
+        editCaret_ = from;
+        try {
+            winrt::Windows::UI::Text::Core::CoreTextRange gone{}, caret{};
+            gone.StartCaretPosition = from;
+            gone.EndCaretPosition = to;
+            caret.StartCaretPosition = caret.EndCaretPosition = from;
+            editContext_.NotifyTextChanged(gone, 0, caret);
+        } catch (const hresult_error&) {
         }
     }
 
