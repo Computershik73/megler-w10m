@@ -94,7 +94,7 @@ bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-f
     4227 checks, 0 failed          on libcore with its native libraries
       47 checks, 0 failed          the Java test app hello, through megler_run
       75 checks, 0 failed          the Java test app demos, the keyboard's 25 and the frame meter's 3 among them
-      42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
+      43 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
       13 checks, 0 failed          the Java test app crash: an exception nothing catches, launcher aliases, an app written for Android 6
       48 checks, 0 failed          the Java test app data: a database, the storage, the battery, the time zone, TLS, key pairs and codecs, the first run
       49 checks, 0 failed          data again, on what the first run left, with another battery and a time zone that is none
@@ -456,6 +456,7 @@ checks:
 | `missing-library` | `UnsatisfiedLinkError` in Android's words: `...PathClassLoader[...] couldn't find "libnothere.so"` (libcore's own), and `dlopen failed: library "<path>" not found` for `System.load` |
 | `missing-method` | `No implementation found for void megler.test.natives.Lib.notThere() (tried Java_megler_test_natives_Lib_notThere and Java_megler_test_natives_Lib_notThere__)` |
 | `looper-watched`, `looper` | `ALooper_forThread()` on the main thread, a pipe added with `ALooper_addFd` and written: the callback runs on the main thread with a later turn of the Java message loop |
+| `system-icu` | `dlopen("libicuuc.so")` and `dlopen("libicui18n.so")` by name, `u_strlen` and `ucsdet_open` found by trying their versioned names as MX Player does, `u_strlen` called: version 60, the Android root's ICU |
 
 and, from outside: the library's own `__android_log_print` line, and the bitmap
 it painted on the picture, pixel for pixel where the app drew it. The picture
@@ -1560,6 +1561,18 @@ app's. So an app may carry a `libcrypto.so` or `libicuuc.so` of its own, as
 many do; it gets its own and the runtime keeps Android's. This is what
 Android's linker namespaces do. The system's libraries (`libc.so`,
 `liblog.so`, `libandroid.so`, `libjnigraphics.so`: the shims) are one for both.
+And one exception, Android's own: Android 7 to 9 list ICU's two libraries among
+the public ones (`public.libraries.android.txt`), so an app that does not carry
+them may `dlopen("libicuuc.so")` and `"libicui18n.so"` and find their
+functions by ICU's versioned names (`ucnv_open_60`). `dlopen` gives such an app
+the runtime's copies, which libcore's start has loaded
+(`bionic/hk_libdl.c`, `root_public_lib`); without the root they are not found.
+MX Player's player library (`libmxvp.so`) opens both for subtitles' character
+sets, and its `native_init` threw an `UnsatisfiedLinkError` when it could not:
+the app's "Component files are corrupted or Android internal modules are not
+compatible" message (`error_load_components`, `ActivityMessenger`). Under qemu
+it now starts to its main screen. Only `dlopen`: a library that names ICU in
+its `DT_NEEDED` still looks only in its own APK.
 
 **`System.loadLibrary`** is libcore's own Java all the way to
 `Runtime.nativeLoad`. `VMStack.getCallingClassLoader` gives the loader of the

@@ -130,6 +130,8 @@ public class Lib {
     static native int sharedAt(int i);
     static native String configuration(AssetManager assets);
     static native int watchLooper(LooperReport report);
+    /** The system's ICU opened by name and a function of each of its two libraries found by its versioned name: the version, or below 1. */
+    static native int icuVersion();
 
     /** Declared and in no library. */
     static native void notThere();

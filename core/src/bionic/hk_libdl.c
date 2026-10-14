@@ -23,6 +23,19 @@ static void set_error(const char *fmt, const char *what)
     g_dlerror_set = true;
 }
 
+/*
+ * The Android root's libraries an app may open by name: Android 7 to 9 list ICU's two among the public libraries
+ * (public.libraries.android.txt), whose functions carry ICU's version in their names ("ucnv_open_60"), and apps open them:
+ * MX Player's player library converts and detects the character sets of subtitles with them and ends its start-up with an
+ * UnsatisfiedLinkError when it cannot. They are the copies the runtime loaded at its start, where libcore runs; without the
+ * root they are not found, as before.
+ */
+static hk_lib *root_public_lib(const char *base)
+{
+    if (strcmp(base, "libicuuc.so") && strcmp(base, "libicui18n.so")) return NULL;
+    return hk_ld_find_runtime_lib(base);
+}
+
 static void *g_dlopen(const char *name, int flags)
 {
     const char *base;
@@ -42,6 +55,8 @@ static void *g_dlopen(const char *name, int flags)
     lib = hk_ld_find_lib(base);
     if (!lib) {
         if (!hk_ld_has_lib(base)) {
+            lib = root_public_lib(base);
+            if (lib) return lib;
             set_error("dlopen failed: library \"%s\" not found", name);
             return NULL;
         }

@@ -15,6 +15,7 @@
 #include <android/configuration.h>
 #include <android/log.h>
 #include <android/looper.h>
+#include <dlfcn.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -635,4 +636,42 @@ JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_watchLooper(JNIEnv *env, jcl
     g_looper_report = (*env)->NewGlobalRef(env, report);
     if (ALooper_addFd(looper, g_pipe[0], ALOOPER_POLL_CALLBACK, ALOOPER_EVENT_INPUT, on_readable, NULL) != 1) return -2;
     return write(g_pipe[1], "L", 1) == 1 ? 1 : -3;
+}
+
+/* ---------------------------------------------------------- the system's ICU */
+
+/* A function of an ICU library by its name and the version ICU gives its names ("u_strlen_60"), the first version that has it. */
+static void *icu_function(void *lib, const char *name, int *version)
+{
+    char versioned[64];
+    int v;
+    for (v = 44; v <= 80; v++) {
+        void *f;
+        snprintf(versioned, sizeof(versioned), "%s_%d", name, v);
+        f = dlsym(lib, versioned);
+        if (f) {
+            *version = v;
+            return f;
+        }
+    }
+    return NULL;
+}
+
+/*
+ * The system's ICU, opened by name as Android 7 to 9 let an app open it (public.libraries.android.txt lists libicuuc.so and
+ * libicui18n.so), and a function of each found as MX Player's player library finds them, trying the versions: u_strlen,
+ * called, and ucsdet_open. The version of both, -1 when a library did not open, -2 when a function was not found, -3 when
+ * u_strlen counted wrong or the two disagree.
+ */
+JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_icuVersion(JNIEnv *env, jclass cls)
+{
+    static const uint16_t text[] = { 'H', 'u', 's', 'k', 0 };
+    void *uc = dlopen("libicuuc.so", RTLD_NOW), *i18n = dlopen("libicui18n.so", RTLD_NOW);
+    int32_t (*u_strlen)(const uint16_t *);
+    int v = 0, w = 0;
+    (void)env; (void)cls;
+    if (!uc || !i18n) return -1;
+    u_strlen = (int32_t (*)(const uint16_t *))icu_function(uc, "u_strlen", &v);
+    if (!u_strlen || !icu_function(i18n, "ucsdet_open", &w)) return -2;
+    return u_strlen(text) == 4 && v == w ? v : -3;
 }

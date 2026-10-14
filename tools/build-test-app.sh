@@ -95,7 +95,7 @@ for app in "$APPS"/*/; do
     for src in "$app"/jni/*.c; do
       case "$src" in *_dep.c) continue ;; esac
       lib="$(basename "$src" .c)"
-      "$NDKCC" "${NDKFLAGS[@]}" "-Wl,-soname,lib$lib.so" -o "$(m "$W/lib/lib$lib.so")" "$(m "$src")" "-L$(m "$W/lib")" "${DEPS[@]}" -llog -landroid -ljnigraphics 2> "$W/ndk.log" \
+      "$NDKCC" "${NDKFLAGS[@]}" "-Wl,-soname,lib$lib.so" -o "$(m "$W/lib/lib$lib.so")" "$(m "$src")" "-L$(m "$W/lib")" "${DEPS[@]}" -llog -landroid -ljnigraphics -ldl 2> "$W/ndk.log" \
         || { head -40 "$W/ndk.log" >&2; echo "the NDK failed for $name ($lib)" >&2; exit 1; }
     done
   fi
