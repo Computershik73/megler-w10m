@@ -572,6 +572,13 @@ static struct {
 } g_proxies[MAX_PROXIES];
 static volatile i32 g_nproxies;
 
+void hk_dvm_proxy_roots(void (*fn)(hk_jobj *o, void *user), void *user)
+{
+    i32 i, n = g_nproxies;
+    for (i = 0; i < n && i < MAX_PROXIES; i++)
+        if (g_proxies[i].methods) fn(g_proxies[i].methods, user);
+}
+
 static void proxy_construct(hk_jcall *c)
 {
     if (!c->args[0].l) {

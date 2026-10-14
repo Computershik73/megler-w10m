@@ -37,6 +37,31 @@ u64 hk_dvm_executed_all(void)
     return n;
 }
 
+/* The calling thread has ended (the host's hook, hk_thread_set_end_hook): it is no longer one of the runtime's, to be stopped or scanned. */
+static void thread_ends(void)
+{
+    hk_dvm_thread *t = t_self, **p;
+    if (!t) return;
+    hk_dvm_lock();
+    for (p = &g_threads; *p; p = &(*p)->next)
+        if (*p == t) {
+            *p = t->next;
+            break;
+        }
+    hk_dvm_gc_thread_gone(t);
+    hk_dvm_unlock();
+    t_self = NULL;
+    /* Its frame stack goes; the small rest stays, for whoever still holds its address (a Thread whose nativePeer was read a moment ago). */
+    free(t->stack);
+    t->stack = t->sp = t->stack_end = NULL;
+}
+
+void hk_dvm_threads_each(void (*fn)(hk_dvm_thread *t, void *user), void *user)
+{
+    hk_dvm_thread *t;
+    for (t = g_threads; t; t = t->next) fn(t, user);
+}
+
 hk_dvm_thread *hk_dvm_self(void)
 {
     hk_dvm_thread *t = t_self;
@@ -46,6 +71,13 @@ hk_dvm_thread *hk_dvm_self(void)
     /* Where the host's stack ends, if the host knows and what it says holds for where this function stands now. */
     hk_thread_stack_bounds(&lo, &hi);
     if (lo && (hk_addr)&lo > (hk_addr)lo && (hk_addr)&lo < (hk_addr)hi) t->c_stack_low = (hk_addr)lo + 48u * 1024u;
+    /* What the collector needs to stop it and scan its stack: the whole of it, from its real base, wherever it registered from. */
+    t->host = hk_thread_current();
+    if (lo && hi && (hk_addr)&lo > (hk_addr)lo && (hk_addr)&lo < (hk_addr)hi) {
+        t->stack_lo = (hk_addr)lo;
+        t->stack_hi = (hk_addr)hi;
+    }
+    hk_thread_set_end_hook(thread_ends);
     t->stack = (hk_dvm_reg *)hk_alloc(sizeof(hk_dvm_reg) * DVM_STACK_WORDS);
     t->stack_end = t->stack + DVM_STACK_WORDS - DVM_STACK_RESERVE;
     t->sp = t->stack;
@@ -64,6 +96,12 @@ static hk_jobj *g_out_of_memory;       /* made at the start, for when nothing mo
 static volatile i32 g_objects;
 static volatile i32 g_object_kb, g_object_bytes_low;
 
+void hk_dvm_object_roots(void (*fn)(hk_jobj *o, void *user), void *user)
+{
+    if (g_out_of_memory) fn(g_out_of_memory, user);
+    if (g_dvm.app_loader) fn(g_dvm.app_loader, user);
+}
+
 static hk_jobj *alloc_raw(hk_dvm_class *c, int kind, u64 body)
 {
     hk_dvm_obj *o = NULL;
@@ -73,6 +111,8 @@ static hk_jobj *alloc_raw(hk_dvm_class *c, int kind, u64 body)
     /* The time it takes, for bytecode's own allocations: those made inside a native method are in that method's time. */
     u64 started = self->native_depth ? 0 : hk_time_monotonic_ns();
     self->allocs++;
+    /* What the collector will follow in objects of the class, known before the first of them exists (it may allocate nothing). */
+    if (kind != HK_J_PRIM_ARRAY && kind != HK_J_OBJ_ARRAY && kind != HK_J_STRING && !c->ref_slots_ready) hk_dvm_gc_class_ready(c);
     if (body <= 0x7FFF0000u) o = (hk_dvm_obj *)hk_dvm_heap_alloc(size);
     if (started) self->alloc_ns += hk_time_monotonic_ns() - started;
     if (!o) {
@@ -323,6 +363,14 @@ hk_jobj *hk_dvm_intern_string(hk_jobj *s)
     }
     hk_dvm_unlock();
     return e->s;
+}
+
+void hk_dvm_interned_each(void (*fn)(hk_jobj *s, void *user), void *user)
+{
+    interned *e;
+    size_t i;
+    for (i = 0; i < INTERN_BUCKETS; i++)
+        for (e = g_interned[i]; e; e = e->next) fn(e->s, user);
 }
 
 hk_jobj *hk_dvm_const_string(hk_dvm_dex *d, u32 idx)

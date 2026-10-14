@@ -101,6 +101,8 @@ typedef struct hk_thread_regs {
 } hk_thread_regs;
 bool hk_thread_suspend(hk_thread *t, hk_thread_regs *out);
 void hk_thread_resume(hk_thread *t);
+/* Called on a thread started by hk_thread_start as it ends (its function returned, or hk_thread_exit): the collector forgets it. */
+void hk_thread_set_end_hook(void (*fn)(void));
 void hk_thread_yield(void);
 void hk_sleep_ns(u64 ns);
 int hk_cpu_count(void);

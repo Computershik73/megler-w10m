@@ -176,6 +176,10 @@ struct hk_dvm_class {
     hk_jclass *jc;                     /* the JNI layer's class of the same name */
     bool foreign;                      /* a class of the JNI layer's that no DEX file defines: a name under Object, with no members here */
     hk_dvm_class *next;                /* in its bucket of the table of linked classes */
+    /* The instance slots that hold references, the superclasses' included: what the collector follows. Made at the first instance. */
+    u32 *ref_slots;
+    u32 nref_slots;
+    volatile i32 ref_slots_ready;
 };
 
 /*
@@ -230,6 +234,9 @@ struct hk_dvm_thread {
      */
     int native_depth;
     volatile u64 native_ns, natives, alloc_ns, allocs, blocked_ns;
+    /* For the collector: the thread as the host knows it, to stop it; its C stack's limits, [stack_lo, stack_hi). */
+    hk_thread *host;
+    hk_addr stack_lo, stack_hi;
 };
 
 /* How much of a thread's stack only the making of a StackOverflowError may use, in registers. */
@@ -257,6 +264,9 @@ typedef struct hk_dvm_jni {
     hk_jclass *(*class_for)(const char *name, const char *super, hk_dvm_class *c);
 } hk_dvm_jni;
 void hk_jni_dvm_join(hk_dvm_jni *out);
+/* jni/hk_jni.c, for the collector: its lock of the references' table, and the JNI layer's objects that are roots. */
+void hk_jni_gc_lock(bool take);
+void hk_jni_gc_roots(void (*fn)(hk_jobj *o, void *user), void *user);
 
 /* The few classes the runtime itself names. */
 typedef struct hk_dvm_globals {
@@ -377,11 +387,21 @@ u32 hk_dvm_defined_count(void);
 u32 hk_dvm_dex_count(void);
 /* Every class that is linked now, for what has to be done to all of them. Called with the runtime's lock not held; `fn` must not link anything. */
 void hk_dvm_each_linked(void (*fn)(hk_dvm_class *c, void *user), void *user);
+/* The same for the collector: with the runtime's lock held and the other threads stopped, so nothing is allocated. */
+void hk_dvm_each_linked_locked(void (*fn)(hk_dvm_class *c, void *user), void *user);
+hk_dvm_dex *hk_dvm_dex_at(u32 i);
 const char *hk_dvm_defined_name(u32 i, hk_dvm_dex **dex);
 
 /* -------------------------------------------------------- hk_dvm_object.c */
 
 hk_dvm_thread *hk_dvm_self(void);
+/* For the collector, with the runtime's lock held: every thread there is, and every interned string. */
+void hk_dvm_threads_each(void (*fn)(hk_dvm_thread *t, void *user), void *user);
+void hk_dvm_interned_each(void (*fn)(hk_jobj *s, void *user), void *user);
+/* The objects the C side of the runtime keeps: the preallocated OutOfMemoryError, the app's class loader. */
+void hk_dvm_object_roots(void (*fn)(hk_jobj *o, void *user), void *user);
+/* hk_dvm_art_reflect.c: the Method[] kept beside each proxy class. */
+void hk_dvm_proxy_roots(void (*fn)(hk_jobj *o, void *user), void *user);
 /* Once the boot class path is in place: what has to exist before it is needed (the OutOfMemoryError to throw when nothing more can be made). */
 void hk_dvm_objects_start(void);
 
@@ -417,6 +437,13 @@ void hk_dvm_register_fallback(const hk_jhle *table);
 /* Runs a method, bytecode or native, from C. `params` holds one value per parameter. False when it threw. */
 bool hk_dvm_invoke(hk_dvm_method *m, hk_jobj *self, const hk_jvalue *params, hk_jvalue *ret);
 
+/* ------------------------------------------------------------ hk_dvm_gc.c */
+
+/* The class's reference slots (hk_dvm_class.ref_slots), made when it is first needed: before the first instance is made. */
+void hk_dvm_gc_class_ready(hk_dvm_class *c);
+/* What a thread's end hands the collector: the thread is no longer to be stopped or scanned. */
+void hk_dvm_gc_thread_gone(hk_dvm_thread *t);
+
 /* ---------------------------------------------------------- hk_dvm_heap.c */
 
 /* Where objects live (hk_dvm_heap.c says how). Memory zeroed, or NULL when the host has none. */
@@ -427,9 +454,15 @@ void hk_dvm_heap_lock(void);
 void hk_dvm_heap_unlock(void);
 typedef struct hk_dvm_heap_info {
     u64 small_bytes, large_bytes, reserved;   /* in cells in use; in large objects; the host's memory the blocks take */
-    u32 large_objects;
+    u32 large_objects, objects;
 } hk_dvm_heap_info;
 void hk_dvm_heap_stats(hk_dvm_heap_info *out);
+/* The collector's, with the heap's lock held: objects in it; an object's mark set (true when it was not set before), read, all cleared. */
+u32 hk_dvm_heap_objects(void);
+bool hk_dvm_heap_set_mark(void *o);
+bool hk_dvm_heap_is_marked(const void *o);
+void hk_dvm_heap_clear_marks(void);
+void hk_dvm_heap_each_marked(void (*fn)(void *o));
 
 /* ---------------------------------------------------------- hk_dvm_boot.c */
 

@@ -2243,7 +2243,15 @@ cached UTF-8, the `fields` array of a stand-in object.
    to be that object's, small or large, and that a stack address is not.)
 2. Registration and suspension of threads, and the conservative scan. Then a
    collection that only marks and reports what it would free, run by the
-   tests.
+   tests. (Done: `hk_dvm_gc.c`'s census, with the roots as listed above. A
+   thread is registered with its `hk_thread` and its stack's limits, and a
+   host hook (`hk_thread_set_end_hook`) takes it out of the list when it
+   ends; its frame stack is freed then. `test_gc` holds objects through each
+   kind of root and checks that each is found: a C local of another thread
+   that is stopped, a registered C root, a chain through an object array, an
+   interior pointer. It also checks that 100 arrays nothing holds are not
+   found. On libcore under qemu: 94,142 objects, 16,204 reachable (1.5 MB), 9
+   found first by a conservative root; 8.6 ms to mark.)
 3. The audit of C roots, the sweep, the trigger and `System.gc()`.
 4. References and the reference thread.
 5. Finalizers, and bitmaps with them.

@@ -107,11 +107,15 @@ struct hk_thread {
 
 static HK_THREAD_LOCAL hk_thread *t_current;
 
+static void (*volatile g_end_hook)(void);
+void hk_thread_set_end_hook(void (*fn)(void)) { g_end_hook = fn; }
+
 static void *thread_main(void *p)
 {
     hk_thread *t = (hk_thread *)p;
     t_current = t;
     t->fn(t->arg);
+    if (g_end_hook) g_end_hook();
     return NULL;
 }
 
@@ -300,7 +304,11 @@ void hk_thread_detach(hk_thread *t)
     pthread_detach(t->t);
 }
 
-void hk_thread_exit(void) { pthread_exit(NULL); }
+void hk_thread_exit(void)
+{
+    if (g_end_hook) g_end_hook();
+    pthread_exit(NULL);
+}
 u32 hk_thread_self_id(void) { return (u32)syscall(SYS_gettid); }
 void hk_thread_yield(void) { sched_yield(); }
 

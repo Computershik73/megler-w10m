@@ -986,6 +986,8 @@ static void main_thread(void *arg)
         hk_dvm_register(hk_java_sqlite_natives());
         hk_java_gfx_set_host(&J.config->gfx);
         hk_java_gfx_set_present(present, NULL);
+        /* What C keeps of the app's objects across calls: the collector keeps it too. */
+        hk_dvm_add_root(&J.clipboard);
         hk_dvm_register(hk_java_gfx_natives());
         memset(args, 0, sizeof(args));
         args[0].l = hk_dvm_new_string(J.activity);

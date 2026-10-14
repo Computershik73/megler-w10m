@@ -170,6 +170,22 @@ const char *hk_dvm_describe_pending(char *buf, size_t n);
  */
 int hk_dvm_pending_stack(char *buf, size_t n);
 
+/* ----------------------------------------------------------- the collector */
+
+/* A C variable that keeps an object across calls (a driver's): the collector keeps what it points to, whatever it is then. */
+void hk_dvm_add_root(hk_jobj **slot);
+typedef struct hk_dvm_gc_result {
+    u64 objects, live_objects, live_bytes;   /* in the heap; reachable, and their bytes */
+    u64 conservative;                        /* reached first through a conservative root: a stack or a frame's register */
+    u64 freed_objects, freed_bytes;
+    u32 threads_stopped;
+    u64 stop_ns, mark_ns, sweep_ns;
+} hk_dvm_gc_result;
+/* A collection that marks only: what is reachable, counted, nothing freed. False when not every thread could be stopped. */
+bool hk_dvm_gc_census(hk_dvm_gc_result *out);
+/* Whether the last collection found the object reachable (for the tests). */
+bool hk_dvm_gc_marked(const hk_jobj *o);
+
 /* ------------------------------------------------------------ diagnostics */
 
 /*

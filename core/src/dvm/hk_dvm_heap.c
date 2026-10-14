@@ -55,6 +55,14 @@ static u32 g_nlarge, g_large_cap;
 static u8 g_class_of[MAX_SMALL / 16 + 1];
 static volatile i32 g_classes_ready;
 static u64 g_small_bytes, g_large_bytes, g_reserved;
+static u32 g_objects;                  /* cells in use and large objects */
+static hk_addr g_lo = ~(hk_addr)0, g_hi;   /* every object lies in [g_lo, g_hi) */
+
+static void widen(hk_addr start, size_t size)
+{
+    if (start < g_lo) g_lo = start;
+    if (start + size > g_hi) g_hi = start + size;
+}
 
 void hk_dvm_heap_lock(void) { hk_lock_acquire(&g_heap_lock); }
 void hk_dvm_heap_unlock(void) { hk_lock_release(&g_heap_lock); }
@@ -90,6 +98,7 @@ static bool add_arena(void)
     g_arenas[at] = a;
     g_narenas++;
     g_reserved += ARENA_SIZE;
+    widen((hk_addr)a, ARENA_SIZE);
     /* Spare blocks are handed out lowest first. */
     for (i = ARENA_BLOCKS; i > 0; i--) {
         block *b = (block *)(void *)(a + (size_t)(i - 1) * BLOCK_SIZE);
@@ -154,6 +163,7 @@ static void *small_alloc(size_t size)
         index = (u32)((size_t)(cell - b->first) / b->cell);
         b->inuse[index >> 5] |= 1u << (index & 31);
         b->used++;
+        g_objects++;
         g_small_bytes += b->cell;
     }
     hk_lock_release(&g_heap_lock);
@@ -191,7 +201,9 @@ static void *large_alloc(size_t size)
     g_large[lo].size = size;
     g_large[lo].mark = false;
     g_nlarge++;
+    g_objects++;
     g_large_bytes += size;
+    widen((hk_addr)p, size);
     hk_lock_release(&g_heap_lock);
     return p;
 }
@@ -221,8 +233,10 @@ static block *block_of(hk_addr p)
 /* With the heap's lock held (the collector's). */
 void *hk_dvm_heap_find(hk_addr p)
 {
-    block *b = block_of(p);
+    block *b;
     u32 lo, hi;
+    if (p < g_lo || p >= g_hi) return NULL;
+    b = block_of(p);
     if (b) {
         u32 index;
         if (p < (hk_addr)b->first) return NULL;
@@ -242,6 +256,74 @@ void *hk_dvm_heap_find(hk_addr p)
     return NULL;
 }
 
+/* The large object that starts at `p`, or NULL. With the lock held. */
+static large *large_at(const void *p)
+{
+    u32 lo = 0, hi = g_nlarge;
+    while (lo < hi) {
+        u32 mid = (lo + hi) / 2;
+        if ((const u8 *)p < g_large[mid].start) hi = mid;
+        else if ((const u8 *)p > g_large[mid].start) lo = mid + 1;
+        else return &g_large[mid];
+    }
+    return NULL;
+}
+
+bool hk_dvm_heap_set_mark(void *o)
+{
+    block *b = block_of((hk_addr)o);
+    if (b) {
+        u32 index = (u32)((size_t)((u8 *)o - b->first) / b->cell), bit = 1u << (index & 31);
+        if (b->mark[index >> 5] & bit) return false;
+        b->mark[index >> 5] |= bit;
+        return true;
+    } else {
+        large *l = large_at(o);
+        if (!l || l->mark) return false;
+        l->mark = true;
+        return true;
+    }
+}
+
+bool hk_dvm_heap_is_marked(const void *o)
+{
+    block *b = block_of((hk_addr)o);
+    if (b) {
+        u32 index = (u32)((size_t)((const u8 *)o - b->first) / b->cell);
+        return (b->mark[index >> 5] & (1u << (index & 31))) != 0;
+    } else {
+        large *l = large_at(o);
+        return l && l->mark;
+    }
+}
+
+void hk_dvm_heap_clear_marks(void)
+{
+    u32 i, k;
+    for (i = 0; i < g_narenas; i++)
+        for (k = 0; k < ARENA_BLOCKS; k++) {
+            block *b = (block *)(void *)(g_arenas[i] + (size_t)k * BLOCK_SIZE);
+            if (b->cls >= 0) memset(b->mark, 0, sizeof(b->mark));
+        }
+    for (i = 0; i < g_nlarge; i++) g_large[i].mark = false;
+}
+
+u32 hk_dvm_heap_objects(void) { return g_objects; }
+
+void hk_dvm_heap_each_marked(void (*fn)(void *o))
+{
+    u32 i, k, c;
+    for (i = 0; i < g_narenas; i++)
+        for (k = 0; k < ARENA_BLOCKS; k++) {
+            block *b = (block *)(void *)(g_arenas[i] + (size_t)k * BLOCK_SIZE);
+            if (b->cls < 0) continue;
+            for (c = 0; c < b->bump; c++)
+                if (b->mark[c >> 5] & b->inuse[c >> 5] & (1u << (c & 31))) fn(b->first + (size_t)c * b->cell);
+        }
+    for (i = 0; i < g_nlarge; i++)
+        if (g_large[i].mark) fn(g_large[i].start);
+}
+
 void hk_dvm_heap_stats(hk_dvm_heap_info *out)
 {
     hk_lock_acquire(&g_heap_lock);
@@ -249,5 +331,6 @@ void hk_dvm_heap_stats(hk_dvm_heap_info *out)
     out->large_bytes = g_large_bytes;
     out->reserved = g_reserved;
     out->large_objects = g_nlarge;
+    out->objects = g_objects;
     hk_lock_release(&g_heap_lock);
 }

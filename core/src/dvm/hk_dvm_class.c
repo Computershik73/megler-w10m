@@ -1194,6 +1194,16 @@ void hk_dvm_each_linked(void (*fn)(hk_dvm_class *c, void *user), void *user)
     free(all);
 }
 
+void hk_dvm_each_linked_locked(void (*fn)(hk_dvm_class *c, void *user), void *user)
+{
+    hk_dvm_class *c;
+    size_t i;
+    for (i = 0; i < CLASS_BUCKETS; i++)
+        for (c = g_classes[i]; c; c = c->next) fn(c, user);
+}
+
+hk_dvm_dex *hk_dvm_dex_at(u32 i) { return i < (u32)g_ndexes ? g_dexes[i] : NULL; }
+
 hk_dvm_class *hk_dvm_make_proxy_class(const char *name, hk_dvm_class *super, hk_dvm_class **ifaces, int nifaces, hk_dvm_method *const *like, int nmethods,
                                       hk_jhle_fn invoke, hk_jhle_fn construct, const char *construct_sig)
 {

@@ -1155,6 +1155,34 @@ static void ref_counted(hk_jobj *o, int global, int weak)
     hk_lock_release(&g_refs_lock);
 }
 
+/*
+ * For the collector (dvm/hk_dvm_gc.c): the JNI layer's objects that are roots. These are the global and weak global
+ * references, the Method objects of FromReflectedMethod, and the stand-in classes' static fields. Weak ones are kept as
+ * strong for now: a weak reference here is the object's own address, which a freed object's successor could take.
+ * hk_jni_gc_lock(true) is taken before the other threads are stopped, so that none of them is stopped halfway through the
+ * table of references. The rest is read as it is: a list whose head is set last, values a word wide.
+ */
+void hk_jni_gc_lock(bool take)
+{
+    if (take) hk_lock_acquire(&g_refs_lock);
+    else hk_lock_release(&g_refs_lock);
+}
+
+void hk_jni_gc_roots(void (*fn)(hk_jobj *o, void *user), void *user)
+{
+    const reflected *r;
+    const hk_jclass *c;
+    const jfield *f;
+    u32 i;
+    for (i = 0; i < g_refs_cap; i++)
+        if (g_refs[i].o && g_refs[i].o != REF_GONE && (g_refs[i].global > 0 || g_refs[i].weak > 0)) fn(g_refs[i].o, user);
+    for (r = g_reflected; r; r = r->next)
+        if (r->object) fn(r->object, user);
+    for (c = g_classes; c; c = c->next)
+        for (f = c->fields; f; f = f->next)
+            if (f->is_static && f->kind == 'L' && !f->dvm && f->value.l) fn(f->value.l, user);
+}
+
 static hk_jobj *j_NewGlobalRef(JNIEnvP e, hk_jobj *o) { (void)e; ref_counted(o, 1, 0); return hk_jni_ref(o); }
 static void j_DeleteGlobalRef(JNIEnvP e, hk_jobj *o) { (void)e; ref_counted(o, -1, 0); hk_jni_unref(o); }
 static hk_jobj *j_NewWeakGlobalRef(JNIEnvP e, hk_jobj *o) { (void)e; ref_counted(o, 0, 1); return hk_jni_ref(o); }

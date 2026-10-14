@@ -128,6 +128,9 @@ static void close_own_handle(hk_thread *t)
     if (h) CloseHandle(h);
 }
 
+static void (*volatile g_end_hook)(void);
+void hk_thread_set_end_hook(void (*fn)(void)) { g_end_hook = fn; }
+
 static DWORD WINAPI thread_main(LPVOID p)
 {
     hk_thread *t = (hk_thread *)p;
@@ -135,6 +138,7 @@ static DWORD WINAPI thread_main(LPVOID p)
     t->self = own_handle();
     t_current = t;
     t->fn(t->arg);
+    if (g_end_hook) g_end_hook();
     close_own_handle(t);
     return 0;
 }
@@ -339,6 +343,7 @@ void hk_thread_detach(hk_thread *t)
 
 void hk_thread_exit(void)
 {
+    if (g_end_hook) g_end_hook();
     if (t_current) close_own_handle(t_current);
     ExitThread(0);
 }
