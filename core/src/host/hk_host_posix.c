@@ -23,6 +23,7 @@
 #include <netpacket/packet.h>
 #include <poll.h>
 #include <sched.h>
+#include <semaphore.h>
 #include <signal.h>
 #include <stdio.h>
 #include <sys/epoll.h>
@@ -99,6 +100,9 @@ struct hk_thread {
     pthread_t t;
     hk_thread_fn fn;
     void *arg;
+    /* Stopped for the collector (hk_thread_suspend): its registers as the signal found them, and whether it may go on. */
+    hk_thread_regs regs;
+    volatile i32 go_on;
 };
 
 static HK_THREAD_LOCAL hk_thread *t_current;
@@ -160,6 +164,102 @@ void hk_thread_set_interrupt(void (*fn)(void), bool (*in_guest_code)(hk_addr pc)
     sa.sa_flags = SA_SIGINFO | SA_RESTART | SA_NODEFER;
     sigemptyset(&sa.sa_mask);
     sigaction(INTERRUPT_SIGNAL, &sa, NULL);
+}
+
+/*
+ * Stopping a thread for the collector: a signal whose handler saves the registers the thread was stopped with, says so, and
+ * waits for the other signal (sigsuspend, which a handler may call) until it is told to go on, and says it goes on. One
+ * thread is stopped or resumed at a time, so one semaphore says "stopped" and one "going on": hk_thread_resume returns only
+ * once the handler has left its wait, so that the next hk_thread_suspend cannot find it still there.
+ */
+#define SUSPEND_SIGNAL (SIGRTMIN + 7)
+#define RESUME_SIGNAL (SIGRTMIN + 8)
+static sem_t g_stopped, g_going_on;
+static pthread_once_t g_suspend_once = PTHREAD_ONCE_INIT;
+
+static void on_resume(int sig) { (void)sig; }
+
+static void on_suspend(int sig, siginfo_t *si, void *ctx)
+{
+    int saved = errno;
+    hk_thread *t = t_current;
+    sigset_t wait_for;
+    (void)sig; (void)si;
+    if (!t) {
+        errno = saved;
+        return;
+    }
+#if defined(__arm__)
+    {
+        const mcontext_t *m = &((ucontext_t *)ctx)->uc_mcontext;
+        t->regs.sp = m->arm_sp;
+        t->regs.pc = m->arm_pc;
+        t->regs.flags = (u32)m->arm_cpsr;
+        t->regs.r[0] = m->arm_r0; t->regs.r[1] = m->arm_r1; t->regs.r[2] = m->arm_r2; t->regs.r[3] = m->arm_r3; t->regs.r[4] = m->arm_r4;
+        t->regs.r[5] = m->arm_r5; t->regs.r[6] = m->arm_r6; t->regs.r[7] = m->arm_r7; t->regs.r[8] = m->arm_r8; t->regs.r[9] = m->arm_r9;
+        t->regs.r[10] = m->arm_r10; t->regs.r[11] = m->arm_fp; t->regs.r[12] = m->arm_ip; t->regs.r[13] = m->arm_lr;
+        t->regs.n = 14;
+    }
+#elif defined(__x86_64__)
+    {
+        const greg_t *g = ((ucontext_t *)ctx)->uc_mcontext.gregs;
+        static const int which[] = { REG_RAX, REG_RCX, REG_RDX, REG_RBX, REG_RBP, REG_RSI, REG_RDI, REG_R8, REG_R9, REG_R10, REG_R11, REG_R12, REG_R13,
+                                     REG_R14, REG_R15 };
+        int i;
+        t->regs.sp = (hk_addr)g[REG_RSP];
+        t->regs.pc = (hk_addr)g[REG_RIP];
+        t->regs.flags = (u32)g[REG_EFL];
+        for (i = 0; i < (int)HK_COUNT(which); i++) t->regs.r[i] = (hk_addr)g[which[i]];
+        t->regs.n = (int)HK_COUNT(which);
+    }
+#else
+    (void)ctx;
+    t->regs.n = 0;
+    t->regs.sp = (hk_addr)&wait_for;
+#endif
+    sigfillset(&wait_for);
+    sigdelset(&wait_for, RESUME_SIGNAL);
+    sem_post(&g_stopped);
+    while (!t->go_on) sigsuspend(&wait_for);
+    sem_post(&g_going_on);
+    errno = saved;
+}
+
+static void suspend_setup(void)
+{
+    struct sigaction sa;
+    sem_init(&g_stopped, 0, 0);
+    sem_init(&g_going_on, 0, 0);
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_sigaction = on_suspend;
+    sa.sa_flags = SA_SIGINFO | SA_RESTART;
+    sigfillset(&sa.sa_mask);
+    sigaction(SUSPEND_SIGNAL, &sa, NULL);
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = on_resume;
+    sa.sa_flags = SA_RESTART;
+    sigemptyset(&sa.sa_mask);
+    sigaction(RESUME_SIGNAL, &sa, NULL);
+}
+
+bool hk_thread_suspend(hk_thread *t, hk_thread_regs *out)
+{
+    memset(out, 0, sizeof(*out));
+    if (!t || pthread_equal(t->t, pthread_self())) return false;
+    pthread_once(&g_suspend_once, suspend_setup);
+    t->go_on = 0;
+    if (pthread_kill(t->t, SUSPEND_SIGNAL) != 0) return false;
+    while (sem_wait(&g_stopped) != 0 && errno == EINTR) { }
+    *out = t->regs;
+    return true;
+}
+
+void hk_thread_resume(hk_thread *t)
+{
+    if (!t) return;
+    hk_atomic_xchg(&t->go_on, 1);
+    if (pthread_kill(t->t, RESUME_SIGNAL) != 0) return;
+    while (sem_wait(&g_going_on) != 0 && errno == EINTR) { }
 }
 
 /* (Whether it found the thread in guest code is not known here: true means only that it was asked.) */

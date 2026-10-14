@@ -63,6 +63,7 @@ void *hk_stub(int which)
     case HK_STUB_UDF: return THUMB(HK_STUB_UDF_OFFSET);
     case HK_STUB_ARM_UDF: return THUMB(HK_STUB_ARM_UDF_OFFSET);
     case HK_STUB_ARM_UDF_AT: return g_code + HK_STUB_ARM_UDF_AT_OFFSET;
+    case HK_STUB_ARM_COUNT: return THUMB(HK_STUB_ARM_COUNT_OFFSET);
     default: return NULL;
     }
 }

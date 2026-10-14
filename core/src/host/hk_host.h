@@ -85,6 +85,22 @@ void hk_thread_set_interrupt(void (*fn)(void), bool (*in_guest_code)(hk_addr pc)
 bool hk_thread_interrupt(hk_thread *t);
 /* What has become of the interruptions asked for so far, in a line: for the tests and the log. */
 void hk_thread_interrupt_report(char *out, size_t size);
+/*
+ * Stopping another thread where it is, for the collector (dvm/): hk_thread_suspend stops `t`, whatever it is executing, and
+ * reads its registers; it stays stopped until hk_thread_resume. Never the calling thread. The registers are only read: the
+ * context is never written back (no SetThreadContext), so the thread goes on exactly where it was, in the state it was in.
+ * On Windows SuspendThread then GetThreadContext, which is how Windows says to wait until the thread has stopped; elsewhere
+ * a signal of the host's own whose handler saves the registers and waits. False when the thread could not be stopped (it
+ * has ended); it is then not stopped.
+ */
+typedef struct hk_thread_regs {
+    hk_addr sp, pc;
+    u32 flags;                         /* CPSR on ARM: bit 5 is the Thumb state */
+    int n;
+    hk_addr r[20];                     /* the general registers that may hold anything, sp and pc not among them */
+} hk_thread_regs;
+bool hk_thread_suspend(hk_thread *t, hk_thread_regs *out);
+void hk_thread_resume(hk_thread *t);
 void hk_thread_yield(void);
 void hk_sleep_ns(u64 ns);
 int hk_cpu_count(void);

@@ -260,6 +260,55 @@ bool hk_thread_interrupt(hk_thread *t)
 }
 #endif
 
+/* ------------------------------------------------- stopping a thread for the collector */
+
+#if WINAPI_FAMILY == WINAPI_FAMILY_APP && !defined(_M_ARM)
+WINBASEAPI DWORD WINAPI SuspendThread(HANDLE hThread);
+WINBASEAPI BOOL WINAPI GetThreadContext(HANDLE hThread, LPCONTEXT lpContext);
+#endif
+
+bool hk_thread_suspend(hk_thread *t, hk_thread_regs *out)
+{
+    CONTEXT ctx;
+    HANDLE h = t ? t->self : NULL;
+    memset(out, 0, sizeof(*out));
+    if (!h || t->id == GetCurrentThreadId()) return false;
+    if (SuspendThread(h) == (DWORD)-1) return false;
+    /* SuspendThread only asks; GetThreadContext returns once the thread has stopped, with its registers. */
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.ContextFlags = CONTEXT_INTEGER | CONTEXT_CONTROL;
+    if (!GetThreadContext(h, &ctx)) {
+        ResumeThread(h);
+        return false;
+    }
+#if defined(_M_ARM)
+    out->sp = ctx.Sp;
+    out->pc = ctx.Pc;
+    out->flags = ctx.Cpsr;
+    out->r[0] = ctx.R0; out->r[1] = ctx.R1; out->r[2] = ctx.R2; out->r[3] = ctx.R3; out->r[4] = ctx.R4; out->r[5] = ctx.R5;
+    out->r[6] = ctx.R6; out->r[7] = ctx.R7; out->r[8] = ctx.R8; out->r[9] = ctx.R9; out->r[10] = ctx.R10; out->r[11] = ctx.R11;
+    out->r[12] = ctx.R12; out->r[13] = ctx.Lr;
+    out->n = 14;
+#elif defined(_M_X64)
+    out->sp = (hk_addr)ctx.Rsp;
+    out->pc = (hk_addr)ctx.Rip;
+    out->flags = ctx.EFlags;
+    out->r[0] = ctx.Rax; out->r[1] = ctx.Rcx; out->r[2] = ctx.Rdx; out->r[3] = ctx.Rbx; out->r[4] = ctx.Rbp; out->r[5] = ctx.Rsi;
+    out->r[6] = ctx.Rdi; out->r[7] = ctx.R8; out->r[8] = ctx.R9; out->r[9] = ctx.R10; out->r[10] = ctx.R11; out->r[11] = ctx.R12;
+    out->r[12] = ctx.R13; out->r[13] = ctx.R14; out->r[14] = ctx.R15;
+    out->n = 15;
+#else
+    ResumeThread(h);
+    return false;
+#endif
+    return true;
+}
+
+void hk_thread_resume(hk_thread *t)
+{
+    if (t && t->self) ResumeThread(t->self);
+}
+
 hk_thread *hk_thread_start(hk_thread_fn fn, void *arg, size_t stack_size, const char *name)
 {
     hk_thread *t = (hk_thread *)hk_alloc(sizeof(*t));

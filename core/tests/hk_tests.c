@@ -1094,6 +1094,72 @@ static void test_mechanisms(void)
     CHECK_INT(hk_core_plt_rescues() - before, 1);
 }
 
+/*
+ * A thread stopped and resumed while it runs ARM-mode code, as the collector stops every thread of the runtime's
+ * (hk_thread_suspend, its registers read, hk_thread_resume; the context is never written back). docs/ARCHITECTURE.md ("ARM
+ * mode") says why it is asked: Windows on ARM is Thumb-2 only, and a thread whose context the kernel rebuilt could come
+ * back in Thumb state, where ARM code is nonsense -- and real apps' libraries have hundreds of ARM-mode functions. The
+ * thread counts in ARM state (hk_stub_arm_count), each turn depending on the one before. Stopped and resumed three thousand
+ * times, it must go on counting and return when told; the registers read while it was stopped in the loop must say ARM
+ * state. On a device that lost the state the thread would run off and the process end here, at this test's line.
+ */
+typedef struct arm_count_job {
+    volatile u32 words[2];
+    volatile u32 result;
+    volatile i32 done;
+} arm_count_job;
+
+static void arm_count_main(void *p)
+{
+    arm_count_job *j = (arm_count_job *)p;
+    j->result = ((u32 (*)(volatile u32 *))hk_stub(HK_STUB_ARM_COUNT))(j->words);
+    hk_atomic_xchg(&j->done, 1);
+}
+
+static void test_suspend_arm(void)
+{
+    static arm_count_job job;
+    hk_addr code = (hk_addr)hk_stub(HK_STUB_ARM_COUNT) & ~(hk_addr)1;
+    hk_thread_regs regs;
+    hk_thread *t;
+    int i, stopped = 0, in_loop = 0, arm_state = 0, thumb_state = 0, still = 0;
+    u32 seen;
+    say("suspending a thread in ARM state");
+    memset((void *)&job, 0, sizeof(job));
+    t = hk_thread_start(arm_count_main, (void *)&job, 0, "arm-count");
+    CHECK(t != NULL);
+    if (!t) return;
+    while (job.words[0] == 0 && !job.done) hk_thread_yield();
+    seen = job.words[0];
+    for (i = 0; i < 3000 && !job.done; i++) {
+        if (!hk_thread_suspend(t, &regs)) continue;
+        stopped++;
+        /* Stopped inside the loop's instructions (from its first ARM one, past the bx pc that enters it): what state it says. */
+        if ((regs.pc & ~(hk_addr)1) >= code + 4 && (regs.pc & ~(hk_addr)1) < code + 0x24) {
+            in_loop++;
+            if ((regs.flags & 0x20u) || (regs.pc & 1u)) thumb_state++;
+            else arm_state++;
+        }
+        hk_thread_resume(t);
+        if (i % 100 == 99) {
+            /* It goes on: the count moves between one stop and the next hundredth. */
+            u64 until = hk_time_monotonic_ns() + 200000000ull;
+            while (job.words[0] == seen && !job.done && hk_time_monotonic_ns() < until) hk_thread_yield();
+            if (job.words[0] == seen) still++;
+            seen = job.words[0];
+        }
+    }
+    job.words[1] = 1;
+    hk_thread_join(t);
+    say("  stopped %d times, %d of them in the ARM loop (%d said ARM state, %d Thumb state); the count reached %u", stopped, in_loop, arm_state,
+        thumb_state, (unsigned)job.result);
+    CHECK_INT(stopped, 3000);
+    CHECK(in_loop > stopped / 2);
+    CHECK_INT(thumb_state, 0);
+    CHECK_INT(still, 0);
+    CHECK(job.done && job.result >= seen);
+}
+
 #include "hk_tests_app.inc"
 
 #endif /* HK_HOST_ARM32 */
@@ -1293,6 +1359,7 @@ int hk_tests_run(const char *libdir, const char *scratch, hk_test_sink sink, voi
     test_proxies();
     if (can_run) {
         test_mechanisms();
+        test_suspend_arm();
         if (libdir) {
             test_guest(libdir, scratch);
             test_app(libdir);

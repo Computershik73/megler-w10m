@@ -170,6 +170,28 @@ hk_stub_arm_udf_at:
 3:  .word   0x600DC0DE
     .thumb
 
+@ hk_stub_arm_count(volatile u32 *words): in ARM state, adds one to words[0]
+@ over and over until words[1] is not zero, then returns words[0]. For the test
+@ of a thread stopped and resumed in ARM state (hk_thread_suspend, which the
+@ collector uses): each turn depends on the one before, so a thread that came
+@ back in Thumb state could not go on counting.
+    .align 2
+    .global hk_stub_arm_count
+    .thumb_func
+hk_stub_arm_count:
+    bx      pc
+    nop
+    .arm
+4:  ldr     r1, [r0]
+    add     r1, r1, #1
+    str     r1, [r0]
+    ldr     r2, [r0, #4]
+    cmp     r2, #0
+    beq     4b
+    mov     r0, r1
+    bx      lr
+    .thumb
+
     .align 2
     .global hk_stub_end
 hk_stub_end:

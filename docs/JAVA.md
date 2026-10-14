@@ -2104,9 +2104,34 @@ keeps a local reference in a local, which is what local references are for.
   survive, because classes are never freed.
 
 **How threads are stopped.** Asynchronously, with no safepoints.
-- The host layer can already stop a thread and read its registers:
-  `SuspendThread`/`GetThreadContext` on Windows, which `hk_thread_interrupt`
-  uses, and a signal on Linux.
+- `hk_thread_suspend` and `hk_thread_resume` (host layer) stop a thread
+  wherever it is and read its registers. On Windows: `SuspendThread`, then
+  `GetThreadContext`. `SuspendThread` only asks, and `GetThreadContext` is the
+  documented way to wait until the thread has stopped. The context is only
+  read; `SetThreadContext` is never called. Elsewhere: a signal of the host's
+  own whose handler saves the registers, says so (a semaphore) and waits in
+  `sigsuspend` for the resume signal. `hk_thread_resume` returns only once the
+  handler has left its wait, so the next suspension cannot find it still
+  there (the first version deadlocked on exactly that).
+- *ARM state.* Real libraries have hundreds of ARM-mode functions (MX
+  Player's `libmxvp.so`: 358). If a thread stopped in one came back in Thumb
+  state, the collector would crash apps at random. The core's tests have a
+  case for it (`test_suspend_arm`, which the phone's Self-test runs). A
+  thread counts in a hand-written ARM-mode loop (`hk_stub_arm_count`), each
+  turn depending on the one before. It is stopped and resumed three
+  thousand times with its registers read in between, and must go on
+  counting, return when told, and its registers must say ARM state.
+  - Under qemu: 3000 stops, 2996 of them in the loop, all 2996 in ARM state;
+    the count reached 31 million.
+  - **On the phone it is unproven** until the Self-test has run there.
+  - The device probe has shown a thread staying in ARM state across ordinary
+    interrupts ("ARM mode" in ARCHITECTURE.md). Whether `SuspendThread`,
+    `GetThreadContext` and `ResumeThread` keep it is this test's question.
+- *Which stack is scanned*: from the stopped stack pointer to the thread's
+  real stack base, `hk_thread_stack_bounds`, recorded at registration
+  (`GetCurrentThreadStackLimits` on Windows, `pthread_getattr_np` on Linux).
+  Not "the top where it registered": a thread registered deep in a call may
+  later run Java from shallower frames.
 - The collector does this, in this order:
   1. It takes the runtime's locks: `hk_dvm_lock`, the heap's lock, the JNI
      references' lock and the interned strings' lock.
