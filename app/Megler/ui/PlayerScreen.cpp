@@ -28,6 +28,8 @@
 #include "ui/AppShell.h"
 #include "ui/Components.h"
 
+#include <winrt/Windows.UI.Text.Core.h>
+
 #include <map>
 
 namespace megler::app::ui {
@@ -107,33 +109,6 @@ public:
         root.Children().Append(touchLayer_);
         wireTouches();
 
-        // What Windows gives its touch keyboard to: a text box. Nobody sees
-        // this one or can touch it; it has the focus while an Android text
-        // field is being edited (see "The keyboard" below), and is switched
-        // off the rest of the time: Windows hands the focus back to the box
-        // that had it last when Megler comes back from the background, and on
-        // a phone a text box with the focus brings the keyboard up.
-        keyboardField_ = TextBox();
-        keyboardField_.IsEnabled(false);
-        keyboardField_.IsTabStop(false);
-        keyboardField_.Width(1);
-        keyboardField_.Height(1);
-        keyboardField_.MinWidth(1);
-        keyboardField_.MinHeight(1);
-        keyboardField_.Opacity(0);
-        keyboardField_.IsHitTestVisible(false);
-        keyboardField_.HorizontalAlignment(HorizontalAlignment::Left);
-        keyboardField_.VerticalAlignment(VerticalAlignment::Top);
-        keyboardField_.IsSpellCheckEnabled(false);
-        keyboardField_.AcceptsReturn(false);
-        keyboardField_.TextChanged([this](auto&&, auto&&) { keyboardFieldChanged(); });
-        keyboardField_.KeyDown([this](auto&&, KeyRoutedEventArgs const& e) {
-            if (e.Key() != winrt::Windows::System::VirtualKey::Enter) return;
-            session::textKey(MEGLER_TEXT_ENTER);
-            e.Handled(true);
-        });
-        root.Children().Append(keyboardField_);
-
         // "Starting ..." until the first frame, and "Stopping ..." after Quit.
         auto busy = vstack(14);
         busy.HorizontalAlignment(HorizontalAlignment::Center);
@@ -176,6 +151,12 @@ public:
         if (!keyToken_) {
             try {
                 keyToken_ = Window::Current().CoreWindow().KeyDown([this](auto&&, winrt::Windows::UI::Core::KeyEventArgs const& e) {
+                    if (e.VirtualKey() == winrt::Windows::System::VirtualKey::Enter && keyboardWanted_ && editFocused_) {
+                        // (Unless the same Enter came as a line feed in the text a moment ago: see editTextUpdating.)
+                        if (std::chrono::steady_clock::now() - lastNewline_ > std::chrono::milliseconds(150)) session::textKey(MEGLER_TEXT_ENTER);
+                        e.Handled(true);
+                        return;
+                    }
                     if (e.VirtualKey() != winrt::Windows::System::VirtualKey::Escape) return;
                     if (session::snapshot().state == session::State::running) showMenu(!menuShown_);
                 });
@@ -453,17 +434,24 @@ private:
 
     // MARK: The keyboard
     //
-    // A Java app's text field asks for the keyboard through KeyboardHost; the
-    // hidden text box takes the focus and Windows brings its keyboard up.
-    // What is typed arrives as changes to that box's text. The box always
-    // holds a short fixed beginning (so that a Backspace has something to
-    // delete even when the user has typed nothing yet) followed by what was
-    // typed since the field was touched; each change is told to the app as
-    // what it is against the text before: so many Backspaces for what is no
-    // longer there, then the new end as typed text. That way a correction
-    // the keyboard itself makes -- a word replaced by a suggestion -- comes
-    // out right, as long as the app's cursor is where the typing left it.
-    // A new touch of a field starts the box afresh.
+    // A Java app's text field asks for the keyboard through KeyboardHost. The
+    // keyboard is Windows' text service's, given to a text-edit context of
+    // this screen's own (Windows.UI.Text.Core's CoreTextEditContext) rather
+    // than to a XAML text box: a box nobody sees had the focus but was never
+    // typed into on the phone, and Windows gave it the focus back by itself
+    // after Megler came back from the background. The edit context has the
+    // text service's focus only while the app wants the keyboard, and
+    // nothing gives it back but this screen.
+    //
+    // What the context holds is this screen's: a short fixed beginning (so
+    // that a Backspace has something to delete even when the user has typed
+    // nothing yet) followed by what was typed since the field was touched.
+    // Each change the keyboard makes to it is told to the app as what it is
+    // against the text before: so many Backspaces for what is no longer
+    // there, then the new end as typed text. That way a correction the
+    // keyboard itself makes -- a word replaced by a suggestion -- comes out
+    // right, as long as the app's cursor is where the typing left it. A new
+    // touch of a field starts the text afresh.
 
     static constexpr const wchar_t* keyboardStart = L"a ";
     static constexpr size_t keyboardStartLength = 2;
@@ -472,6 +460,7 @@ private:
         if (keyboardAttached_) return;
         keyboardAttached_ = true;
         KeyboardHost::shared().attach([this](int kind, int flags, int enter) { showKeyboard(kind, flags, enter); }, [this] { putKeyboardAway(false); });
+        makeEditContext();
         try {
             auto pane = winrt::Windows::UI::ViewManagement::InputPane::GetForCurrentView();
             paneShowing_ = pane.Showing([this](auto&&, winrt::Windows::UI::ViewManagement::InputPaneVisibilityEventArgs const& e) {
@@ -502,6 +491,53 @@ private:
             });
         } catch (const hresult_error& e) {
             shellLog::write("player: the keyboard's coming and going cannot be watched: " + narrow(e.message()));
+        }
+    }
+
+    /// The text service's side of the app's field: what it may read of the
+    /// text and the caret, and what it changes.
+    void makeEditContext() {
+        using namespace winrt::Windows::UI::Text::Core;
+        if (editContext_) return;
+        try {
+            editContext_ = CoreTextServicesManager::GetForCurrentView().CreateEditContext();
+            editContext_.Name(L"An Android app's text field");
+            // The keyboard comes when this screen asks for it, not whenever the context has the focus.
+            editContext_.InputPaneDisplayPolicy(CoreTextInputPaneDisplayPolicy::Manual);
+            editContext_.TextRequested([this](auto&&, CoreTextTextRequestedEventArgs const& e) {
+                auto request = e.Request();
+                const CoreTextRange range = request.Range();
+                const int32_t size = int32_t(keyboardText_.size());
+                const int32_t start = std::min(std::max(range.StartCaretPosition, 0), size);
+                const int32_t end = std::min(std::max(range.EndCaretPosition, start), size);
+                request.Text(winrt::hstring(keyboardText_.substr(size_t(start), size_t(end - start))));
+            });
+            editContext_.SelectionRequested([this](auto&&, CoreTextSelectionRequestedEventArgs const& e) {
+                CoreTextRange caret{};
+                caret.StartCaretPosition = caret.EndCaretPosition = editCaret_;
+                e.Request().Selection(caret);
+            });
+            editContext_.TextUpdating([this](auto&&, CoreTextTextUpdatingEventArgs const& e) { editTextUpdating(e); });
+            editContext_.SelectionUpdating([this](auto&&, CoreTextSelectionUpdatingEventArgs const& e) {
+                // (The app's cursor is not moved: typing goes on where the app's own cursor is.)
+                editCaret_ = std::min(std::max(e.Selection().EndCaretPosition, 0), int32_t(keyboardText_.size()));
+                e.Result(CoreTextSelectionUpdatingResult::Succeeded);
+            });
+            editContext_.FormatUpdating([](auto&&, CoreTextFormatUpdatingEventArgs const& e) { e.Result(CoreTextFormatUpdatingResult::Succeeded); });
+            editContext_.LayoutRequested([](auto&&, CoreTextLayoutRequestedEventArgs const& e) {
+                // Where the field is, for the keyboard's own windows (candidates): the app's whole picture will do.
+                const winrt::Windows::Foundation::Rect window = Window::Current().CoreWindow().Bounds();
+                auto bounds = e.Request().LayoutBounds();
+                bounds.ControlBounds(window);
+                bounds.TextBounds(winrt::Windows::Foundation::Rect{window.X, window.Y, window.Width, 1});
+            });
+            editContext_.FocusRemoved([this](auto&&, auto&&) {
+                editFocused_ = false;
+                if (keyboardWanted_) shellLog::write("player: Windows took the text service's focus away from the app's field");
+            });
+        } catch (const hresult_error& e) {
+            editContext_ = nullptr;
+            shellLog::write("player: no text-edit context for the keyboard, so typing cannot reach an app: " + narrow(e.message()));
         }
     }
 
@@ -547,7 +583,7 @@ private:
     void putKeyboardAwayLater() {
         try {
             std::weak_ptr<Page> alive = weak_from_this();
-            keyboardField_.Dispatcher().RunAsync(winrt::Windows::UI::Core::CoreDispatcherPriority::Normal, [this, alive] {
+            Window::Current().Dispatcher().RunAsync(winrt::Windows::UI::Core::CoreDispatcherPriority::Normal, [this, alive] {
                 if (alive.expired() || keyboardWanted_) return; // gone, or asked for meanwhile
                 try {
                     winrt::Windows::UI::ViewManagement::InputPane::GetForCurrentView().TryHide();
@@ -560,50 +596,35 @@ private:
     }
 
     /// The app asked for the keyboard (UI thread). Asked again for the same
-    /// field, it only starts the box afresh.
+    /// field, it only starts the text afresh.
     void showKeyboard(int kind, int flags, int enter) {
-        if (!keyboardField_ || !running_ || menuShown_) return;
-        using winrt::Windows::UI::Xaml::Input::InputScopeNameValue;
-        InputScopeNameValue value = InputScopeNameValue::Default;
+        using winrt::Windows::UI::Text::Core::CoreTextInputScope;
+        if (!editContext_ || !running_ || menuShown_) return;
+        // Suggestions only for ordinary text that did not refuse them: a password or a number has none.
+        CoreTextInputScope scope = (flags & MEGLER_KEYBOARD_F_NO_SUGGESTIONS) ? CoreTextInputScope::Default : CoreTextInputScope::Text;
         switch (kind) {
-        case MEGLER_KEYBOARD_NUMBER: value = InputScopeNameValue::Number; break;
-        case MEGLER_KEYBOARD_DATETIME: value = InputScopeNameValue::Number; break;
-        case MEGLER_KEYBOARD_PHONE: value = InputScopeNameValue::TelephoneNumber; break;
-        case MEGLER_KEYBOARD_EMAIL: value = InputScopeNameValue::EmailSmtpAddress; break;
-        case MEGLER_KEYBOARD_URL: value = InputScopeNameValue::Url; break;
-        case MEGLER_KEYBOARD_PASSWORD: value = InputScopeNameValue::Password; break;
-        case MEGLER_KEYBOARD_NUMBER_PASSWORD: value = InputScopeNameValue::NumericPin; break;
+        case MEGLER_KEYBOARD_NUMBER: scope = CoreTextInputScope::Number; break;
+        case MEGLER_KEYBOARD_DATETIME: scope = CoreTextInputScope::Number; break;
+        case MEGLER_KEYBOARD_PHONE: scope = CoreTextInputScope::TelephoneNumber; break;
+        case MEGLER_KEYBOARD_EMAIL: scope = CoreTextInputScope::EmailAddress; break;
+        case MEGLER_KEYBOARD_URL: scope = CoreTextInputScope::Url; break;
+        case MEGLER_KEYBOARD_PASSWORD: scope = CoreTextInputScope::Password; break;
+        case MEGLER_KEYBOARD_NUMBER_PASSWORD: scope = CoreTextInputScope::PasswordNumeric; break;
         default: break;
-        }
-        try {
-            winrt::Windows::UI::Xaml::Input::InputScope scope;
-            winrt::Windows::UI::Xaml::Input::InputScopeName name;
-            name.NameValue(value);
-            scope.Names().Append(name);
-            keyboardField_.InputScope(scope);
-            // Suggestions only for ordinary text that did not refuse them: a password or a number has none.
-            keyboardField_.IsTextPredictionEnabled(kind == MEGLER_KEYBOARD_TEXT && !(flags & MEGLER_KEYBOARD_F_NO_SUGGESTIONS));
-        } catch (const hresult_error&) {
         }
         if (!keyboardWanted_)
             shellLog::write(format("player: the app asks for the keyboard (kind %d, flags 0x%X, Enter %d)", kind, unsigned(flags), enter));
         keyboardWanted_ = true;
-        startKeyboardText();
-        keyboardField_.IsEnabled(true);
-        keyboardField_.IsTabStop(true);
-        // Without the focus the keyboard may still come up (TryShow) and type into nothing: so whether the box took it is
-        // said, and when it did not, it is asked again once the box has been switched on for good.
-        if (!keyboardField_.Focus(FocusState::Programmatic)) {
-            std::weak_ptr<Page> alive = weak_from_this();
-            try {
-                keyboardField_.Dispatcher().RunAsync(winrt::Windows::UI::Core::CoreDispatcherPriority::Low, [this, alive] {
-                    if (alive.expired() || !keyboardWanted_) return;
-                    const bool again = keyboardField_.Focus(FocusState::Programmatic);
-                    shellLog::write(again ? "player: the keyboard's box took the focus at the second asking"
-                                          : "player: the keyboard's box will NOT take the focus: typing cannot reach the app");
-                });
-            } catch (const hresult_error&) {
-            }
+        try {
+            // A new scope is the text service's to read at the next focus: so the focus is left and taken again.
+            if (editFocused_) editContext_.NotifyFocusLeave();
+            editFocused_ = false;
+            editContext_.InputScope(scope);
+            startKeyboardText();
+            editContext_.NotifyFocusEnter();
+            editFocused_ = true;
+        } catch (const hresult_error& e) {
+            shellLog::write("player: the text service would not take the app's field: " + narrow(e.message()));
         }
         try {
             winrt::Windows::UI::ViewManagement::InputPane::GetForCurrentView().TryShow();
@@ -623,29 +644,70 @@ private:
         dropKeyboardFocus();
     }
 
-    /// The hidden box gives the focus up (a control that is switched off
-    /// cannot keep it), and with it the keyboard; and it stays off, so that
-    /// nothing gives it the focus back until the app asks again.
+    /// The app's field gives up the text service's focus, and with it the keyboard.
     void dropKeyboardFocus() {
-        if (!keyboardField_) return;
-        keyboardField_.IsTabStop(false);
-        keyboardField_.IsEnabled(false);
+        if (!editContext_ || !editFocused_) return;
+        editFocused_ = false;
+        try {
+            editContext_.NotifyFocusLeave();
+        } catch (const hresult_error&) {
+        }
     }
 
+    /// The text afresh: the fixed beginning, the caret after it; and the text service is told.
     void startKeyboardText() {
+        const int32_t before = int32_t(keyboardText_.size());
         keyboardText_ = keyboardStart;
-        keyboardField_.Text(keyboardText_);
-        keyboardField_.SelectionStart(int32_t(keyboardText_.size()));
+        editCaret_ = int32_t(keyboardText_.size());
+        if (!editContext_ || !editFocused_) return;
+        try {
+            winrt::Windows::UI::Text::Core::CoreTextRange all{}, caret{};
+            all.StartCaretPosition = 0;
+            all.EndCaretPosition = before;
+            caret.StartCaretPosition = caret.EndCaretPosition = editCaret_;
+            editContext_.NotifyTextChanged(all, editCaret_, caret);
+        } catch (const hresult_error&) {
+        }
     }
 
-    /// The box's text has changed: tell the app the difference.
-    void keyboardFieldChanged() {
-        if (!keyboardField_) return;
-        std::wstring now(keyboardField_.Text());
-        if (now == keyboardText_) return; // set by startKeyboardText, not typed
+    /// The keyboard changed the text: a range of it replaced. Taken as asked, and the difference told to the app.
+    void editTextUpdating(winrt::Windows::UI::Text::Core::CoreTextTextUpdatingEventArgs const& e) {
+        const winrt::Windows::UI::Text::Core::CoreTextRange range = e.Range();
+        const int32_t size = int32_t(keyboardText_.size());
+        const int32_t start = std::min(std::max(range.StartCaretPosition, 0), size);
+        const int32_t end = std::min(std::max(range.EndCaretPosition, start), size);
+        std::wstring inserted(e.Text());
+        // A line feed in what the keyboard sends is its Enter: the field is told Enter, and the text keeps no line feed.
+        bool enter = false;
+        for (wchar_t c : inserted) enter = enter || c == L'\r' || c == L'\n';
+        if (enter) inserted.erase(std::remove_if(inserted.begin(), inserted.end(), [](wchar_t c) { return c == L'\r' || c == L'\n'; }), inserted.end());
+        const std::wstring now = keyboardText_.substr(0, size_t(start)) + inserted + keyboardText_.substr(size_t(end));
+        editCaret_ = std::min(std::max(e.NewSelection().EndCaretPosition, 0), int32_t(now.size()));
+        e.Result(winrt::Windows::UI::Text::Core::CoreTextTextUpdatingResult::Succeeded);
+        const bool afresh = keyboardTyped(now);
+        if (enter) {
+            session::textKey(MEGLER_TEXT_ENTER);
+            lastNewline_ = std::chrono::steady_clock::now();
+        }
+        // (The text service may not be told of a change while it is telling of one: the text is started afresh after.)
+        if (afresh) {
+            std::weak_ptr<Page> alive = weak_from_this();
+            try {
+                Window::Current().Dispatcher().RunAsync(winrt::Windows::UI::Core::CoreDispatcherPriority::Normal, [this, alive] {
+                    if (!alive.expired() && keyboardWanted_) startKeyboardText();
+                });
+            } catch (const hresult_error&) {
+            }
+        }
+    }
+
+    /// The text as the keyboard has made it: the difference told to the app.
+    /// True when the text should be started afresh.
+    bool keyboardTyped(const std::wstring& now) {
+        if (now == keyboardText_) return false;
         if (!keyboardWanted_) {
-            startKeyboardText();
-            return;
+            keyboardText_ = now;
+            return true;
         }
         size_t common = 0;
         while (common < now.size() && common < keyboardText_.size() && now[common] == keyboardText_[common]) ++common;
@@ -656,16 +718,15 @@ private:
         for (size_t i = common; i < keyboardText_.size(); ++i)
             if (!IS_LOW_SURROGATE(keyboardText_[i]) || i == common) ++gone;
         for (int i = 0; i < gone; ++i) session::textKey(MEGLER_TEXT_BACKSPACE);
-        std::wstring added = now.substr(common);
-        added.erase(std::remove(added.begin(), added.end(), L'\r'), added.end());
+        const std::wstring added = now.substr(common);
         if (!added.empty()) session::textCommit(narrow(added));
         if (!typingSaid_ && (gone > 0 || !added.empty())) {
             typingSaid_ = true;
-            shellLog::write("player: typing reaches the box and goes to the app");
+            shellLog::write("player: typing reaches the text service's field and goes to the app");
         }
         keyboardText_ = now;
         // Deleted into the fixed beginning, or grown long: afresh. (The keyboard then knows nothing of what came before.)
-        if (common < keyboardStartLength || keyboardText_.size() > 200) startKeyboardText();
+        return common < keyboardStartLength || keyboardText_.size() > 200;
     }
 
     /// How much of the app's picture the keyboard covers, in the surface's pixels.
@@ -799,8 +860,11 @@ private:
     uint32_t rateAnchorFrames_ = 0;
     int framesPerSecond_ = 0;
 
-    TextBox keyboardField_{nullptr};
-    std::wstring keyboardText_;   // what the hidden box held when the app was last told
+    winrt::Windows::UI::Text::Core::CoreTextEditContext editContext_{nullptr};
+    std::wstring keyboardText_;   // what the edit context holds, as the app was last told it
+    int32_t editCaret_ = 0;       // the text service's caret in it
+    bool editFocused_ = false;    // the edit context has the text service's focus
+    std::chrono::steady_clock::time_point lastNewline_{}; // the last Enter that came as a line feed in the text
     bool keyboardAttached_ = false;
     bool keyboardWanted_ = false; // the app asked for the keyboard and has not been told it is gone
     bool keyboardUp_ = false;     // Windows says it is on the screen
