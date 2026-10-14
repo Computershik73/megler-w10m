@@ -1088,15 +1088,32 @@ static bool failed_before(hk_dvm_class *c)
 static void failed_first(hk_dvm_class *c)
 {
     char what[700], where[1600];
-    c->init_error = hk_dvm_pending();
-    if (!c->init_error) {
+    hk_jobj *e = hk_dvm_pending(), *shown = e;
+    hk_jvalue inner;
+    c->init_error = e;
+    if (!e) {
         hk_warn("dvm: the initialisation of %s failed, and the class cannot be used from now on", c->name);
         return;
+    }
+    /*
+     * libcore's ExceptionInInitializerError keeps what the initialiser threw in a field of its own, not as its cause (its
+     * getCause answers it): that is what says why, and where it was thrown. Said in its place, and the error left pending.
+     */
+    inner.j = 0;
+    if (hk_dvm_get_field(e, "exception", &inner) && inner.l && inner.l != e) {
+        shown = inner.l;
+        hk_dvm_clear_pending();
+        hk_dvm_throw_object(shown);
     }
     hk_dvm_describe_pending(what, sizeof(what));
     where[0] = 0;
     hk_dvm_pending_stack(where, sizeof(where));
-    hk_warn("dvm: the initialisation of %s failed, and the class cannot be used from now on: %s\n%s", c->name, what, where);
+    if (shown != e) {
+        hk_dvm_clear_pending();
+        hk_dvm_throw_object(e);
+    }
+    hk_warn("dvm: the initialisation of %s failed, and the class cannot be used from now on: %s%s\n%s", c->name,
+            shown != e ? "java.lang.ExceptionInInitializerError, of " : "", what, where);
 }
 
 bool hk_dvm_ensure_init(hk_dvm_class *c)

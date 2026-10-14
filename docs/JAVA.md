@@ -53,7 +53,7 @@ where; **expected** and **not verified** mean what they say.
 | `core/src/webp/` | WebP pictures decoded in the core: `hk_webp.c`, and libwebp's decoder compiled in where it is there, file by file |
 | `core/include/megler.h` | `megler_gfx_host`, the contract for the shell's drawing; `megler_window_host.present_pixels`; `megler_run_config.android_root` |
 | `core/framework-overlay/` | what differs here from the original's Java framework: files that replace the original's and members added to its classes, each saying at its top what differs and why |
-| `core/src/dvm/art/*.smali`, `hk_dvm_art_dex.h` | five classes the runtime adds to libcore's: a security provider that stands in for conscrypt's, with SSLContexts whose connections fail politely, and the getter libcore asks for the phone's time zone |
+| `core/src/dvm/art/*.smali`, `hk_dvm_art_dex.h` | seven classes the runtime adds to libcore's: a security provider that stands in for conscrypt's, with SSLContexts whose connections fail politely and a trust manager factory that trusts nothing, and the getter libcore asks for the phone's time zone |
 | `tools/build-framework.sh` | builds the framework's DEX from the original's sources and the overlay |
 | `core/tests/app/`, `tools/build-test-app.sh` | two test apps as ordinary Android apps (aapt2, javac, d8), and their build |
 | `core/tests/hk_java_tests.c` | the test of the driver: the apps started through `megler_run`, their log and their pictures checked |
@@ -188,13 +188,13 @@ a `substring` out of range, an `ExceptionInInitializerError`'s text).
 
 The six files of the boot class path the test starts from are Android 9's own
 (`core-oj`, `core-libart`, `conscrypt`, `okhttp`, `bouncycastle`, `apache-xml`:
-7617 classes, 11.4 MB of DEX), and after them five classes of the runtime's
-own ("The security providers" below, and the getter of "The time zone"): 7622.
+7617 classes, 11.4 MB of DEX), and after them seven classes of the runtime's
+own ("The security providers" below, and the getter of "The time zone"): 7624.
 
 **Without libcore's native libraries** (the PC, and the same code as ARM):
 
-- All six files are read and **every one of the 7622 classes links** (in both
-  runs: `7622 linked, 0 not`).
+- All six files are read and **every one of the 7624 classes links** (in both
+  runs: `7624 linked, 0 not`).
 - The program that uses `java.lang` alone (`d8t/Main.java`) gives the JVM's
   answers for 9 of its 10 tests, and the one that uses `java.util`, `java.io`
   and `java.text` (`d8t/Lib.java`) for the 7 of its 17 that need no native
@@ -1135,8 +1135,10 @@ Java 17 and ART do, each later `NoClassDefFoundError` has the first failure
 for its cause, and the first failure is said in the log when it happens,
 once for each class, with its causes and where it was thrown
 (`dvm: the initialisation of X failed, and the class cannot be used from now
-on: ...`). The runtime's tests check the cause on both runs, through bytecode
-and through JNI.
+on: ...`). libcore's `ExceptionInInitializerError` keeps what the initialiser
+threw in a field of its own, not as its cause, so the log says that one, and
+where it was thrown. The runtime's tests check the cause on both runs,
+through bytecode and through JNI.
 
 ### One Java world with the JNI layer
 
