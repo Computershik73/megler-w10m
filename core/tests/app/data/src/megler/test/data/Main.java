@@ -270,6 +270,7 @@ public class Main extends Activity {
         battery();
         timezone();
         tls();
+        network();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
         new android.os.Handler().postDelayed(this::popup, 700);
@@ -530,6 +531,186 @@ public class Main extends Activity {
             return there && "no TLS on this phone yet".equals(direct) && "IOException".equals(https) && managers.length == 1
                     && managers[0] instanceof javax.net.ssl.X509TrustManager && "no TLS on this phone yet".equals(trusts)
                     && ((javax.net.ssl.X509TrustManager) managers[0]).getAcceptedIssuers().length == 0;
+        });
+    }
+
+    /** Work a step hands to a thread of its own, as an app hands the network to one: the step waits for it. */
+    private boolean offMain(final Step work) throws Throwable {
+        final boolean[] held = new boolean[1];
+        final Throwable[] thrown = new Throwable[1];
+        Thread t = new Thread(() -> {
+            try {
+                held[0] = work.run();
+            } catch (Throwable e) {
+                thrown[0] = e;
+            }
+        }, "net-step");
+        t.start();
+        t.join(20000);
+        if (t.isAlive()) {
+            detail = (detail == null ? "" : detail + " ") + "still running after 20 s";
+            return false;
+        }
+        if (thrown[0] != null) throw thrown[0];
+        return held[0];
+    }
+
+    private static String readAll(java.io.InputStream in) throws java.io.IOException {
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        byte[] buf = new byte[256];
+        for (int n; (n = in.read(buf)) > 0;) out.write(buf, 0, n);
+        return new String(out.toByteArray(), "UTF-8");
+    }
+
+    /**
+     * The network as Java code uses it, on this device's own loopback: names, an HTTP server of the app's own answering
+     * HttpURLConnection, UDP, a server socket closed under the thread that waits in accept (libcore's way of ending that wait), the
+     * interfaces, and what ConnectivityManager says. Nothing leaves the device.
+     */
+    private void network() {
+        step("net-localhost", () -> offMain(() -> {
+            java.net.InetAddress a = java.net.InetAddress.getByName("localhost");
+            java.net.InetAddress[] all = java.net.InetAddress.getAllByName("localhost");
+            java.net.InetAddress six = java.net.InetAddress.getByName("::1"), four = java.net.InetAddress.getByName("10.1.2.3");
+            detail = a + " " + Arrays.toString(all) + " " + six + " " + four;
+            return a.isLoopbackAddress() && "127.0.0.1".equals(a.getHostAddress()) && all.length >= 1 && all[0].equals(a)
+                    && six instanceof java.net.Inet6Address && six.isLoopbackAddress() && four instanceof java.net.Inet4Address
+                    && "10.1.2.3".equals(four.getHostAddress());
+        }));
+        step("net-http", () -> offMain(() -> {
+            final java.net.ServerSocket server = new java.net.ServerSocket(0, 5, java.net.InetAddress.getByName("127.0.0.1"));
+            final String[] request = new String[1];
+            Thread t = new Thread(() -> {
+                try (java.net.Socket c = server.accept()) {
+                    java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(c.getInputStream(), "ISO-8859-1"));
+                    request[0] = r.readLine();
+                    for (String line; (line = r.readLine()) != null && !line.isEmpty();) { }
+                    java.io.OutputStream o = c.getOutputStream();
+                    o.write("HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 5\r\nConnection: close\r\n\r\nmegler!".getBytes("ISO-8859-1"));
+                    o.flush();
+                } catch (java.io.IOException e) {
+                    request[0] = "the server: " + e;
+                }
+            }, "net-server");
+            t.start();
+            /* By name: HttpURLConnection looks "localhost" up as an app's URL would be. */
+            java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL("http://localhost:" + server.getLocalPort() + "/hello").openConnection();
+            c.setConnectTimeout(5000);
+            c.setReadTimeout(5000);
+            int code = c.getResponseCode();
+            String body = readAll(c.getInputStream()), type = c.getContentType();
+            c.disconnect();
+            t.join(5000);
+            server.close();
+            detail = "code=" + code + " type=" + type + " body=" + body + " request=" + request[0];
+            return code == 200 && "megler!".equals(body) && "text/plain".equals(type) && "GET /hello HTTP/1.1".equals(request[0]);
+        }));
+        step("net-udp", () -> offMain(() -> {
+            java.net.InetAddress lo = java.net.InetAddress.getByName("127.0.0.1");
+            try (java.net.DatagramSocket a = new java.net.DatagramSocket(0, lo); java.net.DatagramSocket b = new java.net.DatagramSocket(0, lo)) {
+                byte[] buf = new byte[64];
+                a.setSoTimeout(5000);
+                b.setSoTimeout(5000);
+                a.send(new java.net.DatagramPacket("ping".getBytes("UTF-8"), 4, lo, b.getLocalPort()));
+                java.net.DatagramPacket got = new java.net.DatagramPacket(buf, buf.length);
+                b.receive(got);
+                String first = new String(got.getData(), 0, got.getLength(), "UTF-8");
+                b.send(new java.net.DatagramPacket("pong".getBytes("UTF-8"), 4, got.getAddress(), got.getPort()));
+                java.net.DatagramPacket back = new java.net.DatagramPacket(new byte[64], 64);
+                a.receive(back);
+                String second = new String(back.getData(), 0, back.getLength(), "UTF-8");
+                detail = first + " from " + got.getAddress() + ":" + got.getPort() + ", " + second;
+                return "ping".equals(first) && got.getPort() == a.getLocalPort() && got.getAddress().isLoopbackAddress() && "pong".equals(second);
+            }
+        }));
+        step("net-close", () -> offMain(() -> {
+            /* A thread waits in accept; the socket is closed under it. libcore ends that wait with a signal to the thread, and accept throws. */
+            final java.net.ServerSocket server = new java.net.ServerSocket(0, 5, java.net.InetAddress.getByName("127.0.0.1"));
+            final String[] ended = new String[1];
+            Thread t = new Thread(() -> {
+                try {
+                    server.accept().close();
+                    ended[0] = "accepted";
+                } catch (java.io.IOException e) {
+                    ended[0] = e.getClass().getName() + ": " + e.getMessage();
+                }
+            }, "net-waiter");
+            t.start();
+            Thread.sleep(300);
+            long began = System.nanoTime();
+            server.close();
+            t.join(5000);
+            long ms = (System.nanoTime() - began) / 1000000;
+            detail = ended[0] + " after " + ms + " ms";
+            return !t.isAlive() && "java.net.SocketException: Socket closed".equals(ended[0]) && ms < 3000;
+        }));
+        step("net-nio", () -> offMain(() -> {
+            /* java.nio: a selector over a server channel and a client channel, neither blocking; first woken from another thread (its wake-up is a pipe, waited on with the sockets). */
+            try (java.nio.channels.Selector sel = java.nio.channels.Selector.open();
+                 java.nio.channels.ServerSocketChannel server = java.nio.channels.ServerSocketChannel.open();
+                 java.nio.channels.SocketChannel client = java.nio.channels.SocketChannel.open()) {
+                server.bind(new java.net.InetSocketAddress(java.net.InetAddress.getByName("127.0.0.1"), 0));
+                server.configureBlocking(false);
+                server.register(sel, java.nio.channels.SelectionKey.OP_ACCEPT);
+                new Thread(() -> {
+                    try {
+                        Thread.sleep(200);
+                    } catch (InterruptedException e) {
+                    }
+                    sel.wakeup();
+                }, "net-wakeup").start();
+                long began = System.nanoTime();
+                int woke = sel.select(5000);
+                long wokeMs = (System.nanoTime() - began) / 1000000;
+                client.configureBlocking(false);
+                boolean at_once = client.connect(server.getLocalAddress());
+                client.register(sel, at_once ? java.nio.channels.SelectionKey.OP_WRITE : java.nio.channels.SelectionKey.OP_CONNECT);
+                java.nio.channels.SocketChannel accepted = null;
+                java.nio.ByteBuffer in = java.nio.ByteBuffer.allocate(16);
+                String got = null;
+                long end = System.currentTimeMillis() + 10000;
+                while (got == null && System.currentTimeMillis() < end) {
+                    if (sel.select(1000) == 0) continue;
+                    for (java.nio.channels.SelectionKey k : sel.selectedKeys()) {
+                        if (!k.isValid()) continue;
+                        if (k.isAcceptable()) {
+                            accepted = server.accept();
+                            accepted.configureBlocking(false);
+                            accepted.register(sel, java.nio.channels.SelectionKey.OP_READ);
+                        } else if (k.isConnectable()) {
+                            if (client.finishConnect()) k.interestOps(java.nio.channels.SelectionKey.OP_WRITE);
+                        } else if (k.isWritable()) {
+                            client.write(java.nio.ByteBuffer.wrap("nio!".getBytes("UTF-8")));
+                            k.interestOps(0);
+                        } else if (k.isReadable()) {
+                            ((java.nio.channels.SocketChannel) k.channel()).read(in);
+                            if (in.position() >= 4) got = new String(in.array(), 0, in.position(), "UTF-8");
+                        }
+                    }
+                    sel.selectedKeys().clear();
+                }
+                if (accepted != null) accepted.close();
+                detail = "woken=" + woke + " after " + wokeMs + " ms, got=" + got;
+                return woke == 0 && wokeMs < 3000 && "nio!".equals(got);
+            }
+        }));
+        step("net-interfaces", () -> offMain(() -> {
+            java.net.NetworkInterface lo = java.net.NetworkInterface.getByName("lo");
+            java.util.List<String> names = new java.util.ArrayList<>();
+            for (java.net.NetworkInterface n : java.util.Collections.list(java.net.NetworkInterface.getNetworkInterfaces())) names.add(n.getName());
+            boolean v4 = false;
+            if (lo != null)
+                for (java.net.InetAddress a : java.util.Collections.list(lo.getInetAddresses())) v4 |= "127.0.0.1".equals(a.getHostAddress());
+            detail = names + " lo=" + lo;
+            return lo != null && names.contains("lo") && lo.isLoopback() && lo.isUp() && lo.getIndex() > 0 && v4
+                    && lo.equals(java.net.NetworkInterface.getByIndex(lo.getIndex()));
+        }));
+        step("net-connectivity", () -> {
+            android.net.ConnectivityManager cm = (android.net.ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            android.net.NetworkInfo info = cm.getActiveNetworkInfo();
+            detail = info == null ? "no active network" : info.getTypeName() + " connected=" + info.isConnected();
+            /* What the framework says: connected, over Wi-Fi. */
+            return info != null && info.isConnected() && info.getType() == android.net.ConnectivityManager.TYPE_WIFI && cm.getActiveNetwork() != null;
         });
     }
 
