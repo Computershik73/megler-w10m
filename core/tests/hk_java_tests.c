@@ -1038,7 +1038,7 @@ static int run_data(void)
     static const char *const steps[] = { "open", "kept", "insert", "query", "types", "update", "delete", "rollback", "commit", "constraint", "statement", "text",
                                          "bad-sql", "memory", "upgrade", "left",
                                          /* And the storage as an app sees it. */
-                                         "environment", "own-folders", "volumes", "space", "permissions", "download" };
+                                         "environment", "own-folders", "volumes", "space", "permissions", "download", "list-root" };
     int at = -1, want = 0, run = 0, line, i;
     char text[120];
     if (g_script_count) sscanf(g_script[0], "run:%d", &want);

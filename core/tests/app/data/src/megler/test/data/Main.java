@@ -361,6 +361,24 @@ public class Main extends Activity {
             return ("written by run " + run).equals(now) && file.length() == now.length() + 1 && names != null && Arrays.asList(names).contains("megler-data-test.txt")
                     && new File("/sdcard/Download/megler-data-test.txt").length() == file.length() && (run == 1 || ("written by run " + (run - 1)).equals(before));
         });
+        step("list-root", () -> {
+            File[] list = root.listFiles();
+            java.util.ArrayList<String> names = new java.util.ArrayList<>();
+            boolean dirs = list != null;
+            if (list != null) for (File f : list) {
+                names.add(f.getName());
+                dirs &= f.isDirectory() || !isStandard(f.getName());
+            }
+            java.util.Collections.sort(names);
+            detail = String.valueOf(names);
+            /* The folders a phone's storage has from the start, each a folder. (Others may be there: the phone's own.) */
+            return dirs && names.containsAll(Arrays.asList("Alarms", "Android", "DCIM", "Documents", "Download", "Movies", "Music", "Notifications", "Pictures", "Podcasts", "Ringtones"))
+                    && root.isDirectory() && root.canRead() && root.canWrite() && new File(root, "Android/data/megler.test.data").isDirectory();
+        });
+    }
+
+    private static boolean isStandard(String name) {
+        return Arrays.asList("Alarms", "Android", "DCIM", "Documents", "Download", "Movies", "Music", "Notifications", "Pictures", "Podcasts", "Ringtones").contains(name);
     }
 
     @Override

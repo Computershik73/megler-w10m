@@ -96,8 +96,8 @@ bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-f
       72 checks, 0 failed          the Java test app demos, the keyboard's 25 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
       12 checks, 0 failed          the Java test app crash: an exception nothing catches, and launcher aliases
-      32 checks, 0 failed          the Java test app data: a database and the storage, the first run
-      32 checks, 0 failed          data again, on what the first run left
+      33 checks, 0 failed          the Java test app data: a database and the storage, the first run
+      33 checks, 0 failed          data again, on what the first run left
       38 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
     (then each app once more, its drawing recorded for the PC's run to draw again)
 ```
@@ -488,7 +488,7 @@ and opened at version 2, `onUpgrade` once, the column it adds there. `left`
 and `kept`: the app leaves three rows and counts its runs; `tools/build-tests.sh`
 runs it twice, the second time on the data folder of the first, and the
 second run must find the rows of the first and say that it is run 2.
-With the storage's steps (below), 32 checks each.
+With the storage's steps (below), 33 checks each.
 
 On the phone the proof is QuickShortcutMaker, which opens its database when
 its Favourites or History tab is first shown; under qemu the database opens
@@ -497,8 +497,11 @@ and the tabs show their empty state (`build/java-pictures/qsm/app-4.bmp`).
 ### The storage as an app sees it (the app under qemu-arm)
 
 The same app, `core/tests/app/data`, then asks about the phone's storage the
-ways an app does, six steps more. Paths are checked as Android names them,
-never by where they are on the host.
+ways an app does, seven steps more. Paths are checked as Android names them,
+never by where they are on the host. Where the storage is and what is in it
+from the start is the core's (`hk_run_files`, the mount table in
+`bionic/hk_libc_io.c`; docs/ARCHITECTURE.md); what is tested here is that
+Java's calls arrive there.
 
 - `environment`: `Environment.getExternalStorageDirectory()` is
   `/storage/emulated/0`, the public Download folder is under it, the state is
@@ -533,6 +536,12 @@ never by where they are on the host.
   back, is listed in its folder, has the same length by the path's other
   name (`/sdcard/Download/...`), and the second run finds what the first
   wrote.
+- `list-root`: `File.listFiles()` of `/storage/emulated/0` has the folders a
+  phone's storage has before any app runs -- Alarms, Android, DCIM,
+  Documents, Download, Movies, Music, Notifications, Pictures, Podcasts,
+  Ringtones -- each a directory, the root readable and writable, and the
+  app's own `Android/data/<package>` under it. This list is what a file
+  manager's first screen is made of (Apktool M's drawer, in "Real apps").
 
 ### Real apps (qemu-arm; nothing here is run by default)
 
