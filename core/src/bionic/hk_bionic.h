@@ -160,9 +160,29 @@ char *hk_g_strdup(const char *s);
 
 /* --------------------------------------------------------------- the file system
  *
- * Guest paths are Android's; these say where they are on the host.
+ * Guest paths are Android's; these say where they are on the host. Both
+ * before an app's code runs (run/hk_run.c calls them, in this order).
+ *
+ * hk_fs_configure: the app's own folders. `internal_dir` is its
+ * /data/data/<package>. `external_dir` is where its own part of the shared
+ * storage is kept: /storage/emulated/0/Android/data/<package> is
+ * <external_dir>/Android/data/<package>, and Android/obb/<package> likewise.
+ *
+ * hk_fs_shared_storage: the storage every app shares, /storage/emulated/0
+ * (which /sdcard, /mnt/sdcard, /storage/self/primary and /storage/sdcard0
+ * are other names of). `shared_dir` is its folder on the host, where
+ * Android's standard folders are made (Music, Pictures, Download...). A link
+ * takes the place of the folder of its name there: /storage/emulated/0/<name>
+ * is then the foreign path of `root` (host/hk_host.h), one of the phone's own
+ * folders. A name is one part of a path. Links of an earlier call are gone.
  */
+typedef struct hk_fs_link {
+    const char *name;
+    int root;
+    bool read_only;                    /* access(W_OK) says no; the writes themselves are refused by whoever owns the root */
+} hk_fs_link;
 void hk_fs_configure(const char *package, const char *internal_dir, const char *external_dir);
+void hk_fs_shared_storage(const char *shared_dir, const hk_fs_link *links, int count);
 /* The host path of a guest path, malloc'd; NULL for a path that has no place (it then does not exist). */
 char *hk_fs_host_path(const char *guest_path);
 const char *hk_fs_internal_dir(void);  /* guest paths */

@@ -76,6 +76,7 @@ int hk_errno_of(int host_err)
     case HK_E_INVAL: return GE_INVAL;
     case HK_E_NOTEMPTY: return GE_NOTEMPTY;
     case HK_E_BUSY: return GE_BUSY;
+    case HK_E_XDEV: return GE_XDEV;
     default: return GE_IO;
     }
 }

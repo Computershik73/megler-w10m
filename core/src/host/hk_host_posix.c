@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <sys/syscall.h>
 #include <sys/time.h>
 #include <time.h>
@@ -398,24 +399,37 @@ static int err_of(int e)
     case EINVAL: return HK_E_INVAL;
     case ENOTEMPTY: return HK_E_NOTEMPTY;
     case EBUSY: return HK_E_BUSY;
+    case EXDEV: return HK_E_XDEV;
     default: return HK_E_IO;
     }
 }
 #define SET_ERR() do { if (err) *err = err_of(errno); } while (0)
 
+/* A foreign path's descriptor (hk_host.h: its owner hands over the descriptor plus one); -1 with *err set. */
+static int foreign_fd(const char *path, int flags, int kind, int *err)
+{
+    void *h = hk_foreign_open(path, flags, kind, err);
+    return h ? (int)(intptr_t)h - 1 : -1;
+}
+
 hk_file *hk_file_open(const char *path, int flags, int *err)
 {
     int o = 0, fd;
     hk_file *f;
-    if ((flags & HK_O_READ) && (flags & HK_O_WRITE)) o = O_RDWR;
-    else if (flags & HK_O_WRITE) o = O_WRONLY;
-    else o = O_RDONLY;
-    if (flags & HK_O_CREATE) o |= O_CREAT;
-    if (flags & HK_O_TRUNC) o |= O_TRUNC;
-    if (flags & HK_O_APPEND) o |= O_APPEND;
-    if (flags & HK_O_EXCL) o |= O_EXCL;
-    fd = open(path, o | O_CLOEXEC, 0666);
-    if (fd < 0) { SET_ERR(); return NULL; }
+    if (hk_path_is_foreign(path)) {
+        fd = foreign_fd(path, flags, HK_FOREIGN_FILE, err);
+        if (fd < 0) return NULL;
+    } else {
+        if ((flags & HK_O_READ) && (flags & HK_O_WRITE)) o = O_RDWR;
+        else if (flags & HK_O_WRITE) o = O_WRONLY;
+        else o = O_RDONLY;
+        if (flags & HK_O_CREATE) o |= O_CREAT;
+        if (flags & HK_O_TRUNC) o |= O_TRUNC;
+        if (flags & HK_O_APPEND) o |= O_APPEND;
+        if (flags & HK_O_EXCL) o |= O_EXCL;
+        fd = open(path, o | O_CLOEXEC, 0666);
+        if (fd < 0) { SET_ERR(); return NULL; }
+    }
     {
         struct stat st;
         if (fstat(fd, &st) == 0 && S_ISDIR(st.st_mode)) {
@@ -505,49 +519,75 @@ bool hk_file_stat(hk_file *f, hk_stat *st)
 bool hk_path_stat(const char *path, hk_stat *st, int *err)
 {
     struct stat s;
-    if (stat(path, &s) != 0) { SET_ERR(); return false; }
+    if (hk_path_is_foreign(path)) {
+        int fd = foreign_fd(path, HK_O_READ, HK_FOREIGN_ANY, err), r;
+        if (fd < 0) return false;
+        r = fstat(fd, &s);
+        if (r != 0) SET_ERR();
+        close(fd);
+        if (r != 0) return false;
+    } else if (stat(path, &s) != 0) {
+        SET_ERR();
+        return false;
+    }
     fill_stat(&s, st);
     return true;
 }
 
 bool hk_path_mkdir(const char *path, int *err)
 {
+    if (hk_path_is_foreign(path)) return hk_foreign_mkdir(path, err);
     if (mkdir(path, 0777) != 0) { SET_ERR(); return false; }
     return true;
 }
 
 bool hk_path_remove(const char *path, int *err)
 {
+    if (hk_path_is_foreign(path)) return hk_foreign_remove(path, false, err);
     if (unlink(path) != 0) { SET_ERR(); return false; }
     return true;
 }
 
 bool hk_path_rmdir(const char *path, int *err)
 {
+    if (hk_path_is_foreign(path)) return hk_foreign_remove(path, true, err);
     if (rmdir(path) != 0) { SET_ERR(); return false; }
     return true;
 }
 
 bool hk_path_rename(const char *from, const char *to, int *err)
 {
+    if (hk_path_is_foreign(from) || hk_path_is_foreign(to)) return hk_foreign_rename(from, to, err);
     if (rename(from, to) != 0) { SET_ERR(); return false; }
     return true;
 }
 
 bool hk_path_list(const char *path, hk_dir_cb cb, void *user, int *err)
 {
-    DIR *d = opendir(path);
+    DIR *d;
     struct dirent *e;
-    if (!d) { SET_ERR(); return false; }
+    if (hk_path_is_foreign(path)) {
+        /* A foreign directory is read through the descriptor its owner hands over, which the DIR then owns. */
+        int fd = foreign_fd(path, HK_O_READ, HK_FOREIGN_DIR, err);
+        if (fd < 0) return false;
+        d = fdopendir(fd);
+        if (!d) {
+            SET_ERR();
+            close(fd);
+            return false;
+        }
+    } else {
+        d = opendir(path);
+        if (!d) { SET_ERR(); return false; }
+    }
     while ((e = readdir(d)) != NULL) {
         bool is_dir;
         if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
         is_dir = e->d_type == DT_DIR;
         if (e->d_type == DT_UNKNOWN || e->d_type == DT_LNK) {
-            char *full = hk_sprintf("%s/%s", path, e->d_name);
-            hk_stat st;
-            is_dir = hk_path_stat(full, &st, NULL) && st.is_dir;
-            free(full);
+            /* (Asked of the directory itself, not by path: a foreign one has no path to ask by.) */
+            struct stat s;
+            is_dir = fstatat(dirfd(d), e->d_name, &s, 0) == 0 && S_ISDIR(s.st_mode);
         }
         cb(e->d_name, is_dir, user);
     }
@@ -558,7 +598,7 @@ bool hk_path_list(const char *path, hk_dir_cb cb, void *user, int *err)
 bool hk_map_open(hk_map *m, const char *path)
 {
     struct stat s;
-    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    int fd = hk_path_is_foreign(path) ? foreign_fd(path, HK_O_READ, HK_FOREIGN_FILE, NULL) : open(path, O_RDONLY | O_CLOEXEC);
     void *p;
     memset(m, 0, sizeof(*m));
     if (fd < 0) return false;
@@ -568,6 +608,15 @@ bool hk_map_open(hk_map *m, const char *path)
     if (p == MAP_FAILED) return false;
     m->data = (const u8 *)p;
     m->size = (u64)s.st_size;
+    return true;
+}
+
+bool hk_path_space(const char *path, u64 *total, u64 *available)
+{
+    struct statvfs s;
+    if (hk_path_is_foreign(path) || statvfs(path, &s) != 0) return false;
+    *total = (u64)s.f_blocks * s.f_frsize;
+    *available = (u64)s.f_bavail * s.f_frsize;
     return true;
 }
 

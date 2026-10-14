@@ -208,6 +208,99 @@ typedef struct megler_media_host {
 } megler_media_host;
 
 /*
+ * The phone's own folders in an app's storage.
+ *
+ * Android's shared storage (/sdcard, /storage/emulated/0) is one folder under
+ * the data folder, <data_dir>/sdcard, the same for every app, with Android's
+ * standard folders in it: Alarms, DCIM, Documents, Download, Movies, Music,
+ * Notifications, Pictures, Podcasts, Ringtones. An app's own part of it,
+ * Android/data/<package> and Android/obb/<package>, is kept with the app:
+ * <data_dir>/apps/<package>/sdcard/Android/....
+ *
+ * A link puts a folder of the phone's own in that storage: the user's music
+ * as /sdcard/Music, a folder they chose as /sdcard/Documents. The layer
+ * opens files by path with the plain file functions, and an app container
+ * may not name the user's folders to those; what Windows gives an app there
+ * is handles, through Windows.Storage's broker. So for everything in a link
+ * the layer asks the shell, here:
+ *
+ *   links        the links, `link_count` of them (at most
+ *                MEGLER_STORAGE_MAX_LINKS). A link's number in the calls below
+ *                is its place in this array. `name` is what the folder is
+ *                called in /sdcard: one name, not a path, and not "Android".
+ *                One of the standard folders' names takes that folder's
+ *                place; any other name is a folder more. The array and the
+ *                names are copied by megler_run.
+ *                `writable` false: the app may read there and nothing else.
+ *                The layer refuses the rest itself (EACCES), and the shell is
+ *                never asked to change anything in such a link.
+ *
+ *   open         the operating system's own handle for something in a link
+ *                (a HANDLE; the layer closes it with CloseHandle), or NULL
+ *                with *error one of MEGLER_STORAGE_*. `kind` says what for:
+ *                  MEGLER_STORAGE_FILE    a file, to read and write as `flags`
+ *                      say (MEGLER_STORAGE_READ, _WRITE; _CREATE: made if it
+ *                      is not there; _EXCLUSIVE with it: and refused,
+ *                      MEGLER_STORAGE_EXISTS, if it is; _TRUNCATE: emptied;
+ *                      _APPEND may be ignored, the layer seeks before each
+ *                      write itself). Shared for reading, writing and
+ *                      deleting, as Android's files are. A folder of that
+ *                      name is MEGLER_STORAGE_IS_A_FOLDER.
+ *                  MEGLER_STORAGE_FOLDER  a folder, to list it: a handle that
+ *                      GetFileInformationByHandleEx(FileIdBothDirectoryInfo)
+ *                      reads the entries from. A file of that name is
+ *                      MEGLER_STORAGE_NOT_A_FOLDER.
+ *                  MEGLER_STORAGE_ANY     whichever is there, to ask its kind,
+ *                      size and times: a handle with FILE_READ_ATTRIBUTES is
+ *                      enough.
+ *   make_folder  a new folder; MEGLER_STORAGE_EXISTS when the name is taken.
+ *   remove       a file (`folder` false; a folder of that name is
+ *                MEGLER_STORAGE_IS_A_FOLDER), or a folder, which must be empty
+ *                (MEGLER_STORAGE_NOT_EMPTY): what it holds is never removed
+ *                with it.
+ *   rename       as rename(2): a new name, in the same folder, another, or
+ *                another link. A file that has the new name is replaced by
+ *                it. MEGLER_STORAGE_OTHER_DEVICE when it cannot be done as a
+ *                rename: the app is told EXDEV, and copies and removes, as
+ *                it would between two disks.
+ *
+ * `path` is UTF-8 and relative to the link's folder, parts joined by "/",
+ * none at either end; "" is the link's folder itself (only ever opened, as a
+ * folder or as whichever). The layer has resolved "." and "..", and a path
+ * with a backslash or a colon in it never arrives.
+ *
+ * The calls come on the app's own threads, any of them and several at once,
+ * and never on the shell's UI thread; each returns when it is done. They are
+ * the cost of every open() and stat() in a link, so what was found out about
+ * a folder is worth keeping.
+ *
+ * All of it may be left zero: the shared storage is then the layer's own
+ * folder and nothing else.
+ */
+#define MEGLER_STORAGE_MAX_LINKS 32
+enum { MEGLER_STORAGE_READ = 1, MEGLER_STORAGE_WRITE = 2, MEGLER_STORAGE_CREATE = 4, MEGLER_STORAGE_TRUNCATE = 8, MEGLER_STORAGE_APPEND = 16, MEGLER_STORAGE_EXCLUSIVE = 32 };
+enum { MEGLER_STORAGE_FILE = 0, MEGLER_STORAGE_FOLDER = 1, MEGLER_STORAGE_ANY = 2 };
+enum {
+    MEGLER_STORAGE_OK = 0, MEGLER_STORAGE_NOT_FOUND, MEGLER_STORAGE_DENIED, MEGLER_STORAGE_EXISTS, MEGLER_STORAGE_NOT_A_FOLDER, MEGLER_STORAGE_IS_A_FOLDER,
+    MEGLER_STORAGE_FULL, MEGLER_STORAGE_FAILED, MEGLER_STORAGE_INVALID, MEGLER_STORAGE_NOT_EMPTY, MEGLER_STORAGE_BUSY, MEGLER_STORAGE_OTHER_DEVICE
+};
+
+typedef struct megler_storage_link {
+    const char *name;
+    bool writable;
+} megler_storage_link;
+
+typedef struct megler_storage_host {
+    void *user;
+    const megler_storage_link *links;
+    int link_count;
+    void *(*open)(void *user, int link, const char *path, int flags, int kind, int *error);
+    bool (*make_folder)(void *user, int link, const char *path, int *error);
+    bool (*remove)(void *user, int link, const char *path, bool folder, int *error);
+    bool (*rename)(void *user, int from_link, const char *from, int to_link, const char *to, int *error);
+} megler_storage_host;
+
+/*
  * Drawing, for an app whose user interface is Java.
  *
  * Such an app draws with android.graphics: a Canvas over a Bitmap, a Paint,
@@ -819,6 +912,8 @@ typedef struct megler_run_config {
     megler_window_host window;
     megler_audio_host audio;
     megler_media_host media;
+    /* The phone's own folders in the app's shared storage (see megler_storage_host). May be left zero. */
+    megler_storage_host storage;
     /*
      * Drawing for an app whose user interface is Java (see megler_gfx_host). All of it may be left NULL: such an app still starts,
      * lays its views out and takes input, but nothing is drawn (its bitmaps hold only what the layer does itself: erasing, single
@@ -895,6 +990,29 @@ int megler_selftest(megler_line_fn out, void *user);
  * <data_dir>/megler-probe-steps.log: some probes can end the process.
  */
 void megler_probe(megler_line_fn out, void *user);
+
+/*
+ * Whether the phone's folders do in an app's storage what an app will ask of
+ * them. The shared storage is set up with `storage` as megler_run would set it
+ * up, and in every link that is writable the layer does, through its own C
+ * library, what an app does to files: lists the folder, makes a folder,
+ * writes a file and reads it back through the storage's other name, stats,
+ * appends, empties, renames, replaces, moves into a folder, is refused the
+ * removal of a folder that holds something, renames and moves folders,
+ * removes everything again; then renames a file from the first link to the
+ * second. One line for each step ("ok" or "FAIL" first), and which of two
+ * allowed answers was given where there are two. Returns the number of steps
+ * that failed and adds the number of steps to *checks (which may be NULL).
+ *
+ * It works in a folder of its own in each link, megler-storage-check, removes
+ * it at the end (and at the start, should an earlier run have been cut
+ * short), and opens, changes and removes nothing else that is there.
+ *
+ * Not while an app runs: it sets the storage's links. It runs no app, so
+ * megler_run is as free afterwards as it was. Takes a few seconds; call it
+ * from a background thread, not the UI thread.
+ */
+int megler_storage_check(const megler_storage_host *storage, megler_line_fn out, void *user, int *checks);
 
 #ifdef __cplusplus
 }

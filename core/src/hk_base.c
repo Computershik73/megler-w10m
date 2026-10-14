@@ -164,6 +164,131 @@ size_t hk_strlcpy(char *dst, const char *src, size_t cap)
 
 /* ------------------------------------------------------------------ files */
 
+/*
+ * Foreign paths (host/hk_host.h): who answers for them, a path taken apart,
+ * and what is the same on every host -- everything but what is done with a
+ * handle once there is one.
+ */
+static hk_foreign g_foreign;
+static volatile i32 g_foreign_set;
+
+void hk_foreign_set(const hk_foreign *f)
+{
+    hk_atomic_xchg(&g_foreign_set, 0);
+    if (!f) return;
+    g_foreign = *f;
+    hk_atomic_xchg(&g_foreign_set, 1);
+}
+
+bool hk_path_is_foreign(const char *path) { return path && !strncmp(path, HK_FOREIGN_PREFIX, sizeof(HK_FOREIGN_PREFIX) - 1); }
+
+/* The root's number and what follows it ("" for the root itself); false for a path that is not a well-formed foreign one. */
+static bool foreign_split(const char *path, int *root, const char **rel)
+{
+    const char *p = path + sizeof(HK_FOREIGN_PREFIX) - 1, *part;
+    int n = 0, digits = 0;
+    for (; *p >= '0' && *p <= '9' && digits < 6; p++, digits++) n = n * 10 + (*p - '0');
+    if (!digits || (*p && *p != '/')) return false;
+    *root = n;
+    if (!*p) {
+        *rel = p;
+        return true;
+    }
+    *rel = ++p;
+    /* Every part has something in it and is not "." or ".."; nothing that would mean another place to the operating system. */
+    for (part = p;; p++) {
+        if (*p == '\\' || *p == ':') return false;
+        if (*p && *p != '/') continue;
+        if (p == part || (p - part == 1 && part[0] == '.') || (p - part == 2 && part[0] == '.' && part[1] == '.')) return false;
+        if (!*p) return true;
+        part = p + 1;
+    }
+}
+
+/* Who answers for `path` and what to ask for; NULL with *err set when nobody does or it is not a path to ask about. */
+static const hk_foreign *foreign_of(const char *path, int *root, const char **rel, int *err)
+{
+    if (!g_foreign_set) {
+        if (err) *err = HK_E_NOENT;
+        return NULL;
+    }
+    if (!foreign_split(path, root, rel)) {
+        if (err) *err = HK_E_INVAL;
+        return NULL;
+    }
+    return &g_foreign;
+}
+
+static bool foreign_fail(int *err, int e)
+{
+    if (err) *err = e ? e : HK_E_IO;
+    return false;
+}
+
+void *hk_foreign_open(const char *path, int flags, int kind, int *err)
+{
+    int root = 0, e = HK_E_IO;
+    const char *rel = "";
+    const hk_foreign *f = foreign_of(path, &root, &rel, &e);
+    void *h = NULL;
+    if (!f) {
+        /* (foreign_of has said why.) */
+    } else if (!rel[0] && kind == HK_FOREIGN_FILE) {
+        e = HK_E_ISDIR;
+    } else if (!f->open) {
+        e = HK_E_ACCESS;
+    } else {
+        e = HK_E_IO;
+        h = f->open(f->user, root, rel, flags, kind, &e);
+    }
+    if (!h) {
+        foreign_fail(err, e);
+        return NULL;
+    }
+    if (err) *err = HK_E_OK;
+    return h;
+}
+
+bool hk_foreign_mkdir(const char *path, int *err)
+{
+    int root = 0, e = HK_E_IO;
+    const char *rel = "";
+    const hk_foreign *f = foreign_of(path, &root, &rel, &e);
+    if (!f) return foreign_fail(err, e);
+    if (!rel[0]) return foreign_fail(err, HK_E_EXIST);
+    if (!f->mkdir) return foreign_fail(err, HK_E_ACCESS);
+    e = HK_E_IO;
+    return f->mkdir(f->user, root, rel, &e) || foreign_fail(err, e);
+}
+
+bool hk_foreign_remove(const char *path, bool dir, int *err)
+{
+    int root = 0, e = HK_E_IO;
+    const char *rel = "";
+    const hk_foreign *f = foreign_of(path, &root, &rel, &e);
+    if (!f) return foreign_fail(err, e);
+    if (!rel[0]) return foreign_fail(err, dir ? HK_E_BUSY : HK_E_ISDIR);
+    if (!f->remove) return foreign_fail(err, HK_E_ACCESS);
+    e = HK_E_IO;
+    return f->remove(f->user, root, rel, dir, &e) || foreign_fail(err, e);
+}
+
+bool hk_foreign_rename(const char *from, const char *to, int *err)
+{
+    int from_root = 0, to_root = 0, e = HK_E_IO;
+    const char *from_rel = "", *to_rel = "";
+    const hk_foreign *f;
+    /* One of them is an ordinary path: another file system, as far as a rename goes. */
+    if (!hk_path_is_foreign(from) || !hk_path_is_foreign(to)) return foreign_fail(err, HK_E_XDEV);
+    f = foreign_of(from, &from_root, &from_rel, &e);
+    if (f) f = foreign_of(to, &to_root, &to_rel, &e);
+    if (!f) return foreign_fail(err, e);
+    if (!from_rel[0] || !to_rel[0]) return foreign_fail(err, HK_E_BUSY);
+    if (!f->rename) return foreign_fail(err, HK_E_ACCESS);
+    e = HK_E_IO;
+    return f->rename(f->user, from_root, from_rel, to_root, to_rel, &e) || foreign_fail(err, e);
+}
+
 bool hk_path_mkdirs(const char *path)
 {
     char *t = hk_strdup(path);

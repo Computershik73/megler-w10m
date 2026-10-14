@@ -12,6 +12,7 @@
  * pointer typed with u32/u64 -- the softfp convention, spelled out.
  */
 #include "hk_gfx_tests.h"
+#include "hk_storage_tests.h"
 #include "hk_tests.h"
 
 #include <math.h>
@@ -1192,6 +1193,7 @@ int hk_tests_run(const char *libdir, const char *scratch, hk_test_sink sink, voi
     can_run = hk_core_init();
     hk_path_mkdirs(scratch);
     test_host(scratch);
+    g_failed += hk_storage_tests_run(scratch, g_sink, g_sink_user, &g_checks);
     test_zip(scratch);
     test_sqlite(scratch);
     test_textures();
