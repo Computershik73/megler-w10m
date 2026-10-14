@@ -10,14 +10,25 @@
 #define _FILE_OFFSET_BITS 64
 #include "hk_host.h"
 
+#include <arpa/inet.h>
 #include <dirent.h>
 #include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <ifaddrs.h>
+#include <net/if.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <netpacket/packet.h>
+#include <poll.h>
 #include <sched.h>
 #include <signal.h>
 #include <stdio.h>
+#include <sys/epoll.h>
+#include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
 #include <sys/syscall.h>
@@ -633,6 +644,605 @@ void hk_map_close(hk_map *m)
 {
     if (m->data) munmap((void *)m->data, (size_t)m->size);
     memset(m, 0, sizeof(*m));
+}
+
+/* ---------------------------------------------------------------- sockets
+ *
+ * Non-blocking BSD sockets. One thread of the host's waits on all of them at
+ * once, edge-triggered (epoll with EPOLLET): every change of any socket's
+ * state wakes it, and it tells whoever hk_sock_set_notify named. What holds
+ * at a given moment is poll()'s answer with no wait.
+ */
+struct hk_sock {
+    int fd;
+    int family, type;
+};
+
+static int g_watch_fd = -1;
+static pthread_once_t g_watch_once = PTHREAD_ONCE_INIT;
+static void (*volatile g_sock_notify)(void);
+void hk_sock_set_notify(void (*changed)(void)) { g_sock_notify = changed; }
+
+static void *watch_main(void *arg)
+{
+    struct epoll_event ev[32];
+    sigset_t all;
+    (void)arg;
+    /* (The signals the layer sends are for the app's threads.) */
+    sigfillset(&all);
+    pthread_sigmask(SIG_BLOCK, &all, NULL);
+    for (;;) {
+        int n = epoll_wait(g_watch_fd, ev, 32, -1);
+        if (n < 0 && errno != EINTR) {
+            hk_err("host: the wait on the sockets failed (errno %d): nobody waiting on a socket is told of a change any more", errno);
+            return NULL;
+        }
+        if (n > 0 && g_sock_notify) g_sock_notify();
+    }
+}
+
+static void watch_start(void)
+{
+    pthread_t t;
+    pthread_attr_t a;
+    g_watch_fd = epoll_create1(EPOLL_CLOEXEC);
+    if (g_watch_fd < 0) {
+        hk_err("host: epoll_create1 failed (errno %d): nobody waiting on a socket is told of a change", errno);
+        return;
+    }
+    pthread_attr_init(&a);
+    pthread_attr_setdetachstate(&a, PTHREAD_CREATE_DETACHED);
+    if (pthread_create(&t, &a, watch_main, NULL) != 0) hk_err("host: the thread that waits on the sockets could not be started");
+    pthread_attr_destroy(&a);
+}
+
+static int net_err(int e)
+{
+    switch (e) {
+    case 0: return HK_NE_OK;
+    case EAGAIN: return HK_NE_AGAIN;
+    case EINPROGRESS: return HK_NE_INPROGRESS;
+    case EALREADY: return HK_NE_ALREADY;
+    case EISCONN: return HK_NE_ISCONN;
+    case ENOTCONN: return HK_NE_NOTCONN;
+    case ECONNREFUSED: return HK_NE_CONNREFUSED;
+    case ECONNRESET: return HK_NE_CONNRESET;
+    case ECONNABORTED: return HK_NE_CONNABORTED;
+    case ETIMEDOUT: return HK_NE_TIMEDOUT;
+    case ENETUNREACH: return HK_NE_NETUNREACH;
+    case EHOSTUNREACH: case EHOSTDOWN: return HK_NE_HOSTUNREACH;
+    case ENETDOWN: return HK_NE_NETDOWN;
+    case ENETRESET: return HK_NE_NETRESET;
+    case EADDRINUSE: return HK_NE_ADDRINUSE;
+    case EADDRNOTAVAIL: return HK_NE_ADDRNOTAVAIL;
+    case EAFNOSUPPORT: case EPFNOSUPPORT: return HK_NE_AFNOSUPPORT;
+    case EPROTONOSUPPORT: case EPROTOTYPE: return HK_NE_PROTONOSUPPORT;
+    case ESOCKTNOSUPPORT: return HK_NE_SOCKTNOSUPPORT;
+    case EOPNOTSUPP: return HK_NE_OPNOTSUPP;
+    case ENOPROTOOPT: return HK_NE_NOPROTOOPT;
+    case EINVAL: return HK_NE_INVAL;
+    case EACCES: case EPERM: return HK_NE_ACCES;
+    case EMSGSIZE: return HK_NE_MSGSIZE;
+    case ENOBUFS: case ENOMEM: return HK_NE_NOBUFS;
+    case EMFILE: case ENFILE: return HK_NE_MFILE;
+    case ESHUTDOWN: return HK_NE_SHUTDOWN;
+    case EPIPE: return HK_NE_PIPE;
+    case EDESTADDRREQ: return HK_NE_DESTADDRREQ;
+    case EFAULT: return HK_NE_FAULT;
+    default: return HK_NE_IO;
+    }
+}
+
+static socklen_t addr_to_native(const hk_sockaddr *a, struct sockaddr_storage *ss)
+{
+    memset(ss, 0, sizeof(*ss));
+    if (a->family == HK_AF_INET) {
+        struct sockaddr_in *in = (struct sockaddr_in *)ss;
+        in->sin_family = AF_INET;
+        in->sin_port = htons(a->port);
+        memcpy(&in->sin_addr, a->addr, 4);
+        return sizeof(*in);
+    }
+    if (a->family == HK_AF_INET6) {
+        struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)ss;
+        in6->sin6_family = AF_INET6;
+        in6->sin6_port = htons(a->port);
+        in6->sin6_flowinfo = a->flowinfo;
+        memcpy(&in6->sin6_addr, a->addr, 16);
+        in6->sin6_scope_id = a->scope_id;
+        return sizeof(*in6);
+    }
+    return 0;
+}
+
+static void addr_from_native(const struct sockaddr *sa, socklen_t len, hk_sockaddr *a)
+{
+    memset(a, 0, sizeof(*a));
+    if (!sa) return;
+    if (sa->sa_family == AF_INET && len >= sizeof(struct sockaddr_in)) {
+        const struct sockaddr_in *in = (const struct sockaddr_in *)sa;
+        a->family = HK_AF_INET;
+        a->port = ntohs(in->sin_port);
+        memcpy(a->addr, &in->sin_addr, 4);
+    } else if (sa->sa_family == AF_INET6 && len >= sizeof(struct sockaddr_in6)) {
+        const struct sockaddr_in6 *in6 = (const struct sockaddr_in6 *)sa;
+        a->family = HK_AF_INET6;
+        a->port = ntohs(in6->sin6_port);
+        a->flowinfo = in6->sin6_flowinfo;
+        memcpy(a->addr, &in6->sin6_addr, 16);
+        a->scope_id = in6->sin6_scope_id;
+    }
+}
+
+static hk_sock *sock_wrap(int fd, int family, int type)
+{
+    hk_sock *k = (hk_sock *)hk_alloc(sizeof(*k));
+    struct epoll_event ev;
+    pthread_once(&g_watch_once, watch_start);
+    memset(&ev, 0, sizeof(ev));
+    ev.events = EPOLLIN | EPOLLOUT | EPOLLPRI | EPOLLRDHUP | EPOLLET;
+    if (g_watch_fd >= 0) epoll_ctl(g_watch_fd, EPOLL_CTL_ADD, fd, &ev);
+    k->fd = fd;
+    k->family = family;
+    k->type = type;
+    return k;
+}
+
+hk_sock *hk_sock_open(int family, int type, int protocol, int *err)
+{
+    int af = family == HK_AF_INET ? AF_INET : family == HK_AF_INET6 ? AF_INET6 : 0;
+    int st = type == HK_SOCK_STREAM ? SOCK_STREAM : type == HK_SOCK_DGRAM ? SOCK_DGRAM : type == HK_SOCK_RAW ? SOCK_RAW : 0, fd;
+    if (!af || !st) {
+        *err = !af ? HK_NE_AFNOSUPPORT : HK_NE_SOCKTNOSUPPORT;
+        return NULL;
+    }
+    fd = socket(af, st | SOCK_NONBLOCK | SOCK_CLOEXEC, protocol);
+    if (fd < 0) {
+        *err = net_err(errno);
+        return NULL;
+    }
+    if (af == AF_INET6) {
+        int off = 0;
+        setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &off, sizeof(off));
+    }
+    return sock_wrap(fd, family, type);
+}
+
+void hk_sock_close(hk_sock *k)
+{
+    if (!k) return;
+    if (g_watch_fd >= 0) epoll_ctl(g_watch_fd, EPOLL_CTL_DEL, k->fd, NULL);
+    close(k->fd);
+    free(k);
+}
+
+bool hk_sock_bind(hk_sock *k, const hk_sockaddr *a, int *err)
+{
+    struct sockaddr_storage ss;
+    socklen_t len = addr_to_native(a, &ss);
+    if (!len) {
+        *err = HK_NE_AFNOSUPPORT;
+        return false;
+    }
+    if (bind(k->fd, (const struct sockaddr *)&ss, len) != 0) {
+        *err = net_err(errno);
+        return false;
+    }
+    return true;
+}
+
+bool hk_sock_listen(hk_sock *k, int backlog, int *err)
+{
+    if (listen(k->fd, backlog < 1 ? 1 : backlog) != 0) {
+        *err = net_err(errno);
+        return false;
+    }
+    return true;
+}
+
+hk_sock *hk_sock_accept(hk_sock *k, hk_sockaddr *peer, int *err)
+{
+    struct sockaddr_storage ss;
+    socklen_t len = sizeof(ss);
+    int fd = accept4(k->fd, (struct sockaddr *)&ss, &len, SOCK_NONBLOCK | SOCK_CLOEXEC);
+    if (fd < 0) {
+        *err = net_err(errno == EWOULDBLOCK ? EAGAIN : errno);
+        return NULL;
+    }
+    if (peer) addr_from_native((const struct sockaddr *)&ss, len, peer);
+    return sock_wrap(fd, k->family, k->type);
+}
+
+bool hk_sock_connect(hk_sock *k, const hk_sockaddr *a, int *err)
+{
+    struct sockaddr_storage ss;
+    socklen_t len;
+    if (!a->family) {
+        memset(&ss, 0, sizeof(ss));
+        ss.ss_family = AF_UNSPEC;
+        len = sizeof(struct sockaddr);
+    } else if (!(len = addr_to_native(a, &ss))) {
+        *err = HK_NE_AFNOSUPPORT;
+        return false;
+    }
+    if (connect(k->fd, (const struct sockaddr *)&ss, len) == 0) return true;
+    *err = net_err(errno);
+    return false;
+}
+
+static int native_flags(int flags)
+{
+    return ((flags & HK_MSG_PEEK) ? MSG_PEEK : 0) | ((flags & HK_MSG_OOB) ? MSG_OOB : 0) | ((flags & HK_MSG_DONTROUTE) ? MSG_DONTROUTE : 0);
+}
+
+i32 hk_sock_send(hk_sock *k, const void *buf, u32 n, int flags, const hk_sockaddr *to, int *err)
+{
+    struct sockaddr_storage ss;
+    socklen_t len = 0;
+    ssize_t r;
+    if (to && !(len = addr_to_native(to, &ss))) {
+        *err = HK_NE_AFNOSUPPORT;
+        return -1;
+    }
+    r = sendto(k->fd, buf, n, native_flags(flags) | MSG_NOSIGNAL | MSG_DONTWAIT, to ? (const struct sockaddr *)&ss : NULL, len);
+    if (r < 0) {
+        *err = net_err(errno == EWOULDBLOCK ? EAGAIN : errno);
+        return -1;
+    }
+    return (i32)r;
+}
+
+i32 hk_sock_recv(hk_sock *k, void *buf, u32 n, int flags, hk_sockaddr *from, int *said, int *err)
+{
+    struct sockaddr_storage ss;
+    struct iovec iov;
+    struct msghdr m;
+    ssize_t r;
+    memset(&m, 0, sizeof(m));
+    memset(&ss, 0, sizeof(ss));
+    iov.iov_base = buf;
+    iov.iov_len = n;
+    m.msg_iov = &iov;
+    m.msg_iovlen = 1;
+    if (from) {
+        m.msg_name = &ss;
+        m.msg_namelen = sizeof(ss);
+    }
+    if (said) *said = 0;
+    r = recvmsg(k->fd, &m, native_flags(flags) | MSG_DONTWAIT);
+    if (r < 0) {
+        *err = net_err(errno == EWOULDBLOCK ? EAGAIN : errno);
+        return -1;
+    }
+    if (said && (m.msg_flags & MSG_TRUNC)) *said = HK_MSG_TRUNCATED;
+    if (from) addr_from_native((const struct sockaddr *)&ss, m.msg_namelen, from);
+    return (i32)r;
+}
+
+bool hk_sock_shutdown(hk_sock *k, int how, int *err)
+{
+    if (shutdown(k->fd, how == 0 ? SHUT_RD : how == 1 ? SHUT_WR : SHUT_RDWR) != 0) {
+        *err = net_err(errno);
+        return false;
+    }
+    return true;
+}
+
+bool hk_sock_name(hk_sock *k, bool peer, hk_sockaddr *a, int *err)
+{
+    struct sockaddr_storage ss;
+    socklen_t len = sizeof(ss);
+    int r = peer ? getpeername(k->fd, (struct sockaddr *)&ss, &len) : getsockname(k->fd, (struct sockaddr *)&ss, &len);
+    if (r != 0) {
+        *err = net_err(errno);
+        return false;
+    }
+    addr_from_native((const struct sockaddr *)&ss, len, a);
+    if (!a->family) a->family = k->family;
+    return true;
+}
+
+int hk_sock_ready(hk_sock *k)
+{
+    struct pollfd p;
+    int out = 0;
+    p.fd = k->fd;
+    p.events = POLLIN | POLLOUT | POLLPRI | POLLRDHUP;
+    p.revents = 0;
+    if (poll(&p, 1, 0) <= 0) return 0;
+    if (p.revents & (POLLIN | POLLPRI)) out |= HK_SOCK_IN;
+    if (p.revents & POLLOUT) out |= HK_SOCK_OUT;
+    if (p.revents & POLLERR) out |= HK_SOCK_ERR;
+    if (p.revents & POLLHUP) out |= HK_SOCK_HUP;
+    if (p.revents & POLLRDHUP) out |= HK_SOCK_RDHUP;
+    return out;
+}
+
+int hk_sock_error(hk_sock *k)
+{
+    int e = 0;
+    socklen_t len = sizeof(e);
+    if (getsockopt(k->fd, SOL_SOCKET, SO_ERROR, &e, &len) != 0) return HK_NE_OK;
+    return net_err(e);
+}
+
+i32 hk_sock_pending(hk_sock *k)
+{
+    int n = 0;
+    return ioctl(k->fd, FIONREAD, &n) == 0 ? n : 0;
+}
+
+bool hk_sock_at_mark(hk_sock *k)
+{
+    int at = 0;
+    return ioctl(k->fd, SIOCATMARK, &at) == 0 && at;
+}
+
+static int option_of(int option, int *level)
+{
+    *level = SOL_SOCKET;
+    switch (option) {
+    case HK_SO_REUSEADDR: return SO_REUSEADDR;
+    case HK_SO_KEEPALIVE: return SO_KEEPALIVE;
+    case HK_SO_BROADCAST: return SO_BROADCAST;
+    case HK_SO_OOBINLINE: return SO_OOBINLINE;
+    case HK_SO_RCVBUF: return SO_RCVBUF;
+    case HK_SO_SNDBUF: return SO_SNDBUF;
+    case HK_SO_DONTROUTE: return SO_DONTROUTE;
+    case HK_SO_LINGER: return SO_LINGER;
+    }
+    *level = IPPROTO_TCP;
+    switch (option) {
+    case HK_TCP_NODELAY: return TCP_NODELAY;
+    case HK_TCP_KEEPIDLE: return TCP_KEEPIDLE;
+    case HK_TCP_KEEPINTVL: return TCP_KEEPINTVL;
+    case HK_TCP_KEEPCNT: return TCP_KEEPCNT;
+    case HK_TCP_MAXSEG: return TCP_MAXSEG;
+    }
+    *level = IPPROTO_IP;
+    switch (option) {
+    case HK_IP_TOS: return IP_TOS;
+    case HK_IP_TTL: return IP_TTL;
+    case HK_IP_MULTICAST_TTL: return IP_MULTICAST_TTL;
+    case HK_IP_MULTICAST_LOOP: return IP_MULTICAST_LOOP;
+    case HK_IP_MULTICAST_IF: return IP_MULTICAST_IF;
+    }
+    *level = IPPROTO_IPV6;
+    switch (option) {
+    case HK_IPV6_V6ONLY: return IPV6_V6ONLY;
+    case HK_IPV6_UNICAST_HOPS: return IPV6_UNICAST_HOPS;
+    case HK_IPV6_MULTICAST_HOPS: return IPV6_MULTICAST_HOPS;
+    case HK_IPV6_MULTICAST_LOOP: return IPV6_MULTICAST_LOOP;
+    case HK_IPV6_MULTICAST_IF: return IPV6_MULTICAST_IF;
+    case HK_IPV6_TCLASS: return IPV6_TCLASS;
+    }
+    return -1;
+}
+
+bool hk_sock_set(hk_sock *k, int option, int value, int *err)
+{
+    int level, name = option_of(option, &level), r;
+    if (name < 0) {
+        *err = HK_NE_NOPROTOOPT;
+        return false;
+    }
+    if (option == HK_SO_LINGER) {
+        struct linger lg;
+        lg.l_onoff = value >= 0;
+        lg.l_linger = value < 0 ? 0 : value;
+        r = setsockopt(k->fd, level, name, &lg, sizeof(lg));
+    } else if (option == HK_IP_MULTICAST_IF) {
+        struct in_addr a;
+        memcpy(&a, &value, 4);
+        r = setsockopt(k->fd, level, name, &a, sizeof(a));
+    } else {
+        r = setsockopt(k->fd, level, name, &value, sizeof(value));
+    }
+    if (r != 0) {
+        *err = net_err(errno);
+        return false;
+    }
+    return true;
+}
+
+bool hk_sock_get(hk_sock *k, int option, int *value, int *err)
+{
+    int level, name = option_of(option, &level), v = 0;
+    socklen_t len = sizeof(v);
+    if (name < 0) {
+        *err = HK_NE_NOPROTOOPT;
+        return false;
+    }
+    if (option == HK_SO_LINGER) {
+        struct linger lg;
+        len = sizeof(lg);
+        memset(&lg, 0, sizeof(lg));
+        if (getsockopt(k->fd, level, name, &lg, &len) != 0) {
+            *err = net_err(errno);
+            return false;
+        }
+        *value = lg.l_onoff ? lg.l_linger : -1;
+        return true;
+    }
+    if (getsockopt(k->fd, level, name, &v, &len) != 0) {
+        *err = net_err(errno);
+        return false;
+    }
+    *value = len == 1 ? (v & 0xFF) : v;
+    return true;
+}
+
+bool hk_sock_multicast(hk_sock *k, bool join, const hk_sockaddr *group, const hk_sockaddr *iface, u32 index, int *err)
+{
+    int r;
+    if (group->family == HK_AF_INET) {
+        struct ip_mreqn m;
+        memset(&m, 0, sizeof(m));
+        memcpy(&m.imr_multiaddr, group->addr, 4);
+        if (iface && iface->family == HK_AF_INET) memcpy(&m.imr_address, iface->addr, 4);
+        m.imr_ifindex = (int)index;
+        r = setsockopt(k->fd, IPPROTO_IP, join ? IP_ADD_MEMBERSHIP : IP_DROP_MEMBERSHIP, &m, sizeof(m));
+    } else if (group->family == HK_AF_INET6) {
+        struct ipv6_mreq m;
+        memset(&m, 0, sizeof(m));
+        memcpy(&m.ipv6mr_multiaddr, group->addr, 16);
+        m.ipv6mr_interface = index;
+        r = setsockopt(k->fd, IPPROTO_IPV6, join ? IPV6_ADD_MEMBERSHIP : IPV6_DROP_MEMBERSHIP, &m, sizeof(m));
+    } else {
+        *err = HK_NE_AFNOSUPPORT;
+        return false;
+    }
+    if (r != 0) {
+        *err = net_err(errno);
+        return false;
+    }
+    return true;
+}
+
+/* ---------------------------------------------------- names and interfaces */
+
+static int eai_of(int e)
+{
+    switch (e) {
+    case EAI_NONAME: return HK_EAI_NONAME;
+    case EAI_AGAIN: return HK_EAI_AGAIN;
+    case EAI_FAIL: return HK_EAI_FAIL;
+#ifdef EAI_NODATA
+    case EAI_NODATA: return HK_EAI_NODATA;
+#endif
+    case EAI_FAMILY: return HK_EAI_FAMILY;
+    case EAI_MEMORY: return HK_EAI_MEMORY;
+    case EAI_SYSTEM: return HK_EAI_SYSTEM;
+    default: return HK_EAI_FAIL;
+    }
+}
+
+int hk_net_resolve(const char *name, int family, int flags, hk_sockaddr **addrs, int *count, char **canonical)
+{
+    struct addrinfo hints, *res = NULL, *ai;
+    hk_sockaddr *out = NULL;
+    int e, got = 0, cap = 0, i;
+    *addrs = NULL;
+    *count = 0;
+    if (canonical) *canonical = NULL;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = family == HK_AF_INET ? AF_INET : family == HK_AF_INET6 ? AF_INET6 : AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = ((flags & HK_RESOLVE_CANONICAL) ? AI_CANONNAME : 0) | ((flags & HK_RESOLVE_ADDRCONFIG) ? AI_ADDRCONFIG : 0);
+    e = getaddrinfo(name, NULL, &hints, &res);
+    if (e) return eai_of(e);
+    for (ai = res; ai; ai = ai->ai_next) {
+        hk_sockaddr a;
+        addr_from_native(ai->ai_addr, ai->ai_addrlen, &a);
+        if (!a.family) continue;
+        for (i = 0; i < got && memcmp(&out[i], &a, sizeof(a)); i++) { }
+        if (i < got) continue;
+        if (got == cap) {
+            cap = cap ? cap * 2 : 8;
+            out = (hk_sockaddr *)hk_realloc(out, sizeof(*out) * (size_t)cap);
+        }
+        out[got++] = a;
+    }
+    if (canonical && res && res->ai_canonname) *canonical = hk_strdup(res->ai_canonname);
+    freeaddrinfo(res);
+    if (!got) {
+        free(out);
+        if (canonical) {
+            free(*canonical);
+            *canonical = NULL;
+        }
+        return HK_EAI_NODATA;
+    }
+    *addrs = out;
+    *count = got;
+    return HK_EAI_OK;
+}
+
+int hk_net_name_of(const hk_sockaddr *a, char *name, size_t size)
+{
+    struct sockaddr_storage ss;
+    socklen_t len = addr_to_native(a, &ss);
+    int e;
+    if (!len) return HK_EAI_FAMILY;
+    e = getnameinfo((const struct sockaddr *)&ss, len, name, (socklen_t)size, NULL, 0, NI_NAMEREQD);
+    return e ? eai_of(e) : HK_EAI_OK;
+}
+
+static int prefix_of(const struct sockaddr *mask)
+{
+    const u8 *b;
+    int n = 0, len, i;
+    if (!mask) return 0;
+    if (mask->sa_family == AF_INET) {
+        b = (const u8 *)&((const struct sockaddr_in *)mask)->sin_addr;
+        len = 4;
+    } else if (mask->sa_family == AF_INET6) {
+        b = (const u8 *)&((const struct sockaddr_in6 *)mask)->sin6_addr;
+        len = 16;
+    } else {
+        return 0;
+    }
+    for (i = 0; i < len; i++)
+        for (int bit = 7; bit >= 0 && ((b[i] >> bit) & 1); bit--) n++;
+    return n;
+}
+
+int hk_net_interfaces(hk_netif *out, int max)
+{
+    struct ifaddrs *list = NULL, *ifa;
+    char names[64][IF_NAMESIZE];
+    int n = 0, i, probe;
+    if (getifaddrs(&list) != 0) return -1;
+    probe = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+    for (ifa = list; ifa; ifa = ifa->ifa_next) {
+        hk_netif *f = NULL;
+        if (!ifa->ifa_name) continue;
+        for (i = 0; i < n && i < (int)HK_COUNT(names); i++)
+            if (!strcmp(names[i], ifa->ifa_name)) break;
+        if (i < n && i < max) f = &out[i];
+        if (i == n) {
+            if (n < (int)HK_COUNT(names)) hk_strlcpy(names[n], ifa->ifa_name, IF_NAMESIZE);
+            if (n < max) {
+                struct ifreq rq;
+                f = &out[n];
+                memset(f, 0, sizeof(*f));
+                f->index = if_nametoindex(ifa->ifa_name);
+                if (ifa->ifa_flags & IFF_LOOPBACK) f->kind = HK_IF_LOOPBACK;
+                else if (!strncmp(ifa->ifa_name, "wl", 2)) f->kind = HK_IF_WIFI;
+                else if (!strncmp(ifa->ifa_name, "eth", 3) || !strncmp(ifa->ifa_name, "en", 2)) f->kind = HK_IF_ETHERNET;
+                else if (!strncmp(ifa->ifa_name, "rmnet", 5) || !strncmp(ifa->ifa_name, "wwan", 4)) f->kind = HK_IF_CELLULAR;
+                else if (!strncmp(ifa->ifa_name, "tun", 3) || !strncmp(ifa->ifa_name, "tap", 3) || !strncmp(ifa->ifa_name, "sit", 3)) f->kind = HK_IF_TUNNEL;
+                else f->kind = HK_IF_OTHER;
+                if (ifa->ifa_flags & IFF_UP) f->flags |= HK_IFF_UP;
+                if (ifa->ifa_flags & IFF_RUNNING) f->flags |= HK_IFF_RUNNING;
+                if (ifa->ifa_flags & IFF_MULTICAST) f->flags |= HK_IFF_MULTICAST;
+                if (ifa->ifa_flags & IFF_BROADCAST) f->flags |= HK_IFF_BROADCAST;
+                if (ifa->ifa_flags & IFF_POINTOPOINT) f->flags |= HK_IFF_POINTOPOINT;
+                memset(&rq, 0, sizeof(rq));
+                hk_strlcpy(rq.ifr_name, ifa->ifa_name, sizeof(rq.ifr_name));
+                f->mtu = probe >= 0 && ioctl(probe, SIOCGIFMTU, &rq) == 0 ? (u32)rq.ifr_mtu : 1500;
+            }
+            n++;
+        }
+        if (!f || !ifa->ifa_addr) continue;
+        if (ifa->ifa_addr->sa_family == AF_PACKET) {
+            const struct sockaddr_ll *ll = (const struct sockaddr_ll *)ifa->ifa_addr;
+            if (ll->sll_halen > 0 && ll->sll_halen <= sizeof(f->hw)) {
+                memcpy(f->hw, ll->sll_addr, ll->sll_halen);
+                f->hw_len = ll->sll_halen;
+            }
+        } else if (f->naddrs < HK_NETIF_ADDRS) {
+            hk_sockaddr a;
+            addr_from_native(ifa->ifa_addr, ifa->ifa_addr->sa_family == AF_INET6 ? sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in), &a);
+            if (!a.family) continue;
+            f->addrs[f->naddrs].addr = a;
+            f->addrs[f->naddrs].prefix = prefix_of(ifa->ifa_netmask);
+            f->naddrs++;
+        }
+    }
+    if (probe >= 0) close(probe);
+    freeifaddrs(list);
+    return n;
 }
 
 /* ------------------------------------------------------ host shared libraries */

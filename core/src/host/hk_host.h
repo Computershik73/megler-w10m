@@ -355,6 +355,133 @@ bool hk_foreign_mkdir(const char *path, int *err);
 bool hk_foreign_remove(const char *path, bool dir, int *err);
 bool hk_foreign_rename(const char *from, const char *to, int *err);
 
+/* ---------------------------------------------------------------- sockets
+ *
+ * The operating system's own sockets: Winsock 2 on Windows, BSD sockets on
+ * POSIX. Everything here is in this header's neutral terms -- families,
+ * options, flags and errors are its own numbers, addresses a structure of its
+ * own -- and bionic/hk_net.c turns Android's ABI into them and back.
+ *
+ * A socket here never blocks. What would wait answers HK_NE_AGAIN (and a
+ * connection under way HK_NE_INPROGRESS), and the caller waits the way it
+ * waits for every other descriptor of the layer: on its one condition
+ * (bionic/hk_libc_io.c). For that the host says when the state of a socket
+ * may have changed -- a connection arrived, made or failed, data arrived,
+ * there is room to send again, the other side closed -- by calling the
+ * function hk_sock_set_notify names, on a thread of its own, and
+ * hk_sock_ready says what holds now. A change is announced after it has
+ * happened, so a caller that looks with hk_sock_ready and then waits for the
+ * announcement, both under one lock that the announcement also takes, misses
+ * nothing.
+ */
+typedef struct hk_sock hk_sock;
+
+enum { HK_AF_INET = 1, HK_AF_INET6 = 2 };
+enum { HK_SOCK_STREAM = 1, HK_SOCK_DGRAM = 2, HK_SOCK_RAW = 3 };
+
+typedef struct hk_sockaddr {
+    int family;                        /* HK_AF_INET, HK_AF_INET6; 0: no address */
+    u16 port;                          /* in the host's byte order */
+    u8 addr[16];                       /* in the network's: an IPv4 address in the first four */
+    u32 flowinfo, scope_id;            /* IPv6 */
+} hk_sockaddr;
+
+/* What went wrong. */
+enum {
+    HK_NE_OK = 0, HK_NE_AGAIN, HK_NE_INPROGRESS, HK_NE_ALREADY, HK_NE_ISCONN, HK_NE_NOTCONN, HK_NE_CONNREFUSED, HK_NE_CONNRESET,
+    HK_NE_CONNABORTED, HK_NE_TIMEDOUT, HK_NE_NETUNREACH, HK_NE_HOSTUNREACH, HK_NE_NETDOWN, HK_NE_NETRESET, HK_NE_ADDRINUSE,
+    HK_NE_ADDRNOTAVAIL, HK_NE_AFNOSUPPORT, HK_NE_PROTONOSUPPORT, HK_NE_SOCKTNOSUPPORT, HK_NE_OPNOTSUPP, HK_NE_NOPROTOOPT, HK_NE_INVAL,
+    HK_NE_ACCES, HK_NE_MSGSIZE, HK_NE_NOBUFS, HK_NE_MFILE, HK_NE_SHUTDOWN, HK_NE_PIPE, HK_NE_DESTADDRREQ, HK_NE_FAULT, HK_NE_IO
+};
+
+/* What hk_sock_ready says. HK_SOCK_RDHUP: the other side will send no more (its FIN, or a reset). */
+enum { HK_SOCK_IN = 1, HK_SOCK_OUT = 2, HK_SOCK_ERR = 4, HK_SOCK_HUP = 8, HK_SOCK_RDHUP = 16 };
+/* Flags of hk_sock_send / hk_sock_recv, and what hk_sock_recv says of what it read. */
+enum { HK_MSG_PEEK = 1, HK_MSG_OOB = 2, HK_MSG_DONTROUTE = 4 };
+enum { HK_MSG_TRUNCATED = 1 };
+
+/* Options, set and read as one integer each. */
+enum {
+    HK_SO_REUSEADDR = 1, HK_SO_KEEPALIVE, HK_SO_BROADCAST, HK_SO_OOBINLINE, HK_SO_RCVBUF, HK_SO_SNDBUF,
+    HK_SO_LINGER,                      /* seconds; -1: off */
+    HK_SO_DONTROUTE, HK_TCP_NODELAY, HK_TCP_KEEPIDLE, HK_TCP_KEEPINTVL, HK_TCP_KEEPCNT, HK_TCP_MAXSEG,
+    HK_IP_TOS, HK_IP_TTL, HK_IP_MULTICAST_TTL, HK_IP_MULTICAST_LOOP,
+    HK_IP_MULTICAST_IF,                /* an IPv4 address as its four bytes in the network's order, read as a u32 */
+    HK_IPV6_V6ONLY, HK_IPV6_UNICAST_HOPS, HK_IPV6_MULTICAST_HOPS, HK_IPV6_MULTICAST_LOOP,
+    HK_IPV6_MULTICAST_IF,              /* an interface's index */
+    HK_IPV6_TCLASS
+};
+
+/*
+ * A new socket: `type` HK_SOCK_*, `protocol` IANA's number (6 TCP, 17 UDP, 0
+ * the type's own). An IPv6 socket takes IPv4 addresses too (written as
+ * ::ffff:a.b.c.d) until HK_IPV6_V6ONLY says otherwise, which is Linux's
+ * default and not Windows'. NULL with *err set.
+ */
+hk_sock *hk_sock_open(int family, int type, int protocol, int *err);
+void hk_sock_close(hk_sock *s);
+bool hk_sock_bind(hk_sock *s, const hk_sockaddr *a, int *err);
+bool hk_sock_listen(hk_sock *s, int backlog, int *err);
+/* A connection that has arrived, or NULL with *err HK_NE_AGAIN when none has. */
+hk_sock *hk_sock_accept(hk_sock *s, hk_sockaddr *peer, int *err);
+/* false with *err HK_NE_INPROGRESS while a connection is being made; hk_sock_error says how it ended. A datagram socket's family 0: no peer any more. */
+bool hk_sock_connect(hk_sock *s, const hk_sockaddr *a, int *err);
+/* Bytes sent (as many as there was room for), or -1 with *err set. `to` NULL: to the peer. */
+i32 hk_sock_send(hk_sock *s, const void *buf, u32 n, int flags, const hk_sockaddr *to, int *err);
+/* Bytes read, 0 at the end of a stream, or -1 with *err set. `from` and `said` (HK_MSG_TRUNCATED) may be NULL. */
+i32 hk_sock_recv(hk_sock *s, void *buf, u32 n, int flags, hk_sockaddr *from, int *said, int *err);
+bool hk_sock_shutdown(hk_sock *s, int how, int *err);   /* how: 0 reading, 1 writing, 2 both */
+bool hk_sock_name(hk_sock *s, bool peer, hk_sockaddr *a, int *err);
+/* What holds now, HK_SOCK_*; never waits. */
+int hk_sock_ready(hk_sock *s);
+/* The error a connection ended with (SO_ERROR), HK_NE_*; asking clears it. */
+int hk_sock_error(hk_sock *s);
+/* Bytes that can be read without waiting (FIONREAD); whether the next byte is urgent data's mark (SIOCATMARK). */
+i32 hk_sock_pending(hk_sock *s);
+bool hk_sock_at_mark(hk_sock *s);
+/* HK_NE_NOPROTOOPT: the option means nothing to this host. */
+bool hk_sock_set(hk_sock *s, int option, int value, int *err);
+bool hk_sock_get(hk_sock *s, int option, int *value, int *err);
+/* Joins or leaves a multicast group: by an IPv4 interface's address (`iface`, family 0 for any) or an interface's index. */
+bool hk_sock_multicast(hk_sock *s, bool join, const hk_sockaddr *group, const hk_sockaddr *iface, u32 index, int *err);
+/* Who is told that some socket's state may have changed; called on a thread of the host's, never with a lock of the caller's held. */
+void hk_sock_set_notify(void (*changed)(void));
+
+/* ---------------------------------------------------- names and interfaces */
+
+enum { HK_EAI_OK = 0, HK_EAI_NONAME, HK_EAI_AGAIN, HK_EAI_FAIL, HK_EAI_NODATA, HK_EAI_FAMILY, HK_EAI_MEMORY, HK_EAI_SYSTEM };
+enum { HK_RESOLVE_CANONICAL = 1, HK_RESOLVE_ADDRCONFIG = 2 };
+/*
+ * The addresses of a name, as the system's resolver has them (DNS, the hosts
+ * file): a malloc'd array of *count, port 0, in the order the system prefers
+ * them. `family` HK_AF_* or 0 for both. *canonical, when asked for with
+ * HK_RESOLVE_CANONICAL, is the canonical name, malloc'd, or stays NULL.
+ * Returns HK_EAI_*. A name only: numbers are the caller's to parse.
+ */
+int hk_net_resolve(const char *name, int family, int flags, hk_sockaddr **addrs, int *count, char **canonical);
+/* The name an address has (a reverse lookup), HK_EAI_NONAME when it has none. */
+int hk_net_name_of(const hk_sockaddr *a, char *name, size_t size);
+
+/* The host's network interfaces. */
+enum { HK_IF_LOOPBACK = 1, HK_IF_WIFI, HK_IF_ETHERNET, HK_IF_CELLULAR, HK_IF_TUNNEL, HK_IF_OTHER };
+enum { HK_IFF_UP = 1, HK_IFF_RUNNING = 2, HK_IFF_MULTICAST = 4, HK_IFF_BROADCAST = 8, HK_IFF_POINTOPOINT = 16 };
+#define HK_NETIF_ADDRS 12
+typedef struct hk_netif {
+    u32 index;
+    int kind;                          /* HK_IF_* */
+    u32 flags;                         /* HK_IFF_* */
+    u32 mtu;
+    u8 hw[8];
+    int hw_len;                        /* 0: no hardware address said */
+    int naddrs;
+    struct {
+        hk_sockaddr addr;
+        int prefix;                    /* bits of the network part */
+    } addrs[HK_NETIF_ADDRS];
+} hk_netif;
+/* Fills up to `max` and returns how many there are; -1 when they cannot be listed. */
+int hk_net_interfaces(hk_netif *out, int max);
+
 /* ------------------------------------------------------ host shared libraries */
 
 /* A DLL of the app package / a shared object, by file name. NULL when it does not load. */

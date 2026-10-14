@@ -1136,7 +1136,10 @@ static int run_data(void)
                                          "environment", "own-folders", "volumes", "space", "permissions", "download", "list-root",
                                          /* And the battery, the time zone, TLS that fails politely, Android's key store's key pairs, and
                                             the list of decoders, which is empty and says nothing about it. */
-                                         "battery", "timezone", "tls", "keystore", "codecs" };
+                                         "battery", "timezone", "tls", "keystore", "codecs",
+                                         /* And the network from Java, on loopback: names, an HTTP server of the app's own and HttpURLConnection, UDP, a server
+                                            socket closed under the thread waiting in accept, a java.nio selector, the interfaces, ConnectivityManager. */
+                                         "net-localhost", "net-http", "net-udp", "net-close", "net-nio", "net-interfaces", "net-connectivity" };
     int at = -1, want = 0, run = 0, line, i;
     char text[120];
     if (g_script_count) sscanf(g_script[0], "run:%d", &want);

@@ -258,6 +258,7 @@ void hk_bionic_init(void)
     hk_bionic_register(hk_tab_log);
     hk_bionic_register(hk_tab_aeabi);
     hk_bionic_register(hk_tab_net);
+    hk_bionic_register(hk_tab_netdb);
     hk_bionic_register(hk_tab_zlib);
     hk_bionic_register(hk_tab_ndk);
     hk_bionic_register(hk_tab_native_activity);

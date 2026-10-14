@@ -246,7 +246,7 @@ elif [ "$MODE" = win ]; then
     [ -f "$OUT/storageobj/$obj.obj" ] || { echo "compile failed: $obj.cpp" >&2; exit 1; }
   done
   "$VC/bin/Hostx64/x64/link.exe" /nologo "/OUT:$(w "$OUT/hk_tests.exe")" "$(w "$OUT/obj")\\*.obj" "$(w "$OUT/zobj")\\*.obj" "$(w "$OUT/gfxobj")\\*.obj" \
-    "$(w "$OUT/storageobj")\\*.obj" bcrypt.lib synchronization.lib d2d1.lib dwrite.lib ole32.lib oleaut32.lib
+    "$(w "$OUT/storageobj")\\*.obj" bcrypt.lib synchronization.lib d2d1.lib dwrite.lib ole32.lib oleaut32.lib ws2_32.lib iphlpapi.lib
   echo "built $OUT/hk_tests.exe"
   if [ "$RUN" = 1 ]; then
     rm -rf "$OUT/scratch"
