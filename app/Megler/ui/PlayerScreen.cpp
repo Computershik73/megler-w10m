@@ -591,7 +591,20 @@ private:
         startKeyboardText();
         keyboardField_.IsEnabled(true);
         keyboardField_.IsTabStop(true);
-        keyboardField_.Focus(FocusState::Programmatic);
+        // Without the focus the keyboard may still come up (TryShow) and type into nothing: so whether the box took it is
+        // said, and when it did not, it is asked again once the box has been switched on for good.
+        if (!keyboardField_.Focus(FocusState::Programmatic)) {
+            std::weak_ptr<Page> alive = weak_from_this();
+            try {
+                keyboardField_.Dispatcher().RunAsync(winrt::Windows::UI::Core::CoreDispatcherPriority::Low, [this, alive] {
+                    if (alive.expired() || !keyboardWanted_) return;
+                    const bool again = keyboardField_.Focus(FocusState::Programmatic);
+                    shellLog::write(again ? "player: the keyboard's box took the focus at the second asking"
+                                          : "player: the keyboard's box will NOT take the focus: typing cannot reach the app");
+                });
+            } catch (const hresult_error&) {
+            }
+        }
         try {
             winrt::Windows::UI::ViewManagement::InputPane::GetForCurrentView().TryShow();
         } catch (const hresult_error&) {
@@ -646,6 +659,10 @@ private:
         std::wstring added = now.substr(common);
         added.erase(std::remove(added.begin(), added.end(), L'\r'), added.end());
         if (!added.empty()) session::textCommit(narrow(added));
+        if (!typingSaid_ && (gone > 0 || !added.empty())) {
+            typingSaid_ = true;
+            shellLog::write("player: typing reaches the box and goes to the app");
+        }
         keyboardText_ = now;
         // Deleted into the fixed beginning, or grown long: afresh. (The keyboard then knows nothing of what came before.)
         if (common < keyboardStartLength || keyboardText_.size() > 200) startKeyboardText();
@@ -787,6 +804,7 @@ private:
     bool keyboardAttached_ = false;
     bool keyboardWanted_ = false; // the app asked for the keyboard and has not been told it is gone
     bool keyboardUp_ = false;     // Windows says it is on the screen
+    bool typingSaid_ = false;     // the log has said that typing reaches the app
     bool navigationBarShown_ = false; // out of full-screen mode while the keyboard is up
     winrt::event_token paneShowing_{}, paneHiding_{};
 
