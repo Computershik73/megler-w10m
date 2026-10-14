@@ -218,6 +218,14 @@ void hk_fault_resume_at(hk_fault *f, hk_addr target);
 /* ------------------------------------------------------------------- time */
 
 u64 hk_time_monotonic_ns(void);
+/*
+ * A count that only grows, for timing what is short and frequent (the Java runtime's native calls and allocations): as
+ * cheap to read as the host allows, with no arithmetic. hk_ticks_ns turns a count, or a difference of two, into
+ * nanoseconds. On Windows it is QueryPerformanceCounter's own count, which hk_time_monotonic_ns divides three times; on
+ * 32-bit ARM those are calls of the C library's 64-bit division. Elsewhere it is nanoseconds.
+ */
+u64 hk_time_ticks(void);
+u64 hk_ticks_ns(u64 ticks);
 u64 hk_time_realtime_ns(void);         /* since the Unix epoch */
 /* Offset of local time from UTC in seconds at `unix_seconds`, and whether DST is on. */
 i32 hk_time_utc_offset(i64 unix_seconds, bool *dst);

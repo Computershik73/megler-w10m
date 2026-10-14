@@ -835,6 +835,20 @@ u64 hk_time_monotonic_ns(void)
            (u64)(now.QuadPart % freq.QuadPart) * 1000000000ull / (u64)freq.QuadPart;
 }
 
+u64 hk_time_ticks(void)
+{
+    LARGE_INTEGER now;
+    QueryPerformanceCounter(&now);
+    return (u64)now.QuadPart;
+}
+
+u64 hk_ticks_ns(u64 ticks)
+{
+    static LARGE_INTEGER freq;
+    if (!freq.QuadPart) QueryPerformanceFrequency(&freq);
+    return ticks / (u64)freq.QuadPart * 1000000000ull + ticks % (u64)freq.QuadPart * 1000000000ull / (u64)freq.QuadPart;
+}
+
 u64 hk_time_realtime_ns(void)
 {
     FILETIME ft;

@@ -1043,9 +1043,34 @@ only when `hk_lock_try` fails), and its instructions executed (the
 interpreter counts in a local and hands the count to the thread at each call
 of a native method and each return to C). What passed since the mark before
 is added to the part of the frame it was spent in. Nothing is logged per call
-or per frame; the cost is an addition per instruction, two clock readings per
-native call, per allocation from bytecode and per call of the shell's drawing,
-and three native calls a frame.
+or per frame. The cost is:
+- an addition per instruction;
+- two readings of the clock per call of the shell's drawing;
+- three native calls a frame;
+- for native methods and allocations, almost nothing (see below).
+
+**Native methods and allocations are not timed on every call.** At first they
+were, each with two readings of `hk_time_monotonic_ns`, and that made the meter
+expensive:
+- On the PC two readings were over half of a call of `String.charAt` (64 ns,
+  of which QueryPerformanceCounter took 57% by the benchmark's sampling
+  profile).
+- On the phone each reading also does three 64-bit divisions, which 32-bit
+  ARM does in a library routine.
+
+Now:
+- The times are kept in the host's raw ticks (`hk_time_ticks`, no arithmetic;
+  `hk_ticks_ns` converts when `hk_dvm_thread_costs` is read).
+- Each native method's first 64 calls are timed, and every 64th after that.
+  A method whose average stays under 4 µs has its other calls counted at that
+  average. A longer one (drawing, files, the network) is timed every time.
+- One allocation in 32 is timed and counts for 32. A collection that runs
+  inside an allocation is timed whole.
+
+Benchmark, x64 and then qemu, ns a turn: `String.charAt` 64.2 to 25.8 and
+712 to 411; `String.equals` 2888 to 1114 and 28195 to 14966; a small object
+97.8 to 68.8 and 1277 to 1236; `System.arraycopy` 62.9 to 30.3 and 726 to
+467.
 
 What each figure is, all in milliseconds per frame except where said:
 

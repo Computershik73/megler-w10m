@@ -129,13 +129,41 @@ static void normalise(char kind, hk_jvalue *v)
     v->i = x;
 }
 
+/*
+ * What the meter counts of a native method's time (hk_dvm_thread_costs) without reading the clock on every call: a read
+ * costs more than a short native method itself (on this PC two reads were over half of String.charAt's call). Each method's
+ * first 64 calls are timed, and so is every 64th after them; a method whose average is under SHORT_NATIVE_NS has its other
+ * calls counted at that average, and one whose calls are longer -- drawing, files, the network -- is timed every time.
+ */
+#define SHORT_NATIVE_NS 4000
+static u64 g_short_native_ticks;
+
+static inline bool native_timed(hk_dvm_method *m)
+{
+    u32 n = m->meter_calls++;
+    if (!g_short_native_ticks) {
+        u64 per_ms = 1000000000ull / (hk_ticks_ns(1000000000ull) / 1000000ull + 1) + 1;   /* ticks in a millisecond, at least 1 */
+        g_short_native_ticks = per_ms * SHORT_NATIVE_NS / 1000000ull + 1;
+    }
+    return n < 64 || (n & 63) == 0 || m->meter_avg >= g_short_native_ticks;
+}
+
+static inline void native_time(hk_dvm_thread *t, hk_dvm_method *m, u64 started)
+{
+    u64 d = hk_time_ticks() - started;
+    t->native_ticks += d;
+    /* An average that follows the method's calls (an eighth of each new one), kept in 32 bits. */
+    if (d > 0xFFFFFFFFu) d = 0xFFFFFFFFu;
+    m->meter_avg = m->meter_calls <= 1 ? (u32)d : (u32)(((u64)m->meter_avg * 7 + d) / 8);
+}
+
 static bool invoke_native(hk_dvm_thread *t, hk_dvm_method *m, hk_jobj *self, const hk_dvm_reg *argv, const hk_jvalue *cparams, hk_jvalue *result)
 {
     hk_dvm_frame *f;
     hk_jobj *sync = NULL, *target;
     const hk_jvalue *params = cparams;
     u64 native_started = 0, call_started = 0;
-    bool is_static = (m->flags & DVM_ACC_STATIC) != 0;
+    bool is_static = (m->flags & DVM_ACC_STATIC) != 0, outermost, timed = false;
     result->j = 0;
     if (!m->bound && !hk_dvm_bind_native(m)) return false;
     /* The frame is what a stack trace shows of a native method; the parameters are laid out above it. */
@@ -155,7 +183,11 @@ static bool invoke_native(hk_dvm_thread *t, hk_dvm_method *m, hk_jobj *self, con
     if (g_dvm.trace >= 2) hk_info("dvm: %*s-> %s.%s%s (native)", t->depth, "", m->cls->name, m->name, m->sig);
     if (g_dvm.profiling) native_started = hk_time_monotonic_ns();
     /* The always-on count (hk_dvm_thread_costs): the outermost native method's time; one called back from it is in it. */
-    if (t->native_depth++ == 0) call_started = native_started ? native_started : hk_time_monotonic_ns();
+    outermost = t->native_depth++ == 0;
+    if (outermost) {
+        timed = native_timed(m);
+        if (timed) call_started = hk_time_ticks();
+    }
     t->natives++;
     if (m->native) {
         hk_jcall c;
@@ -180,7 +212,9 @@ static bool invoke_native(hk_dvm_thread *t, hk_dvm_method *m, hk_jobj *self, con
     } else {
         hk_dvm_throw("java/lang/UnsatisfiedLinkError", "%s.%s%s is in a library, and the way to it is gone", m->cls->name, m->name, m->sig);
     }
-    if (--t->native_depth == 0) t->native_ns += hk_time_monotonic_ns() - call_started;
+    --t->native_depth;
+    if (timed) native_time(t, m, call_started);
+    else if (outermost) t->native_ticks += m->meter_avg;
     if (sync) hk_dvm_monitor_exit(sync);
     if (native_started) m->prof_ns += hk_time_monotonic_ns() - native_started;
     pop_frame(t);

@@ -20,11 +20,11 @@ void hk_dvm_thread_costs(hk_dvm_costs *out)
     hk_dvm_thread *t = hk_dvm_self();
     out->executed = t->executed;
     out->waited_ns = t->waited_ns;
-    out->native_ns = t->native_ns;
+    out->native_ns = hk_ticks_ns(t->native_ticks);
     out->natives = t->natives;
-    out->alloc_ns = t->alloc_ns;
+    out->alloc_ns = hk_ticks_ns(t->alloc_ticks);
     out->allocs = t->allocs;
-    out->blocked_ns = t->blocked_ns;
+    out->blocked_ns = hk_ticks_ns(t->blocked_ticks);
 }
 
 u64 hk_dvm_executed_all(void)
@@ -108,20 +108,32 @@ static hk_jobj *alloc_raw(hk_dvm_class *c, int kind, u64 body)
     size_t size = HK_DVM_HEADER + (size_t)body;
     i32 low;
     hk_dvm_thread *self = hk_dvm_self();
-    /* The time it takes, for bytecode's own allocations: those made inside a native method are in that method's time. */
-    u64 started = self->native_depth ? 0 : hk_time_monotonic_ns();
+    /*
+     * The time it takes, for bytecode's own allocations (those made inside a native method are in that method's time). A
+     * collection that runs here is timed whole. The heap's own work is timed for one allocation in 32, which counts for
+     * 32: reading the clock twice costs more than an allocation does.
+     */
+    bool bytecode = self->native_depth == 0, sampled = bytecode && (self->allocs & 31) == 0;
+    u64 started = 0;
     self->allocs++;
     /* What the collector will follow in objects of the class, known before the first of them exists (it may allocate nothing). */
     if (kind != HK_J_PRIM_ARRAY && kind != HK_J_OBJ_ARRAY && kind != HK_J_STRING && !c->ref_slots_ready) hk_dvm_gc_class_ready(c);
     /* A collection, when enough has been made since the last one (hk_dvm_gc.c), before this one is. */
-    hk_dvm_gc_allocating(size);
+    if (hk_dvm_gc_counted(size)) {
+        started = bytecode ? hk_time_ticks() : 0;
+        hk_dvm_gc("allocation", NULL);
+        if (started) self->alloc_ticks += hk_time_ticks() - started;
+    }
+    if (sampled) started = hk_time_ticks();
     if (body <= 0x7FFF0000u) o = (hk_dvm_obj *)hk_dvm_heap_alloc(size);
+    if (sampled) self->alloc_ticks += (hk_time_ticks() - started) * 32;
     if (!o && body <= 0x7FFF0000u) {
         /* Nothing more to be had: a collection that clears soft references, and once more. */
+        started = bytecode ? hk_time_ticks() : 0;
         hk_dvm_gc("out of memory", NULL);
         o = (hk_dvm_obj *)hk_dvm_heap_alloc(size);
+        if (started) self->alloc_ticks += hk_time_ticks() - started;
     }
-    if (started) self->alloc_ns += hk_time_monotonic_ns() - started;
     if (!o) {
         if (!g_out_of_memory) hk_fatal("dvm: out of memory (%u bytes for a %s)", (unsigned)body, c->name);
         hk_dvm_throw_object(g_out_of_memory);
@@ -523,9 +535,9 @@ void hk_dvm_monitor_enter(hk_jobj *o)
     if (!hk_lock_try(&m->mu)) {
         /* Another thread has it: the wait, counted for bytecode's own monitor-enter (inside a native method it is the method's). */
         hk_dvm_thread *self = hk_dvm_self();
-        u64 started = self->native_depth ? 0 : hk_time_monotonic_ns();
+        u64 started = self->native_depth ? 0 : hk_time_ticks();
         hk_lock_acquire(&m->mu);
-        if (started) self->blocked_ns += hk_time_monotonic_ns() - started;
+        if (started) self->blocked_ticks += hk_time_ticks() - started;
     }
     m->owner = me;
     m->count = 1;

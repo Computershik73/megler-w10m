@@ -138,6 +138,11 @@ struct hk_dvm_method {
     u64 prof_ns;                       /* a native method: the time spent in it, what it called back included */
     u64 prof_bytes;                    /* bytes of objects made while it was the innermost method */
     u32 prof_calls, prof_objects;
+    /*
+     * The meter's time of a native method (hk_dvm_thread_costs): its calls from bytecode, and what one of them takes on
+     * average, in the host's ticks. A method whose calls are short is not timed every time (see invoke_native).
+     */
+    u32 meter_calls, meter_avg;
 };
 
 enum { DVM_CS_FAILED = -1, DVM_CS_LINKED = 0, DVM_CS_INITIALIZING = 1, DVM_CS_INITIALIZED = 2 };
@@ -233,9 +238,11 @@ struct hk_dvm_thread {
     /*
      * And where the rest of its time goes (hk_dvm_thread_costs): native methods (the outermost of nested ones, what they
      * call back included), allocation made by bytecode, and waiting for a monitor another thread holds, from bytecode.
+     * Times in the host's ticks (hk_time_ticks), which are read on every native call and allocation and are cheap to read;
+     * hk_dvm_thread_costs gives them as nanoseconds.
      */
     int native_depth;
-    volatile u64 native_ns, natives, alloc_ns, allocs, blocked_ns;
+    volatile u64 native_ticks, natives, alloc_ticks, allocs, blocked_ticks;
     /* For the collector: the thread as the host knows it, to stop it; its C stack's limits, [stack_lo, stack_hi). */
     hk_thread *host;
     hk_addr stack_lo, stack_hi;
@@ -470,8 +477,8 @@ void hk_dvm_heap_each_marked(void (*fn)(void *o));
 void hk_dvm_heap_sweep(void (*dying)(void *o), bool poison, u64 *freed_objects, u64 *freed_bytes);
 /* hk_dvm_object.c: what an object the collector frees owns besides itself (its monitor, a string's UTF-8, JNI fields), freed. */
 void hk_dvm_object_dying(void *o);
-/* Whether the collector may run now: the allocation that asks has its size counted. */
-void hk_dvm_gc_allocating(size_t bytes);
+/* An allocation of `bytes` is counted toward the next collection: true when one is due now (the caller then runs hk_dvm_gc). */
+bool hk_dvm_gc_counted(size_t bytes);
 
 /* ---------------------------------------------------------- hk_dvm_boot.c */
 

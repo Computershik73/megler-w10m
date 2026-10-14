@@ -441,11 +441,11 @@ void hk_dvm_gc_native(i64 bytes)
 
 static bool due(void) { return (u64)(u32)g_since + (u64)(u32)g_native_since >= g_budget; }
 
-void hk_dvm_gc_allocating(size_t bytes)
+bool hk_dvm_gc_counted(size_t bytes)
 {
-    if (!g_enabled || !g_dvm.running || t_collecting) return;
+    if (!g_enabled || !g_dvm.running || t_collecting) return false;
     count(&g_since, bytes);
-    if (due()) hk_dvm_gc("allocation", NULL);
+    return due();
 }
 
 /* The world stopped, everything reachable marked; `sweep`: and what is not, freed. False when not every thread could be stopped. */

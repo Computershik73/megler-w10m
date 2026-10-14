@@ -485,6 +485,9 @@ u64 hk_time_monotonic_ns(void)
     return (u64)ts.tv_sec * 1000000000ull + (u64)ts.tv_nsec;
 }
 
+u64 hk_time_ticks(void) { return hk_time_monotonic_ns(); }
+u64 hk_ticks_ns(u64 ticks) { return ticks; }
+
 u64 hk_time_realtime_ns(void)
 {
     struct timespec ts;
