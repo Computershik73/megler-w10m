@@ -27,7 +27,7 @@
  *       how fast the interpreter is on this machine
  *   hk_tests --apk <file>...
  *       what the layer makes of real APKs: the report the shell shows, and the icon
- *   hk_tests --java <hello | demos | natives | crash | data> <apk> <data dir> <android root> [picture dir | -] [verbose] [WIDTHxHEIGHT@DPI]
+ *   hk_tests --java <hello | demos | natives | crash | data | gc | gl> <apk> <data dir> <android root> [picture dir | -] [verbose] [WIDTHxHEIGHT@DPI]
  *       start one of the Java test apps (core/tests/app) through megler_run on that Android root, with a stand-in
  *       for the shell's drawing; check what it logs and draws, touch it, press Back; write each picture as a BMP
  *   hk_tests --java app <apk> <data dir> <android root> <picture dir | -> <verbose> <WIDTHxHEIGHT@DPI> [tap:X,Y | drag:X,Y,X2,Y2 | wait:MS | back | key:CODE]...
