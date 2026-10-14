@@ -73,6 +73,7 @@ megler_window_host WindowHost::callbacks() {
     host.present = &WindowHost::present;
     host.release_target = &WindowHost::releaseTarget;
     host.present_pixels = &WindowHost::presentPixels;
+    host.present_pixels_part = &WindowHost::presentPixelsPart;
     return host;
 }
 
@@ -383,6 +384,10 @@ void WindowHost::presentPixels(void* user, const void* pixels, int width, int he
     static_cast<WindowHost*>(user)->showPixels(pixels, width, height, stride);
 }
 
+void WindowHost::presentPixelsPart(void* user, const void* pixels, int width, int height, int stride, int x, int y, int partWidth, int partHeight) {
+    static_cast<WindowHost*>(user)->showPixelsPart(pixels, width, height, stride, x, y, partWidth, partHeight);
+}
+
 // A device of this class's own: no ANGLE runs for such an app. Hardware
 // first, at whatever feature level the phone has (9_3 on most); the
 // software one after it, which is slow and still shows a picture.
@@ -449,6 +454,46 @@ void WindowHost::showPixels(const void* pixels, int width, int height, int strid
         context_->CopyResource(backBuffer_.get(), target_.get());
         swapChain_->Present(0, 0);
     }
+}
+
+// A picture of which only a rectangle is new (megler.h, present_pixels_part):
+// that rectangle alone is copied into the kept bottom-up copy and uploaded
+// to the texture, and the rest of the texture is the last picture's. When
+// nothing is kept to build on -- the first picture, another size, a new
+// texture -- it is shown whole.
+void WindowHost::showPixelsPart(const void* pixels, int width, int height, int stride, int x, int y, int partWidth, int partHeight) {
+    if (!pixels || width <= 0 || height <= 0 || stride < width * 4) return;
+    // The rectangle as it fits the picture; one that does not fit at all changes nothing.
+    const int left = std::max(x, 0), top = std::max(y, 0), right = std::min(x + partWidth, width), bottom = std::min(y + partHeight, height);
+    if (right <= left || bottom <= top) return;
+    {
+        std::unique_lock<std::mutex> lock(pixelsMutex_);
+        const bool kept = ownDeviceState_ > 0 && target_ && showsPixels_ && surfaceWidth_.load() == width && surfaceHeight_.load() == height &&
+                          flippedWidth_ == width && flippedHeight_ == height && flipped_.size() >= size_t(width) * size_t(height) * 4;
+        if (kept) {
+            const size_t rowBytes = size_t(width) * 4, partBytes = size_t(right - left) * 4;
+            for (int row = top; row < bottom; row++)
+                memcpy(flipped_.data() + size_t(height - 1 - row) * rowBytes + size_t(left) * 4,
+                       static_cast<const uint8_t*>(pixels) + size_t(row) * size_t(stride) + size_t(left) * 4, partBytes);
+            // In the texture, bottom row first: the rectangle's rows are height - bottom .. height - top.
+            D3D11_BOX box = {};
+            box.left = UINT(left);
+            box.right = UINT(right);
+            box.top = UINT(height - bottom);
+            box.bottom = UINT(height - top);
+            box.front = 0;
+            box.back = 1;
+            context_->UpdateSubresource(target_.get(), 0, &box, flipped_.data() + size_t(box.top) * rowBytes + size_t(left) * 4, UINT(rowBytes), 0);
+            presentFrame();
+            if (transformDirty_.exchange(false) && swapChain_ && backBuffer_ && !noPresent_) {
+                applyTransform();
+                context_->CopyResource(backBuffer_.get(), target_.get());
+                swapChain_->Present(0, 0);
+            }
+            return;
+        }
+    }
+    showPixels(pixels, width, height, stride);
 }
 
 // Any thread. A Java app's last picture as a BMP, at half its size when it

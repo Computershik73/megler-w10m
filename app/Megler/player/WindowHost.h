@@ -102,6 +102,7 @@ private:
     static void present(void* user);
     static void releaseTarget(void* user);
     static void presentPixels(void* user, const void* pixels, int width, int height, int stride);
+    static void presentPixelsPart(void* user, const void* pixels, int width, int height, int stride, int x, int y, int partWidth, int partHeight);
 
     // All on the app's render thread.
     bool attach(ID3D11Device* device);
@@ -115,6 +116,7 @@ private:
     // A Java app's pictures (present_pixels): on the app's main thread, but
     // for showAgain, which is the UI thread's.
     void showPixels(const void* pixels, int width, int height, int stride);
+    void showPixelsPart(const void* pixels, int width, int height, int stride, int x, int y, int partWidth, int partHeight);
     bool makeOwnDevice(unsigned width, unsigned height);
     void showAgain();
     void writePixelsShot(const std::wstring& path);
