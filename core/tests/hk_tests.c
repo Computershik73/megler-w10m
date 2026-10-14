@@ -976,6 +976,7 @@ static void test_library(hk_lib *lib, const char *what, const char *scratch)
     CHECK_INT(FN(lib, int (*)(void), "t_mremap")(), 5);
     CHECK_INT(FN(lib, int (*)(void), "t_cpuclock")(), 6);
     CHECK_INT(FN(lib, int (*)(const char *), "t_ffcalls")(buf), 7);
+    CHECK_INT(FN(lib, int (*)(void), "t_ifunc")(), 205);
     CHECK_INT(FN(lib, int (*)(const char *), "t_flock")(buf), 3);
     /* (No Android root here, so no /system/fonts: an empty iterator, opened and closed; the fonts themselves under the apps' runs.) */
     CHECK(FN(lib, int (*)(void), "t_fonts")() >= 0);

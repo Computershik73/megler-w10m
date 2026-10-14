@@ -31,6 +31,12 @@ static struct {
 } g_place;
 static int g_verbosity = 1;
 static size_t g_unresolved;
+/*
+ * While a library's relocations are applied in two passes (hk_ld.c's relocate), this is true during the first: an IFUNC
+ * symbol then resolves to its resolver's address without the resolver being run. The resolvers are the library's own code,
+ * which runs only in the second pass, after the text is made executable. Read and written under the load lock.
+ */
+static bool g_defer_ifunc;
 
 typedef struct interposed {
     const char *name;
@@ -310,7 +316,8 @@ static const Elf32_Sym *lib_lookup(const hk_lib *lib, const char *name, u32 gh, 
 static hk_addr sym_address(const hk_lib *lib, const Elf32_Sym *s)
 {
     hk_addr a = (hk_addr)lib->base + s->st_value;
-    if (ELF_ST_TYPE(s->st_info) == STT_GNU_IFUNC) a = HK_GFN(hk_addr (*)(void), a)();
+    /* An IFUNC's resolver runs on the first pass only when nothing deferred it; otherwise its address is the resolver's. */
+    if (ELF_ST_TYPE(s->st_info) == STT_GNU_IFUNC && !g_defer_ifunc) a = HK_GFN(hk_addr (*)(void), a)();
     return a;
 }
 
@@ -368,6 +375,8 @@ typedef struct reloc_ctx {
     const Elf32_Sym *cached_sym;
     hk_lib *cached_def;
     bool failed;
+    /* 1: the relocations that run no guest code; 2: IFUNC and IRELATIVE, whose resolvers run on the now-executable text. */
+    int phase;
 } reloc_ctx;
 
 static bool reloc_symbol(reloc_ctx *c, u32 index, bool want_fn, hk_addr *addr, const Elf32_Sym **sym, hk_lib **def)
@@ -430,6 +439,12 @@ static void apply_reloc(reloc_ctx *c, u32 r_offset, u32 r_info)
         c->failed = true;
         return;
     }
+    /*
+     * A relocation whose value a resolver gives -- IRELATIVE, or one against an IFUNC symbol -- is applied on the second
+     * pass, when the text that holds the resolver is executable; every other relocation on the first. (In the first pass,
+     * sym_address returned the resolver's own address, not its result, so sym still tells an IFUNC apart.)
+     */
+    if (((type == R_ARM_IRELATIVE) || (sym && ELF_ST_TYPE(sym->st_info) == STT_GNU_IFUNC)) != (c->phase == 2)) return;
     switch (type) {
     case R_ARM_RELATIVE:
         hk_wr32(place, (u32)((hk_addr)lib->base + addend));
@@ -540,19 +555,32 @@ static void apply_relr(hk_lib *lib, const u32 *relr, u32 size)
     }
 }
 
-static bool relocate(hk_lib *lib)
+/*
+ * Relocations in two passes. Pass 1 (phase 1) applies all that read or write only data -- the great majority -- while the
+ * text is still writable and not yet made executable. Between the passes the caller patches the text and makes it
+ * executable (seal_text). Pass 2 (phase 2) applies the few whose value a resolver computes: IRELATIVE, and relocations
+ * against an IFUNC symbol. Those resolvers are the library's own functions; they must run on executable text, and they
+ * write the GOT, which is still writable until the RELRO is sealed afterwards. On a device that enforces W^X (the phone)
+ * running a resolver before its text is executable faults; qemu, which reads guest pages rather than executing them, does
+ * not, so this showed only on the phone.
+ */
+static bool relocate(hk_lib *lib, int phase)
 {
     reloc_ctx c;
     u32 i;
     memset(&c, 0, sizeof(c));
     c.lib = lib;
-    if (lib->relr) apply_relr(lib, lib->relr, lib->relrsz);
+    c.phase = phase;
+    g_defer_ifunc = phase == 1;
+    if (phase == 1 && lib->relr) apply_relr(lib, lib->relr, lib->relrsz);   /* RELR is all base-relative: no resolvers */
     if (lib->android_rel && !apply_packed(&c, lib->android_rel, lib->android_relsz)) {
         hk_err("ld: %s: packed relocations are damaged", lib->name);
+        g_defer_ifunc = false;
         return false;
     }
     for (i = 0; i < lib->relsz / sizeof(Elf32_Rel); i++) apply_reloc(&c, lib->rel[i].r_offset, lib->rel[i].r_info);
     for (i = 0; i < lib->pltrelsz / sizeof(Elf32_Rel); i++) apply_reloc(&c, lib->jmprel[i].r_offset, lib->jmprel[i].r_info);
+    g_defer_ifunc = false;
     return !c.failed;
 }
 
@@ -829,14 +857,19 @@ bad:
 }
 
 /* Patch what cannot run as it is, then give every segment its final protection. Nothing is written to the text after this. */
-static bool seal(hk_lib *lib)
+/*
+ * Patch the executable text (ARM to Thumb, the PLT, thread-pointer reads) and make each segment its final protection:
+ * text read-execute, the rest read-only or read-write. After this the text runs; the IFUNC resolvers of relocate's second
+ * pass need it. The RELRO is not yet sealed and the islands are not yet executable (seal_protect does those last, once the
+ * resolvers have written the GOT). The library is not marked sealed here: the second pass may still add island stubs.
+ */
+static bool seal_text(hk_lib *lib)
 {
-    int i, k;
+    int i;
     for (i = 0; i < lib->phnum; i++) {
         const Elf32_Phdr *p = &lib->phdr[i];
         if (p->p_type == PT_LOAD && (p->p_flags & PF_X)) hk_patch_segment(lib, lib->base + p->p_vaddr, p->p_filesz);
     }
-    lib->sealed = true;
     for (i = 0; i < lib->phnum; i++) {
         const Elf32_Phdr *p = &lib->phdr[i];
         u32 lo, hi;
@@ -853,6 +886,14 @@ static bool seal(hk_lib *lib)
         }
         if (prot == HK_PROT_RX) hk_icache_flush(lib->base + lo, hi - lo);
     }
+    return true;
+}
+
+/* Seal the RELRO read-only and make the islands executable: the last step, once every relocation (the IFUNC ones included) is done. */
+static bool seal_protect(hk_lib *lib)
+{
+    int i, k;
+    lib->sealed = true;
     for (i = 0; i < lib->phnum; i++) {
         const Elf32_Phdr *p = &lib->phdr[i];
         if (p->p_type == PT_GNU_RELRO) {
@@ -861,7 +902,7 @@ static bool seal(hk_lib *lib)
             if (hi > lo && in_image(lib, lo, hi - lo)) hk_mem_protect(lib->base + lo, hi - lo, HK_PROT_R);
         }
     }
-    for (k = 0; k < 2; k++) {
+    for (k = 0; k < 2; k++) {   /* the patch islands */
         if (!lib->island_committed[k]) continue;
         if (!hk_mem_protect(lib->island[k], lib->island_committed[k], HK_PROT_RX)) {
             hk_err("ld: %s: cannot make the island executable", lib->name);
@@ -988,11 +1029,21 @@ static hk_lib *load_lib(const char *name, bool runtime, const char *host_path)
             if (!hk_tls_register(lib)) hk_err("ld: %s: no room for %u bytes of thread-local data", lib->name, lib->tls_memsz);
         }
     }
-    if (!relocate(lib)) hk_err("ld: %s: relocation failed; the library may not work", lib->name);
+    /*
+     * Relocate, patch, relocate again: the IFUNC resolvers (relocate's second pass) run on text that seal_text has just
+     * made executable, which a device enforcing W^X needs (see relocate). seal_protect is last, once the resolvers have
+     * written the GOT.
+     */
+    if (!relocate(lib, 1)) hk_err("ld: %s: relocation failed; the library may not work", lib->name);
+    if (!seal_text(lib)) {
+        load_unlock();
+        return NULL;
+    }
+    if (!relocate(lib, 2)) hk_err("ld: %s: an IFUNC relocation failed; the library may not work", lib->name);
     lib->relocated = true;
     hk_tls_ready(lib);
     count_functions(lib);
-    if (!seal(lib)) {
+    if (!seal_protect(lib)) {
         load_unlock();
         return NULL;
     }

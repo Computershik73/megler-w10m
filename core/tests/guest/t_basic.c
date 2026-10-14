@@ -816,6 +816,24 @@ int t_fonts(void)
 }
 
 /*
+ * An IFUNC: a symbol the loader resolves at load time by running a resolver in the library's own code, which picks one of
+ * several implementations (libc's string and memory routines are IFUNCs that pick a CPU-tuned version). The resolver is
+ * the library's code, so the loader must have made the text executable before it runs it (hk_ld.c's two-pass relocate).
+ * t_ifunc calls the resolved symbol; it must give the chosen implementation's answer (an argument plus 200).
+ */
+static volatile int t_ifunc_which = 1;   /* volatile: the resolver is a real runtime choice, not folded at link time */
+static int t_ifunc_small(int x) { return x + 100; }
+static int t_ifunc_big(int x) { return x + 200; }
+typedef int (*t_ifunc_fn)(int);
+static t_ifunc_fn t_ifunc_resolve(void) { return t_ifunc_which ? t_ifunc_big : t_ifunc_small; }
+int t_ifunc_target(int x) __attribute__((ifunc("t_ifunc_resolve")));
+
+int t_ifunc(void)
+{
+    return t_ifunc_target(5);   /* 205 */
+}
+
+/*
  * Byte-range locks as SQLite's WAL takes them on its -shm file: a write lock set (F_SETLK), then F_GETLK on the same
  * range, which a process's own locks never block: F_UNLCK, in the 32-bit struct and in flock64. 3, or the negated step.
  */
