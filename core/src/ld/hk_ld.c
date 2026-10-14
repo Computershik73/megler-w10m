@@ -20,6 +20,15 @@ static int g_ndirs;
 static char *g_runtime_dirs[4];            /* where the runtime's own libraries are: never searched for an app's */
 static int g_nruntime_dirs;
 static const char *g_abi;
+/*
+ * Where the next library is to go (hk_ld_load_placed): the app's range [next, end), for the first library loaded and, when
+ * recursive, for the ones it needs. Read and written under the load lock. `failed` says why the library did not fit.
+ */
+static struct {
+    bool active, recursive, hint, first;
+    u8 *next, *end;
+    char failed[160];
+} g_place;
 static int g_verbosity = 1;
 static size_t g_unresolved;
 
@@ -732,19 +741,58 @@ static hk_lib *map_library(const char *name, const u8 *file, size_t size)
     isl = island_estimate(file, size, eh);
     image = HK_ALIGN_UP((size_t)(vmax - vmin), 65536);
     below = image > 14u * 1024 * 1024 ? isl : 0;
-    lib->map_size = below + image + isl;
-    lib->map = (u8 *)hk_mem_reserve(lib->map_size);
-    if (!lib->map) {
-        hk_err("ld: %s: no address space for %u MB", name, (unsigned)(lib->map_size >> 20));
-        goto bad;
+    if (g_place.active && (g_place.first || g_place.recursive)) {
+        /*
+         * Where the app reserved (hk_ld_load_placed): the image starts at the range's start, as bionic puts it, and the
+         * upper island follows it in the range. The island below, for a large image, is a reservation of its own just
+         * under the range, within a branch's reach of the image's beginning.
+         */
+        size_t need = HK_ALIGN_UP((size_t)(vmax - vmin), HK_PAGE) + isl;
+        g_place.first = false;
+        if (need > (size_t)(g_place.end - g_place.next)) {
+            snprintf(g_place.failed, sizeof(g_place.failed), "\"%s\" needs %u KB and the reserved space has %u KB", name, (unsigned)(need >> 10),
+                     (unsigned)((size_t)(g_place.end - g_place.next) >> 10));
+            if (!g_place.hint) goto bad;
+        } else {
+            u8 *at = g_place.next;
+            image = HK_ALIGN_UP((size_t)(vmax - vmin), HK_PAGE);
+            lib->placed = true;
+            lib->map = at;
+            lib->map_size = image + isl;
+            lib->base = at - vmin;
+            lib->island[1] = at + image;
+            lib->island_size[1] = isl;
+            if (below) {
+                /*
+                 * Below the range, as near as it can be had. When nothing near is free (the app's reservation lies against
+                 * another mapping), there is none: what the patcher adds then all goes above the image, and a patch in the
+                 * image's first 16 MB that cannot reach it fails, with a line in the log (hk_island_alloc).
+                 */
+                u8 *want = (u8 *)HK_ALIGN_DOWN((hk_addr)at - below, (hk_addr)65536);
+                int k;
+                for (k = 0; k < 64 && !lib->island[0]; k++) lib->island[0] = (u8 *)hk_mem_reserve_at(want - (size_t)k * 65536, below);
+                if (lib->island[0]) lib->island_size[0] = below;
+                else hk_warn("ld: %s: no room below the reserved space for the code the patcher adds; it goes above the image", name);
+            }
+            /* The range is the app's (an anonymous mapping, all of it committed); the image's pages are made writable to fill. */
+            g_place.next = (u8 *)HK_ALIGN_UP((hk_addr)(at + image + isl), (hk_addr)HK_PAGE);
+        }
     }
-    lib->base = lib->map + below - vmin;
-    if (below) {
-        lib->island[0] = lib->map;
-        lib->island_size[0] = below;
+    if (!lib->placed) {
+        lib->map_size = below + image + isl;
+        lib->map = (u8 *)hk_mem_reserve(lib->map_size);
+        if (!lib->map) {
+            hk_err("ld: %s: no address space for %u MB", name, (unsigned)(lib->map_size >> 20));
+            goto bad;
+        }
+        lib->base = lib->map + below - vmin;
+        if (below) {
+            lib->island[0] = lib->map;
+            lib->island_size[0] = below;
+        }
+        lib->island[1] = lib->map + below + image;
+        lib->island_size[1] = isl;
     }
-    lib->island[1] = lib->map + below + image;
-    lib->island_size[1] = isl;
 
     for (i = 0; i < lib->phnum; i++) {
         const Elf32_Phdr *p = &lib->phdr[i];
@@ -757,7 +805,7 @@ static hk_lib *map_library(const char *name, const u8 *file, size_t size)
         if (p->p_type != PT_LOAD) continue;
         lo = HK_ALIGN_DOWN(p->p_vaddr, HK_PAGE);
         hi = HK_ALIGN_UP(p->p_vaddr + p->p_memsz, HK_PAGE);
-        if (!hk_mem_commit(lib->base + lo, hi - lo, HK_PROT_RW)) {
+        if (!hk_mem_commit(lib->base + lo, hi - lo, HK_PROT_RW) || (lib->placed && !hk_mem_protect(lib->base + lo, hi - lo, HK_PROT_RW))) {
             hk_err("ld: %s: out of memory mapping a %u KB segment", name, (hi - lo) >> 10);
             goto bad;
         }
@@ -767,7 +815,13 @@ static hk_lib *map_library(const char *name, const u8 *file, size_t size)
     if (!parse_dynamic(lib)) goto bad;
     return lib;
 bad:
-    if (lib->map) hk_mem_release(lib->map, lib->map_size);
+    /* (A placed image's range is the app's: only what the loader reserved itself is given back.) */
+    if (lib->placed) {
+        if (lib->island[0]) hk_mem_release(lib->island[0], lib->island_size[0]);
+        hk_mem_protect(lib->map, lib->map_size, HK_PROT_NONE);
+    } else if (lib->map) {
+        hk_mem_release(lib->map, lib->map_size);
+    }
     free(lib->phdr);
     free(lib->name);
     free(lib);
@@ -942,6 +996,7 @@ static hk_lib *load_lib(const char *name, bool runtime, const char *host_path)
         return NULL;
     }
     note_code_range(lib->map, lib->map_size);
+    if (lib->placed && lib->island[0]) note_code_range(lib->island[0], lib->island_size[0]);
     if (g_verbosity >= 1) {
         hk_info("ld: %s at %p (%u KB), %u Thumb / %u ARM functions, %u thread-pointer reads and %u PLT entries rewritten%s",
                 lib->name, (void *)(lib->base + lib->vmin), (lib->vmax - lib->vmin) >> 10, lib->stats.thumb_functions, lib->stats.arm_functions,
@@ -954,6 +1009,47 @@ static hk_lib *load_lib(const char *name, bool runtime, const char *host_path)
 }
 
 hk_lib *hk_ld_load(const char *name) { return load_lib(name, false, NULL); }
+
+bool hk_ld_placed_overlap(const void *p, size_t size, u8 **lo, u8 **hi)
+{
+    const u8 *a = (const u8 *)p, *b = a + size;
+    hk_lib *l;
+    bool found = false;
+    hk_lock_acquire(&g_lock);
+    for (l = g_libs; l && !found; l = l->next) {
+        if (!l->placed || b <= l->map || a >= l->map + l->map_size) continue;
+        *lo = a > l->map ? (u8 *)a : l->map;
+        *hi = b < l->map + l->map_size ? (u8 *)b : l->map + l->map_size;
+        found = true;
+    }
+    hk_lock_release(&g_lock);
+    return found;
+}
+
+hk_lib *hk_ld_load_placed(const char *name, void *at, size_t size, bool hint, bool recursive, char *why, size_t why_size)
+{
+    hk_lib *lib;
+    why[0] = 0;
+    load_lock();
+    if (g_place.active) {
+        /* (A constructor's own android_dlopen_ext inside one: loaded where it goes.) */
+        load_unlock();
+        return hk_ld_load(name);
+    }
+    g_place.active = true;
+    g_place.first = true;
+    g_place.recursive = recursive;
+    g_place.hint = hint;
+    g_place.next = (u8 *)at;
+    g_place.end = (u8 *)at + size;
+    g_place.failed[0] = 0;
+    lib = load_lib(name, false, NULL);
+    g_place.active = false;
+    if (!lib && g_place.failed[0]) snprintf(why, why_size, "dlopen failed: %s", g_place.failed);
+    else if (lib && g_place.failed[0] && hint) hk_info("ld: %s: loaded elsewhere (%s)", name, g_place.failed);
+    load_unlock();
+    return lib;
+}
 hk_lib *hk_ld_load_runtime(const char *name) { return load_lib(name, true, NULL); }
 
 hk_lib *hk_ld_load_file(const char *host_path)
@@ -1070,7 +1166,9 @@ hk_lib *hk_ld_lib_of(const void *addr)
 {
     hk_lib *l;
     for (l = g_libs; l; l = l->next)
-        if ((const u8 *)addr >= l->map && (const u8 *)addr < l->map + l->map_size) return l;
+        if (((const u8 *)addr >= l->map && (const u8 *)addr < l->map + l->map_size) ||
+            (l->placed && l->island[0] && (const u8 *)addr >= l->island[0] && (const u8 *)addr < l->island[0] + l->island_size[0]))
+            return l;
     return NULL;
 }
 

@@ -369,7 +369,18 @@ static int g_munmap(void *addr, size_t len)
 {
     region *r, **link;
     size_t size = HK_ALIGN_UP(len, HK_PAGE);
+    u8 *keep_lo, *keep_hi;
     hk_trace("munmap(%p, %u)", addr, (unsigned)len);
+    /*
+     * What a library loaded into the app's own range occupies stays mapped (hk_ld_placed_overlap): its image, and the code
+     * the patcher added right after it, which on Android is the free end of the range. Chromium's linker unmaps that end
+     * once the library is in, and the stubs there went with it.
+     */
+    if (size && hk_ld_placed_overlap(addr, size, &keep_lo, &keep_hi)) {
+        if ((u8 *)addr < keep_lo) g_munmap(addr, (size_t)(keep_lo - (u8 *)addr));
+        if (keep_hi < (u8 *)addr + size) g_munmap(keep_hi, (size_t)((u8 *)addr + size - keep_hi));
+        return 0;
+    }
     hk_lock_acquire(&g_region_lock);
     for (link = &g_regions; (r = *link) != NULL; link = &r->next) {
         size_t offset;

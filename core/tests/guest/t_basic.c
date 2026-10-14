@@ -501,6 +501,56 @@ int t_map_pieces(int rounds)
     return 0;
 }
 
+/*
+ * libt_dep.so loaded where this asks, as Chromium's linker has its library loaded (android_dlopen_ext,
+ * ANDROID_DLEXT_RESERVED_ADDRESS): into a range it reserved, the image at the range's start. A range too small is refused
+ * with a reason that says so, and nothing is loaded; the whole range unmapped afterwards leaves the library, as Chromium
+ * unmaps what its library did not use; asked for again, the library is given as it is. 7, or the negated step that failed.
+ * Run before anything else loads libt_dep.so.
+ */
+typedef struct {
+    unsigned long long flags;
+    void *reserved_addr;
+    size_t reserved_size;
+    int relro_fd, library_fd;
+    long long library_fd_offset;
+    void *library_namespace;
+} android_dlextinfo;
+void *android_dlopen_ext(const char *, int, const android_dlextinfo *);
+char *dlerror(void);
+char *strstr(const char *, const char *);
+int memcmp(const void *, const void *, size_t);
+
+int t_dlext(void)
+{
+    const size_t size = 4 << 20;
+    unsigned char *range = mmap(0, size, 0, 0x22, -1, 0);
+    android_dlextinfo x;
+    void *lib;
+    int (*twice)(int, int);
+    const char *err;
+    if (range == (unsigned char *)-1) return -1;
+    memset(&x, 0, sizeof(x));
+    x.flags = 1;                                     /* ANDROID_DLEXT_RESERVED_ADDRESS */
+    x.reserved_addr = range;
+    x.reserved_size = 4096;
+    x.relro_fd = x.library_fd = -1;
+    if (android_dlopen_ext("libt_dep.so", 0, &x) != 0) return -2;
+    err = dlerror();
+    if (!err || !strstr(err, "reserved space")) return -3;
+    x.reserved_size = size;
+    lib = android_dlopen_ext("libt_dep.so", 0, &x);
+    if (!lib) return -4;
+    twice = (int (*)(int, int))dlsym(lib, "d_add_twice");
+    if (!twice || (unsigned char *)twice < range || (unsigned char *)twice >= range + size || memcmp(range, "\177ELF", 4) != 0) return -5;
+    if (munmap(range, size) != 0 || twice(1, 2) != 5) return -6;
+    x.flags = 2;                                     /* ANDROID_DLEXT_RESERVED_ADDRESS_HINT, somewhere else */
+    x.reserved_addr = range + size;
+    if (android_dlopen_ext("libt_dep.so", 0, &x) != lib) return -7;
+    return 7;
+}
+
+
 /* A deep enough frame to need the stack protector's cookie, when built with it. */
 int t_stack(const char *s)
 {

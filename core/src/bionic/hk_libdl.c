@@ -4,6 +4,7 @@
 #include <stdio.h>
 
 #include "../ld/hk_ld_internal.h"
+#include "hk_fd.h"
 #include "../ndk/hk_egl.h"
 
 /* What dlopen returns for a system library: its symbols are the shims'. */
@@ -70,10 +71,102 @@ static void *g_dlopen(const char *name, int flags)
     return lib;
 }
 
+/*
+ * android_dlextinfo as Android 9's bionic has it for 32-bit ARM (android/dlext.h), and its flags. Laid out by hand: the
+ * guest's pointers are 32 bits whatever the host compiling this is.
+ */
+typedef struct g_dlextinfo {
+    u64 flags;
+    u32 reserved_addr, reserved_size;
+    i32 relro_fd, library_fd;
+    u64 library_fd_offset;
+    u32 library_namespace;
+} g_dlextinfo;
+
+enum {
+    DLEXT_RESERVED_ADDRESS = 0x1, DLEXT_RESERVED_ADDRESS_HINT = 0x2, DLEXT_WRITE_RELRO = 0x4, DLEXT_USE_RELRO = 0x8,
+    DLEXT_USE_LIBRARY_FD = 0x10, DLEXT_USE_LIBRARY_FD_OFFSET = 0x20, DLEXT_FORCE_LOAD = 0x40, DLEXT_FORCE_FIXED_VADDR = 0x80,
+    DLEXT_LOAD_AT_FIXED_ADDRESS = 0x100, DLEXT_USE_NAMESPACE = 0x200, DLEXT_RESERVED_ADDRESS_RECURSIVE = 0x400, DLEXT_VALID = 0x7FF,
+};
+
+/* A library's PT_GNU_RELRO, page by page as bionic serializes it: [start, start + size). False when it has none. */
+static bool relro_of(const hk_lib *lib, u8 **start, size_t *size)
+{
+    int i;
+    for (i = 0; i < lib->phnum; i++) {
+        const Elf32_Phdr *p = &lib->phdr[i];
+        if (p->p_type != PT_GNU_RELRO) continue;
+        *start = lib->base + HK_ALIGN_DOWN(p->p_vaddr, HK_PAGE);
+        *size = (size_t)(HK_ALIGN_UP(p->p_vaddr + p->p_memsz, HK_PAGE) - HK_ALIGN_DOWN(p->p_vaddr, HK_PAGE));
+        return true;
+    }
+    return false;
+}
+
+/*
+ * android_dlopen_ext, for what apps ask of it. Chromium's linker (Brave, every Chromium-based browser, WebView's loader)
+ * reserves address space and has its library loaded at the start of it (ANDROID_DLEXT_RESERVED_ADDRESS), then reads the
+ * library's ELF header there; and it shares the library's RELRO between its processes.
+ *  - RESERVED_ADDRESS: the library's image at the reserved range's start, or a failure that says it does not fit;
+ *    RESERVED_ADDRESS_HINT: there if it fits, anywhere if not; RESERVED_ADDRESS_RECURSIVE: what it needs too
+ *    (hk_ld_load_placed). A library already loaded is given as it is, as bionic gives it.
+ *  - WRITE_RELRO: the RELRO, relocated, is written to relro_fd, as bionic serializes it. There is one process here, so
+ *    nothing maps it back; the pages are the library's own and already hold those bytes.
+ *  - USE_RELRO: accepted. Mapping another process's relocated RELRO over identical pages saves memory between
+ *    processes, and there is one.
+ * The others are noted once and the library is loaded by its name.
+ */
 static void *g_android_dlopen_ext(const char *name, int flags, const void *info)
 {
-    (void)info;
-    return g_dlopen(name, flags);
+    const g_dlextinfo *x = (const g_dlextinfo *)info;
+    const char *base;
+    char why[200];
+    hk_lib *lib;
+    if (!x || !name || !(x->flags & (DLEXT_RESERVED_ADDRESS | DLEXT_RESERVED_ADDRESS_HINT | DLEXT_WRITE_RELRO | DLEXT_USE_RELRO))) return g_dlopen(name, flags);
+    hk_trace("android_dlopen_ext(%s, flags 0x%x, at %08x, %u bytes, relro fd %d)", name, (unsigned)x->flags, (unsigned)x->reserved_addr,
+             (unsigned)x->reserved_size, (int)x->relro_fd);
+    if (x->flags & ~(u64)DLEXT_VALID) {
+        snprintf(g_dlerror, sizeof(g_dlerror), "invalid extended flags to android_dlopen_ext: 0x%llx", (unsigned long long)x->flags);
+        g_dlerror_set = true;
+        return NULL;
+    }
+    if (x->flags & (DLEXT_USE_LIBRARY_FD | DLEXT_FORCE_FIXED_VADDR | DLEXT_LOAD_AT_FIXED_ADDRESS | DLEXT_USE_NAMESPACE))
+        hk_note_once("android_dlopen_ext: flags 0x%x besides the reserved address and RELRO are not done; the library is loaded by its name", (unsigned)x->flags);
+    base = strrchr(name, '/');
+    base = base ? base + 1 : name;
+    if (hk_bionic_is_system_lib(base)) return g_dlopen(name, flags);
+    lib = hk_ld_find_lib(base);
+    if (!lib && (x->flags & (DLEXT_RESERVED_ADDRESS | DLEXT_RESERVED_ADDRESS_HINT)) && x->reserved_addr) {
+        if (!hk_ld_has_lib(base)) {
+            set_error("dlopen failed: library \"%s\" not found", name);
+            return NULL;
+        }
+        lib = hk_ld_load_placed(base, (void *)(hk_addr)x->reserved_addr, x->reserved_size, !(x->flags & DLEXT_RESERVED_ADDRESS),
+                                (x->flags & DLEXT_RESERVED_ADDRESS_RECURSIVE) != 0, why, sizeof(why));
+        if (!lib) {
+            set_error("%s", why[0] ? why : "dlopen failed: the library could not be loaded");
+            return NULL;
+        }
+    } else if (!lib) {
+        return g_dlopen(name, flags);
+    }
+    if ((x->flags & DLEXT_WRITE_RELRO) && x->relro_fd >= 0) {
+        u8 *start;
+        size_t size, done = 0;
+        if (relro_of(lib, &start, &size)) {
+            while (done < size) {
+                i32 n = hk_fd_write(x->relro_fd, start + done, (u32)(size - done));
+                if (n <= 0) break;
+                done += (size_t)n;
+            }
+            if (done < size) {
+                set_error("dlopen failed: the RELRO of \"%s\" could not be written", name);
+                return NULL;
+            }
+        }
+    }
+    hk_ld_init(lib);
+    return lib;
 }
 
 static void *g_dlsym(void *handle, const char *name)

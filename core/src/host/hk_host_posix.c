@@ -56,6 +56,18 @@ void *hk_mem_reserve(size_t size)
     return p == MAP_FAILED ? NULL : p;
 }
 
+void *hk_mem_reserve_at(void *p, size_t size)
+{
+    /* A hint, which the kernel follows when the range is free; anything else is given back. */
+    void *got = p ? mmap(p, size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0) : MAP_FAILED;
+    if (got == MAP_FAILED) return NULL;
+    if (got != p) {
+        munmap(got, size);
+        return NULL;
+    }
+    return got;
+}
+
 bool hk_mem_commit(void *p, size_t size, int prot)
 {
     return mprotect(p, size, prot_of(prot)) == 0;

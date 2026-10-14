@@ -109,6 +109,20 @@ const void *hk_ld_find_exidx(hk_addr pc, int *count);
  */
 void hk_ld_add_runtime_dir(const char *dir);
 hk_lib *hk_ld_load_runtime(const char *name);
+/*
+ * One of the app's libraries loaded into a range the app has reserved (android_dlopen_ext with ANDROID_DLEXT_RESERVED_ADDRESS,
+ * as Android 9's bionic does it): its image starts at `at`, and it must fit in `size` bytes. When it does not, NULL with
+ * the reason in `why` -- unless `hint`, when it is loaded wherever it goes (ANDROID_DLEXT_RESERVED_ADDRESS_HINT).
+ * `recursive`: the libraries it needs that are not loaded yet go into the rest of the range too
+ * (ANDROID_DLEXT_RESERVED_ADDRESS_RECURSIVE). A library already loaded is given as it is, wherever it is.
+ */
+hk_lib *hk_ld_load_placed(const char *name, void *at, size_t size, bool hint, bool recursive, char *why, size_t why_size);
+/*
+ * The part of [p, p + size) that a library placed in the app's range occupies -- its image and the code the patcher added
+ * right after it -- as [*lo, *hi); false when none does. munmap leaves it (bionic has nothing after the image, so an app
+ * may unmap the rest of its range there, and Chromium's linker does).
+ */
+bool hk_ld_placed_overlap(const void *p, size_t size, u8 **lo, u8 **hi);
 hk_lib *hk_ld_find_runtime_lib(const char *name);
 bool hk_ld_lib_is_runtime(const hk_lib *lib);
 /* A function exported by a loaded library of the one kind or the other, in the order they were loaded; never the shims'. */

@@ -76,6 +76,8 @@ void *hk_mem_reserve(size_t size)
     return valloc(NULL, size, MEM_RESERVE, PAGE_READWRITE);
 }
 
+void *hk_mem_reserve_at(void *p, size_t size) { return p ? valloc(p, size, MEM_RESERVE, PAGE_READWRITE) : NULL; }
+
 bool hk_mem_commit(void *p, size_t size, int prot)
 {
     /* An executable commit is never allowed: commit writable, flip later. */

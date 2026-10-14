@@ -7,8 +7,13 @@
 
 struct hk_lib {
     char *name, *soname;
-    u8 *map;                   /* the whole reservation: island, image, island */
+    u8 *map;                   /* the whole reservation: island, image, island; or, placed, the image and what follows it */
     size_t map_size;
+    /*
+     * Loaded where the app said (android_dlopen_ext, ANDROID_DLEXT_RESERVED_ADDRESS): the image is in the app's own
+     * reservation, which is the app's to keep and give back, and the island below it, if any, is a reservation of its own.
+     */
+    bool placed;
     u8 *base;                  /* load bias: where vaddr 0 is */
     u32 vmin, vmax;            /* the PT_LOADs' span, page-aligned */
     Elf32_Phdr *phdr;

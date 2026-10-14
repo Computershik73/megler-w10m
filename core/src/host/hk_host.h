@@ -36,6 +36,8 @@ enum { HK_PROT_NONE = 0, HK_PROT_R = 1, HK_PROT_RW = 3, HK_PROT_RX = 5 };
 
 /* Address space only, a multiple of 64 KB (Windows' allocation granularity). NULL on failure. */
 void *hk_mem_reserve(size_t size);
+/* The same at exactly `p` (64 KB aligned), or NULL when any of it is taken. */
+void *hk_mem_reserve_at(void *p, size_t size);
 /* Back reserved pages with zeroed memory: HK_PROT_R or HK_PROT_RW. */
 bool hk_mem_commit(void *p, size_t size, int prot);
 bool hk_mem_protect(void *p, size_t size, int prot);

@@ -1043,6 +1043,9 @@ static void test_guest(const char *libdir, const char *scratch)
     CHECK(st.thumb_functions > 20 && st.arm_functions == 0);
     test_library(basic, "Thumb-2", scratch);
 
+    /* Loaded first as an app asks with android_dlopen_ext: into a range it reserved; the PLT's tests below run on it there. */
+    say("guest library: loaded into a range the app reserved (android_dlopen_ext, ANDROID_DLEXT_RESERVED_ADDRESS)");
+    CHECK_INT(FN(basic, int (*)(void), "t_dlext")(), 7);
     dep = hk_ld_load("libt_dep.so");
     CHECK(dep != NULL);
     if (dep) {
