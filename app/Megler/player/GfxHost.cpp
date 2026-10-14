@@ -3513,7 +3513,12 @@ bool gpuBitmapOn(Surface& s, Canvas& cv, const megler_gfx_image& image, const Bo
         return true;
     }
     if (!kept) {
+        // (An upload for this drawing alone, counted with the others in the log's line.)
+        const uint64_t started = ticksNow();
         Ref<ID2D1Bitmap> copy = bitmapCopy(s, image, part, filtered ? &paint : nullptr, cv.tint);
+        G().uploadTicks += ticksNow() - started;
+        ++G().uploads;
+        G().uploadPixels += uint64_t(part.width()) * uint64_t(part.height());
         if (!copy) return false;
         s.rt->DrawBitmap(copy.get(), &onto, opacity, sampling, &from);
         return true;
