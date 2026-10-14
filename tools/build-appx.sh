@@ -363,13 +363,17 @@ dependents() {
 # What the executable asks the loader for at launch: api-sets, d3d11 and dxgi,
 # and nothing else -- anything more would have to exist on the phone by that
 # name. bcrypt.dll does (the core's random numbers; gecko-w10m's mozglue.dll
-# imports it by that name on the same phones).
+# imports it by that name on the same phones). So do ws2_32.dll and
+# iphlpapi.dll (the core's sockets, its resolver and the list of interfaces):
+# there is no api-set for Winsock or the IP helper, and WindowsApp.lib itself,
+# the app partition's library, imports them by these names; gecko-w10m's
+# xul.dll imports both too.
 mapfile -t DEPENDENTS < <(dependents "$BUILD/link/Megler.exe")
 mapfile -t DELAYED < <(dependents "$BUILD/link/Megler.exe" 2)
 ODD=()
 for dll in "${DEPENDENTS[@]}"; do
   case "${dll,,}" in
-    api-ms-win-*|ext-ms-win-*|d3d11.dll|dxgi.dll|bcrypt.dll) ;;
+    api-ms-win-*|ext-ms-win-*|d3d11.dll|dxgi.dll|bcrypt.dll|ws2_32.dll|iphlpapi.dll) ;;
     *) ODD+=("$dll") ;;
   esac
 done
