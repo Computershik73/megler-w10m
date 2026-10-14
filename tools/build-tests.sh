@@ -195,7 +195,10 @@ elif [ "$MODE" = win ]; then
   export LIB="$(w "$VC/lib/x64");$(w "$SDK/Lib/$SDKV/ucrt/x64");$(w "$SDK/Lib/$SDKV/um/x64")"
   export PATH="$VC/bin/Hostx64/x64:$PATH"
   export VSLANG=1033 MSYS2_ARG_CONV_EXCL="*"
-  OUT="$ROOT/build/tests-win"
+  # (MEGLER_TESTS_OPT: the C compiler's optimisation, /O1 unless told; tools/dvm-bench.sh builds with /O2, as the app is
+  # built, into a folder of its own named by MEGLER_TESTS_OUT.)
+  OPT="${MEGLER_TESTS_OPT:-/O1}"
+  OUT="${MEGLER_TESTS_OUT:-$ROOT/build/tests-win}"
   mkdir -p "$OUT/obj" "$OUT/zobj"
   ALL=()
   for s in "${SRCS[@]}"; do ALL+=("$(w "$ROOT/$s")"); done
@@ -203,7 +206,7 @@ elif [ "$MODE" = win ]; then
   for s in "${ZSRCS[@]}"; do ZALL+=("$(w "$ROOT/$s")"); done
   # (HK_GFX_WINDOWS, HK_STORAGE_WINDOWS: this build has the shell's drawing and its storage host in it; hk_tests_main.c's
   # --gfx-windows and --storage-windows modes.)
-  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /O1 /MT /W3 /std:c11 /utf-8 /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DHK_GFX_WINDOWS /DHK_STORAGE_WINDOWS "${SQLITE_CL[@]}" "${WEBP_CL[@]}" \
+  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c "$OPT" /MT /W3 /std:c11 /utf-8 /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DHK_GFX_WINDOWS /DHK_STORAGE_WINDOWS "${SQLITE_CL[@]}" "${WEBP_CL[@]}" \
     "/I$(w "$ROOT/core/third_party/zlib")" "/Fo$(w "$OUT/obj")\\" "${ALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
   "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /O1 /MT /w /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS \
     "/Fo$(w "$OUT/zobj")\\" "${ZALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true

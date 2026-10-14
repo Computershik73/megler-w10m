@@ -326,4 +326,12 @@ void test_libcore(const hk_dvm_test_config *config, u64 started_ns, const hk_dvm
     if (natives) test_timezone();
     /* (InMemoryDexClassLoader goes through java.io, whose native half is libcore's.) */
     if (natives) test_in_memory_dex(fixtures);
+    /* The interpreter's speed on this machine, said and not checked: so the phone's Self-test brings the phone's own numbers. */
+    say("the interpreter's benchmark (printed, not checked)");
+    /* With the collector as an app has it (the tests' own is poisoned and runs every megabyte), and as the tests have it after. */
+    hk_dvm_gc_set_poison(false);
+    hk_dvm_gc_set_min_budget(8u << 20);
+    hk_dvm_bench_run(fixtures, 40);
+    hk_dvm_gc_set_poison(true);
+    hk_dvm_gc_set_min_budget(1u << 20);
 }

@@ -42,7 +42,7 @@ void hk_tests_set_dvm(const char *fixtures, const char *apk, int trace);
 void hk_tests_set_dvm_android(const char *root);
 int hk_dvm_tests_run(const hk_dvm_test_config *config, hk_test_sink sink, void *user, int *checks);
 /* How fast the interpreter is on this machine, printed. */
-void hk_dvm_tests_bench(const char *fixtures);
+void hk_dvm_tests_bench(const char *fixtures, const char *android_root, int ms);
 
 /*
  * Runs an APK for `milliseconds` with a stand-in for OpenGL ES, touches it and

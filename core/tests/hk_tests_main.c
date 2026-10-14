@@ -23,8 +23,9 @@
  *   hk_tests --dvm-natives <android root>
  *       every native method that root's boot class path declares, and who
  *       answers for it: the runtime in C, a library of libcore's, or nobody
- *   hk_tests --dvm-bench <dir>
- *       how fast the interpreter is on this machine
+ *   hk_tests --dvm-bench <dir> [<android root> [milliseconds]]
+ *       how fast the interpreter is on this machine: a counting loop and calls on the built-in java.lang, or with an
+ *       Android root the benchmark of hk_dvm_bench.c on its libcore, each item run for about that long (300 ms)
  *   hk_tests --apk <file>...
  *       what the layer makes of real APKs: the report the shell shows, and the icon
  *   hk_tests --java <hello | demos | natives | crash | data> <apk> <data dir> <android root> [picture dir | -] [verbose] [WIDTHxHEIGHT@DPI]
@@ -597,7 +598,7 @@ int main(int argc, char **argv)
     if (argc >= 3 && !strcmp(argv[1], "--dvm-natives")) return natives_mode(argv);
     if (argc >= 3 && !strcmp(argv[1], "--dvm-bench")) {
         hk_core_init();
-        hk_dvm_tests_bench(argv[2]);
+        hk_dvm_tests_bench(argv[2], argc >= 4 ? argv[3] : NULL, argc >= 5 ? atoi(argv[4]) : 300);
         return 0;
     }
     if (argc < 3) {

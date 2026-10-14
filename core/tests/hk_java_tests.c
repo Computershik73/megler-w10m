@@ -258,6 +258,10 @@ static void write_picture(const char *name)
  * Twenty turns of an idle loop are 160 ms, which outlasts what the framework delays by itself after a touch (a pressed
  * state held for 64 ms, a tap recognised after 100).
  */
+/* When megler_run was called, and whether settle() has said what the start cost. */
+static u64 g_start_ns;
+static bool g_start_said;
+
 static void settle(void)
 {
     hk_java_stats st;
@@ -276,6 +280,15 @@ static void settle(void)
         } else if (st.polls - polls >= 20 && hk_time_monotonic_ns() - since >= 200000000ull) {
             break;
         }
+    }
+    /*
+     * The first time after the start: what the start cost, as a measure of the interpreter on real code -- the instructions
+     * every thread executed, and the time from megler_run to the last picture before the app came to rest.
+     */
+    if (g_start_ns && !g_start_said) {
+        g_start_said = true;
+        say("  the start: %.1f M instructions on all threads, %.2f s to the last picture before the app rested", (double)hk_dvm_executed_all() / 1e6,
+            (double)(since - g_start_ns) / 1e9);
     }
 }
 
@@ -394,6 +407,7 @@ static bool start(const char *apk, const char *android_root)
         if (!g_any_app) CHECK(report && strstr(report, g_portrait ? "\"orientation\":\"portrait\"" : "\"orientation\":\"unspecified\""));
         megler_free(report);
     }
+    g_start_ns = hk_time_monotonic_ns();
     if (megler_run(&cfg)) return true;
 #if !HK_HOST_ARM32
     {

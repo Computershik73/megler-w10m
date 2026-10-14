@@ -13,6 +13,8 @@
 #       d8t.dex expected.txt         a program javac and d8 compiled, and what the JVM printed
 #                                    for it: copied from core/tests/dvm/d8 as they are kept there
 #                                    (tools/dvm-d8-fixture.sh rebuilds them, and needs a JDK and d8)
+#       bench.dex                    the interpreter's benchmark, copied from core/tests/dvm/bench likewise
+#                                    (tools/dvm-bench-fixture.sh rebuilds it)
 #
 # Python is all it needs.
 set -euo pipefail
@@ -46,3 +48,5 @@ keep "$GEN/m.dex" "$OUT/m.dex"
 keep core/tests/dvm/d8/d8t.dex "$OUT/d8t.dex"
 keep core/tests/dvm/d8/expected.txt "$OUT/expected.txt"
 for f in lib.dex lib-expected.txt lib-android.txt; do [ -f "core/tests/dvm/d8/$f" ] && keep "core/tests/dvm/d8/$f" "$OUT/$f"; done
+# The interpreter's benchmark (core/tests/hk_dvm_bench.c), kept compiled like d8t.dex (tools/dvm-bench-fixture.sh).
+[ -f core/tests/dvm/bench/bench.dex ] && keep core/tests/dvm/bench/bench.dex "$OUT/bench.dex"

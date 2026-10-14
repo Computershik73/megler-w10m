@@ -77,6 +77,12 @@ void test_gc(void);
 void test_jni(const char *guest_dir);
 /* hk_dvm_tests_d8.c: a program compiled by javac and d8, against what the JVM printed for it. */
 void test_d8(const char *fixtures);
+/*
+ * hk_dvm_bench.c: the interpreter's benchmark on libcore (bench.dex among the fixtures), each item run for about `ms`
+ * milliseconds; its table through say(). Printed, not checked.
+ */
+#define hk_dvm_bench_run hk_dvmt_bench_run
+void hk_dvm_bench_run(const char *fixtures, int ms);
 /* hk_dvm_tests_libcore.c: what only a run on Android's libcore is asked. */
 struct hk_dvm_stats;
 void test_libcore(const hk_dvm_test_config *config, u64 started_ns, const struct hk_dvm_stats *at_start);

@@ -1172,12 +1172,68 @@ screen a frame.
 - **The DEX files the assembler writes are accepted by Android's own tool**:
   `dexdump -d` of build-tools 29.0.3 reads the fixture files and the built-in
   `java.lang` without complaint (tried by hand).
-- The interpreter's speed on this PC (a Ryzen 7 7800X3D; `hk_tests --dvm-bench
-  <fixtures>`): 372 million instructions a second in a counting loop and 40
-  million calls a second, as the tests are built (`/O1`); 473 and 52 million
-  with `/O2`, which is how the app is built. Under qemu-arm the figures (48 and
-  4 million) measure qemu. These were taken at the first milestone and not
-  again.
+- The interpreter's speed: see "The interpreter's benchmark" below.
+
+### The interpreter's benchmark
+
+`core/tests/hk_dvm_bench.c` times the methods of `bench.Bench`
+(`core/tests/dvm/bench/src/bench/Bench.java`, compiled by javac and d8 into
+`bench.dex` by `tools/dvm-bench-fixture.sh` and kept in the repository like
+`d8t.dex`). Each method does one kind of work `n` times: arithmetic, fields,
+the four kinds of invoke, arrays, the hot methods of `String`, `StringBuilder`,
+`HashMap`, `ArrayList`'s iterator, allocation, monitors, exceptions, `Math`,
+`System.arraycopy`, boxing, `getClass` and casts. Each item gets an `n` that
+makes it last about as long as asked. For each, the table gives nanoseconds a
+turn, instructions a turn (`hk_dvm_thread_costs`), and millions of
+instructions a second over all its time, native methods and allocation
+included. It needs libcore. It is printed, never checked:
+
+- `tools/dvm-bench.sh [win|arm|both] [ms]`: the test program built for x64
+  with `/O2`, as the app is built (the interpreter's own speed, and the
+  steadiest number), and the ARM test program under qemu-arm. 300 ms an item.
+- The libcore tests run it too, 40 ms an item. The phone's Self-test prints
+  the phone's own table, with the collector set as an app has it.
+- The real workload is an app's start under the Java test harness. After the
+  first settle, `hk_tests --java` says "the start: N M instructions on all
+  threads, S s to the last picture before the app rested".
+
+Before the round that speeds the interpreter up (x64 `/O2` on a Ryzen 7
+7800X3D; qemu-arm with gcc `-O1`), in ns a turn:
+
+| item | insns | x64 | qemu |
+| --- | ---: | ---: | ---: |
+| int arithmetic | 7 | 8.6 | 136 |
+| long and double arithmetic | 13 | 17.2 | 312 |
+| iget and iput | 10 | 15.7 | 236 |
+| sget and sput | 6 | 7.8 | 122 |
+| invoke-static | 7 | 17.1 | 268 |
+| invoke-virtual | 8 | 18.6 | 293 |
+| invoke-virtual, final | 10 | 22.8 | 339 |
+| invoke-interface | 9 | 21.4 | 316 |
+| invoke-interface, two classes | 11.5 | 25.3 | 373 |
+| aget and aput | 11 | 14.3 | 229 |
+| String.charAt and length | 8 | 64.2 | 712 |
+| String.equals, 23 characters | 262 | 2888 | 28195 |
+| String.hashCode, kept | 16 | 41.0 | 605 |
+| String.indexOf | 4 | 4.9 | 80 |
+| StringBuilder, 3 appends | 276 | 1131 | 15130 |
+| HashMap.get | 89 | 322 | 4495 |
+| ArrayList iterator | 34 | 88.9 | 1165 |
+| a small object made | 13 | 97.8 | 1277 |
+| an int[16] made | 7 | 68.5 | 893 |
+| synchronized block | 7 | 15.5 | 1118 |
+| synchronized method | 10 | 29.2 | 1380 |
+| exception made, thrown, caught | 38 | 435 | 7254 |
+| exception thrown and caught | 6 | 16.1 | 243 |
+| Math.min, max, abs | 23 | 51.5 | 862 |
+| System.arraycopy, 16 ints | 6 | 62.9 | 726 |
+| Integer.valueOf, intValue | 23 | 127 | 1772 |
+| getClass, instance-of, check-cast | 20 | 53.9 | 814 |
+| in all, M instructions a second | | 399 | 25.1 |
+
+Starts under qemu: hello 4.7 M instructions in 0.64 s, demos 5.4 M in 0.74 s,
+Apktool M 501 M in 26.2 s (to its splash screen at rest, its own threads
+working on).
 
 ## Design
 

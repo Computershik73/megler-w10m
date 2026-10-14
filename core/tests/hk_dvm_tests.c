@@ -182,12 +182,23 @@ static bool add_fixtures(const char *fixtures)
     return ok;
 }
 
-void hk_dvm_tests_bench(const char *fixtures)
+void hk_dvm_tests_bench(const char *fixtures, const char *android_root, int ms)
 {
     static const int rounds = 20;
     u64 t0, t1;
     int i;
     i64 units;
+    /* On libcore: the benchmark of hk_dvm_bench.c, whose items need java.util. */
+    if (android_root) {
+        hk_log_set_level(HK_LOG_ERROR);
+        if (!hk_dvm_start_android(android_root)) {
+            say("the runtime did not start on the Android root %s", android_root);
+            return;
+        }
+        say("benchmark on libcore (%s, about %d ms an item)", hk_host_name(), ms);
+        hk_dvm_bench_run(fixtures, ms);
+        return;
+    }
     if (!hk_dvm_start(NULL, 0) || !add_fixtures(fixtures)) {
         say("the runtime did not start, or its fixtures are not in %s", fixtures);
         return;
