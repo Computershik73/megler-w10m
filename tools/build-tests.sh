@@ -200,6 +200,9 @@ elif [ "$MODE" = win ]; then
   OPT="${MEGLER_TESTS_OPT:-/O1}"
   OUT="${MEGLER_TESTS_OUT:-$ROOT/build/tests-win}"
   mkdir -p "$OUT/obj" "$OUT/zobj"
+  # Every file is compiled on every run; the objects of the last go first, so that a file that no longer compiles fails
+  # the link instead of leaving its old object to be linked with the others (whose structures may have changed since).
+  rm -f "$OUT/obj/"*.obj
   ALL=()
   for s in "${SRCS[@]}"; do ALL+=("$(w "$ROOT/$s")"); done
   ZALL=()
