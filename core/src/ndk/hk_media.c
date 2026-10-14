@@ -1075,7 +1075,11 @@ static int g_AMediaCodec_releaseOutputBufferAtTime(g_codec *c, u32 index, i64 ti
     X(IS_FORCED_SUBTITLE, "is-forced-subtitle") X(I_FRAME_INTERVAL, "i-frame-interval") X(LANGUAGE, "language")                         \
     X(MAX_HEIGHT, "max-height") X(MAX_INPUT_SIZE, "max-input-size") X(MAX_WIDTH, "max-width") X(MIME, "mime")                          \
     X(PUSH_BLANK_BUFFERS_ON_STOP, "push-blank-buffers-on-shutdown") X(REPEAT_PREVIOUS_FRAME_AFTER, "repeat-previous-frame-after")     \
-    X(ROTATION, "rotation-degrees") X(SAMPLE_RATE, "sample-rate") X(SLICE_HEIGHT, "slice-height") X(STRIDE, "stride") X(WIDTH, "width")
+    X(ROTATION, "rotation-degrees") X(SAMPLE_RATE, "sample-rate") X(SLICE_HEIGHT, "slice-height") X(STRIDE, "stride") X(WIDTH, "width")  \
+    X(BITRATE_MODE, "bitrate-mode") X(COLOR_RANGE, "color-range") X(COLOR_STANDARD, "color-standard") X(COLOR_TRANSFER, "color-transfer") \
+    X(LATENCY, "latency") X(LEVEL, "level") X(PRIORITY, "priority") X(PROFILE, "profile") X(TEMPORAL_LAYERING, "ts-schema")             \
+    X(TEMPORAL_LAYER_ID, "temporal-layer-id") X(OPERATING_RATE, "operating-rate") X(INTRA_REFRESH_PERIOD, "intra-refresh-period")       \
+    X(CSD_0, "csd-0") X(CSD_1, "csd-1") X(CSD_2, "csd-2") X(HDR_STATIC_INFO, "hdr-static-info") X(PCM_ENCODING, "pcm-encoding")
 
 /* Each AMEDIAFORMAT_KEY_ symbol is a variable holding the key's text. */
 #define X(name, text) static const char *k_key_##name = text;

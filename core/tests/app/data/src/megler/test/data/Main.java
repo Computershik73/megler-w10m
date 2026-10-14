@@ -96,6 +96,18 @@ public class Main extends Activity {
         anchor = new android.view.View(this);
         column.addView(anchor, new android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, 2));
         column.addView(text);
+        /* The frame the window's insets are relative to (WindowInsets.getFrame, API 36, by reflection): the window's size. */
+        column.setOnApplyWindowInsetsListener((v, insets) -> {
+            Object frame;
+            try {
+                frame = insets.getClass().getMethod("getFrame").invoke(insets);
+            } catch (Exception e) {
+                frame = e;
+            }
+            if (!insetsLogged) Log.i("DataTest", "insets-frame " + frame);
+            insetsLogged = true;
+            return v.onApplyWindowInsets(insets);
+        });
         setContentView(column);
         Log.i("DataTest", "onCreate");
         final Notes helper = new Notes(this, "notes.db", 1);
@@ -273,6 +285,8 @@ public class Main extends Activity {
         keystore(run);
         codecs();
         xml();
+        assetFd();
+        tasks();
         network();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
@@ -803,6 +817,42 @@ public class Main extends Activity {
         });
     }
 
+    /**
+     * A file of the APK from its root as a descriptor, the way Chromium's ApkAssets maps its data out of the APK:
+     * openNonAssetFd, then the number taken from getParcelFileDescriptor().detachFd(). resources.arsc is stored, so it can
+     * be had so; it begins with its table's header (type 2, header size 12).
+     */
+    private void assetFd() {
+        step("asset-fd", () -> {
+            android.content.res.AssetFileDescriptor afd = getAssets().openNonAssetFd("resources.arsc");
+            android.os.ParcelFileDescriptor pfd = afd.getParcelFileDescriptor();
+            byte[] head = new byte[4];
+            java.io.FileInputStream in = new java.io.FileInputStream(afd.getFileDescriptor());
+            in.getChannel().position(afd.getStartOffset());
+            int got = in.read(head);
+            int fd = pfd != null ? pfd.detachFd() : -1;
+            detail = "pfd=" + (pfd != null) + " fd=" + fd + " at " + afd.getStartOffset() + " length " + afd.getLength() + " head " + java.util.Arrays.toString(head);
+            return pfd != null && fd >= 0 && got == 4 && head[0] == 2 && head[1] == 0 && head[2] == 12 && head[3] == 0 && afd.getLength() > 12;
+        });
+    }
+
+    /**
+     * The app's task as ActivityManager.getAppTasks() describes it, through the fields RecentTaskInfo has from TaskInfo
+     * (API 29), which Chromium reads: this activity, the only one, at its root and on its top.
+     */
+    private void tasks() {
+        step("tasks", () -> {
+            android.app.ActivityManager am = (android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE);
+            java.util.List<android.app.ActivityManager.AppTask> tasks = am.getAppTasks();
+            android.app.ActivityManager.RecentTaskInfo t = tasks.isEmpty() ? null : tasks.get(0).getTaskInfo();
+            if (t == null) return false;
+            detail = "task " + t.taskId + " of " + t.numActivities + ", base " + t.baseActivity + ", top " + t.topActivity + ", running " + t.isRunning;
+            return t.taskId == getTaskId() && t.isRunning && t.numActivities == 1 && t.baseActivity != null
+                && t.baseActivity.getClassName().equals(Main.class.getName()) && t.baseActivity.equals(t.topActivity)
+                && t.baseIntent != null && t.baseIntent.getComponent() != null;
+        });
+    }
+
     /** Work a step hands to a thread of its own, as an app hands the network to one: the step waits for it. */
     private boolean offMain(final Step work) throws Throwable {
         final boolean[] held = new boolean[1];
@@ -997,7 +1047,7 @@ public class Main extends Activity {
         Log.i("DataTest", "permission-result " + (all && android.os.Looper.myLooper() == android.os.Looper.getMainLooper() ? "ok" : "FAILED") + " after done=" + doneLogged);
     }
 
-    private boolean doneLogged;
+    private boolean doneLogged, insetsLogged;
 
     @Override
     protected void onDestroy() {

@@ -671,6 +671,17 @@ static int g_sched_getaffinity(int pid, size_t n, u8 *mask)
     /* The raw system call returns the mask's size; the wrapper returns 0. */
     return 0;
 }
+/* CPU_COUNT: the bits set in a cpu_set_t of `size` bytes. */
+static int g_sched_cpucount(size_t size, const u8 *set)
+{
+    int n = 0;
+    size_t i;
+    for (i = 0; i < size; i++) {
+        u8 b = set[i];
+        for (; b; b &= (u8)(b - 1)) n++;
+    }
+    return n;
+}
 static int g_sched_setscheduler(int pid, int policy, const void *param) { (void)pid; (void)policy; (void)param; return 0; }
 static int g_sched_getscheduler(int pid) { (void)pid; return 0; }
 static int g_sched_getparam(int pid, i32 *param) { (void)pid; if (param) *param = 0; return 0; }
@@ -748,7 +759,7 @@ const hk_sym hk_tab_pthread[] = {
     HK_WRAP("gettid", g_gettid), HK_WRAP("__gettid", g_gettid),
     HK_WRAP("sched_yield", g_sched_yield), HK_WRAP("sched_get_priority_max", g_sched_get_priority),
     HK_WRAP("sched_get_priority_min", g_sched_get_priority), HK_WRAP("sched_getcpu", g_sched_getcpu),
-    HK_WRAP("sched_setaffinity", g_sched_setaffinity), HK_WRAP("sched_getaffinity", g_sched_getaffinity),
+    HK_WRAP("sched_setaffinity", g_sched_setaffinity), HK_WRAP("sched_getaffinity", g_sched_getaffinity), HK_WRAP("__sched_cpucount", g_sched_cpucount),
     HK_WRAP("sched_setscheduler", g_sched_setscheduler), HK_WRAP("sched_getscheduler", g_sched_getscheduler),
     HK_WRAP("sched_getparam", g_sched_getparam), HK_WRAP("sched_setparam", g_sched_setscheduler),
     HK_END

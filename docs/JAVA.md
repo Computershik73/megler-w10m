@@ -2940,10 +2940,10 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: thirty-three files** in the overlay,
+**What differs from the original's framework: thirty-seven files** in the overlay,
 most of them a statement or a few methods each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
-**and seven files of members added** to classes of the original's.
+**and eight files of members added** to classes of the original's.
 
 The second kind is for the platform's public members that the original's
 class does not have and an app calls -- a `NoSuchMethodError` where Android
@@ -2975,6 +2975,12 @@ files folder) for the first and the files folder itself for the second.
 `getExternalCacheDir(s)` and `getExternalFilesDirs`, on to the context it
 wraps; an Activity is a wrapper, and asked of an Activity they never reached
 the context that knows.
+
+`megler/AppRunner.java.members`, like those of `megler/Native`, `Gfx` and
+`EGLNative` (each described with what uses it), adds to one of Megler's own
+classes: `meglerBase()`, the activity at the bottom of the stack, which
+`ActivityManager` (below) gives as the root of the app's task; the original
+had only the top.
 
 - `android/webkit/MimeTypeMap.java`: the original hands its table to
   `libcore.content.type.MimeMap`, an Android 10 class; Android 9's `MimeUtils`
@@ -3231,7 +3237,9 @@ the context that knows.
   `softInputMode` decides, as on Android ("The keyboard"). The original
   placed every dialog by gravity in the part above the keyboard without
   fitting it there, gave dialogs the keyboard as an inset, and resized every
-  activity.
+  activity. And the frame of the insets it makes (`computeInsets`), for
+  `WindowInsets.getFrame` (below): the screen's size for an activity's
+  window, a dialog's or popup's own once laid out.
 - `megler/InputMethods.java`: only what `deliverPending` writes in the log.
   What it does with the keyboard's text is the original's, unchanged
   ("The keyboard": where typed text went). This is for diagnosis; the
@@ -3291,7 +3299,56 @@ the context that knows.
   between Android 9 and later (`com.android.org.*`, `libcore.*` and the like,
   in `Class.forName` and string literals) found no other.
 
-The original has all twenty-two faults; they are its author's to take back.
+- `android/content/res/AssetFileDescriptor.java`, `getParcelFileDescriptor()`.
+  What `AssetManager.openFd` and `openNonAssetFd` give (the APK's file,
+  opened anew for each call, and where in it a stored entry starts) was made
+  from a plain `FileDescriptor`, and `getParcelFileDescriptor()` returned
+  null. On Android every `AssetFileDescriptor` has one, and code takes the
+  number from it: Chromium's `ApkAssets.open` (Brave 1.97) calls
+  `getParcelFileDescriptor().detachFd()` to map `icudtl.dat` and its `.pak`
+  files out of the APK, and ended in a `NullPointerException` that its native
+  side makes fatal. Now one is made on the first call. It owns nothing:
+  closing it, or the `AssetFileDescriptor`, leaves the descriptor open, as
+  `close()` always has here; whoever detaches the number may close it. The
+  core had a fault on the same path: a path from the APK's root, which
+  `openNonAsset` and `openNonAssetFd` pass with a leading "/", was looked for
+  under `assets/` (`core/src/drivers/hk_java.c`, `asset_name`), so neither
+  found what it was asked for.
+  The data app's step "asset-fd" opens `resources.arsc` (stored) with
+  `openNonAssetFd`, detaches the number from its `ParcelFileDescriptor`
+  and reads the table's header where the entry starts.
+
+- `android/app/ActivityManager.java`, `RecentTaskInfo`, which
+  `AppTask.getTaskInfo()` returns: the fields it has from `TaskInfo` on
+  Android 10 and later (`taskId`, `isRunning`, `numActivities`, `baseIntent`,
+  `baseActivity`, `topActivity`, `origActivity`), filled from the activities
+  as they are -- one task, id 1, as `Activity.getTaskId()` says, the first
+  activity started at its root and the last on its top (`meglerBase()` above).
+  The original's had only `id`, and a field a class lacks is a
+  `NoSuchFieldError`, which nothing catches: Brave 1.97's
+  `ChromeTabbedActivity.onCreate` reads `baseActivity` of its task and ended
+  there under qemu. `hk_tests --dvm-link` over Brave's two DEX files names
+  four fields of `RecentTaskInfo` (these), `TextUtils.CHAR_SEQUENCE_CREATOR`
+  (there, of another type) and `ColorSpace.Named.OK_LAB` (Android 16) as the
+  fields it names and the framework lacks. The data app's step "tasks" reads
+  its own task so.
+
+- `android/view/WindowInsets.java`, `getFrame()` (Android 16): the size of
+  the window the insets are relative to, which `megler/ViewRoot.java` gives the
+  insets it makes. The insets carry it through copies, consuming, replacing
+  and the `Builder` (whose `setFrame` the generated stub ignored); insets
+  nobody gave one have 0 x 0. The original's generated stub returned null.
+  Chromium asks every `WindowInsets` for its frame and catches the
+  `NoSuchMethodError` an Android before 16 gives; here the method was there,
+  returned null, and the `NullPointerException` that followed in a listener
+  of `onApplyWindowInsets` ended Brave 1.97 at its first layout. The data
+  app's content view logs the frame of the first insets it is given (by
+  reflection: the app is built against API 29), and the test wants a size
+  there (480x800 under qemu). A stub of a later API that returns null where
+  the platform never does is a fault of this kind wherever an app calls it
+  without asking the version first; this is the one a run has met.
+
+The original has all twenty-five faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in

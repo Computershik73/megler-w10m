@@ -550,6 +550,136 @@ int t_dlext(void)
     return 7;
 }
 
+/*
+ * What Chromium's and Firefox's libraries take of bionic besides functions, and the small functions its headers make
+ * calls of: a time past 2038 through time64.h, the IPv6 constants, CPU_COUNT, CMSG_NXTHDR, sysinfo, getopt's globals.
+ * 6, or the negated step that failed.
+ */
+typedef struct { int sec, min, hour, mday, mon, year, wday, yday, isdst; long gmtoff; const char *zone; } t_tm;
+typedef struct { void *name; unsigned namelen; void *iov; size_t iovlen; void *control; size_t controllen; int flags; } t_msghdr;
+t_tm *gmtime64_r(const long long *, t_tm *);
+long long timegm64(t_tm *);
+int __sched_cpucount(size_t, const void *);
+unsigned char *__cmsg_nxthdr(t_msghdr *, unsigned char *);
+int sysinfo(unsigned *);
+extern const unsigned char in6addr_any[16], in6addr_loopback[16];
+extern int optind;
+
+int t_libc_more(void)
+{
+    long long t = 4102444800LL;                      /* 2100-01-01 00:00:00 UTC */
+    t_tm tm;
+    unsigned char set[8] = { 0xB1, 0, 0, 0, 0, 0, 0, 0x80 };
+    unsigned control[8] = { 16, 1, 1, 0, 16, 1, 1, 0 };
+    t_msghdr m;
+    unsigned info[16];
+    int i;
+    memset(&tm, 0, sizeof(tm));
+    if (!gmtime64_r(&t, &tm) || tm.year != 200 || tm.mon != 0 || tm.mday != 1 || tm.hour != 0 || timegm64(&tm) != t) return -1;
+    for (i = 0; i < 15; i++)
+        if (in6addr_any[i] || in6addr_loopback[i]) return -2;
+    if (in6addr_any[15] != 0 || in6addr_loopback[15] != 1) return -2;
+    if (__sched_cpucount(sizeof(set), set) != 5) return -3;
+    memset(&m, 0, sizeof(m));
+    m.control = control;
+    m.controllen = sizeof(control);
+    if (__cmsg_nxthdr(&m, (unsigned char *)control) != (unsigned char *)&control[4] || __cmsg_nxthdr(&m, (unsigned char *)&control[4]) != 0) return -4;
+    memset(info, 0xFF, sizeof(info));
+    if (sysinfo(info) != 0 || info[4] == 0 || info[5] > info[4] || info[13] != 1) return -5;
+    if (optind != 1) return -6;
+    return 6;
+}
+
+/*
+ * Shared memory, as Chromium copies its library's RELRO and Firefox talks to itself: ASharedMemory (libandroid) and
+ * memfd_create (libc). Mapped, written and unmapped, what was written is there for the next mapping; its protection,
+ * once narrowed, bounds every later mapping and is never widened again. 9, or the negated step that failed.
+ */
+int ASharedMemory_create(const char *, size_t);
+size_t ASharedMemory_getSize(int);
+int ASharedMemory_setProt(int, int);
+int memfd_create(const char *, unsigned);
+int ftruncate(int, long);
+long lseek(int, long, int);
+
+int t_shm(void)
+{
+    int fd = ASharedMemory_create("t_shm", 8192), m;
+    unsigned char *p, *q;
+    char back[4] = { 0 };
+    if (fd < 0 || ASharedMemory_getSize(fd) != 8192) return -1;
+    p = mmap(0, 8192, 3, 1, fd, 0);                  /* PROT_READ | PROT_WRITE, MAP_SHARED */
+    if (p == (unsigned char *)-1 || p[100] != 0) return -2;
+    p[100] = 77;
+    if (munmap(p, 8192) != 0) return -3;
+    if (ASharedMemory_setProt(fd, 1) != 0) return -4;  /* PROT_READ */
+    if (mmap(0, 8192, 3, 1, fd, 0) != (void *)-1) return -5;
+    q = mmap(0, 8192, 1, 1, fd, 0);
+    if (q == (unsigned char *)-1 || q[100] != 77 || munmap(q, 8192) != 0) return -6;
+    if (ASharedMemory_setProt(fd, 3) == 0) return -7;
+    close(fd);
+    m = memfd_create("t_memfd", 1);
+    if (m < 0 || ftruncate(m, 100) != 0 || write(m, "abc", 3) != 3 || lseek(m, 0, 0) != 0) return -8;
+    if (read(m, back, 3) != 3 || back[0] != 'a' || back[2] != 'c' || lseek(m, 98, 0) != 98 || write(m, "xyz", 3) != 2) return -9;
+    close(m);
+    return 9;
+}
+
+/*
+ * timerfd, as Chromium's message pump keeps its delayed work: nothing to read before its time, readable when it comes
+ * (poll and epoll both wake for it, though nothing writes to it), the count of expirations read, a repeating one counting
+ * each, an absolute time on CLOCK_MONOTONIC, and disarmed by a zero time. 8, or the negated step that failed.
+ */
+typedef struct { int interval_sec, interval_nsec, value_sec, value_nsec; } t_itimerspec;
+typedef struct { int fd; short events, revents; } t_pollfd;
+int timerfd_create(int, int);
+int timerfd_settime(int, int, const t_itimerspec *, t_itimerspec *);
+int timerfd_gettime(int, t_itimerspec *);
+int poll(t_pollfd *, unsigned, int);
+int epoll_create1(int);
+int epoll_ctl(int, int, int, void *);
+int epoll_wait(int, void *, int, int);
+
+int t_timerfd(void)
+{
+    int fd = timerfd_create(1, 0x800 | 0x80000), ep;  /* CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC */
+    unsigned long long n = 0;
+    t_itimerspec it, cur;
+    t_pollfd p;
+    struct t_timespec now;
+    struct { unsigned events; unsigned long long data; } ev[2];   /* ARM's epoll_event: the data at 8 */
+    if (fd < 0) return -1;
+    if (read(fd, &n, 8) != -1 || *__errno() != 11) return -2;            /* EAGAIN */
+    memset(&it, 0, sizeof(it));
+    it.value_nsec = 20 * 1000000;
+    p.fd = fd;
+    p.events = 1;
+    p.revents = 0;
+    if (timerfd_settime(fd, 0, &it, 0) != 0 || poll(&p, 1, 2000) != 1 || !(p.revents & 1) || read(fd, &n, 8) != 8 || n != 1) return -3;
+    it.interval_nsec = it.value_nsec = 5 * 1000000;
+    if (timerfd_settime(fd, 0, &it, 0) != 0) return -4;
+    usleep(40 * 1000);
+    if (read(fd, &n, 8) != 8 || n < 3) return -4;
+    if (timerfd_gettime(fd, &cur) != 0 || cur.interval_nsec != 5 * 1000000 || cur.value_sec != 0 || cur.value_nsec <= 0) return -5;
+    memset(&it, 0, sizeof(it));
+    if (timerfd_settime(fd, 0, &it, 0) != 0 || timerfd_gettime(fd, &cur) != 0 || cur.value_sec || cur.value_nsec || read(fd, &n, 8) != -1) return -6;
+    clock_gettime(1, &now);
+    it.value_sec = (int)now.tv_sec;
+    it.value_nsec = (int)now.tv_nsec + 10 * 1000000;
+    if (it.value_nsec >= 1000000000) {
+        it.value_sec++;
+        it.value_nsec -= 1000000000;
+    }
+    ep = epoll_create1(0);
+    memset(ev, 0, sizeof(ev));
+    ev[0].events = 1;                                /* EPOLLIN */
+    ev[0].data = 77;
+    if (ep < 0 || epoll_ctl(ep, 1, fd, ev) != 0 || timerfd_settime(fd, 1, &it, 0) != 0) return -7;  /* EPOLL_CTL_ADD, TFD_TIMER_ABSTIME */
+    if (epoll_wait(ep, ev, 2, 2000) != 1 || ev[0].data != 77 || read(fd, &n, 8) != 8 || n != 1) return -8;
+    close(ep);
+    close(fd);
+    return 8;
+}
 
 /* A deep enough frame to need the stack protector's cookie, when built with it. */
 int t_stack(const char *s)

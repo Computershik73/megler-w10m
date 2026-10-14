@@ -413,7 +413,7 @@ static char *synthetic(const char *g, size_t *size)
 
 /* ----------------------------------------------------- open descriptions */
 
-enum { OBJ_FILE = 1, OBJ_MEM, OBJ_NULL, OBJ_RANDOM, OBJ_PIPE_R, OBJ_PIPE_W, OBJ_EVENT, OBJ_LOG, OBJ_EPOLL, OBJ_DIRFD, OBJ_EXT };
+enum { OBJ_FILE = 1, OBJ_MEM, OBJ_NULL, OBJ_RANDOM, OBJ_PIPE_R, OBJ_PIPE_W, OBJ_EVENT, OBJ_LOG, OBJ_EPOLL, OBJ_DIRFD, OBJ_EXT, OBJ_TIMER };
 
 #define PIPE_CAP 65536u
 
@@ -442,6 +442,9 @@ typedef struct gobj {
     pipe_buf *pipe;
     u64 counter;                   /* eventfd */
     bool semaphore;
+    /* timerfd: when it next expires, on the monotonic clock (0: disarmed); its interval; the expirations not read yet */
+    u64 timer_next, timer_interval, timer_ticks;
+    int timer_clock;
     char line[512];                /* a standard stream's unfinished line */
     u32 line_len;
     int log_level;
@@ -449,6 +452,9 @@ typedef struct gobj {
     int nitems, epoll_next;
     const hk_fd_ops *ops;          /* OBJ_EXT: another module's object (a socket) */
     void *ext;
+    /* OBJ_MEM made as shared memory (hk_fd_shm_create): writable, resized by ftruncate, and the protection mmap allows. */
+    bool shm;
+    int shm_prot;
 } gobj;
 
 #define G_O_ACCMODE 3
@@ -759,6 +765,31 @@ static int g_close(int fd)
 /* ------------------------------------------------------------ read, write */
 
 /*
+ * The earliest time an armed timer looked at during a wait's check expires (0: none), so that the wait looks again then
+ * (wait_ready). Set by timer_catch_up, read and cleared by wait_ready; all of it under the lock.
+ */
+static u64 g_timer_wake;
+
+/* A timer's expirations up to now counted, and when it next expires noted in g_timer_wake. Called with the lock held. */
+static void timer_catch_up(gobj *o)
+{
+    u64 now;
+    if (!o->timer_next) return;
+    now = hk_time_monotonic_ns();
+    if (now >= o->timer_next) {
+        if (o->timer_interval) {
+            u64 k = (now - o->timer_next) / o->timer_interval + 1;
+            o->timer_ticks += k;
+            o->timer_next += k * o->timer_interval;
+        } else {
+            o->timer_ticks++;
+            o->timer_next = 0;
+        }
+    }
+    if (o->timer_next && (!g_timer_wake || o->timer_next < g_timer_wake)) g_timer_wake = o->timer_next;
+}
+
+/*
  * Waits, with the lock held, for the state of some descriptor to change.
  * A signal sent to the thread ends the wait, and its handler runs -- with the
  * lock let go of -- before this returns. Returns HK_FD_* (hk_fd.h): woken,
@@ -868,6 +899,32 @@ static i32 obj_read(gobj *o, void *buf, u32 n, bool positioned, u64 offset)
         memcpy(buf, &v, 8);
         return 8;
     }
+    case OBJ_TIMER: {
+        /* The expirations since the last read, as a u64; none yet: EAGAIN, or a wait until the next. */
+        u64 v;
+        if (n < 8) {
+            hk_set_errno(GE_INVAL);
+            return -1;
+        }
+        hk_lock_acquire(&g_io_lock);
+        for (;;) {
+            u64 now;
+            timer_catch_up(o);
+            if (o->timer_ticks) break;
+            if (o->flags & G_O_NONBLOCK) {
+                hk_lock_release(&g_io_lock);
+                hk_set_errno(GE_AGAIN);
+                return -1;
+            }
+            now = hk_time_monotonic_ns();
+            io_wait(o->timer_next ? (o->timer_next > now ? o->timer_next - now : 1) : 0);
+        }
+        v = o->timer_ticks;
+        o->timer_ticks = 0;
+        hk_lock_release(&g_io_lock);
+        memcpy(buf, &v, 8);
+        return 8;
+    }
     case OBJ_EXT:
         if (o->ops->read) return o->ops->read(o->ext, buf, n, (o->flags & G_O_NONBLOCK) != 0);
         break;
@@ -883,6 +940,20 @@ static i32 obj_write(gobj *o, const void *buf, u32 n, bool positioned, u64 offse
     int err = 0;
     i64 r;
     switch (o->type) {
+    case OBJ_MEM: {
+        /* Shared memory only, and inside its size: it grows by ftruncate, as memfd's does, not by writing past its end. */
+        u64 at = positioned ? offset : o->pos;
+        u32 left;
+        if (!o->shm) {
+            hk_set_errno(GE_BADF);
+            return -1;
+        }
+        left = at < o->mem_size ? (u32)(o->mem_size - at) : 0;
+        if (n > left) n = left;
+        memcpy(o->mem + at, buf, n);
+        if (!positioned) o->pos += n;
+        return (i32)n;
+    }
     case OBJ_FILE:
         r = positioned ? hk_file_pwrite(o->file, buf, n, offset, &err) : hk_file_write(o->file, buf, n, &err);
         if (r < 0) hk_set_errno(hk_errno_of(err));
@@ -1000,9 +1071,9 @@ i32 hk_fd_pread(int fd, void *buf, u32 n, u64 offset)
 
 void *hk_fd_hold(int fd)
 {
-    /* A file of the host's only: a mapping of anything else (a pipe, a made-up file) has nothing to be written back to. */
+    /* A file of the host's, or shared memory: a mapping of anything else (a pipe, a made-up file) has nothing to be written back to. */
     gobj *o = fd_get(fd);
-    if (o && o->type != OBJ_FILE) {
+    if (o && o->type != OBJ_FILE && !(o->type == OBJ_MEM && o->shm)) {
         fd_put(o);
         o = NULL;
     }
@@ -1096,6 +1167,24 @@ static int g_ftruncate64(int fd, i64 size)
 {
     int err = 0, r = -1;
     WITH_FD(fd, o, -1)
+    if (o->type == OBJ_MEM && o->shm) {
+        /* Shared memory: a new size, the bytes past the old end zero. */
+        if (size < 0 || size > 0x40000000) {
+            hk_set_errno(GE_INVAL);
+        } else {
+            u8 *mem = (u8 *)realloc(o->mem, (size_t)size ? (size_t)size : 1);
+            if (!mem) {
+                hk_set_errno(GE_NOMEM);
+            } else {
+                if ((size_t)size > o->mem_size) memset(mem + o->mem_size, 0, (size_t)size - o->mem_size);
+                o->mem = mem;
+                o->mem_size = (size_t)size;
+                r = 0;
+            }
+        }
+        fd_put(o);
+        return r;
+    }
     if (o->type != OBJ_FILE) hk_set_errno(GE_INVAL);
     else if (!hk_file_truncate(o->file, (u64)size, &err)) hk_set_errno(hk_errno_of(err));
     else r = 0;
@@ -1843,6 +1932,177 @@ static int g_pipe2(int fds[2], int flags)
 
 static int g_pipe(int fds[2]) { return g_pipe2(fds, 0); }
 
+int hk_fd_shm_create(const char *name, u64 size)
+{
+    gobj *o;
+    u8 *mem;
+    int fd;
+    if (size > 0x40000000u) {
+        hk_set_errno(GE_INVAL);
+        return -1;
+    }
+    /* (Not hk_alloc, which ends the process when it cannot: an app asking for too much is told so.) */
+    mem = (u8 *)calloc(1, size ? (size_t)size : 1);
+    if (!mem) {
+        hk_set_errno(GE_NOMEM);
+        return -1;
+    }
+    o = (gobj *)hk_alloc(sizeof(*o));
+    o->type = OBJ_MEM;
+    o->refs = 1;
+    o->shm = true;
+    o->shm_prot = 7;                                 /* PROT_READ | PROT_WRITE | PROT_EXEC */
+    o->mem = mem;
+    o->mem_size = (size_t)size;
+    o->path = hk_sprintf("/dev/ashmem/%s", name ? name : "");
+    o->flags = 2;                                    /* O_RDWR */
+    fd = fd_new(o);
+    if (fd < 0) obj_destroy(o);
+    return fd;
+}
+
+int hk_fd_shm_set_prot(int fd, int prot)
+{
+    gobj *o = fd_get(fd);
+    int r = -1;
+    if (!o) hk_set_errno(GE_BADF);
+    else if (o->type != OBJ_MEM || !o->shm) hk_set_errno(GE_INVAL);
+    else if (prot & ~o->shm_prot & 7) hk_set_errno(GE_INVAL);          /* protection is only ever taken away, as ashmem's */
+    else {
+        o->shm_prot = prot & 7;
+        r = 0;
+    }
+    if (o) fd_put(o);
+    return r;
+}
+
+int hk_fd_shm_prot(int fd)
+{
+    gobj *o = fd_get(fd);
+    int r = o && o->type == OBJ_MEM && o->shm ? o->shm_prot : -1;
+    if (o) fd_put(o);
+    return r;
+}
+
+i64 hk_fd_shm_size(int fd)
+{
+    gobj *o = fd_get(fd);
+    i64 r = o && o->type == OBJ_MEM && o->shm ? (i64)o->mem_size : -1;
+    if (o) fd_put(o);
+    return r;
+}
+
+/* memfd_create (API 30, and the system call before it): shared memory with a name. */
+static int g_memfd_create(const char *name, unsigned flags)
+{
+    int fd = hk_fd_shm_create(name, 0);
+    if (fd >= 0 && (flags & 1)) g_cloexec[fd] = 1;   /* MFD_CLOEXEC */
+    return fd;
+}
+
+/*
+ * timerfd (Chromium's message pump keeps its delayed work in one; Linux 2.6.25, every Android): a descriptor that becomes
+ * readable when its time comes, and reads as the count of expirations since the last read. The clocks it takes are
+ * CLOCK_REALTIME, CLOCK_MONOTONIC and CLOCK_BOOTTIME (and their _ALARM kinds, which wake nothing here); every time is kept
+ * on the monotonic clock, an absolute realtime one turned into it when set (a change of the wall clock afterwards does not
+ * move it: TFD_TIMER_CANCEL_ON_SET is not done). Poll, select, epoll and the looper look again when an armed timer they
+ * watch expires.
+ */
+typedef struct g_itimerspec {
+    i32 interval_sec, interval_nsec, value_sec, value_nsec;
+} g_itimerspec;
+
+static int g_timerfd_create(int clock, int flags)
+{
+    gobj *o;
+    int fd;
+    if ((clock != 0 && clock != 1 && clock != 7 && clock != 8 && clock != 9) || (flags & ~(G_O_NONBLOCK | 0x80000))) {
+        hk_set_errno(GE_INVAL);
+        return -1;
+    }
+    o = (gobj *)hk_alloc(sizeof(*o));
+    o->type = OBJ_TIMER;
+    o->refs = 1;
+    o->timer_clock = clock;
+    o->flags = 2 | (flags & G_O_NONBLOCK);
+    fd = fd_new(o);
+    if (fd < 0) free(o);
+    else if (flags & 0x80000) g_cloexec[fd] = 1;     /* TFD_CLOEXEC */
+    return fd;
+}
+
+/* What is left of an armed timer and its interval, as timerfd_gettime gives them. Called with the lock held. */
+static void timer_left(gobj *o, g_itimerspec *out)
+{
+    u64 now = hk_time_monotonic_ns(), left = o->timer_next ? (o->timer_next > now ? o->timer_next - now : 1) : 0;
+    out->interval_sec = (i32)(o->timer_interval / 1000000000ull);
+    out->interval_nsec = (i32)(o->timer_interval % 1000000000ull);
+    out->value_sec = (i32)(left / 1000000000ull);
+    out->value_nsec = (i32)(left % 1000000000ull);
+}
+
+/* The timer a descriptor is, held; NULL with EBADF or EINVAL. */
+static gobj *timer_of(int fd)
+{
+    gobj *o = fd_get(fd);
+    if (!o) {
+        hk_set_errno(GE_BADF);
+        return NULL;
+    }
+    if (o->type != OBJ_TIMER) {
+        fd_put(o);
+        hk_set_errno(GE_INVAL);
+        return NULL;
+    }
+    return o;
+}
+
+static int g_timerfd_settime(int fd, int flags, const g_itimerspec *set, g_itimerspec *old)
+{
+    gobj *o;
+    u64 value, now;
+    if (!set || set->value_sec < 0 || set->value_nsec < 0 || set->value_nsec >= 1000000000 || set->interval_sec < 0 || set->interval_nsec < 0 ||
+        set->interval_nsec >= 1000000000) {
+        hk_set_errno(GE_INVAL);
+        return -1;
+    }
+    o = timer_of(fd);
+    if (!o) return -1;
+    hk_lock_acquire(&g_io_lock);
+    timer_catch_up(o);
+    if (old) timer_left(o, old);
+    value = (u64)set->value_sec * 1000000000ull + (u64)set->value_nsec;
+    o->timer_interval = (u64)set->interval_sec * 1000000000ull + (u64)set->interval_nsec;
+    o->timer_ticks = 0;
+    now = hk_time_monotonic_ns();
+    if (!value) {
+        o->timer_next = 0;                           /* disarmed */
+    } else if (flags & 1) {
+        /* TFD_TIMER_ABSTIME: a time on the timer's own clock; one already past expires at once. */
+        u64 clock_now = o->timer_clock == 0 || o->timer_clock == 8 ? hk_time_realtime_ns() : now;
+        o->timer_next = value > clock_now ? now + (value - clock_now) : now;
+    } else {
+        o->timer_next = now + value;
+    }
+    /* Whoever waits on it works out again when to look. */
+    hk_cond_broadcast(&g_io_cond);
+    hk_lock_release(&g_io_lock);
+    fd_put(o);
+    return 0;
+}
+
+static int g_timerfd_gettime(int fd, g_itimerspec *cur)
+{
+    gobj *o = timer_of(fd);
+    if (!o) return -1;
+    hk_lock_acquire(&g_io_lock);
+    timer_catch_up(o);
+    if (cur) timer_left(o, cur);
+    hk_lock_release(&g_io_lock);
+    fd_put(o);
+    return 0;
+}
+
 int hk_fd_eventfd(unsigned initial, int flags)
 {
     gobj *o = (gobj *)hk_alloc(sizeof(*o));
@@ -1983,6 +2243,10 @@ static int ready_locked(gobj *o, int events)
         if (o->counter) r |= G_POLLIN;
         r |= G_POLLOUT;
         break;
+    case OBJ_TIMER:
+        timer_catch_up(o);
+        if (o->timer_ticks) r |= G_POLLIN;
+        break;
     case OBJ_EXT:
         if (o->ops->poll) r = o->ops->poll(o->ext, events);
         break;
@@ -2037,8 +2301,11 @@ static int wait_ready(ready_check check, void *ctx, int timeout_ms, bool interru
     hk_lock_acquire(&g_io_lock);
     for (;;) {
         bool looks_itself = false;
-        int hits = check(ctx, &looks_itself), w;
-        u64 left = 0;
+        int hits, w;
+        u64 left = 0, wake;
+        g_timer_wake = 0;
+        hits = check(ctx, &looks_itself);
+        wake = g_timer_wake;
         if (hits || timeout_ms == 0) {
             result = hits;
             break;
@@ -2050,6 +2317,11 @@ static int wait_ready(ready_check check, void *ctx, int timeout_ms, bool interru
                 break;
             }
             left = deadline - now;
+        }
+        if (wake) {
+            /* An armed timer among them: looked at again when it expires, which nothing announces. */
+            u64 now = hk_time_monotonic_ns(), until = wake > now ? wake - now : 1;
+            if (!left || until < left) left = until;
         }
         if (looks_itself && (!left || left > 5000000ull)) left = 5000000ull;
         w = io_wait(left);
@@ -2386,7 +2658,8 @@ const hk_sym hk_tab_io[] = {
     IO("readdir_r", g_readdir_r), IO("readdir64_r", g_readdir_r), IO("closedir", g_closedir), IO("rewinddir", g_rewinddir),
     IO("telldir", g_telldir), IO("seekdir", g_seekdir), IO("dirfd", g_dirfd), IO("scandir", g_scandir), IO("scandir64", g_scandir),
     IO("alphasort", g_alphasort), IO("alphasort64", g_alphasort),
-    IO("pipe", g_pipe), IO("pipe2", g_pipe2), IO("eventfd", g_eventfd), IO("dup", g_dup), IO("dup2", g_dup2), IO("dup3", g_dup3),
+    IO("pipe", g_pipe), IO("pipe2", g_pipe2), IO("eventfd", g_eventfd), IO("memfd_create", g_memfd_create),
+    IO("timerfd_create", g_timerfd_create), IO("timerfd_settime", g_timerfd_settime), IO("timerfd_gettime", g_timerfd_gettime), IO("dup", g_dup), IO("dup2", g_dup2), IO("dup3", g_dup3),
     IO("fcntl", g_fcntl), IO("__fcntl64", g_fcntl), IO("ioctl", g_ioctl), IO("isatty", g_isatty),
     IO("poll", g_poll), IO("__poll_chk", g_poll), IO("ppoll", g_ppoll), IO("__ppoll_chk", g_ppoll), IO("select", g_select),
     IO("pselect", g_pselect), IO("epoll_create", g_epoll_create), IO("epoll_create1", g_epoll_create1), IO("epoll_ctl", g_epoll_ctl),

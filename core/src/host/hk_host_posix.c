@@ -448,7 +448,9 @@ static void on_signal(int sig, siginfo_t *si, void *ctx)
     hk_fault f;
     memset(&f, 0, sizeof(f));
     f.kind = sig == SIGILL ? HK_FAULT_ILLEGAL : (sig == SIGSEGV || sig == SIGBUS) ? HK_FAULT_ACCESS : HK_FAULT_OTHER;
-    f.code = (u32)sig;
+    /* A trap (bkpt: a compiler's __builtin_trap, Chromium's CHECK) is given the number Windows gives a breakpoint, which the
+       core's report names; the other signals keep their own. */
+    f.code = sig == SIGTRAP ? 0x80000003u : (u32)sig;
     f.address = (hk_addr)si->si_addr;
 #if defined(__arm__)
     {
@@ -486,6 +488,8 @@ void hk_fault_set_handler(hk_fault_handler h)
     sigaction(SIGILL, &sa, NULL);
     sigaction(SIGSEGV, &sa, NULL);
     sigaction(SIGBUS, &sa, NULL);
+    /* And a trap, which Android code ends with on purpose: reported where it was, as on the phone, before the process goes. */
+    sigaction(SIGTRAP, &sa, NULL);
 }
 
 /* ------------------------------------------------------------------- time */

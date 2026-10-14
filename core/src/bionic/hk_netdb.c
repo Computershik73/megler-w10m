@@ -1261,7 +1261,12 @@ static void g_herror(const char *s)
     hk_warn("%s%s%s", s && *s ? s : "", s && *s ? ": " : "", g_hstrerror(t_h_errno));
 }
 
+/* in6addr_any and in6addr_loopback: the C library's two constant IPv6 addresses (::, ::1), which code takes the address of. */
+static const u8 g_in6addr_any[16] = { 0 };
+static const u8 g_in6addr_loopback[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 };
+
 const hk_sym hk_tab_netdb[] = {
+    HK_DATA("in6addr_any", g_in6addr_any), HK_DATA("in6addr_loopback", g_in6addr_loopback),
     HK_WRAP("getaddrinfo", g_getaddrinfo), HK_WRAP("android_getaddrinfofornet", g_android_getaddrinfofornet), HK_WRAP("freeaddrinfo", g_freeaddrinfo),
     HK_WRAP("gai_strerror", g_gai_strerror), HK_WRAP("getnameinfo", g_getnameinfo),
     HK_WRAP("gethostbyname", g_gethostbyname), HK_WRAP("gethostbyname2", g_gethostbyname2), HK_WRAP("gethostbyname_r", g_gethostbyname_r),

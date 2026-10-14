@@ -225,6 +225,52 @@ static i32 g_mktime(g_tm *tm)
     return (i32)t;
 }
 
+/*
+ * bionic's time64.h, which 32-bit code calls for times past 2038 (Chromium's base::Time does): the same with a 64-bit time.
+ */
+static g_tm *g_gmtime64_r(const i64 *t, g_tm *tm)
+{
+    civil(*t, tm);
+    tm->tm_isdst = 0;
+    tm->tm_gmtoff = 0;
+    tm->tm_zone = (u32)(hk_addr)g_utc_name;
+    return tm;
+}
+
+static g_tm *g_localtime64_r(const i64 *t, g_tm *tm)
+{
+    bool dst = false;
+    i32 off = hk_time_utc_offset(*t, &dst);
+    civil(*t + off, tm);
+    tm->tm_isdst = dst ? 1 : 0;
+    tm->tm_gmtoff = off;
+    tm->tm_zone = (u32)(hk_addr)g_local_name;
+    return tm;
+}
+
+static i64 g_timegm64(g_tm *tm)
+{
+    i64 t = from_civil(tm);
+    civil(t, tm);
+    tm->tm_isdst = 0;
+    return t;
+}
+
+static i64 g_mktime64(g_tm *tm)
+{
+    i64 local = from_civil(tm), t;
+    bool dst = false;
+    i32 off = hk_time_utc_offset(local, &dst);
+    t = local - off;
+    off = hk_time_utc_offset(t, &dst);
+    t = local - off;
+    civil(t + off, tm);
+    tm->tm_isdst = dst ? 1 : 0;
+    tm->tm_gmtoff = off;
+    tm->tm_zone = (u32)(hk_addr)g_local_name;
+    return t;
+}
+
 static u64 g_difftime(i32 a, i32 b) { return hk_db((double)a - (double)b); }
 
 static const char *const g_wd[] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
@@ -359,11 +405,11 @@ const hk_sym hk_tab_time[] = {
     HK_WRAP("usleep", g_usleep), HK_WRAP("sleep", g_sleep), HK_WRAP("clock", g_clock), HK_WRAP("times", g_times),
     HK_WRAP("gmtime", g_gmtime), HK_WRAP("gmtime_r", g_gmtime_r), HK_WRAP("localtime", g_localtime), HK_WRAP("localtime_r", g_localtime_r),
     HK_WRAP("mktime", g_mktime), HK_WRAP("timegm", g_timegm), HK_WRAP("timelocal", g_mktime), HK_WRAP("difftime", g_difftime),
+    HK_WRAP("gmtime64_r", g_gmtime64_r), HK_WRAP("localtime64_r", g_localtime64_r), HK_WRAP("timegm64", g_timegm64), HK_WRAP("mktime64", g_mktime64),
     HK_WRAP("strftime", g_strftime), HK_WRAP("strftime_l", g_strftime_l), HK_WRAP("asctime", g_asctime), HK_WRAP("asctime_r", g_asctime_r),
     HK_WRAP("ctime", g_ctime), HK_WRAP("ctime_r", g_ctime_r), HK_WRAP("tzset", g_tzset), HK_WRAP("settimeofday", g_settimeofday),
     HK_WRAP("getitimer", g_itimer), HK_WRAP("setitimer", g_itimer), HK_WRAP("alarm", g_alarm),
     HK_WRAP("timer_create", g_timer_fail), HK_WRAP("timer_settime", g_timer_fail), HK_WRAP("timer_delete", g_timer_fail),
-    HK_WRAP("timerfd_create", g_timer_fail),
     HK_DATA("timezone", &g_timezone), HK_DATA("daylight", &g_daylight), HK_DATA("tzname", g_tzname),
     HK_END
 };

@@ -278,6 +278,14 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
         hk_set_errno(GE_INVAL);
         return G_MAP_FAILED;
     }
+    if (!(flags & G_MAP_ANONYMOUS)) {
+        /* Shared memory whose protection was narrowed (ASharedMemory_setProt) maps no wider, as ashmem refuses it. */
+        int allowed = hk_fd_shm_prot(fd);
+        if (allowed >= 0 && (prot & ~allowed & 7)) {
+            hk_set_errno(GE_PERM);
+            return G_MAP_FAILED;
+        }
+    }
     if (flags & G_MAP_FIXED) {
         /* Only over memory this layer already owns: a fresh address cannot be demanded of the host. */
         hk_lock_acquire(&g_region_lock);
@@ -521,7 +529,7 @@ const hk_sym hk_tab_mem[] = {
     HK_WRAP("_ZdaPvRKSt9nothrow_t", g_delete_nothrow),
     HK_WRAP("_ZdlPvj", g_delete_sized),
     HK_WRAP("_ZdaPvj", g_delete_sized),
-    HK_WRAP("mmap", g_mmap),
+    HK_WRAP("mmap", g_mmap), HK_WRAP("__mmap2", hk_g_mmap2),
     HK_WRAP("mmap64", g_mmap64),
     HK_WRAP("munmap", g_munmap),
     HK_WRAP("mprotect", g_mprotect),
