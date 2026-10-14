@@ -18,6 +18,13 @@
 #       its records of the Java test apps' drawing (build/gfx-records), each
 #       is drawn again here, by the stand-in and by Direct2D:
 #       build/gfx-pictures/app-hello-N.png and app-demos-N.png.
+#       And the shell's storage host (app/Megler/player/StorageHost.cpp:
+#       Windows.Storage), built in likewise and run as --storage-windows: the
+#       tests of the phone's folders in an app's storage once more, with
+#       Windows.Storage's own objects handing the handles over where the
+#       stand-in did, on folders of build/tests-win/scratch-storage. A PC's
+#       test program is no app container: what the broker refuses an app is
+#       not found out here.
 #
 # The tests are run twice where Android 9's boot class path has been unpacked
 # (build/android9/boot): once with the Dalvik runtime on its built-in
@@ -183,8 +190,9 @@ elif [ "$MODE" = win ]; then
   for s in "${SRCS[@]}"; do ALL+=("$(w "$ROOT/$s")"); done
   ZALL=()
   for s in "${ZSRCS[@]}"; do ZALL+=("$(w "$ROOT/$s")"); done
-  # (HK_GFX_WINDOWS: this build has the shell's drawing in it; hk_tests_main.c's --gfx-windows mode.)
-  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /O1 /MT /W3 /std:c11 /utf-8 /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DHK_GFX_WINDOWS "${SQLITE_CL[@]}" \
+  # (HK_GFX_WINDOWS, HK_STORAGE_WINDOWS: this build has the shell's drawing and its storage host in it; hk_tests_main.c's
+  # --gfx-windows and --storage-windows modes.)
+  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /O1 /MT /W3 /std:c11 /utf-8 /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DHK_GFX_WINDOWS /DHK_STORAGE_WINDOWS "${SQLITE_CL[@]}" \
     "/I$(w "$ROOT/core/third_party/zlib")" "/Fo$(w "$OUT/obj")\\" "${ALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
   "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /O1 /MT /w /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS \
     "/Fo$(w "$OUT/zobj")\\" "${ZALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
@@ -212,8 +220,22 @@ elif [ "$MODE" = win ]; then
   else
     echo "(no SDK $OLD_SDK headers here: GfxHost.cpp was not compiled against them)"
   fi
+  # The shell's storage host too (app/Megler/player/StorageHost.cpp: Windows.Storage, through C++/WinRT), the very file
+  # the phone's package is built from, with the shell's Strings.cpp and the few lines that hand it to the tests and stand
+  # in for the rest of the shell (core/tests/hk_storage_windows.cpp). The shell's precompiled header is read as a plain
+  # header here; the projection's headers are the SDK's own. Compiled as for an app container (WINAPI_FAMILY_APP), which
+  # is what the phone's package is compiled as: the headers then show what an app may call and nothing else.
+  STORAGE_SRC=("$(w "$ROOT/app/Megler/player/StorageHost.cpp")" "$(w "$ROOT/app/Megler/shell/Strings.cpp")" "$(w "$ROOT/core/tests/hk_storage_windows.cpp")")
+  mkdir -p "$OUT/storageobj"
+  rm -f "$OUT/storageobj/"*.obj
+  INCLUDE="$INCLUDE;$(w "$SDK/Include/$SDKV/winrt");$(w "$SDK/Include/$SDKV/cppwinrt")" \
+    "$VC/bin/Hostx64/x64/cl.exe" "${GFX_FLAGS[@]}" /Zc:__cplusplus /bigobj /DWINAPI_FAMILY=WINAPI_FAMILY_APP /O1 /MP "/Fo$(w "$OUT/storageobj")\\" "${STORAGE_SRC[@]}" \
+    | grep -v -E '^[A-Za-z0-9_]+\.cpp$' || true
+  for obj in StorageHost Strings hk_storage_windows; do
+    [ -f "$OUT/storageobj/$obj.obj" ] || { echo "compile failed: $obj.cpp" >&2; exit 1; }
+  done
   "$VC/bin/Hostx64/x64/link.exe" /nologo "/OUT:$(w "$OUT/hk_tests.exe")" "$(w "$OUT/obj")\\*.obj" "$(w "$OUT/zobj")\\*.obj" "$(w "$OUT/gfxobj")\\*.obj" \
-    bcrypt.lib synchronization.lib d2d1.lib dwrite.lib ole32.lib
+    "$(w "$OUT/storageobj")\\*.obj" bcrypt.lib synchronization.lib d2d1.lib dwrite.lib ole32.lib oleaut32.lib
   echo "built $OUT/hk_tests.exe"
   if [ "$RUN" = 1 ]; then
     rm -rf "$OUT/scratch"
@@ -232,6 +254,10 @@ elif [ "$MODE" = win ]; then
     rm -rf "$ROOT/build/gfx-pictures"
     "$OUT/hk_tests.exe" --gfx-windows "$(w "$ROOT/build/gfx-pictures")" || STATUS=1
     "$OUT/hk_tests.exe" --gfx-windows - copy || STATUS=1
+    # The shell's storage host: the storage's tests once more, with Windows.Storage's own objects handing the handles over
+    # instead of the stand-in, on folders under a scratch folder of its own.
+    rm -rf "$OUT/scratch-storage"
+    "$OUT/hk_tests.exe" --storage-windows "$(w "$OUT/scratch-storage")" || STATUS=1
     # The Java test apps' own drawing, as `tools/build-tests.sh arm` recorded it under qemu: drawn again by the stand-in,
     # which must give the recorded pictures back pixel for pixel, and then by the shell's drawing, into
     # build/gfx-pictures/app-<app>-N.png -- the app's views as a phone's Direct2D and DirectWrite would draw them, laid

@@ -316,15 +316,43 @@ every change in `run/hk_run.c`, before the shell is asked, whichever part of
 the layer wanted it. A rename between a link and anything else is `EXDEV`, as
 between two file systems: the app copies and removes.
 
+The shell's side is `player/StorageHost.cpp`. Its links are the three
+libraries' folders to save to as `Music`, `Pictures` and `Movies`
+(`StorageLibrary`), the pictures' `Camera Roll` as `DCIM`, and any folder the
+user added in Settings with the folder picker, which Windows remembers for the
+app (`FutureAccessList`, the name kept as its metadata): the documents
+library, the downloads and a memory card come in that way and no other. A
+link that cannot be listed when Megler starts is left out, and the log has a
+line for each. A handle comes from the folder's object:
+`IStorageFolderHandleAccess::Create` for a file by its name,
+`IStorageItemHandleAccess::Create` for a folder itself. A path is walked a
+folder at a time (`TryGetItemAsync`) and the folders found are kept for half a
+minute, so the next file of a folder costs one call. A file or an empty folder
+is removed by marking it for deletion through a handle, where the file system
+itself refuses a folder that holds something (the broker's `DeleteAsync` would
+take the contents with it; it is the fallback, for a folder seen empty). A
+rename in a folder is `RenameAsync`, a file to another folder `MoveAsync`; a
+folder to another folder is tried through its handle and is `EXDEV` where
+Windows will not. The app's threads have stacks of the app's choosing and no
+COM apartment, so every call is done on one of up to four threads of the
+host's own, in the multithreaded apartment, while the caller waits.
+
 *Proven:* with a stand-in for the shell that opens folders of the tests'
 scratch folder with the plain calls (`core/tests/hk_storage_tests.c`), on both
 hosts, through the C library's functions as an app binds them: the five names
 of the storage, the standard folders and each link once in a listing, files
 and folders in a link, renames in a link, between links and refused across,
 the app's own part where it was, a link that is only to be read, two threads
-at once. *Expected:* that the broker's handles do on a phone what the probe
-saw them do there (read, write, seek, size and times, removal, a folder's
-listing) for everything an app does to a file.
+at once. And the same tests with the shell's own `StorageHost.cpp` in the
+stand-in's place, on a PC (`hk_tests --storage-windows`): Windows.Storage's
+real objects, but a test program is no app container and no broker stands in
+between. *Expected:* that the broker hands an app on a phone what a PC's
+Windows.Storage hands a program there. A phone was seen to give a file handle
+that reads, writes, seeks, says its size and deletes, and a folder handle that
+lists; everything else -- a handle for the attributes alone, a folder deleted
+or renamed through its handle, what a folder's name asked for as a file is
+answered with, a picked folder kept across starts -- has not been asked of a
+phone.
 
 ## The Java side
 

@@ -42,6 +42,10 @@
  *   hk_tests --gfx-replay <record file> <picture dir | -> <name> [standin]
  *       draw such a record again -- by the shell's own drawing in the build tools/build-tests.sh win makes, by the stand-in with
  *       `standin` or in any other build -- and write each picture the app showed as <picture dir>/<name>-N.png
+ *   hk_tests --storage-windows <scratch dir>
+ *       the shell's storage host (app/Megler/player/StorageHost.cpp: Windows.Storage) through megler_storage_host: the tests of
+ *       hk_storage_tests.c with it in the stand-in's place, on folders under the scratch folder. Only in the build
+ *       tools/build-tests.sh win makes; any other says so and does nothing
  *   hk_tests --run <apk> <data dir> [milliseconds]
  *       start the APK with a stand-in for OpenGL ES, touch it, press Back, and say what happened
  *   hk_tests --load <dir> <library>...
@@ -60,6 +64,7 @@
 #include "hk_gfx_record.h"
 #include "hk_gfx_scenes.h"
 #include "hk_gfx_standin.h"
+#include "hk_storage_tests.h"
 #include "hk_tests.h"
 
 #if HK_HOST_ARM32
@@ -476,9 +481,39 @@ static int gfx_replay_mode(int argc, char **argv)
     return failed ? 1 : 0;
 }
 
+/* ------------------------------------------------------ --storage-windows */
+
+#ifdef HK_STORAGE_WINDOWS
+/* hk_storage_windows.cpp: the shell's own megler_storage_host, with these folders as its links. */
+const megler_storage_host *hk_storage_windows_host(const char *const *names, const char *const *folders, int count);
+void hk_storage_windows_summary(char *out, size_t size);
+#endif
+
+static int storage_windows_mode(char **argv)
+{
+#ifdef HK_STORAGE_WINDOWS
+    megler_config config;
+    char summary[1200];
+    int checks = 0, failed;
+    memset(&config, 0, sizeof(config));
+    config.data_dir = argv[2];
+    config.package_dir = argv[2];
+    megler_init(&config);
+    failed = hk_storage_tests_run_shell(argv[2], hk_storage_windows_host, NULL, NULL, &checks);
+    hk_storage_windows_summary(summary, sizeof(summary));
+    printf("  %s\n%d checks, %d failed\n", summary, checks, failed);
+    return failed ? 1 : 0;
+#else
+    (void)argv;
+    printf("(the shell's storage host -- Windows.Storage -- is not in this build of the tests: --storage-windows does nothing here; tools/build-tests.sh win runs it)\n");
+    return 0;
+#endif
+}
+
 int main(int argc, char **argv)
 {
     if (argc >= 3 && !strcmp(argv[1], "--gfx-windows")) return gfx_windows_mode(argc, argv);
+    if (argc >= 3 && !strcmp(argv[1], "--storage-windows")) return storage_windows_mode(argv);
     if (argc >= 5 && !strcmp(argv[1], "--gfx-replay")) return gfx_replay_mode(argc, argv);
     if (argc >= 7 && !strcmp(argv[1], "--gfx-record")) {
         megler_config config;

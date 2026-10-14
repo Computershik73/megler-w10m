@@ -85,7 +85,6 @@ static void say(const char *fmt, ...)
  */
 #define FAKE_ROOTS 3
 static char *g_roots[FAKE_ROOTS];
-static volatile i32 g_fake_calls;      /* how often the stand-in was asked for anything */
 
 static char *fake_path(int root, const char *rel)
 {
@@ -188,7 +187,6 @@ static void *fake_open(void *user, int root, const char *rel, int flags, int kin
     char *path = fake_path(root, rel);
     void *h;
     (void)user;
-    hk_atomic_add(&g_fake_calls, 1);
     if (!path) {
         *err = HK_E_NOENT;
         return NULL;
@@ -203,7 +201,6 @@ static bool fake_mkdir(void *user, int root, const char *rel, int *err)
     char *path = fake_path(root, rel);
     bool ok;
     (void)user;
-    hk_atomic_add(&g_fake_calls, 1);
     if (!path) {
         *err = HK_E_NOENT;
         return false;
@@ -218,7 +215,6 @@ static bool fake_remove(void *user, int root, const char *rel, bool dir, int *er
     char *path = fake_path(root, rel);
     bool ok;
     (void)user;
-    hk_atomic_add(&g_fake_calls, 1);
     if (!path) {
         *err = HK_E_NOENT;
         return false;
@@ -233,7 +229,6 @@ static bool fake_rename(void *user, int from_root, const char *from, int to_root
     char *a = fake_path(from_root, from), *b = fake_path(to_root, to);
     bool ok = false;
     (void)user;
-    hk_atomic_add(&g_fake_calls, 1);
     if (!a || !b) *err = HK_E_NOENT;
     else ok = hk_path_rename(a, b, err);
     free(a);
@@ -241,7 +236,43 @@ static bool fake_rename(void *user, int from_root, const char *from, int to_root
     return ok;
 }
 
-static const hk_foreign k_fake = { NULL, fake_open, fake_mkdir, fake_remove, fake_rename };
+/*
+ * Who is asked: the stand-in, or the shell's own storage host where the
+ * tests' program has it (hk_storage_tests_run_shell). Either way through
+ * these, which count the calls: some checks are that nobody was asked.
+ */
+static megler_storage_host g_inner;
+static volatile i32 g_calls;
+
+static void *counted_open(void *user, int link, const char *path, int flags, int kind, int *err)
+{
+    (void)user;
+    hk_atomic_add(&g_calls, 1);
+    return g_inner.open(g_inner.user, link, path, flags, kind, err);
+}
+
+static bool counted_mkdir(void *user, int link, const char *path, int *err)
+{
+    (void)user;
+    hk_atomic_add(&g_calls, 1);
+    return g_inner.make_folder(g_inner.user, link, path, err);
+}
+
+static bool counted_remove(void *user, int link, const char *path, bool dir, int *err)
+{
+    (void)user;
+    hk_atomic_add(&g_calls, 1);
+    return g_inner.remove(g_inner.user, link, path, dir, err);
+}
+
+static bool counted_rename(void *user, int from_link, const char *from, int to_link, const char *to, int *err)
+{
+    (void)user;
+    hk_atomic_add(&g_calls, 1);
+    return g_inner.rename(g_inner.user, from_link, from, to_link, to, err);
+}
+
+static const hk_foreign k_counted = { NULL, counted_open, counted_mkdir, counted_remove, counted_rename };
 
 /* ------------------------------------------------------- the host layer */
 
@@ -332,7 +363,7 @@ static void test_foreign_paths(const char *scratch)
     CHECK(hk_file_open(L0 "/a.txt", HK_O_READ, &err) == NULL && err == HK_E_NOENT);
     CHECK(!hk_path_mkdir(L0 "/d", &err) && err == HK_E_NOENT);
 
-    hk_foreign_set(&k_fake);
+    hk_foreign_set(&k_counted);
     CHECK(hk_path_stat(L0, &st, &err) && st.is_dir);
     CHECK(hk_path_stat(L1, &st, &err) && st.is_dir);
     /* A root the stand-in does not have, and a file that is not there. */
@@ -341,7 +372,7 @@ static void test_foreign_paths(const char *scratch)
     CHECK(hk_file_open(L0 "/nothing", HK_O_READ, &err) == NULL && err == HK_E_NOENT);
 
     /* Paths that could mean another place to the operating system never reach whoever answers. */
-    calls = g_fake_calls;
+    calls = g_calls;
     {
         static const char *const bad[] = {
             L0 "/../x", L0 "/a/../x", L0 "/./x", L0 "/a/.", L0 "//x", L0 "/a//b", L0 "/a/", L0 "/a\\b", L0 "/c:x", L0 "x",
@@ -358,7 +389,7 @@ static void test_foreign_paths(const char *scratch)
         CHECK(!hk_path_remove(L0 "/a/../b", &err) && err == HK_E_INVAL);
         CHECK(!hk_path_rename(L0 "/a", L0 "/../b", &err) && err == HK_E_INVAL);
     }
-    CHECK_INT(g_fake_calls - calls, 0);
+    CHECK_INT(g_calls - calls, 0);
 
     /* A file written through the layer is in the root's folder, and reads back both ways. */
     CHECK(hk_file_write_all(L0 "/a.txt", "0123456789", 10));
@@ -738,10 +769,10 @@ static void test_layout(const char *data)
     memset(&host, 0, sizeof(host));
     host.links = k_links;
     host.link_count = (int)HK_COUNT(k_links);
-    host.open = fake_open;
-    host.make_folder = fake_mkdir;
-    host.remove = fake_remove;
-    host.rename = fake_rename;
+    host.open = counted_open;
+    host.make_folder = counted_mkdir;
+    host.remove = counted_remove;
+    host.rename = counted_rename;
     hk_run_files(data, PKG, &host);
 
     /* Five names, one place. */
@@ -823,9 +854,9 @@ static void test_layout(const char *data)
     CHECK(C.rmdir(SD) == -1 && last_errno() == GE_BUSY);
 
     /* A link: what is written through one name of it is in the phone's folder, and is read through another. */
-    calls = g_fake_calls;
+    calls = g_calls;
     CHECK(put("/sdcard/Music/x.txt", "a song"));
-    CHECK(g_fake_calls > calls);
+    CHECK(g_calls > calls);
     p = hk_sprintf("%s/x.txt", g_roots[0]);
     text = text_of(p);
     CHECK(!strcmp(text, "a song"));
@@ -946,12 +977,12 @@ static void test_layout(const char *data)
           C.rmdir("/sdcard/Android/media") == 0);
 
     /* A link that is only to be read: read, listed, and nothing else, whoever asks. */
-    calls = g_fake_calls;
+    calls = g_calls;
     CHECK(!strcmp(get("/sdcard/Books/book.txt"), "a book") && size_of("/sdcard/Books/book.txt") == 6);
     read_dir("/sdcard/Books", &seen);
     CHECK(seen.count == 1 && times(&seen, "book.txt") == 1);
-    CHECK(g_fake_calls > calls);
-    calls = g_fake_calls;
+    CHECK(g_calls > calls);
+    calls = g_calls;
     CHECK_INT(open_errno("/sdcard/Books/book.txt", T_WRONLY), GE_ACCES);
     CHECK_INT(open_errno("/sdcard/Books/book.txt", T_RDWR), GE_ACCES);
     CHECK_INT(open_errno("/sdcard/Books/book.txt", T_RDONLY | T_TRUNC), GE_ACCES);
@@ -978,10 +1009,10 @@ static void test_layout(const char *data)
     CHECK(stat_errno("/sdcard/a") == GE_NOENT && stat_errno("/sdcard/a/b") == GE_NOENT);
     {
         int err = 0;
-        calls = g_fake_calls;
+        calls = g_calls;
         CHECK(!hk_path_stat(HK_FOREIGN_PREFIX "3", &st, &err) && err == HK_E_NOENT && !hk_path_stat(HK_FOREIGN_PREFIX "5/x", &st, &err) && err == HK_E_NOENT);
         CHECK(!hk_path_mkdir(HK_FOREIGN_PREFIX "4/made", &err) && err == HK_E_NOENT && !hk_path_stat(HK_FOREIGN_PREFIX "31", &st, &err));
-        CHECK_INT(g_fake_calls - calls, 0);
+        CHECK_INT(g_calls - calls, 0);
     }
 
     /* Room: the volume all of it is on, the same answer wherever the path is. */
@@ -1057,7 +1088,7 @@ static void test_no_links(const char *data)
     dir_seen seen;
     hk_stat st;
     char *p;
-    i32 calls = g_fake_calls;
+    i32 calls = g_calls;
     say("the shared storage: with no links");
     hk_run_storage(data, NULL);
     read_dir("/sdcard", &seen);
@@ -1072,31 +1103,52 @@ static void test_no_links(const char *data)
     CHECK(C.rename("/sdcard/Pictures/p.txt", "/sdcard/Music/p.txt") == 0 && C.unlink("/sdcard/Music/p.txt") == 0 && C.rmdir("/sdcard/Pictures/album") == 0);
     CHECK(C.rmdir("/sdcard/Music") == -1 && last_errno() == GE_NOTEMPTY);
     CHECK(is_dir("/sdcard/Android/data/" PKG) && !strcmp(get("/sdcard/Android/data/" PKG "/files/save.dat"), "new"));
-    CHECK_INT(g_fake_calls - calls, 0);
+    CHECK_INT(g_calls - calls, 0);
 }
 
-int hk_storage_tests_run(const char *scratch, hk_test_sink sink, void *user, int *checks)
+/*
+ * All of it, in folders of its own under `base`: three for the roots and one
+ * for the data. `make` NULL: the stand-in is asked; else whoever `make`
+ * returns for the three folders, under the names the layout's tests link
+ * them by.
+ */
+static int run_in(const char *base, hk_storage_host_maker make, hk_test_sink sink, void *user, int *checks)
 {
-    char *data = hk_sprintf("%s/storage/data", scratch);
+    static const char *const names[FAKE_ROOTS] = { "Music", "Pictures", "Books" };
+    char *data = hk_sprintf("%s/data", base);
+    const megler_storage_host *made = NULL;
     int i;
     t_sink = sink;
     t_sink_user = user;
     t_checks = t_failed = 0;
     for (i = 0; i < FAKE_ROOTS; i++) {
-        g_roots[i] = hk_sprintf("%s/storage/root%d", scratch, i);
+        g_roots[i] = hk_sprintf("%s/root%d", base, i);
         hk_path_mkdirs(g_roots[i]);
         wipe(g_roots[i], 0);
     }
     hk_path_mkdirs(data);
     wipe(data, 0);
-    test_foreign_paths(scratch);
-    CHECK(libc_found());
-    if (libc_found()) {
-        test_layout(data);
-        test_threads();
-        test_no_links(data);
-        /* As the tests after this one found things: no links, nobody to ask, and the current directory where it was. */
-        C.chdir("/");
+    memset(&g_inner, 0, sizeof(g_inner));
+    if (make) {
+        made = make(names, (const char *const *)g_roots, FAKE_ROOTS);
+        CHECK(made && made->link_count == FAKE_ROOTS && made->open && made->make_folder && made->remove && made->rename);
+        if (made) g_inner = *made;
+    } else {
+        g_inner.open = fake_open;
+        g_inner.make_folder = fake_mkdir;
+        g_inner.remove = fake_remove;
+        g_inner.rename = fake_rename;
+    }
+    if (g_inner.open && g_inner.make_folder && g_inner.remove && g_inner.rename) {
+        test_foreign_paths(base);
+        CHECK(libc_found());
+        if (libc_found()) {
+            test_layout(data);
+            test_threads();
+            test_no_links(data);
+            /* As the tests after this one found things: no links, nobody to ask, and the current directory where it was. */
+            C.chdir("/");
+        }
     }
     free(data);
     hk_foreign_set(NULL);
@@ -1106,4 +1158,20 @@ int hk_storage_tests_run(const char *scratch, hk_test_sink sink, void *user, int
     }
     if (checks) *checks += t_checks;
     return t_failed;
+}
+
+int hk_storage_tests_run(const char *scratch, hk_test_sink sink, void *user, int *checks)
+{
+    char *base = hk_sprintf("%s/storage", scratch);
+    int failed = run_in(base, NULL, sink, user, checks);
+    free(base);
+    return failed;
+}
+
+int hk_storage_tests_run_shell(const char *scratch, hk_storage_host_maker make, hk_test_sink sink, void *user, int *checks)
+{
+    char *base = hk_sprintf("%s/storage-shell", scratch);
+    int failed = run_in(base, make, sink, user, checks);
+    free(base);
+    return failed;
 }

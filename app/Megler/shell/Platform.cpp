@@ -2,9 +2,9 @@
 
 #include "shell/Platform.h"
 
+#include "player/StorageHost.h"
 #include "shell/Files.h"
 #include "shell/ShellLog.h"
-#include "shell/Storage.h"
 #include "shell/Strings.h"
 
 #include "megler.h"
@@ -124,7 +124,8 @@ void initializeCore() {
     shellLog::write("install folder: " + packageDirectory);
     shellLog::write("memory: " + memorySummary());
     shellLog::write("ANGLE: " + angle().summary);
-    storage::probe();
+    // The phone's folders for an app's storage are looked for now, on a thread of their own: by the time an app is started they are known.
+    StorageHost::shared().start();
 
     megler_config config = {};
     config.data_dir = dataDirectory.c_str();
