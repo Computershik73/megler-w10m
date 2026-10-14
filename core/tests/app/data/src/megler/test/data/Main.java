@@ -268,6 +268,7 @@ public class Main extends Activity {
         helper.close();
         storage(run);
         battery();
+        timezone();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
         new android.os.Handler().postDelayed(this::popup, 700);
@@ -441,6 +442,29 @@ public class Main extends Activity {
             return level >= 0 && scale > 0 && level <= scale && capacity == level * 100 / scale && describe(sticky).equals(describe(returned[0]))
                     && manager.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_STATUS) == sticky.getIntExtra("status", -1)
                     && manager.isCharging() == (sticky.getIntExtra("plugged", -1) != 0 && (sticky.getIntExtra("status", -1) == 2 || sticky.getIntExtra("status", -1) == 5));
+        });
+    }
+
+    /**
+     * The phone's time zone: two fixed instants, a winter's noon and a summer's by Greenwich, as the default zone has them. Which zone
+     * that is the test says before the app starts (megler_set_timezone) and reads off the line logged here; what the step itself holds is
+     * that the ways of asking agree: TimeZone, a date format, a Calendar and java.time.
+     */
+    private void timezone() {
+        step("timezone", () -> {
+            final long winter = 1673784000000L, summer = 1689422400000L;   /* 2023-01-15 and 2023-07-15, 12:00 in Greenwich */
+            java.util.TimeZone zone = java.util.TimeZone.getDefault();
+            java.text.SimpleDateFormat format = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm Z", java.util.Locale.US);
+            String w = format.format(new java.util.Date(winter)), s = format.format(new java.util.Date(summer));
+            Log.i("DataTest", "timezone is " + zone.getID() + " winter=" + w + " summer=" + s);
+            java.util.Calendar calendar = java.util.Calendar.getInstance();
+            calendar.setTimeInMillis(summer);
+            java.time.ZonedDateTime zoned = java.time.Instant.ofEpochMilli(summer).atZone(java.time.ZoneId.systemDefault());
+            detail = zone.getID() + " " + s + " calendar " + calendar.getTimeZone().getID() + " " + calendar.get(java.util.Calendar.HOUR_OF_DAY) + " java.time " + zoned;
+            return format.getTimeZone().getID().equals(zone.getID()) && calendar.getTimeZone().getID().equals(zone.getID())
+                    && s.contains(String.format(java.util.Locale.US, " %02d:00 ", calendar.get(java.util.Calendar.HOUR_OF_DAY)))
+                    && zoned.getHour() == calendar.get(java.util.Calendar.HOUR_OF_DAY) && zoned.getOffset().getTotalSeconds() * 1000 == zone.getOffset(summer)
+                    && zone.getOffset(winter) == zone.getRawOffset();
         });
     }
 

@@ -960,6 +960,25 @@ void megler_stop(void);
 /* Frames presented since the app started. */
 uint32_t megler_frames(void);
 
+/* ---------------------------------------------------- the phone, for an app
+ *
+ * What an Android app asks of its phone and only the shell can know.
+ */
+
+/*
+ * The phone's time zone, as tzdata names it ("Europe/Moscow"). Before
+ * megler_run: an app reads it once. NULL or "": as before -- a Java app's
+ * default zone is GMT, and the property persist.sys.timezone says "UTC".
+ *
+ * With a name, a Java app's default zone (java.util.TimeZone.getDefault, and
+ * with it Calendar, the date formats and java.time) is that zone with
+ * tzdata's rules for it, and the property says the name. A name the Android
+ * root's tzdata does not have breaks nothing: the app's zone is GMT, and the
+ * log says so when the app first asks. Native code's localtime is not
+ * changed by this; it already follows the host's clock.
+ */
+void megler_set_timezone(const char *id);
+
 /* ------------------------------------------------------------ diagnostics */
 
 typedef void (*megler_line_fn)(const char *line, void *user);

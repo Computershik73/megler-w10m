@@ -4,7 +4,7 @@
 # changes no file whose contents would come out the same.
 #
 #   core/src/dvm/hk_dvm_boot_dex.h   the built-in java.lang (tools/dvm-boot.py)
-#   core/src/dvm/hk_dvm_art_dex.h    the two classes the runtime adds to Android's libcore, from core/src/dvm/art/*.smali
+#   core/src/dvm/hk_dvm_art_dex.h    the classes the runtime adds to Android's libcore, from core/src/dvm/art/*.smali
 #   core/src/dvm/hk_dvm_ops.h        the instruction table (tools/dexasm.py ctable)
 #   core/tests/hk_dvm_ops_cases.h    what each arithmetic instruction must return (tools/dvm-ops.py)
 #   build/guest/armeabi-v7a/dvm/     the tests' DEX files, beside the guest test libraries:

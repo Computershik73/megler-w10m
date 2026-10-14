@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 
+#include "bionic/hk_bionic.h"
 #include "hk_core.h"
 #include "host/hk_host.h"
 #include "drivers/hk_java.h"
@@ -82,3 +83,10 @@ void megler_set_paused(bool paused) { hk_run_set_paused(paused); }
 void megler_set_focused(bool focused) { hk_run_set_focused(focused); }
 void megler_stop(void) { hk_run_stop(); }
 uint32_t megler_frames(void) { return hk_run_frames(); }
+
+/* The phone, for an app. The time zone is kept where Android's own code looks for it (bionic/hk_bionic.h). */
+void megler_set_timezone(const char *id)
+{
+    hk_timezone_set(id);
+    if (id && id[0]) hk_info("phone: the time zone is %s", hk_timezone_id());
+}

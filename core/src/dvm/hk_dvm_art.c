@@ -650,7 +650,7 @@ static int boot_jars(char out[][64], int cap)
  * is no TLS, and asking for it says so (NoSuchAlgorithmException) instead of
  * dying in a class that cannot start.
  */
-static const char *g_providers_name;
+static const char *g_providers_name, *g_timezone_name;
 
 static void set_security(hk_jobj *props, const char *key, const char *value)
 {
@@ -662,9 +662,15 @@ static void set_security(hk_jobj *props, const char *key, const char *value)
     else hk_dvm_call_virtual(props, "remove", "(Ljava/lang/Object;)Ljava/lang/Object;", a, NULL);
 }
 
+static void give_timezone_getter(void);
+
 static void before_init(hk_dvm_class *c)
 {
     hk_jvalue props;
+    if (c->name == g_timezone_name) {
+        give_timezone_getter();
+        return;
+    }
     if (c->name != g_providers_name || g_dvm.conscrypt) return;
     props.j = 0;
     if (!hk_dvm_get_static("java/security/Security", "props", &props) || !props.l) {
@@ -686,6 +692,53 @@ N(SystemRandom_engineNextBytes)
     hk_jobj *bytes = c->args[0].l;
     if (!bytes) hk_dvm_throw("java/lang/NullPointerException", "bytes == null");
     else hk_random(bytes->u.arr.data, (size_t)bytes->u.arr.len);
+}
+
+/* ------------------------------------------------------------ the time zone */
+
+/*
+ * java.util.TimeZone's default zone is the phone's. libcore asks for its name in three places (TimeZone.getDefaultRef):
+ * a TimezoneGetter if the runtime gave it one, the file /etc/timezone, and failing both it says GMT. Android gives it the
+ * getter -- the framework's start installs one that reads the property persist.sys.timezone -- and that is what is done
+ * here, just before TimeZone's static initialiser runs, which is before anything can ask: the getter is the runtime's own
+ * class (art/PhoneTimeZone.smali) and its one method answers what the shell said (hk_timezone_id). With nothing said it
+ * answers null and libcore goes on to GMT, as it did when there was no getter.
+ *
+ * A name tzdata does not have is GMT too -- TimeZone.getTimeZone never fails -- and nothing would tell. So the first time
+ * the name is asked for it is tried, and a zone that came out as GMT without being asked for by that name is said in the
+ * log. (TimeZone.getTimeZone is called from inside getDefaultRef here; both lock the class TimeZone, on the same thread.)
+ */
+static void give_timezone_getter(void)
+{
+    hk_jvalue arg;
+    arg.j = 0;
+    arg.l = hk_dvm_new("megler/runtime/PhoneTimeZone", "()V", NULL);
+    if (!arg.l || !hk_dvm_call_static("org/apache/harmony/luni/internal/util/TimezoneGetter", "setInstance", "(Lorg/apache/harmony/luni/internal/util/TimezoneGetter;)V", &arg, NULL)) {
+        hk_warn("java: libcore was not given the phone's time zone (%s); an app's times are GMT", hk_dvm_pending() ? hk_dvm_class_of(hk_dvm_pending())->name : "no getter");
+        hk_dvm_clear_pending();
+    }
+}
+
+N(PhoneTimeZone_getId)
+{
+    static char tried[64];
+    const char *id = hk_timezone_id();
+    hk_jvalue arg, zone, name;
+    c->ret.l = NULL;
+    if (!id[0]) return;
+    c->ret.l = hk_dvm_new_string(id);
+    if (!strcmp(tried, id)) return;
+    hk_strlcpy(tried, id, sizeof(tried));
+    arg.j = zone.j = name.j = 0;
+    arg.l = c->ret.l;
+    if (hk_dvm_call_static("java/util/TimeZone", "getTimeZone", "(Ljava/lang/String;)Ljava/util/TimeZone;", &arg, &zone) && zone.l
+        && hk_dvm_call_virtual(zone.l, "getID", "()Ljava/lang/String;", NULL, &name) && name.l) {
+        const char *got = hk_dvm_string_utf8(name.l);
+        if (got && !strcmp(got, "GMT") && strcmp(id, "GMT") != 0)
+            hk_warn("java: the phone's time zone is given as \"%s\", which the Android root's tzdata does not have: an app's times are GMT", id);
+        else hk_info("java: the time zone is %s", got ? got : id);
+    }
+    hk_dvm_clear_pending();
 }
 
 /* ------------------------------------------------------------------ DexFile */
@@ -1189,6 +1242,7 @@ static const hk_jhle k_art[] = {
     { "java/lang/Class", "getEnclosingConstructorNative", NULL, Class_null },
     { "java/lang/Class", "getInnerClassName", NULL, Class_null },
     { "megler/security/SystemRandom", "engineNextBytes", NULL, SystemRandom_engineNextBytes },
+    { "megler/runtime/PhoneTimeZone", "getId", NULL, PhoneTimeZone_getId },
     { "dalvik/system/DexFile", "openDexFileNative", NULL, DexFile_openDexFileNative },
     { "dalvik/system/DexFile", "defineClassNative", NULL, DexFile_defineClassNative },
     { "dalvik/system/DexFile", "getClassNameList", NULL, DexFile_getClassNameList },
@@ -1246,9 +1300,10 @@ bool hk_dvm_art_start(void)
 {
     g_dvm.libcore = true;
     g_dvm.fill_mirror = fill_mirror;
-    /* The runtime's own two classes, after libcore's on the boot class path (this is before the runtime counts as running: they are boot classes). */
+    /* The runtime's own three classes, after libcore's on the boot class path (this is before the runtime counts as running: they are boot classes). */
     hk_dvm_add_dex(k_dvm_art_dex, k_dvm_art_dex_size, "megler-runtime.dex");
     g_providers_name = hk_dvm_intern("sun/security/jca/Providers");
+    g_timezone_name = hk_dvm_intern("java/util/TimeZone");
     g_dvm.before_init = before_init;
     hk_dvm_register(k_art_nothing);
     hk_dvm_register(k_art);

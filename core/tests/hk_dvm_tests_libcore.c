@@ -123,6 +123,43 @@ void test_libcore_link_all(void)
     CHECK_INT(failed, 0);
 }
 
+/* The default zone's name and its offset from Greenwich, after libcore has been made to forget the one it had worked out (TimeZone.setDefault(null)), so that it asks again. */
+static const char *default_zone(i32 *offset_ms)
+{
+    hk_jvalue zone;
+    memset(A, 0, sizeof(A));
+    call("java/util/TimeZone", "setDefault", "(Ljava/util/TimeZone;)V");
+    zone = call("java/util/TimeZone", "getDefault", "()Ljava/util/TimeZone;");
+    *offset_ms = -1;
+    if (!zone.l) return "(none)";
+    *offset_ms = vcall(zone.l, "getRawOffset", "()I").i;
+    return text_of(vcall(zone.l, "getID", "()Ljava/lang/String;").l);
+}
+
+/*
+ * The default time zone is the phone's, which the shell names (megler_set_timezone; hk_timezone_set underneath): with none
+ * named it is GMT, as libcore says by itself; with a zone of tzdata's, that zone; with a name tzdata does not have, GMT
+ * again and nothing thrown. The property persist.sys.timezone says the name, "UTC" while there is none.
+ */
+static void test_timezone(void)
+{
+    i32 offset;
+    say("the default time zone");
+    CHECK_STR(default_zone(&offset), "GMT");
+    CHECK_INT(offset, 0);
+    hk_timezone_set("Asia/Kolkata");
+    CHECK_STR(default_zone(&offset), "Asia/Kolkata");
+    CHECK_INT(offset, 19800000);
+    CHECK_STR(hk_sysprop("persist.sys.timezone"), "Asia/Kolkata");
+    hk_timezone_set("Nowhere/At_All");
+    CHECK_STR(default_zone(&offset), "GMT");
+    CHECK_INT(offset, 0);
+    hk_timezone_set("");
+    CHECK_STR(default_zone(&offset), "GMT");
+    CHECK_STR(hk_sysprop("persist.sys.timezone"), "UTC");
+    CHECK_STR(thrown(), "");
+}
+
 void test_libcore(const hk_dvm_test_config *config, u64 started_ns, const hk_dvm_stats *at_start)
 {
     const char *fixtures = config->fixtures, *scratch = config->scratch;
@@ -250,4 +287,6 @@ void test_libcore(const hk_dvm_test_config *config, u64 started_ns, const hk_dvm
     say("  the two programs, %u ms for the second: %u classes linked, %u initialised, %u objects (%u KB), %u KB of tables and classes",
         (unsigned)((hk_time_monotonic_ns() - t0) / 1000000ull), (unsigned)s.classes_linked, (unsigned)s.classes_initialised, (unsigned)s.objects,
         (unsigned)(s.object_bytes >> 10), (unsigned)(s.meta_bytes >> 10));
+    /* The time zones are a file read through libcore's own libraries. */
+    if (natives) test_timezone();
 }

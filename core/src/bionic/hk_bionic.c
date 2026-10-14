@@ -178,6 +178,17 @@ const char *hk_sysprop(const char *name)
     return v;
 }
 
+/* The phone's time zone (hk_bionic.h). Kept here as well as in the property, because the properties' defaults are set later than a shell may speak. */
+static char g_timezone[64];
+
+void hk_timezone_set(const char *id)
+{
+    hk_strlcpy(g_timezone, id ? id : "", sizeof(g_timezone));
+    hk_sysprop_set("persist.sys.timezone", g_timezone[0] ? g_timezone : "UTC");
+}
+
+const char *hk_timezone_id(void) { return g_timezone; }
+
 /* The API level the device says it has: one number for the property, the NDK's AConfiguration and android_get_device_api_level. */
 int hk_sdk_level(void)
 {
@@ -221,6 +232,8 @@ static void default_props(void)
     };
     size_t i;
     for (i = 0; i < HK_COUNT(d); i++) hk_sysprop_set(d[i][0], d[i][1]);
+    /* A zone the shell named before this ran is not undone by the default. */
+    if (g_timezone[0]) hk_sysprop_set("persist.sys.timezone", g_timezone);
 }
 
 /* ------------------------------------------------------------------- init */

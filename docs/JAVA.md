@@ -53,7 +53,7 @@ where; **expected** and **not verified** mean what they say.
 | `core/src/webp/` | WebP pictures decoded in the core: `hk_webp.c`, and libwebp's decoder compiled in where it is there, file by file |
 | `core/include/megler.h` | `megler_gfx_host`, the contract for the shell's drawing; `megler_window_host.present_pixels`; `megler_run_config.android_root` |
 | `core/framework-overlay/` | what differs here from the original's Java framework: files that replace the original's and members added to its classes, each saying at its top what differs and why |
-| `core/src/dvm/art/*.smali`, `hk_dvm_art_dex.h` | two classes the runtime adds to libcore's: a security provider that stands in for conscrypt's |
+| `core/src/dvm/art/*.smali`, `hk_dvm_art_dex.h` | three classes the runtime adds to libcore's: a security provider that stands in for conscrypt's, and the getter libcore asks for the phone's time zone |
 | `tools/build-framework.sh` | builds the framework's DEX from the original's sources and the overlay |
 | `core/tests/app/`, `tools/build-test-app.sh` | two test apps as ordinary Android apps (aapt2, javac, d8), and their build |
 | `core/tests/hk_java_tests.c` | the test of the driver: the apps started through `megler_run`, their log and their pictures checked |
@@ -85,19 +85,19 @@ the decoder 40 fewer, and the script says which is missing.
 
 ```
 bash tools/build-tests.sh win      (MSVC x64, run on the PC; libcore's native libraries cannot run there)
-    3495 checks, 0 failed          on the built-in java.lang
-    3509 checks, 0 failed          on libcore, its bytecode alone
-    (then the shell's own drawing, which is not this document's: 263, 263, 14, 9, 8 and 6 checks)
+    3923 checks, 0 failed          on the built-in java.lang
+    3937 checks, 0 failed          on libcore, its bytecode alone
+    (then the shell's own drawing and the storage on Windows' own folders, which are not this document's: 263, 263, 263, 425, 14, 9, 8 and 6 checks)
 
 bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-float, under qemu-arm)
-    3719 checks, 0 failed          on the built-in java.lang
-    3759 checks, 0 failed          on libcore with its native libraries
+    4147 checks, 0 failed          on the built-in java.lang
+    4197 checks, 0 failed          on libcore with its native libraries
       43 checks, 0 failed          the Java test app hello, through megler_run
       72 checks, 0 failed          the Java test app demos, the keyboard's 25 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
       13 checks, 0 failed          the Java test app crash: an exception nothing catches, launcher aliases, an app written for Android 6
-      37 checks, 0 failed          the Java test app data: a database, the storage and the battery, the first run
-      37 checks, 0 failed          data again, on what the first run left, with another battery
+      39 checks, 0 failed          the Java test app data: a database, the storage, the battery and the time zone, the first run
+      40 checks, 0 failed          data again, on what the first run left, with another battery and a time zone that is none
       43 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
     (then each app once more, its drawing recorded for the PC's run to draw again)
 ```
@@ -188,13 +188,13 @@ a `substring` out of range, an `ExceptionInInitializerError`'s text).
 
 The six files of the boot class path the test starts from are Android 9's own
 (`core-oj`, `core-libart`, `conscrypt`, `okhttp`, `bouncycastle`, `apache-xml`:
-7617 classes, 11.4 MB of DEX), and after them two classes of the runtime's own
-("The security providers" below): 7619.
+7617 classes, 11.4 MB of DEX), and after them three classes of the runtime's
+own ("The security providers" below, and the getter of "The time zone"): 7620.
 
 **Without libcore's native libraries** (the PC, and the same code as ARM):
 
-- All six files are read and **every one of the 7619 classes links** (in both
-  runs: `7619 linked, 0 not`).
+- All six files are read and **every one of the 7620 classes links** (in both
+  runs: `7620 linked, 0 not`).
 - The program that uses `java.lang` alone (`d8t/Main.java`) gives the JVM's
   answers for 9 of its 10 tests, and the one that uses `java.util`, `java.io`
   and `java.text` (`d8t/Lib.java`) for the 7 of its 17 that need no native
@@ -501,8 +501,9 @@ and opened at version 2, `onUpgrade` once, the column it adds there. `left`
 and `kept`: the app leaves three rows and counts its runs; `tools/build-tests.sh`
 runs it twice, the second time on the data folder of the first, and the
 second run must find the rows of the first and say that it is run 2.
-With the storage's and the battery's steps (below) and one for a popup list,
-37 checks each. The popup: a `ListPopupWindow` of three rows that wraps its
+With the storage's, the battery's and the time zone's steps (below) and one
+for a popup list, 39 checks in the first run and 40 in the second. The popup:
+a `ListPopupWindow` of three rows that wraps its
 content, shown under a strip at the top of the window, has all three rows
 inside its list and clear of the list's padding (160 high: three rows of 48
 and 8 above and below).
@@ -583,6 +584,51 @@ run on the default and sets another battery before the second (37 of 100,
 discharging, unplugged, 3712 mV, 30.1 degrees, "Li-poly"), and checks the
 line the app logs in each: what the app reads is what the core has.
 
+### The time zone (the runtime on libcore and the app, under qemu-arm)
+
+The shell names the phone's time zone before it starts an app
+(`megler_set_timezone("Europe/Moscow")`, megler.h; `hk_timezone_set` in
+`core/src/bionic`), and a Java app's default zone is that zone.
+
+libcore asks for the name in three places (`TimeZone.getDefaultRef`): a
+`TimezoneGetter` if the runtime has given it one, the file `/etc/timezone`,
+and failing both it says GMT -- which is what every app had here. Android
+gives it the getter: the framework's start installs one that reads the
+property `persist.sys.timezone` (`RuntimeInit.commonInit`). The same is done
+here, by the runtime and not by the framework, so that it holds for anything
+that runs on libcore: the getter is a class of the runtime's own
+(`megler.runtime.PhoneTimeZone`, `core/src/dvm/art/PhoneTimeZone.smali`),
+given to libcore just before `java.util.TimeZone`'s static initialiser runs
+(the hook the security providers use), and its one method, a native, answers
+the name the shell gave. With none given it answers null and libcore goes on
+to GMT as before. Nothing is written to `/etc/timezone` and nothing calls
+`TimeZone.setDefault`: an app that sets a zone of its own and then sets
+`null` gets the phone's back, as on Android. The property says the same name
+(it was fixed at "UTC", and is "UTC" while no zone is named): that is where
+ICU's own code and an app's `__system_property_get` look. The framework's
+`android.os.SystemProperties` is a table of its own and still has nothing
+under that name. Native code's `localtime` is not touched; it has the host's
+offset already.
+
+A name tzdata does not have is GMT too, since `TimeZone.getTimeZone` never
+fails, and nothing would say so; so the first time the name is asked for the
+runtime tries it, and the log has a line: `java: the time zone is
+Europe/Moscow`, or a warning that the name is not in the Android root's
+tzdata and the app's times are GMT.
+
+Tested twice. In the core's tests on libcore (`test_timezone`, 10 checks,
+where libcore's native libraries run: the zones are a file read through
+them): none named is GMT; "Asia/Kolkata" is that zone, five and a half hours
+on, and the property says it; a name that is no zone's is GMT with nothing
+thrown; none again is GMT and "UTC". And in the data app, the `timezone`
+step: two fixed instants, a winter's noon and a summer's by Greenwich,
+formatted in the default zone, and `TimeZone`, the date format, a `Calendar`
+and `java.time` must agree on the zone and the hour. The harness starts the
+first run in `Europe/Berlin` and reads `13:00 +0100` and `14:00 +0200` off
+the app's line -- the zone's rules, not an offset -- and the second run in
+`Nowhere/At_All`, which must start all the same, say `12:00 +0000` twice,
+and leave the warning in the log.
+
 ### Real apps (qemu-arm; nothing here is run by default)
 
 `hk_tests --java app <apk> <data dir> <android root> <picture dir> <verbose>
@@ -603,7 +649,8 @@ every static initialiser, and a line for every exception thrown, by bytecode
 app's start to the end of the script, and `HK_JAVA_PROFILE_TOP=<n>` prints
 that many methods instead of twenty: with a large number it is the list of
 every method that ran and how often, in which a listener that should have
-run is there or is not.
+run is there or is not. `HK_JAVA_TIMEZONE=<name>` starts the app in that time
+zone, as the shell does on a phone.
 
 **QuickShortcutMaker 2.5.0** (no native code; ActionBarSherlock, Flurry).
 Starts to its tabbed main screen; the overflow menu, Settings (a
@@ -629,7 +676,9 @@ shows its licence dialog with its three buttons (Translation, Do not accept,
 Accept), and after Accept its main screen: a toolbar and, open over it, the
 drawer that is its file manager -- two panes and a third tab, the path
 `/storage/emulated/0` with a line about it underneath, the folders there, each
-with its date and what it holds ("2026/10/14 01:10, dirs 0, files 0"), and a
+with its date and what it holds ("2026/10/14 01:10, dirs 0, files 0"; the
+time is Greenwich's unless the run names a zone, and with
+`HK_JAVA_TIMEZONE=Europe/Moscow` it is three hours on), and a
 row of five tools at the bottom. Two more dialogs follow the licence (a
 choice with a spinner; whether to exempt the app from the battery optimiser).
 Settings opens: seven headers, each with its screen of preferences. Fixed on

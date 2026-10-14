@@ -1066,8 +1066,8 @@ static int run_data(void)
                                          "bad-sql", "memory", "upgrade", "left",
                                          /* And the storage as an app sees it. */
                                          "environment", "own-folders", "volumes", "space", "permissions", "download", "list-root",
-                                         /* And the battery. */
-                                         "battery" };
+                                         /* And the battery, and the time zone. */
+                                         "battery", "timezone" };
     int at = -1, want = 0, run = 0, line, i;
     char text[120];
     if (g_script_count) sscanf(g_script[0], "run:%d", &want);
@@ -1085,6 +1085,14 @@ static int run_data(void)
     expect_line("I/DataTest: permission-result ok after done=true", &at, 30);
     /* So does the battery's sticky broadcast to a receiver registered for it, once. */
     expect_line("I/DataTest: battery-received ok", &at, 30);
+    /*
+     * The time zone the app has is the one the shell named before the start (megler_set_timezone, below): in the first run a zone with
+     * summer time, whose winter's noon by Greenwich is 13:00 and whose summer's is 14:00; in the second a name no tzdata has, which is
+     * GMT and a line in the log, and breaks nothing.
+     */
+    CHECK(find_line(run == 2 && want == 2 ? "I/DataTest: timezone is GMT winter=2023-01-15 12:00 +0000 summer=2023-07-15 12:00 +0000"
+                                           : "I/DataTest: timezone is Europe/Berlin winter=2023-01-15 13:00 +0100 summer=2023-07-15 14:00 +0200", 0) >= 0);
+    if (run == 2 && want == 2) CHECK(find_line("java: the phone's time zone is given as \"Nowhere/At_All\", which the Android root's tzdata does not have", 0) >= 0);
     /* A popup list that wraps its content has room for all its rows, inside what the list and the popup's background keep clear. */
     expect_line("I/DataTest: popup ok rows=3", &at, 30);
     /* And the battery an app reads is the core's (hk_battery_read): a full one on mains when nothing was set, in the second run the one set before it. */
@@ -1199,6 +1207,10 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
     g_crash_app = !strcmp(which, "crash");
     /* The data app's second run is on another battery than the one the core has when nobody has said: what the app then reads is what was set here. */
     if (!strcmp(which, "data") && g_script_count && !strcmp(g_script[0], "run:2")) hk_battery_set(&k_battery_run2);
+    /* And in a time zone the shell names, as it must, before the app starts: one with summer time, and in the second run a name that is no zone's. */
+    if (!strcmp(which, "data")) megler_set_timezone(g_script_count && !strcmp(g_script[0], "run:2") ? "Nowhere/At_All" : "Europe/Berlin");
+    /* For an app that is not a test's, HK_JAVA_TIMEZONE names the zone it is started in: a real app as on a phone that has one. */
+    if (!strcmp(which, "app") && getenv("HK_JAVA_TIMEZONE")) megler_set_timezone(getenv("HK_JAVA_TIMEZONE"));
     if (start(apk, android_root)) {
         if (!strcmp(which, "demos")) run_demos();
         else if (!strcmp(which, "natives")) run_natives();

@@ -193,6 +193,16 @@ const char *hk_fs_package(void);
 const char *hk_sysprop(const char *name);
 void hk_sysprop_set(const char *name, const char *value);
 
+/*
+ * The phone's time zone as tzdata names it ("Europe/Moscow"), which the shell knows and says (megler_set_timezone); "" until
+ * it has, and after NULL or "". The property persist.sys.timezone says the same, "UTC" while there is none: it is where
+ * Android's own code looks (ICU's default zone, an app's __system_property_get). The Java runtime asks hk_timezone_id for
+ * libcore's default zone (dvm/hk_dvm_art.c). Set before an app runs: both read it once. The C library's localtime does not
+ * read it; it has the host's offset for each instant (hk_time_utc_offset).
+ */
+void hk_timezone_set(const char *id);
+const char *hk_timezone_id(void);
+
 /* exit() from guest code: the driver decides what it means (the default ends the process). */
 extern void (*hk_guest_exit_hook)(int status);
 
