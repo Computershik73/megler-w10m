@@ -243,6 +243,75 @@ works, the app's own first.
 
 There is no Vulkan on Windows 10 Mobile, so apps that need it cannot run.
 
+### A Java app's views, on the graphics processor
+
+An app whose user interface is Java draws its views through `megler_gfx_host`
+(core/include/megler.h): the core keeps the bitmaps in memory and asks the shell to
+draw into them (`app/Megler/player/GfxHost.cpp`). The first shell drew with
+Direct2D's software rasterizer straight into that memory. On the phone that was
+slow: a frame that redraws a caret (5% of a 720 x 1280 window, a dozen calls)
+cost 18-20 ms of drawing, half of it in Direct2D's `EndDraw`, and a full window
+11-26 ms. So the shell draws on the graphics processor now, with the same
+contract, and keeps the software way for when there is no device for it.
+
+- **One device.** At the first call the shell makes a hardware Direct3D 11 device
+  with BGRA support (the phone's Adreno 530 has feature level 11), an
+  `ID2D1Device` over it, and from then on Direct2D 1.1 draws: shapes, text
+  (DirectWrite's glyph runs, in grey levels), bitmaps, gradients and effects.
+  Where there is none, or it is lost, or the flag file `gfx-software` asks for
+  it, canvases are software render targets over memory as before, said once in
+  the log.
+- **A canvas** is a device context of its own and a target bitmap of its size on
+  the processor. What the memory holds is uploaded before the first drawing after
+  `canvas_new` or `touched`, unless that drawing replaces every pixel (a window's
+  frame begins with `drawColor`). At `flush` the box round everything drawn since
+  the last flush is copied to a bitmap the processor can read and mapped, and its
+  rows go into the memory, which the core and `present_pixels` read. Mapping waits
+  for the processor to finish: that, and the copy, is the price of keeping the
+  contract, and the log's `gfx:` line says what it is.
+- **Layers** are target bitmaps of their extent, drawn back at their restore.
+  **Bitmaps** drawn from the core's memory are uploaded once and kept under the
+  core's id and version (`megler_gfx_image`) until `bitmap_gone` or a memory budget.
+- **The host's own arithmetic** (the other seventeen transfer modes, colour
+  filters, shadows, `drawColor`, layers put on by a mode) is done by Direct2D's
+  built-in effects where their formula is megler.h's (Composite, Blend,
+  ArithmeticComposite, Flood, GaussianBlur); what is left reads back the box it
+  changes, is put on in memory as before, and is uploaded again. GfxHost.cpp
+  lists which is which.
+- **Threads.** The Direct2D factory is the multithreaded kind: it serialises
+  every call, contexts' and the device's included, and with them Direct2D's use
+  of the Direct3D device, which the shell never calls itself. Each canvas is
+  drawn by one thread at a time (megler.h), and its context, targets and read-back
+  bitmap are its own; the kept bitmaps, and the contexts and targets kept for the
+  next canvas, have locks.
+
+`tools/build-tests.sh win` draws the scenes (core/tests/hk_gfx_scenes.c) both
+ways, on this PC's graphics processor and in memory, and replays the Java test
+apps' recorded drawing.
+
+**Presenting straight from the processor (not built).** Each frame of a window is
+still drawn on the processor, read back into memory, and uploaded again by the
+window host to a texture of its own device. The read-back is the one wait in the
+frame. Removing it needs the core:
+
+- megler_gfx_host would get an optional `present(canvas, x, y, width, height)`:
+  show the part of the window's canvas that changed, from the shell's own
+  picture, without a flush; false when it cannot (the core then flushes and
+  calls `present_pixels` as today, which is also what NULL means).
+- The core would call it in place of flushing the window's bitmap and calling
+  `present_pixels(_part)`, when the window's picture is that one canvas's alone
+  -- no OpenGL frames composed under the views, nothing written into the memory
+  behind the canvas. The canvas then stays unflushed; anything that reads the
+  window's memory later (a screenshot, `View.getDrawingCache`, composing with a
+  GL view) flushes it first, as the core already does before every read
+  (`bm_settle`), and the shell reads back then.
+- The shell's window host would make its swap chain on GfxHost's device instead
+  of a device of its own, and copy the changed part from the canvas's target
+  bitmap into its texture (`CopySubresourceRegion`, or a `DrawBitmap` with the
+  flip the texture's bottom-up rows need) before presenting. Both run on the
+  app's thread that calls `present`, under Direct2D's lock (`ID2D1Multithread`),
+  since the window host would then use the device's context itself.
+
 ### OpenGL ES from an app's Java
 
 An app whose user interface is Java draws its views in memory (megler_gfx_host, and

@@ -8,7 +8,55 @@
 // proper, text, and image files. That is this class, and nothing else in the
 // shell draws for an app.
 //
-// How the memory is drawn into. A canvas is a Direct2D software render target
+// There are two ways of drawing, and one is chosen for the process at the
+// first call: on the graphics processor, wherever Direct3D 11 gives a device
+// of the hardware's own that can share textures with Direct2D (BGRA
+// support), and in memory, by Direct2D's software rasterizer, where it does
+// not, where the device is lost, or where a test or the phone's flag file
+// "gfx-software" asks for it (setDrawing). The software rasterizer was
+// measured on the phone (a Snapdragon 820): a frame that redraws a caret,
+// 46,000 pixels and a dozen calls, cost 18-20 ms of drawing, half of it in
+// EndDraw; that is why the graphics processor is the first choice.
+//
+// On the graphics processor. One Direct3D 11 device and one ID2D1Device on
+// it serve every canvas. A canvas has a device context of its own
+// (ID2D1DeviceContext; contexts and target bitmaps are kept for the next
+// canvas when one is freed, so that a canvas still costs microseconds to
+// make) and a target bitmap of the canvas's size in the graphics processor's
+// memory, which is its picture. The core and the window read the core's
+// memory, so the two are kept one picture by megler.h's flush and touched,
+// both ways and only where needed:
+//   - What the memory holds is uploaded (ID2D1Bitmap::CopyFromMemory) before
+//     the first drawing after canvas_new or touched -- not at all when that
+//     drawing is a drawColor that replaces every pixel, which is how every
+//     frame of a window begins.
+//   - What is drawn goes to the graphics processor, and the box round all of
+//     it since the last flush is remembered. At flush that box alone is read
+//     back: copied into a bitmap the processor can read
+//     (D2D1_BITMAP_OPTIONS_CPU_READ), mapped, and its rows copied into the
+//     memory. Mapping waits for the graphics processor to have drawn
+//     everything before it: that wait is the price of the round trip, and
+//     the log's line says what it costs.
+//   - A layer (save_layer) is a target bitmap of its extent, cleared, drawn
+//     into, and put onto the picture under it at its restore.
+//   - Bitmaps drawn from the core's memory (draw_bitmap, shader_bitmap) are
+//     uploaded once and kept under megler_gfx_image's id and version, dropped
+//     at bitmap_gone or when the kept ones pass a budget (least recently
+//     drawn first).
+//   - Text is DirectWrite's glyph runs drawn by the context, in grey levels
+//     as before; Direct2D keeps the glyphs' pictures on the processor.
+//   - What Direct2D lays on by itself in memory it lays on here too: shapes,
+//     bitmaps and text over what is there (SRC_OVER), clipped by a rectangle
+//     or by a layer with a geometric mask. drawColor is a Clear or a filled
+//     rectangle; a layer at SRC_OVER is DrawBitmap at the layer's alpha. The
+//     other transfer modes, colour filters, shadows and the rest of the
+//     host's own arithmetic are done by Direct2D's effects where they say
+//     the same thing (GfxHost.cpp lists which, and what differs); anything
+//     left reads the box it changes back into memory, puts the drawing on
+//     there by the arithmetic below, and uploads the box again: slower, and
+//     the same picture.
+//
+// In memory. A canvas is a Direct2D software render target
 // (ID2D1Factory::CreateWicBitmapRenderTarget) over an IWICBitmap of this
 // file's own, whose lock hands Direct2D the core's memory itself: nothing is
 // copied, and a canvas costs a few microseconds to make. Direct2D collects
@@ -43,18 +91,31 @@
 //
 // Threads. The callers are the app's threads (never the UI thread). The
 // Direct2D factory is the multithreaded kind, which serialises every call
-// into Direct2D by a lock of its own, so canvases may be drawn on from
-// several threads at once; DirectWrite's shared factory and WIC's objects
-// take calls from any thread; this file's own tables (remembered text,
-// typefaces, stroke styles, a shader's brush) have a lock each. WIC is COM:
-// the process's multithreaded apartment is kept alive from the first image
-// on (CoIncrementMTAUsage), and a thread that never initialised COM is then
-// in it.
+// into Direct2D by a lock of its own -- the device's and every context's
+// calls included, and with them Direct2D's use of the Direct3D device -- so
+// canvases may be drawn on from several threads at once; this file never
+// calls the Direct3D device's context itself, which is what would need
+// ID2D1Multithread's lock. A canvas's context, its target bitmaps and the
+// bitmap its read-backs go through are its own, used by one thread at a
+// time as the canvas is. DirectWrite's shared factory and WIC's objects take
+// calls from any thread; this file's own tables (remembered text, typefaces,
+// stroke styles, a shader's brushes, the kept bitmaps, the contexts and
+// target bitmaps kept for the next canvas) have a lock each. WIC is COM: the
+// process's multithreaded apartment is kept alive from the first image on
+// (CoIncrementMTAUsage), and a thread that never initialised COM is then in
+// it.
+//
+// A device that is lost (DXGI_ERROR_DEVICE_REMOVED, D2DERR_RECREATE_TARGET)
+// is said once in the log, and from then on everything is drawn in memory:
+// a canvas goes over to it at its next call, keeping what its last flush
+// put into the memory (what was drawn since is lost, as Android loses a
+// window's drawing with its surface).
 //
 // d2d1.dll and dwrite.dll are delay-loaded (tools/build-appx.sh) and first
 // called under a guard, so a device without one gets a sentence in the log
 // and an app that draws nothing, not a Megler that does not start.
-// windowscodecs.dll is reached through CoCreateInstance alone.
+// windowscodecs.dll is reached through CoCreateInstance alone; d3d11.dll is
+// the shell's anyway (WindowHost).
 //
 // Nothing here is WinRT: the file is plain COM C++, built into the shell and
 // into the core's test program on a PC (tools/build-tests.sh win, the mode

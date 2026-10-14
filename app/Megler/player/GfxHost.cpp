@@ -50,6 +50,55 @@
 //     MODULATE), is mixed by its coverage as megler.h says; for the others the
 //     source is weighted by the coverage, which is the same thing for every
 //     one of them but PLUS, where it differs by less than a step.
+//
+// ON THE GRAPHICS PROCESSOR (GfxHost.h says how the memory and the
+// processor's picture are kept one). Every drawing call is put onto the
+// picture in one of three ways:
+//
+//   - By Direct2D, as in memory: shapes, text and bitmaps laid over the
+//     picture (SRC_OVER) in a colour or through a linear, radial or bitmap
+//     brush, clipped by a rectangle or a geometric layer.
+//   - By Direct2D on the processor where memory needed this file's
+//     arithmetic, as the same formula:
+//       drawColor           SRC and CLEAR within a rectangle clip, and an
+//                           opaque SRC_OVER: Clear under an axis-aligned clip.
+//                           SRC_OVER: a filled rectangle under the clip.
+//       a layer's restore   SRC_OVER: DrawBitmap at the layer's alpha under
+//                           the clip at the save.
+//       transfer modes      the call's colours times its coverage (the
+//                           shape's smoothed edge and the clip's) drawn into
+//                           a bitmap of the canvas's own, A; then
+//                           DST_OVER, DST_OUT, SRC_ATOP, XOR, PLUS:
+//                             DrawImage of A with that composite mode, which
+//                             leaves the picture as it is where A is nothing,
+//                             as megler.h's table does;
+//                           SCREEN, OVERLAY, DARKEN, LIGHTEN: Direct2D's
+//                             Blend effect over a copy of the box, whose
+//                             formula is megler.h's for these four;
+//                           CLEAR, SRC, SRC_IN, DST_IN, SRC_OUT, DST_ATOP,
+//                             MODULATE, which take colour away where a pixel
+//                             is partly covered: D * (1 - coverage) + the
+//                             mode of A and D (Composite and
+//                             ArithmeticComposite effects over a copy of the
+//                             box), copied into the box. Every one of these
+//                             is linear in the source, so the mode of A is
+//                             the mode of the colour times the coverage.
+//       colour filters      on a shader's colours or a bitmap's pixels:
+//                           Flood and the Composite, Blend or
+//                           ArithmeticComposite effect for the filter's mode,
+//                           after the paint's alpha as megler.h orders it.
+//       shadows             the call's coverage through the GaussianBlur
+//                           effect, moved, in the shadow's colour.
+//   - Through memory, for what is left: the box the call can change is read
+//     back, the call is put on by this file's arithmetic as in memory, and
+//     the box is uploaded again. A sweep gradient's colours are worked out
+//     in memory (Direct2D has no such brush) and uploaded as the call's
+//     colours.
+//
+// Direct2D's blending and effects work in floating point and round to whole
+// 255ths at the end of each step, where this file's arithmetic rounds every
+// product: a result can differ from it by a step or two, never more than
+// tools/build-tests.sh lets the table's check differ.
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
