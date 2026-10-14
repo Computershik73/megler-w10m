@@ -118,10 +118,45 @@ struct Counts {
     Detour deleteAsSeen;   // a handle to delete through refused with the least rights, asked for with the ones a phone took
     Detour deleteByBroker; // not deleted through a handle at all, and the broker's DeleteAsync asked
     Detour folderNotMoved; // a folder not moved to another folder by renaming
+    Detour heldByAnother;  // an open refused because something else had the file, and asked again a moment later
 };
 Counts gCounts;
 
 bool usable(HRESULT hr, HANDLE h) { return SUCCEEDED(hr) && h && h != INVALID_HANDLE_VALUE; }
+
+/// Asks the broker for a handle, and again for up to a second while the
+/// answer is that something else has the file. On the phone (HP Elite x3) a
+/// file written and closed in one of the libraries is at times held for a
+/// moment by something of Windows' own that looks at new files there: of a
+/// hundred steps of the check two were refused that way, a different two
+/// each time, and an app would have been told the file was busy.
+template <typename Ask>
+HRESULT askPatiently(Ask&& ask) {
+    HRESULT hr = ask();
+    for (DWORD wait = 15; wait <= 480 && (hr == HRESULT_FROM_WIN32(ERROR_SHARING_VIOLATION) || hr == HRESULT_FROM_WIN32(ERROR_LOCK_VIOLATION)); wait *= 2) {
+        gCounts.heldByAnother.taken(hr);
+        Sleep(wait);
+        hr = ask();
+    }
+    return hr;
+}
+
+/// The same patience with a call of Windows.Storage's own, which says it by
+/// throwing: a file to be renamed or removed may be held as one to be opened.
+template <typename Call>
+void callPatiently(Call&& call) {
+    for (DWORD wait = 15;; wait *= 2) {
+        try {
+            call();
+            return;
+        } catch (const winrt::hresult_error& e) {
+            const HRESULT hr = e.code();
+            if (wait > 480 || (hr != HRESULT_FROM_WIN32(ERROR_SHARING_VIOLATION) && hr != HRESULT_FROM_WIN32(ERROR_LOCK_VIOLATION))) throw;
+            gCounts.heldByAnother.taken(hr);
+        }
+        Sleep(wait);
+    }
+}
 
 /// A folder's or a file's handle to itself; null with `hr`.
 template <typename Item>
@@ -132,7 +167,7 @@ HANDLE ownHandle(Item const& item, HANDLE_ACCESS_OPTIONS access, HRESULT& hr) {
         return nullptr;
     }
     HANDLE h = INVALID_HANDLE_VALUE;
-    hr = self->Create(access, shareAll, HO_NONE, nullptr, &h);
+    hr = askPatiently([&] { return self->Create(access, shareAll, HO_NONE, nullptr, &h); });
     return usable(hr, h) ? h : nullptr;
 }
 
@@ -144,7 +179,7 @@ HANDLE fileHandle(StorageFolder const& parent, const std::wstring& name, HANDLE_
         return nullptr;
     }
     HANDLE h = INVALID_HANDLE_VALUE;
-    hr = files->Create(name.c_str(), creation, access, shareAll, HO_NONE, nullptr, &h);
+    hr = askPatiently([&] { return files->Create(name.c_str(), creation, access, shareAll, HO_NONE, nullptr, &h); });
     return usable(hr, h) ? h : nullptr;
 }
 
@@ -563,6 +598,7 @@ std::string StorageHost::summary() {
         {c.deleteAsSeen, "a handle to delete through was refused with the least rights and asked for with more"},
         {c.deleteByBroker, "not deleted through a handle, and Windows.Storage's own deleting asked for"},
         {c.folderNotMoved, "a folder not moved to another folder by renaming (the app was told EXDEV)"},
+        {c.heldByAnother, "an open refused because something else had the file, and asked again a moment later"},
     };
     for (const auto& d : detours)
         if (d.detour.times.load()) text += format("; %s %u times, first with 0x%08X", d.what, d.detour.times.load(), d.detour.first.load());
@@ -834,7 +870,7 @@ bool StorageHost::removeOnWorker(const Roots& roots, int root, const std::wstrin
         return false;
     }
     gCounts.deleteByBroker.taken(hr);
-    item.DeleteAsync(StorageDeleteOption::PermanentDelete).get();
+    callPatiently([&] { item.DeleteAsync(StorageDeleteOption::PermanentDelete).get(); });
     return true;
 }
 
@@ -870,7 +906,7 @@ bool StorageHost::renameOnWorker(const Roots& roots, int fromRoot, const std::ws
     if (itself) {
         // By way of a third name: whether "replace what is there" would take the thing for its own obstacle is not known.
         const std::wstring between = L".megler-rename-" + std::to_wstring(GetTickCount64()) + L"-" + std::to_wstring(GetCurrentThreadId());
-        item.RenameAsync(between, NameCollisionOption::FailIfExists).get();
+        callPatiently([&] { item.RenameAsync(between, NameCollisionOption::FailIfExists).get(); });
         try {
             item.RenameAsync(toName, NameCollisionOption::FailIfExists).get();
         } catch (...) {
@@ -881,9 +917,9 @@ bool StorageHost::renameOnWorker(const Roots& roots, int fromRoot, const std::ws
             throw;
         }
     } else if (sameParent) {
-        item.RenameAsync(toName, NameCollisionOption::ReplaceExisting).get();
+        callPatiently([&] { item.RenameAsync(toName, NameCollisionOption::ReplaceExisting).get(); });
     } else if (!isFolder) {
-        item.as<StorageFile>().MoveAsync(toParent, toName, NameCollisionOption::ReplaceExisting).get();
+        callPatiently([&] { item.as<StorageFile>().MoveAsync(toParent, toName, NameCollisionOption::ReplaceExisting).get(); });
     } else {
         // Windows.Storage moves a file to another folder and has nothing that moves a folder. The file system has: a rename
         // through the folder's handle, to the new place by its path. (By its path: SetFileInformationByHandle takes no handle
