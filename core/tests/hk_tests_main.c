@@ -387,6 +387,15 @@ static int natives_mode(char **argv)
     hk_core_init();
     hk_log_set_level(HK_LOG_ERROR);
     if (!hk_dvm_start_android(argv[2])) return 1;
+    /*
+     * conscrypt's library is loaded when NativeCrypto first starts (System.loadLibrary in its static initialiser), not with
+     * libcore's: started here, so that where the library is in the root its natives count as answered by it. Where it is not,
+     * the start fails and they are nobody's.
+     */
+    {
+        hk_dvm_class *crypto = hk_dvm_find_class("com/android/org/conscrypt/NativeCrypto");
+        if (!crypto || !hk_dvm_ensure_init(crypto)) hk_dvm_clear_pending();
+    }
     total = hk_dvm_defined_count();
     for (i = 0; i < total; i++) {
         hk_dvm_dex *d = NULL;
@@ -408,7 +417,7 @@ static int natives_mode(char **argv)
                     hk_dvm_clear_pending();
                     none++;
                     ref_add(&nobody, name);
-                    /* Each by its name, but for conscrypt's 280, which are one fact: its library is not there. */
+                    /* Each by its name, but for conscrypt's 280, which are one fact: its library is not there, or did not load. */
                     if (strcmp(name, "com/android/org/conscrypt/NativeCrypto")) printf("  nobody answers %s.%s%s\n", name, m->name, m->sig);
                 } else if (m->native) {
                     in_c++;
