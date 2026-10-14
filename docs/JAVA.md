@@ -2138,10 +2138,16 @@ keeps a local reference in a local, which is what local references are for.
   counting, return when told, and its registers must say ARM state.
   - Under qemu: 3000 stops, 2996 of them in the loop, all 2996 in ARM state;
     the count reached 31 million.
-  - **On the phone it is unproven** until the Self-test has run there.
-  - The device probe has shown a thread staying in ARM state across ordinary
-    interrupts ("ARM mode" in ARCHITECTURE.md). Whether `SuspendThread`,
-    `GetThreadContext` and `ResumeThread` keep it is this test's question.
+  - On the phone (the Self-test of 0.1.0.138): 3000 stops, all 3000 of them
+    in the loop, all in ARM state and none in Thumb state; the count reached
+    354819. `SuspendThread`, `GetThreadContext` and `ResumeThread` keep a
+    thread in ARM state there, as the device probe had shown for ordinary
+    interrupts ("ARM mode" in ARCHITECTURE.md).
+  - The same Self-test ran the collector's census and a collection on the
+    phone, and both passed: 15712 of 21520 objects reachable, 2 threads
+    stopped, 0.3 ms to stop and 7.5 ms to mark. The collection freed 7409
+    objects (1053 KB) in 6.9 ms. Apps on the phone have not yet been seen
+    collecting.
 - *Which stack is scanned*: from the stopped stack pointer to the thread's
   real stack base, `hk_thread_stack_bounds`, recorded at registration
   (`GetCurrentThreadStackLimits` on Windows, `pthread_getattr_np` on Linux).
@@ -2361,11 +2367,12 @@ native code is.
 
 ## What is not done
 
-- **Nothing has run on the phone**, and the shell cannot show a Java app yet
-  (`megler_gfx_host`, `present_pixels`).
-- No garbage collection, no finalizers; `Reference`s are never cleared or
-  queued: a `WeakReference` holds its object for good, which is correct Java
-  (nothing promises a collection) and is why it works.
+- On the phone, Java apps run and are shown (Apktool M among them), and the
+  Self-test has run the runtime's tests there. Most of what is said proven in
+  this document was proven under qemu and on the PC, not on the phone.
+- The collector ("The collector" above) frees objects, clears and enqueues
+  references and runs finalizers. Weak global JNI references stay strong.
+  Finalizers run on one runtime thread with no watchdog.
 - No `MethodHandle` (`invoke-polymorphic`, `invoke-custom`,
   `const-method-handle` and `const-method-type` throw). A class loader cannot
   give two classes one name, and classes are not unloaded.
