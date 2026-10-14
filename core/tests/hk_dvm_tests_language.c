@@ -240,8 +240,11 @@ static void test_exceptions(void)
     /* (libcore's ExceptionInInitializerError has no message and keeps what was thrown in a field of its own, which is not the cause the description follows.) */
     CHECK_STR(thrown(), g_libcore ? "java.lang.ExceptionInInitializerError"
                                   : "java.lang.ExceptionInInitializerError: java.lang.ArithmeticException: divide by zero | caused by java.lang.ArithmeticException: divide by zero");
+    /* ... and every later use is NoClassDefFoundError, whose cause is what went wrong the first time (as in Java 17 and ART). */
     call("t/Exc", "boom", "()I");
-    CHECK_STR(thrown(), "java.lang.NoClassDefFoundError: Could not initialize class t/Boom");
+    CHECK_STR(thrown(), g_libcore ? "java.lang.NoClassDefFoundError: Could not initialize class t/Boom | caused by java.lang.ExceptionInInitializerError"
+                                  : "java.lang.NoClassDefFoundError: Could not initialize class t/Boom | caused by java.lang.ExceptionInInitializerError: "
+                                    "java.lang.ArithmeticException: divide by zero | caused by java.lang.ArithmeticException: divide by zero");
 
     /* Thrown from C. */
     CHECK(!hk_dvm_throw("java/lang/IllegalStateException", "from C, %d", 5));

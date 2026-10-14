@@ -1061,6 +1061,44 @@ static bool init_statics(hk_dvm_class *c)
 static hk_lock g_init_lock = HK_LOCK_INIT;
 static hk_cond g_init_cond = HK_COND_INIT;
 
+/*
+ * A class whose initialisation failed cannot be used again, and every later use is NoClassDefFoundError "Could not
+ * initialize class X". The first failure is what says why, and an app often catches it and goes on -- kotlinx.coroutines
+ * does, for the service it looks up -- so that the error that ends the app names only the class. As Java 17 and ART do,
+ * the later errors have the first one for their cause; and the first is said in the log when it happens, with where, once
+ * for each class (failed_first).
+ */
+static bool failed_before(hk_dvm_class *c)
+{
+    hk_jobj *e;
+    hk_dvm_throw("java/lang/NoClassDefFoundError", "Could not initialize class %s", c->name);
+    e = hk_dvm_pending();
+    if (e && c->init_error && c->init_error != e) {
+        hk_jvalue arg;
+        hk_dvm_clear_pending();
+        arg.j = 0;
+        arg.l = c->init_error;
+        /* (Throwable.initCause; should it refuse, the error goes without a cause.) */
+        if (!hk_dvm_call_virtual(e, "initCause", "(Ljava/lang/Throwable;)Ljava/lang/Throwable;", &arg, NULL)) hk_dvm_clear_pending();
+        hk_dvm_throw_object(e);
+    }
+    return false;
+}
+
+static void failed_first(hk_dvm_class *c)
+{
+    char what[700], where[1600];
+    c->init_error = hk_dvm_pending();
+    if (!c->init_error) {
+        hk_warn("dvm: the initialisation of %s failed, and the class cannot be used from now on", c->name);
+        return;
+    }
+    hk_dvm_describe_pending(what, sizeof(what));
+    where[0] = 0;
+    hk_dvm_pending_stack(where, sizeof(where));
+    hk_warn("dvm: the initialisation of %s failed, and the class cannot be used from now on: %s\n%s", c->name, what, where);
+}
+
 bool hk_dvm_ensure_init(hk_dvm_class *c)
 {
     u32 me;
@@ -1076,7 +1114,7 @@ bool hk_dvm_ensure_init(hk_dvm_class *c)
         }
         if (c->state == DVM_CS_FAILED) {
             hk_lock_release(&g_init_lock);
-            return hk_dvm_throw("java/lang/NoClassDefFoundError", "Could not initialize class %s", c->name);
+            return failed_before(c);
         }
         if (c->state == DVM_CS_LINKED) break;
         /* Being initialised. By this thread: its initialiser has reached back to the class, which it may use half-made, as Java says. */
@@ -1114,6 +1152,7 @@ bool hk_dvm_ensure_init(hk_dvm_class *c)
         }
         break;
     }
+    if (!ok) failed_first(c);
     hk_lock_acquire(&g_init_lock);
     c->state = ok ? DVM_CS_INITIALIZED : DVM_CS_FAILED;
     hk_cond_broadcast(&g_init_cond);

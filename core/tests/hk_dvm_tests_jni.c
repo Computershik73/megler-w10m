@@ -70,7 +70,7 @@ static void test_env(void)
     /* Finding a class does not initialise it (Android's FindClass does not either); asking for something of it does. This one's initialiser threw, long ago. */
     CHECK(find("t/Boom") != NULL && !check());
     CHECK(smethod(find("t/Boom"), "touch", "()I") == NULL && check());
-    CHECK_STR(thrown(), "java.lang.NoClassDefFoundError: Could not initialize class t/Boom");
+    CHECK(!strncmp(thrown(), "java.lang.NoClassDefFoundError: Could not initialize class t/Boom | caused by java.lang.ExceptionInInitializerError", 115));
 
     /* objects and calls: virtual, exact, through an interface */
     ctor = method(rect_c, "<init>", "(II)V");

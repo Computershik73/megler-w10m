@@ -168,6 +168,7 @@ struct hk_dvm_class {
     hk_dvm_method *volatile icache[DVM_ICACHE];
     volatile i32 state;
     u32 init_thread;
+    hk_jobj *init_error;               /* DVM_CS_FAILED: what its initialisation threw the first time, the cause of every later NoClassDefFoundError */
     char elem;                         /* arrays: the element's kind, 'L' for objects and arrays */
     char prim;                         /* primitive classes: their letter */
     hk_dvm_class *component;           /* arrays: the element's class */

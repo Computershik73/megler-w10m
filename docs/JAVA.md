@@ -1128,7 +1128,15 @@ call: the superclass first, then the values the file gives static fields, then
 (an initialiser that reaches back to its own class) carries on with the class
 half-made, as Java specifies. An initialiser that throws leaves the class
 unusable: `ExceptionInInitializerError` the first time, `NoClassDefFoundError`
-after.
+after. Apps catch the first and go on (kotlinx.coroutines does, for the
+services it looks up), so the error that ends them names only the class: MX
+Player ended on "Could not initialize class xc4" and nothing said why. So, as
+Java 17 and ART do, each later `NoClassDefFoundError` has the first failure
+for its cause, and the first failure is said in the log when it happens,
+once for each class, with its causes and where it was thrown
+(`dvm: the initialisation of X failed, and the class cannot be used from now
+on: ...`). The runtime's tests check the cause on both runs, through bytecode
+and through JNI.
 
 ### One Java world with the JNI layer
 
