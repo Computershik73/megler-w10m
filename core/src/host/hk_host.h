@@ -242,6 +242,36 @@ bool hk_path_rename(const char *from, const char *to, int *err);
 /* Calls cb for every entry but . and ..; false with *err set when the directory cannot be listed. */
 typedef void (*hk_dir_cb)(const char *name, bool is_dir, void *user);
 bool hk_path_list(const char *path, hk_dir_cb cb, void *user, int *err);
+
+/*
+ * Names Windows refuses. Android allows every character in a name but '/' and NUL; Windows refuses < > : " \ | ? * and
+ * the characters 1 to 31, a name that ends in a dot or a space, and the names of its devices (CON, PRN, AUX, NUL, COM0 to
+ * 9, LPT0 to 9, with or without an extension). Such a name is given to Windows with each of those characters as the one
+ * U+F000 above it -- a refused character, the dot or space at the end, the first letter of a device's name -- which is
+ * what Cygwin and WSL do, and a name read back from Windows has every character from U+F001 to U+F07F as the one below
+ * it again. A name that needed nothing is passed as it is. (One that holds a character of that private-use range of its
+ * own is read back as the ASCII character; nothing on Android names files so.)
+ *
+ * hk_name_to_host makes every name in a path one Windows takes, malloc'd. HK_NAME_HOST: a host path, where '\' is a
+ * separator as well as '/', and a leading \\?\ or \\.\ and a drive's "C:" are the place, not names. HK_NAME_FOREIGN: a
+ * foreign path's part below its root, where '/' alone separates and a '\' is part of a name. hk_name_from_host undoes it
+ * in a name read back, in place. The Win32 host layer does the first for every path it gives Windows and the second for
+ * every name it lists; foreign paths are mapped before their owner is asked (below), on every host.
+ */
+#define HK_NAME_FOREIGN 0
+#define HK_NAME_HOST 1
+char *hk_name_to_host(const char *path, int how);
+void hk_name_from_host(char *name);
+/*
+ * Whether this host's own file system needs the names mapped: Windows' does. Where a guest's path is joined to a host
+ * folder (bionic/hk_libc_io.c) the guest's part is then mapped as a foreign path's is, so that a backslash in a name
+ * stays a name's and does not become a separator; the host layer's own mapping finds nothing more to do in it.
+ */
+#if defined(_WIN32)
+#define HK_HOST_MAPS_NAMES 1
+#else
+#define HK_HOST_MAPS_NAMES 0
+#endif
 /* The whole file, malloc'd (a NUL follows the bytes, not counted in *size); NULL when it cannot be read. */
 u8 *hk_file_read_all(const char *path, size_t *size);
 bool hk_file_write_all(const char *path, const void *data, size_t size);
@@ -275,9 +305,12 @@ bool hk_path_space(const char *path, u64 *total, u64 *available);
  * through, and are asked for as such.
  *
  * What follows the root's number reaches the callbacks with forward slashes
- * and none at either end; "" is the root itself. A path with an empty part,
- * a "." or ".." part, a backslash or a colon after the root's number is
- * refused here (HK_E_INVAL) and never reaches them. A root itself cannot be
+ * and none at either end; "" is the root itself. Its names are mapped as
+ * Windows needs them (hk_name_to_host, HK_NAME_FOREIGN): a backslash or a
+ * colon in a name, say, reaches them as U+F05C or U+F03A, and the names
+ * listed through their handles are mapped back by the host layer. A path
+ * with an empty part or a "." or ".." part is refused here (HK_E_INVAL) and
+ * never reaches them. A root itself cannot be
  * made (HK_E_EXIST), removed or renamed (HK_E_BUSY), and that too is answered
  * here.
  *

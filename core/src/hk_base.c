@@ -182,6 +182,92 @@ void hk_foreign_set(const hk_foreign *f)
 
 bool hk_path_is_foreign(const char *path) { return path && !strncmp(path, HK_FOREIGN_PREFIX, sizeof(HK_FOREIGN_PREFIX) - 1); }
 
+/* ------------------------------------------------ names Windows refuses (hk_host.h) */
+
+static bool same3(const char *s, const char *upper)
+{
+    int i;
+    for (i = 0; i < 3; i++)
+        if ((s[i] >= 'a' && s[i] <= 'z' ? s[i] - 32 : s[i]) != upper[i]) return false;
+    return true;
+}
+
+/* CON, PRN, AUX, NUL, COM0-9, LPT0-9: what comes before the first dot, without the spaces at its end, in any case. */
+static bool device_name(const char *s, size_t n)
+{
+    size_t stem = 0;
+    while (stem < n && s[stem] != '.') stem++;
+    while (stem > 0 && s[stem - 1] == ' ') stem--;
+    if (stem == 3) return same3(s, "CON") || same3(s, "PRN") || same3(s, "AUX") || same3(s, "NUL");
+    return stem == 4 && (same3(s, "COM") || same3(s, "LPT")) && s[3] >= '0' && s[3] <= '9';
+}
+
+static bool refused_char(unsigned char c, bool backslash)
+{
+    return (c >= 1 && c < 32) || c == '<' || c == '>' || c == ':' || c == '"' || c == '|' || c == '?' || c == '*' || (backslash && c == '\\');
+}
+
+static bool is_sep(char c, bool host) { return c == '/' || (host && c == '\\'); }
+
+char *hk_name_to_host(const char *path, int how)
+{
+    size_t n = strlen(path), i = 0, start, len, k;
+    bool host = how == HK_NAME_HOST;
+    /* At most three bytes for each one. */
+    char *out = (char *)hk_alloc(3 * n + 1), *o = out;
+    if (host) {
+        /* What names a place to Windows, not a file: \\?\ or \\.\, then a drive's letter and colon. */
+        if (n >= 4 && is_sep(path[0], true) && is_sep(path[1], true) && (path[2] == '?' || path[2] == '.') && is_sep(path[3], true)) i = 4;
+        if (n >= i + 2 && ((path[i] >= 'A' && path[i] <= 'Z') || (path[i] >= 'a' && path[i] <= 'z')) && path[i + 1] == ':' && (n == i + 2 || is_sep(path[i + 2], true)))
+            i += 2;
+        memcpy(o, path, i);
+        o += i;
+    }
+    while (i <= n) {
+        const char *s;
+        bool dots, device;
+        start = i;
+        while (i < n && !is_sep(path[i], host)) i++;
+        s = path + start;
+        len = i - start;
+        dots = (len == 1 && s[0] == '.') || (len == 2 && s[0] == '.' && s[1] == '.');
+        device = !dots && len && device_name(s, len);
+        for (k = 0; k < len; k++) {
+            unsigned char c = (unsigned char)s[k];
+            if (!dots && ((k == 0 && device) || refused_char(c, !host) || (k == len - 1 && (c == '.' || c == ' ')))) {
+                unsigned cp = 0xF000u + c;
+                *o++ = (char)0xEF;
+                *o++ = (char)(0x80 | ((cp >> 6) & 0x3F));
+                *o++ = (char)(0x80 | (cp & 0x3F));
+            } else {
+                *o++ = (char)c;
+            }
+        }
+        if (i < n) *o++ = path[i];
+        i++;
+    }
+    *o = 0;
+    return out;
+}
+
+void hk_name_from_host(char *name)
+{
+    char *r = name, *w = name;
+    while (*r) {
+        unsigned char a = (unsigned char)r[0], b = (unsigned char)r[1], c = b ? (unsigned char)r[2] : 0;
+        if (a == 0xEF && (b == 0x80 || b == 0x81) && (c & 0xC0) == 0x80) {
+            unsigned v = ((unsigned)(b & 0x3F) << 6) | (c & 0x3Fu);
+            if (v >= 1 && v < 0x80) {
+                *w++ = (char)v;
+                r += 3;
+                continue;
+            }
+        }
+        *w++ = *r++;
+    }
+    *w = 0;
+}
+
 /* The root's number and what follows it ("" for the root itself); false for a path that is not a well-formed foreign one. */
 static bool foreign_split(const char *path, int *root, const char **rel)
 {
@@ -195,9 +281,8 @@ static bool foreign_split(const char *path, int *root, const char **rel)
         return true;
     }
     *rel = ++p;
-    /* Every part has something in it and is not "." or ".."; nothing that would mean another place to the operating system. */
+    /* Every part has something in it and is not "." or "..". (A backslash or a colon is a name's, and mapped before anyone is asked: hk_name_to_host.) */
     for (part = p;; p++) {
-        if (*p == '\\' || *p == ':') return false;
         if (*p && *p != '/') continue;
         if (p == part || (p - part == 1 && part[0] == '.') || (p - part == 2 && part[0] == '.' && part[1] == '.')) return false;
         if (!*p) return true;
@@ -238,8 +323,10 @@ void *hk_foreign_open(const char *path, int flags, int kind, int *err)
     } else if (!f->open) {
         e = HK_E_ACCESS;
     } else {
+        char *mapped = hk_name_to_host(rel, HK_NAME_FOREIGN);
         e = HK_E_IO;
-        h = f->open(f->user, root, rel, flags, kind, &e);
+        h = f->open(f->user, root, mapped, flags, kind, &e);
+        free(mapped);
     }
     if (!h) {
         foreign_fail(err, e);
@@ -258,7 +345,12 @@ bool hk_foreign_mkdir(const char *path, int *err)
     if (!rel[0]) return foreign_fail(err, HK_E_EXIST);
     if (!f->mkdir) return foreign_fail(err, HK_E_ACCESS);
     e = HK_E_IO;
-    return f->mkdir(f->user, root, rel, &e) || foreign_fail(err, e);
+    {
+        char *mapped = hk_name_to_host(rel, HK_NAME_FOREIGN);
+        bool ok = f->mkdir(f->user, root, mapped, &e);
+        free(mapped);
+        return ok || foreign_fail(err, e);
+    }
 }
 
 bool hk_foreign_remove(const char *path, bool dir, int *err)
@@ -270,7 +362,12 @@ bool hk_foreign_remove(const char *path, bool dir, int *err)
     if (!rel[0]) return foreign_fail(err, dir ? HK_E_BUSY : HK_E_ISDIR);
     if (!f->remove) return foreign_fail(err, HK_E_ACCESS);
     e = HK_E_IO;
-    return f->remove(f->user, root, rel, dir, &e) || foreign_fail(err, e);
+    {
+        char *mapped = hk_name_to_host(rel, HK_NAME_FOREIGN);
+        bool ok = f->remove(f->user, root, mapped, dir, &e);
+        free(mapped);
+        return ok || foreign_fail(err, e);
+    }
 }
 
 bool hk_foreign_rename(const char *from, const char *to, int *err)
@@ -286,7 +383,13 @@ bool hk_foreign_rename(const char *from, const char *to, int *err)
     if (!from_rel[0] || !to_rel[0]) return foreign_fail(err, HK_E_BUSY);
     if (!f->rename) return foreign_fail(err, HK_E_ACCESS);
     e = HK_E_IO;
-    return f->rename(f->user, from_root, from_rel, to_root, to_rel, &e) || foreign_fail(err, e);
+    {
+        char *from_mapped = hk_name_to_host(from_rel, HK_NAME_FOREIGN), *to_mapped = hk_name_to_host(to_rel, HK_NAME_FOREIGN);
+        bool ok = f->rename(f->user, from_root, from_mapped, to_root, to_mapped, &e);
+        free(from_mapped);
+        free(to_mapped);
+        return ok || foreign_fail(err, e);
+    }
 }
 
 bool hk_path_mkdirs(const char *path)

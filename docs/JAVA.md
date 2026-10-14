@@ -85,13 +85,13 @@ the decoder 40 fewer, and the script says which is missing.
 
 ```
 bash tools/build-tests.sh win      (MSVC x64, run on the PC; libcore's native libraries cannot run there)
-    3932 checks, 0 failed          on the built-in java.lang
-    3946 checks, 0 failed          on libcore, its bytecode alone
-    (then the shell's own drawing and the storage on Windows' own folders, which are not this document's: 263, 263, 263, 425, 14, 9, 8 and 6 checks)
+    3940 checks, 0 failed          on the built-in java.lang
+    3954 checks, 0 failed          on libcore, its bytecode alone
+    (then the shell's own drawing and the storage on Windows' own folders, which are not this document's: 263, 263, 263, 433, 14, 9, 8 and 6 checks)
 
 bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-float, under qemu-arm)
-    4156 checks, 0 failed          on the built-in java.lang
-    4206 checks, 0 failed          on libcore with its native libraries
+    4164 checks, 0 failed          on the built-in java.lang
+    4214 checks, 0 failed          on libcore with its native libraries
       45 checks, 0 failed          the Java test app hello, through megler_run
       72 checks, 0 failed          the Java test app demos, the keyboard's 25 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
@@ -565,6 +565,26 @@ Java's calls arrive there.
   Ringtones -- each a directory, the root readable and writable, and the
   app's own `Android/data/<package>` under it. This list is what a file
   manager's first screen is made of (Apktool M's drawer, in "Real apps").
+
+**Names Windows refuses.** Android allows any character in a file's name but
+'/', and apps use that: MX Player's Amazon SDK names a database after an ARN,
+`arn:aws:remote-config:us-west-2:...:apiz0o87_ConfigurationCache.db`, and on
+the phone SQLite could not open it, over and over, and each time a thread of
+the app died of it. Windows refuses `< > : " \ | ? *`, the characters 1 to
+31, a name ending in a dot or a space, and its device names (CON, NUL, AUX,
+COM1 ...). Such names are now given to Windows with each of those characters
+as the character U+F000 above it -- as Cygwin and WSL do -- and read back as
+they were (`hk_name_to_host`, `hk_name_from_host`, `core/src/host/hk_host.h`):
+by the Win32 host layer for every path it hands Windows and every name it
+lists, where a guest's path is joined to a host folder on Windows (so that a
+backslash stays part of a name), and for the phone's folders by the core
+before the shell's storage host is asked, so that the shell gets names
+Windows.Storage takes and maps nothing itself. A name that needed nothing
+is as it was. The storage tests make fourteen such names, the ARN among
+them, in the app's own folder and in a link: written, read back, listed
+exactly as named, stat'ed, renamed (to the name with a dot more) and
+removed, on both hosts and through the shell's own Windows.Storage host
+(`hk_tests --storage-windows`).
 
 ### The battery (both hosts; the app under qemu-arm)
 

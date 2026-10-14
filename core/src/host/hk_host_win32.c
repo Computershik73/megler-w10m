@@ -831,14 +831,16 @@ static int err_of(DWORD e)
 }
 #define SET_ERR() do { if (err) *err = err_of(GetLastError()); } while (0)
 
-/* UTF-8 with forward slashes to what Win32 takes; malloc'd. */
+/* UTF-8 with forward slashes to what Win32 takes, with the names in it that Windows refuses mapped (hk_host.h); malloc'd. */
 static wchar_t *wide_path(const char *path)
 {
-    int n = MultiByteToWideChar(CP_UTF8, 0, path, -1, NULL, 0);
+    char *mapped = hk_name_to_host(path, HK_NAME_HOST);
+    int n = MultiByteToWideChar(CP_UTF8, 0, mapped, -1, NULL, 0);
     wchar_t *w, *p;
     if (n <= 0) n = 1;
     w = (wchar_t *)hk_alloc(sizeof(wchar_t) * (size_t)(n + 1));
-    MultiByteToWideChar(CP_UTF8, 0, path, -1, w, n);
+    MultiByteToWideChar(CP_UTF8, 0, mapped, -1, w, n);
+    free(mapped);
     for (p = w; *p; p++)
         if (*p == L'/') *p = L'\\';
     /* A trailing separator makes several calls fail ("C:\dir\"); a bare root keeps its own. */
@@ -1168,6 +1170,7 @@ static bool list_handle(HANDLE h, hk_dir_cb cb, void *user, int *err)
                 int bytes = WideCharToMultiByte(CP_UTF8, 0, e->FileName, (int)n, NULL, 0, NULL, NULL);
                 char *name = (char *)hk_alloc((size_t)(bytes > 0 ? bytes : 0) + 1);
                 if (bytes > 0) WideCharToMultiByte(CP_UTF8, 0, e->FileName, (int)n, name, bytes, NULL, NULL);
+                hk_name_from_host(name);
                 if (name[0]) cb(name, (e->FileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0, user);
                 free(name);
             }
@@ -1181,8 +1184,8 @@ static bool list_handle(HANDLE h, hk_dir_cb cb, void *user, int *err)
 
 bool hk_path_list(const char *path, hk_dir_cb cb, void *user, int *err)
 {
-    char *pattern;
-    wchar_t *w;
+    wchar_t *w, *dir;
+    size_t len;
     WIN32_FIND_DATAW fd;
     HANDLE h;
     if (hk_path_is_foreign(path)) {
@@ -1193,10 +1196,16 @@ bool hk_path_list(const char *path, hk_dir_cb cb, void *user, int *err)
         CloseHandle(h);
         return ok;
     }
-    pattern = hk_sprintf("%s/*", path);
-    w = wide_path(pattern);
+    /* The pattern's '*' after the mapping, which would make it a name's. */
+    dir = wide_path(path);
+    len = wcslen(dir);
+    w = (wchar_t *)hk_alloc(sizeof(wchar_t) * (len + 3));
+    memcpy(w, dir, sizeof(wchar_t) * len);
+    if (len && dir[len - 1] != L'\\') w[len++] = L'\\';
+    w[len++] = L'*';
+    w[len] = 0;
+    free(dir);
     h = FindFirstFileExW(w, FindExInfoBasic, &fd, FindExSearchNameMatch, NULL, 0);
-    free(pattern);
     if (h == INVALID_HANDLE_VALUE) {
         DWORD e = GetLastError();
         free(w);
@@ -1213,6 +1222,7 @@ bool hk_path_list(const char *path, hk_dir_cb cb, void *user, int *err)
         char *name;
         if (!wcscmp(fd.cFileName, L".") || !wcscmp(fd.cFileName, L"..")) continue;
         name = utf8_of(fd.cFileName);
+        hk_name_from_host(name);
         cb(name, (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0, user);
         free(name);
     } while (FindNextFileW(h, &fd));

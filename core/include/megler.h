@@ -267,8 +267,15 @@ typedef struct megler_media_host {
  *
  * `path` is UTF-8 and relative to the link's folder, parts joined by "/",
  * none at either end; "" is the link's folder itself (only ever opened, as a
- * folder or as whichever). The layer has resolved "." and "..", and a path
- * with a backslash or a colon in it never arrives.
+ * folder or as whichever). The layer has resolved "." and "..". Names arrive
+ * as Windows takes them: Android allows any character in a name but '/',
+ * and the layer has already mapped what Windows refuses -- < > : " \ | ? *,
+ * the characters 1 to 31, a dot or a space at a name's end, the first
+ * letter of a device's name (CON, NUL, AUX, COM1 ...) -- to the character
+ * U+F000 above it, as Cygwin and WSL do. A backslash or a colon in `path` is
+ * never a separator or a drive, then: they do not arrive at all. The names a
+ * folder's handle lists are mapped back by the layer, so the shell neither
+ * maps nor needs to know.
  *
  * The calls come on the app's own threads, any of them and several at once,
  * and never on the shell's UI thread; each returns when it is done. They are

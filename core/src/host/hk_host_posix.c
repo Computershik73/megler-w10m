@@ -566,7 +566,8 @@ bool hk_path_list(const char *path, hk_dir_cb cb, void *user, int *err)
 {
     DIR *d;
     struct dirent *e;
-    if (hk_path_is_foreign(path)) {
+    bool foreign = hk_path_is_foreign(path);
+    if (foreign) {
         /* A foreign directory is read through the descriptor its owner hands over, which the DIR then owns. */
         int fd = foreign_fd(path, HK_O_READ, HK_FOREIGN_DIR, err);
         if (fd < 0) return false;
@@ -588,6 +589,14 @@ bool hk_path_list(const char *path, hk_dir_cb cb, void *user, int *err)
             /* (Asked of the directory itself, not by path: a foreign one has no path to ask by.) */
             struct stat s;
             is_dir = fstatat(dirfd(d), e->d_name, &s, 0) == 0 && S_ISDIR(s.st_mode);
+        }
+        if (foreign) {
+            /* Its names were given to its owner as Windows takes them (hk_host.h); the app has them back as it named them. */
+            char *name = hk_strdup(e->d_name);
+            hk_name_from_host(name);
+            cb(name, is_dir, user);
+            free(name);
+            continue;
         }
         cb(e->d_name, is_dir, user);
     }

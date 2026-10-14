@@ -267,8 +267,19 @@ static const mount *mount_of(const char *g)
 static char *host_of_normal(const char *g)
 {
     const mount *best = mount_of(g);
+    const char *rest;
     if (!best) return NULL;
-    return hk_sprintf("%s%s%s", best->host, (best->glen == 1 && g[1]) ? "/" : "", g + (best->glen == 1 ? 1 : best->glen));
+    rest = g + (best->glen == 1 ? 1 : best->glen);
+#if HK_HOST_MAPS_NAMES
+    if (rest[0]) {
+        /* The guest's names as the host takes them (host/hk_host.h): here a backslash in one is still known to be a name's. */
+        char *mapped = hk_name_to_host(rest, HK_NAME_FOREIGN), *out;
+        out = hk_sprintf("%s%s%s", best->host, (best->glen == 1 && g[1]) ? "/" : "", mapped);
+        free(mapped);
+        return out;
+    }
+#endif
+    return hk_sprintf("%s%s%s", best->host, (best->glen == 1 && g[1]) ? "/" : "", rest);
 }
 
 /* Whether a normalized path is a mount's own name. */

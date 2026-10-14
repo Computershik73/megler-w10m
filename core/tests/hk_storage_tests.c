@@ -381,11 +381,11 @@ static void test_foreign_paths(const char *scratch)
     CHECK(!hk_path_stat(L0 "/nothing", &st, &err) && err == HK_E_NOENT);
     CHECK(hk_file_open(L0 "/nothing", HK_O_READ, &err) == NULL && err == HK_E_NOENT);
 
-    /* Paths that could mean another place to the operating system never reach whoever answers. */
+    /* Paths that could mean another place to the operating system never reach whoever answers. (A backslash or a colon is part of a name, mapped: test_odd_names.) */
     calls = g_calls;
     {
         static const char *const bad[] = {
-            L0 "/../x", L0 "/a/../x", L0 "/./x", L0 "/a/.", L0 "//x", L0 "/a//b", L0 "/a/", L0 "/a\\b", L0 "/c:x", L0 "x",
+            L0 "/../x", L0 "/a/../x", L0 "/./x", L0 "/a/.", L0 "//x", L0 "/a//b", L0 "/a/", L0 "x",
             HK_FOREIGN_PREFIX "x/a", HK_FOREIGN_PREFIX "", HK_FOREIGN_PREFIX "/a",
         };
         for (i = 0; i < (int)HK_COUNT(bad); i++) {
@@ -686,7 +686,7 @@ static int stat_errno(const char *path)
 typedef struct dir_seen {
     int count;                         /* -1: it could not be opened */
     bool dots;                         /* "." and ".." were both there, once each */
-    char names[48][64];
+    char names[48][128];
     u8 types[48];
 } dir_seen;
 
@@ -1047,6 +1047,77 @@ static void test_layout(const char *data)
 typedef struct worker {
     int id, failures;
 } worker;
+
+/*
+ * Names Windows refuses (host/hk_host.h): Android takes any character in a name but '/'. MX Player's Amazon SDK names a
+ * database after an ARN, colons and all. In the app's own folder (the host layer's mapping) and in a link (the core's,
+ * before the storage host is asked), each such name is made, read back, listed exactly as it was named, stat'ed, renamed,
+ * and removed; and a name that needed nothing is still what it was on the host's own disk.
+ */
+static void test_odd_names(void)
+{
+    static const char *const odd[] = { "arn:aws:remote-config:us-west-2:455205533140:appConfig:apiz0o87_ConfigurationCache.db", "a<b>c", "say \"so\"", "back\\slash",
+                                       "pipe|line", "what?", "star*", "dot.", "space ", "CON", "nul.txt", "Com1", "tab\there", "\001one" };
+    static const char *const places[] = { "/data/data/" PKG "/files/odd", SD "/Music/odd" };
+    dir_seen seen;
+    size_t p, i;
+    say("names Windows refuses: an app's own folder and a link");
+    C.mkdir("/data/data/" PKG "/files", 0700);
+    for (p = 0; p < HK_COUNT(places); p++) {
+        bool made = true, read_back = true, stat_ok = true, renamed = true, gone = true, listed_once = true, moved_listed = true;
+        char *path, *to;
+        CHECK(C.mkdir(places[p], 0700) == 0 || last_errno() == GE_EXIST);
+        for (i = 0; i < HK_COUNT(odd); i++) {
+            path = hk_sprintf("%s/%s", places[p], odd[i]);
+            made &= put(path, odd[i]);
+            read_back &= !strcmp(get(path), odd[i]);
+            stat_ok &= size_of(path) == (i64)strlen(odd[i]);
+            free(path);
+        }
+        read_dir(places[p], &seen);
+        for (i = 0; i < HK_COUNT(odd); i++) listed_once &= times(&seen, odd[i]) == 1;
+        if (!listed_once || seen.count != (int)HK_COUNT(odd))
+            for (i = 0; i < (size_t)seen.count && i < 48; i++) say("    listed: \"%s\"", seen.names[i]);
+        CHECK(made && read_back && stat_ok);
+        CHECK(listed_once && seen.count == (int)HK_COUNT(odd));
+        for (i = 0; i < HK_COUNT(odd); i++) {
+            path = hk_sprintf("%s/%s", places[p], odd[i]);
+            to = hk_sprintf("%s/%s.", places[p], odd[i]);
+            renamed &= C.rename(path, to) == 0 && stat_errno(path) == GE_NOENT && size_of(to) == (i64)strlen(odd[i]);
+            free(path);
+            free(to);
+        }
+        read_dir(places[p], &seen);
+        for (i = 0; i < HK_COUNT(odd); i++) {
+            to = hk_sprintf("%s.", odd[i]);
+            moved_listed &= times(&seen, to) == 1 && times(&seen, odd[i]) == 0;
+            free(to);
+        }
+        CHECK(renamed && moved_listed && seen.count == (int)HK_COUNT(odd));
+        for (i = 0; i < HK_COUNT(odd); i++) {
+            to = hk_sprintf("%s/%s.", places[p], odd[i]);
+            gone &= C.unlink(to) == 0;
+            free(to);
+        }
+        read_dir(places[p], &seen);
+        CHECK(gone && seen.count == 0 && C.rmdir(places[p]) == 0);
+    }
+    {
+        /* A name that needed nothing, on the host's own disk: as it was named. */
+        char *host = hk_fs_host_path("/data/data/" PKG "/files/plain name.txt");
+        listing l;
+        CHECK(put("/data/data/" PKG "/files/plain name.txt", "plain"));
+        memset(&l, 0, sizeof(l));
+        if (host) {
+            char *dir = hk_strdup(host);
+            *strrchr(dir, '/') = 0;
+            hk_path_list(dir, list_one, &l, NULL);
+            free(dir);
+        }
+        CHECK(host && listed(&l, "plain name.txt") && C.unlink("/data/data/" PKG "/files/plain name.txt") == 0);
+        free(host);
+    }
+}
 
 static void worker_run(void *arg)
 {
@@ -1415,6 +1486,7 @@ static int run_in(const char *base, hk_storage_host_maker make, hk_test_sink sin
         if (libc_found()) {
             test_layout(data);
             test_threads();
+            test_odd_names();
             test_check();
             test_no_links(data);
             /* As the tests after this one found things: no links, nobody to ask, and the current directory where it was. */
