@@ -626,6 +626,29 @@ int t_shm(void)
 }
 
 /*
+ * fnmatch, which Chromium's FileEnumerator asks of every name it lists: the number of the 16 cases that came out as POSIX
+ * and bionic have them.
+ */
+int fnmatch(const char *, const char *, int);
+
+int t_fnmatch(void)
+{
+    static const struct { const char *pattern, *s; int flags, want; } cases[] = {
+        { "*.pak", "resources.pak", 0, 0 },          { "*.pak", "resources.dat", 0, 1 },
+        { "a?c", "abc", 0, 0 },                      { "a?c", "ac", 0, 1 },
+        { "[a-c]x", "bx", 0, 0 },                    { "[!a-c]x", "bx", 0, 1 },
+        { "[]]", "]", 0, 0 },                        { "[", "[", 0, 0 },
+        { "\\*", "*", 0, 0 },                        { "\\*", "\\*", 1, 0 },     /* FNM_NOESCAPE */
+        { "*", "a/b", 2, 1 },                        { "*/b", "a/b", 2, 0 },     /* FNM_PATHNAME */
+        { "*", ".hidden", 4, 1 },                    { ".*", ".hidden", 4, 0 },  /* FNM_PERIOD */
+        { "a", "a/b/c", 8, 0 },                      { "ABC", "abc", 0x10, 0 },  /* FNM_LEADING_DIR, FNM_CASEFOLD */
+    };
+    int i, right = 0;
+    for (i = 0; i < (int)(sizeof(cases) / sizeof(cases[0])); i++) right += fnmatch(cases[i].pattern, cases[i].s, cases[i].flags) == cases[i].want;
+    return right;
+}
+
+/*
  * timerfd, as Chromium's message pump keeps its delayed work: nothing to read before its time, readable when it comes
  * (poll and epoll both wake for it, though nothing writes to it), the count of expirations read, a repeating one counting
  * each, an absolute time on CLOCK_MONOTONIC, and disarmed by a zero time. 8, or the negated step that failed.

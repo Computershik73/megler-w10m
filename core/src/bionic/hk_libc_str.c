@@ -414,7 +414,98 @@ static size_t g_strxfrm_l(char *d, const char *s, size_t n, void *loc) { (void)l
 static int g_strcasecmp_l(const char *a, const char *b, void *loc) { (void)loc; return g_strcasecmp(a, b); }
 static int g_strncasecmp_l(const char *a, const char *b, size_t n, void *loc) { (void)loc; return g_strncasecmp(a, b, n); }
 
+/*
+ * fnmatch, as bionic's (OpenBSD's): `*`, `?`, bracket expressions (ranges; `!` or `^` to negate; a `]` first is one of
+ * them; one not closed is a `[` like any other), and a backslash escaping the next unless FNM_NOESCAPE. FNM_PATHNAME: a
+ * slash is matched only by a slash. FNM_PERIOD: a leading period (and, with FNM_PATHNAME, one after a slash) only by a
+ * period. FNM_LEADING_DIR: the string may go on after a slash where the pattern ends. FNM_CASEFOLD: letters in either
+ * case. 0 when the string matches, FNM_NOMATCH when not.
+ */
+enum { G_FNM_NOMATCH = 1, G_FNM_NOESCAPE = 1, G_FNM_PATHNAME = 2, G_FNM_PERIOD = 4, G_FNM_LEADING_DIR = 8, G_FNM_CASEFOLD = 0x10 };
+
+static int fn_fold(int c, int flags) { return (flags & G_FNM_CASEFOLD) && c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c; }
+
+static bool fn_leading_period(const char *s, const char *start, int flags)
+{
+    return (flags & G_FNM_PERIOD) && *s == '.' && (s == start || ((flags & G_FNM_PATHNAME) && s[-1] == '/'));
+}
+
+/* The bracket expression at p (just after its `[`) against c: 1 in it, 0 not, -1 not closed. *end: just after its `]`. */
+static int fn_bracket(const char *p, int c, int flags, const char **end)
+{
+    bool negate = *p == '!' || *p == '^', in = false;
+    if (negate) p++;
+    c = fn_fold(c, flags);
+    do {
+        int lo = (u8)*p, hi;
+        if (!lo) return -1;
+        if (lo == '\\' && !(flags & G_FNM_NOESCAPE) && p[1]) lo = (u8)*++p;
+        p++;
+        hi = lo;
+        if (*p == '-' && p[1] && p[1] != ']') {
+            hi = (u8)*++p;
+            if (hi == '\\' && !(flags & G_FNM_NOESCAPE) && p[1]) hi = (u8)*++p;
+            p++;
+        }
+        if (fn_fold(lo, flags) <= c && c <= fn_fold(hi, flags)) in = true;
+    } while (*p != ']');
+    *end = p + 1;
+    return in != negate;
+}
+
+static int fn_match(const char *p, const char *s, const char *start, int flags)
+{
+    for (;;) {
+        int c = (u8)*p++, r;
+        const char *after;
+        switch (c) {
+        case 0:
+            return !*s || ((flags & G_FNM_LEADING_DIR) && *s == '/') ? 0 : G_FNM_NOMATCH;
+        case '?':
+            if (!*s || (*s == '/' && (flags & G_FNM_PATHNAME)) || fn_leading_period(s, start, flags)) return G_FNM_NOMATCH;
+            s++;
+            break;
+        case '*':
+            while (*p == '*') p++;
+            if (fn_leading_period(s, start, flags)) return G_FNM_NOMATCH;
+            if (!*p) return !(flags & G_FNM_PATHNAME) || (flags & G_FNM_LEADING_DIR) || !strchr(s, '/') ? 0 : G_FNM_NOMATCH;
+            if (*p == '/' && (flags & G_FNM_PATHNAME)) {
+                s = strchr(s, '/');
+                if (!s) return G_FNM_NOMATCH;
+                break;
+            }
+            for (; *s; s++) {
+                if (!fn_match(p, s, s, flags & ~G_FNM_PERIOD)) return 0;
+                if (*s == '/' && (flags & G_FNM_PATHNAME)) break;
+            }
+            return G_FNM_NOMATCH;
+        case '[':
+            if (!*s || (*s == '/' && (flags & G_FNM_PATHNAME)) || fn_leading_period(s, start, flags)) return G_FNM_NOMATCH;
+            r = fn_bracket(p, (u8)*s, flags, &after);
+            if (r == 0) return G_FNM_NOMATCH;
+            if (r > 0) {
+                p = after;
+                s++;
+                break;
+            }
+            if ((u8)*s != '[') return G_FNM_NOMATCH;             /* not closed: a `[` like any other */
+            s++;
+            break;
+        case '\\':
+            if (!(flags & G_FNM_NOESCAPE) && *p) c = (u8)*p++;
+            /* fall through */
+        default:
+            if (fn_fold(c, flags) != fn_fold((u8)*s, flags)) return G_FNM_NOMATCH;
+            s++;
+            break;
+        }
+    }
+}
+
+static int g_fnmatch(const char *pattern, const char *s, int flags) { return fn_match(pattern, s, s, flags); }
+
 const hk_sym hk_tab_str[] = {
+    HK_WRAP("fnmatch", g_fnmatch),
     HK_WRAP("memcpy", g_memcpy), HK_WRAP("memmove", g_memmove), HK_WRAP("memset", g_memset), HK_WRAP("memcmp", g_memcmp),
     HK_WRAP("memchr", g_memchr), HK_WRAP("memrchr", g_memrchr), HK_WRAP("memmem", g_memmem), HK_WRAP("mempcpy", g_mempcpy),
     HK_WRAP("strlen", g_strlen), HK_WRAP("strnlen", g_strnlen), HK_WRAP("strcpy", g_strcpy), HK_WRAP("strncpy", g_strncpy),
