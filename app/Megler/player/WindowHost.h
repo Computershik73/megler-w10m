@@ -34,6 +34,9 @@
 // An app whose user interface is Java draws no OpenGL: its views are drawn in
 // memory (player/GfxHost.h) and each finished picture of the whole window
 // arrives through present_pixels, on the app's main thread, top row first.
+// (One that draws with OpenGL ES on a view as well has its window composed
+// by the core, the views over the GL frames read back, and the pictures
+// come the same way, from the thread that swapped a frame too.)
 // There is no ANGLE then and no device to share, so the device is this
 // class's own, made when the first picture comes; from there on the picture
 // takes the way a game's frame takes -- the same swap chain on the panel, the
@@ -113,8 +116,10 @@ private:
     void applyTransform();
     void describe();
 
-    // A Java app's pictures (present_pixels): on the app's main thread, but
-    // for showAgain, which is the UI thread's.
+    // A Java app's pictures (present_pixels): on the app's main thread, or
+    // on a thread of its that swaps OpenGL ES frames (the core composes the
+    // window then, and calls one at a time), but for showAgain, which is the
+    // UI thread's. All of it under pixelsMutex_.
     void showPixels(const void* pixels, int width, int height, int stride);
     void showPixelsPart(const void* pixels, int width, int height, int stride, int x, int y, int partWidth, int partHeight);
     bool makeOwnDevice(unsigned width, unsigned height);
