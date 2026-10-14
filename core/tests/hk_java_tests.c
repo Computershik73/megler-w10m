@@ -1337,6 +1337,8 @@ static int run_gl(void)
     memset(label, 0, sizeof(label));
     memset(egl, 0, sizeof(egl));
     expect_line("I/GlTest: onCreate", &at, 120);
+    /* The version the device says it offers is what a context can be made of (the stand-in has OpenGL ES 3). */
+    expect_line("I/GlTest: device gles=3.0 req=0x30000", &at, 30);
     /* EGL14 on a pbuffer, on a thread of the app's: how an app asks the GPU's name. */
     CHECK(wait_line("I/GlTest: egl14 pbuffer made=true egl=1.4 pixel=255,0,128 width=16 version=2 current=true released=true max-texture=4096 error=0", 0, 120) >= 0);
     CHECK(find_line("I/GlTest: egl14 strings vendor=Megler renderer=stand-in for OpenGL ES version=OpenGL ES 2.0 (stand-in) extensions=3", 0) >= 0);

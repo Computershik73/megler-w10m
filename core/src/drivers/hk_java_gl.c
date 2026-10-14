@@ -1105,6 +1105,9 @@ N(EN_swap)
 
 N(EN_isRenderThread) { c->ret.z = t_render; }
 
+/* glesVersion(): 3.0 where the display has OpenGL ES 3 configurations, else 2.0 (also with no EGL at all: Android always has 2). */
+N(EN_glesVersion) { c->ret.i = egl_ready() && E.es3 ? 0x30000 : 0x20000; }
+
 /* hide(): no view's frames are shown (the original's: every SurfaceView of its with EGL on it said this when it went). */
 N(EN_hide)
 {
@@ -1406,6 +1409,7 @@ static const hk_jhle k_natives[] = {
     { "megler/EGLNative", "hide", "()V", EN_hide },
     { "megler/EGLNative", "place", "(Ljava/lang/Object;IIII)V", EN_place },
     { "megler/EGLNative", "forget", "(Ljava/lang/Object;)V", EN_forget },
+    { "megler/EGLNative", "glesVersion", "()I", EN_glesVersion },
     /* The GLES natives that are no plain call. */
     G("GLES10", "_nativeClassInit", "()V", gl_nothing),
     G("GLES10Ext", "_nativeClassInit", "()V", gl_nothing),

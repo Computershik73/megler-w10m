@@ -52,6 +52,9 @@ public class Main extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         Log.i(T, "onCreate");
+        /* The OpenGL ES version the device says it offers: what a context can be made of here. */
+        android.app.ActivityManager am = (android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE);
+        Log.i(T, "device gles=" + am.getDeviceConfigurationInfo().getGlEsVersion() + " req=0x" + Integer.toHexString(am.getDeviceConfigurationInfo().reqGlEsVersion));
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         FrameLayout top = new FrameLayout(this);

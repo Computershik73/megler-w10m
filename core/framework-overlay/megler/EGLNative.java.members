@@ -8,3 +8,5 @@
     public static native void place(Object view, int x, int y, int width, int height);
     /** The view's surface is gone: its frames are no longer shown. */
     public static native void forget(Object view);
+    /** The newest OpenGL ES a context can be made of here, as ConfigurationInfo.reqGlEsVersion says it: 0x30000 is 3.0. */
+    public static native int glesVersion();
