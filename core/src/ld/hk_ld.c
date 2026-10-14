@@ -990,6 +990,7 @@ static hk_lib *load_lib(const char *name, bool runtime, const char *host_path)
     }
     if (!relocate(lib)) hk_err("ld: %s: relocation failed; the library may not work", lib->name);
     lib->relocated = true;
+    hk_tls_ready(lib);
     count_functions(lib);
     if (!seal(lib)) {
         load_unlock();

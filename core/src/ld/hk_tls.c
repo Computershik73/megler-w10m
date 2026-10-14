@@ -29,6 +29,7 @@ static u32 g_static_used;
 static void init_lib_data(tls_block *b, const hk_lib *lib)
 {
     u8 *at = (u8 *)b->tcb + lib->tls_offset;
+    if (!lib->tls_ready) return;
     memcpy(at, lib->tls_image, lib->tls_filesz);
     memset(at + lib->tls_filesz, 0, lib->tls_memsz - lib->tls_filesz);
 }
@@ -36,7 +37,6 @@ static void init_lib_data(tls_block *b, const hk_lib *lib)
 bool hk_tls_register(hk_lib *lib)
 {
     u32 align = lib->tls_align < 4 ? 4 : lib->tls_align, start;
-    tls_block *b;
     hk_lock_acquire(&g_tls_lock);
     /* Offsets are from the thread pointer, so that is what has to be aligned. */
     start = HK_ALIGN_UP(HK_TCB_SLOTS * (u32)sizeof(void *) + g_static_used, align);
@@ -49,9 +49,24 @@ bool hk_tls_register(hk_lib *lib)
     g_static_used = start + lib->tls_memsz - HK_TCB_SLOTS * (u32)sizeof(void *);
     g_tls_libs[g_ntls_libs++] = lib;
     lib->tls_module = g_ntls_libs;
-    for (b = g_blocks; b; b = b->next) init_lib_data(b, lib);
     hk_lock_release(&g_tls_lock);
     return true;
+}
+
+/*
+ * The initial data is copied only once the library is relocated: .tdata holds pointers (a thread_local const char *
+ * initialised to a string literal), which relocation makes addresses. Copied at registration, as it was, the threads that
+ * already existed -- the main thread, always -- kept the library's link-time values: Brave's libchrome.so read its thread
+ * name through one and strlen faulted at 0x00c0aa77.
+ */
+void hk_tls_ready(hk_lib *lib)
+{
+    tls_block *b;
+    if (!lib->has_tls) return;
+    hk_lock_acquire(&g_tls_lock);
+    lib->tls_ready = true;
+    for (b = g_blocks; b; b = b->next) init_lib_data(b, lib);
+    hk_lock_release(&g_tls_lock);
 }
 
 void **hk_tls_thread_pointer(void)

@@ -1016,6 +1016,8 @@ static void test_guest_kinds(const char *libdir)
     /* Each got the libt_same.so of its own kind. */
     CHECK_INT(FN(ruser, int (*)(void), "t_ruser_which")(), 202);
     CHECK_INT(FN(user, int (*)(void), "t_user_which")(), 101);
+    /* Its thread-local pointer, relocated, in this thread's block, which existed before the library did. */
+    CHECK_INT(FN(user, int (*)(void), "t_user_tls_len")(), 19);
     /* A name only the other kind exports is not bound across: the weak import stays zero on both sides. */
     CHECK_INT(FN(ruser, int (*)(void), "t_ruser_stray")(), -1);
     CHECK_INT(FN(user, int (*)(void), "t_user_stray")(), -1);

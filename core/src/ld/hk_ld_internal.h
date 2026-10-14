@@ -49,6 +49,7 @@ struct hk_lib {
     int exidx_count;
 
     bool has_tls;
+    bool tls_ready;            /* its initial data relocated: threads' blocks are given it (hk_tls_ready) */
     u32 tls_offset;            /* of this library's block from the guest thread pointer */
     u32 tls_filesz, tls_memsz, tls_align, tls_module;
     const u8 *tls_image;
@@ -84,7 +85,10 @@ bool hk_bionic_is_system_lib(const char *soname);
 /* Guest thread-local storage (ld/hk_tls.c). */
 #define HK_TCB_SLOTS 16
 #define HK_TLS_STATIC_MAX 16384u
+/* A library's block given its place and module number, before relocation, which needs both. */
 bool hk_tls_register(hk_lib *lib);
+/* Its initial data, now relocated, copied into every thread's block, and into every block made from now on. */
+void hk_tls_ready(hk_lib *lib);
 /* The calling thread's guest thread pointer, made on first use. */
 void **hk_tls_thread_pointer(void);
 void hk_tls_thread_exit(void);
