@@ -3317,28 +3317,82 @@ objects and come down to 16 bytes; the C-only world keeps the full one.
 
 ### 5. Speed
 
-*Measured, on the PC:* above. *Expected on the phone, not verified:* a Snapdragon
-820's core is roughly a sixth to an eighth of that PC's in single-thread work, so
-some 50 to 80 million simple instructions a second and 6 to 9 million calls.
-Android's own interpreter is of the same order (a hand-written assembly one,
-perhaps half as fast again); Android's compiled code is ten to thirty times
-faster on arithmetic. An app that lays out and draws views in Java at 60 frames a
-second will feel that; one that mostly waits for input will not. The original
-runs apps on an interpreter of this kind, on processors three to five times
-faster.
+*Measured in round 8* ("The interpreter's benchmark" above has how):
+- On the phone (0.1.0.139, Apktool M, frame meter): the start interpreted at
+  71.5 M instructions a second, and steady use at 10 to 30 M;
+- "other native methods" took 5 to 30% of Java's time.
 
-What to do about it, cheapest first:
+Round 8 did, in order, each with its own numbers in its section and commit:
+- the meter's clock reads (natives, allocation);
+- a call's frame without the C library's memset and memcpy;
+- intrinsics;
+- trivial methods;
+- allocation without atomics;
+- `slow_step` out of line;
+- the two loops;
+- a JNI call's argument words.
 
-1. *Done in round 8:* the per-instruction `g_dvm.slow` check is out of the
-   loop. The plain loop polls at jumps back and calls only ("The loop, and the
-   watched loop").
-2. **Quicken**: when an instruction's field, method or string has been resolved,
-   rewrite it in a private copy of the method's code to a form that carries the
-   answer (a slot number, a vtable index), so that running it again resolves
-   nothing.
-3. Do the hottest libcore methods in C (`String.equals`, `hashCode`, `indexOf`):
-   the original has a short list of such "fast paths".
-4. Common pairs of instructions as one.
+The interpreter's place in the program matters as much as any of these:
+where its loop falls moved x64 by up to 70%.
+
+x64 `/O2`, the interpreter at the same place in both builds, ns a turn,
+before the round (9f2001d) and after (44fa81f):
+
+| item | before | after | |
+| --- | ---: | ---: | ---: |
+| int arithmetic | 12.5 | 7.7 | 1.6x |
+| long and double arithmetic | 21.1 | 16.5 | 1.3x |
+| iget and iput | 21.7 | 14.5 | 1.5x |
+| sget and sput | 10.0 | 7.1 | 1.4x |
+| invoke-static | 17.1 | 14.5 | 1.2x |
+| invoke-virtual | 19.7 | 17.1 | 1.2x |
+| invoke-interface, two classes | 28.2 | 22.3 | 1.3x |
+| aget and aput | 20.4 | 13.6 | 1.5x |
+| String.charAt and length | 63.4 | 12.7 | 5x |
+| String.equals, 23 characters | 2899 | 14.3 | 200x |
+| String.hashCode, kept | 43.2 | 10.5 | 4x |
+| StringBuilder, 3 appends | 1201 | 738 | 1.6x |
+| HashMap.get | 336 | 235 | 1.4x |
+| ArrayList iterator | 92.5 | 69.6 | 1.3x |
+| a small object made | 98.6 | 46.6 | 2.1x |
+| an int[16] made | 69.5 | 28.2 | 2.5x |
+| synchronized block | 19.2 | 14.8 | 1.3x |
+| exception made, thrown, caught | 389 | 282 | 1.4x |
+| Math.min, max, abs | 55.5 | 23.2 | 2.4x |
+| System.arraycopy, 16 ints | 62.0 | 14.2 | 4.4x |
+| Integer.valueOf | 131 | 70.9 | 1.9x |
+| getClass and casts | 55.9 | 36.7 | 1.5x |
+
+Under qemu, which is noisier and is not the phone: int arithmetic 136 to 130,
+invoke-static 268 to 170, String.equals 28195 to 245, a small object 1277 to
+632, HashMap.get 4495 to 2609, Math.sin by JNI 817 to 688; in all 25.1 to
+32.9 M instructions a second. The phone's Self-test now prints its own table.
+
+Starts under qemu (the real workload): Apktool M to its splash screen at rest,
+501 M instructions in 26.2 s before and 471 M in 18.1 s after; hello 4.7 M in
+0.64 s and 4.1 M in 0.56 s; demos 5.4 M in 0.74 s and 5.0 M in 0.70 s.
+
+What did not pay:
+- Moving the field and array instructions' throwing out of line
+  (`field_slow`, `array_refused`): every item got slower by 5 to 30%, since the
+  compiler laid the loop out worse. Not kept.
+- Taking the instruction counter out: 3 to 8%, and the meter needs it. Kept.
+
+What is next, cheapest first:
+1. **Link the package with the interpreter in a fixed place** (`/ORDER`, as
+   the benchmark's build does). Until then the phone's speed can move by tens
+   of percent between builds for no reason in the code. It is a line in
+   `tools/build-appx.sh`.
+2. **A thin lock** for the uncontended monitor: one compare-and-swap of a word
+   in the object, a monitor made only when another thread wants it or `wait`
+   is called. Under qemu a synchronized block costs 1100 ns against 15 on
+   x64. The phone's table will say what it costs there.
+3. **Quickening** of field access and invokes into a side table per method
+   (the DEX is used where it lies, and other threads read it). x64 shows iget
+   and iput at about 1.5 ns an instruction against arithmetic's 1.1.
+4. **An inline cache** for invoke-interface: two classes at a site cost 22.3
+   ns against invoke-virtual's 17.1.
+5. Common pairs of instructions as one.
 
 **A JIT is possible and should wait.** The port can make executable memory, but
 only by turning a written page into an executable one (56 to 82 µs a pair of
