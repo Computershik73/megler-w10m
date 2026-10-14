@@ -71,6 +71,17 @@ static bool on_fault(hk_fault *f)
             size_t n = strlen(report);
             snprintf(report + n, sizeof(report) - n, "\n  %s+0x%x", lib, (unsigned)(pc - (hk_addr)base));
         }
+        if (f->kind == HK_FAULT_ACCESS && f->address < 0x100) {
+            /*
+             * A Gecko app's crash on purpose: MOZ_CRASH puts its reason in mozglue's gMozCrashReason and then writes to
+             * address 0 (a Rust panic in Gecko ends so too, its message the reason).
+             */
+            const char *const *reason = (const char *const *)hk_ld_sym(NULL, "gMozCrashReason");
+            if (reason && *reason) {
+                size_t n = strlen(report);
+                snprintf(report + n, sizeof(report) - n, "\n  MOZ_CRASH: %.300s", *reason);
+            }
+        }
         if (f->kind == HK_FAULT_ACCESS && pc < 0x10000) {
             size_t n = strlen(report);
             snprintf(report + n, sizeof(report) - n, "\n  a call through a null pointer: the caller (lr) had asked for a function and was given none");
