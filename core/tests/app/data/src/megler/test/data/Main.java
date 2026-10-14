@@ -271,6 +271,7 @@ public class Main extends Activity {
         timezone();
         tls();
         keystore(run);
+        codecs();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
         new android.os.Handler().postDelayed(this::popup, 700);
@@ -575,6 +576,29 @@ public class Main extends Activity {
             detail = "rsa=" + rsaHeld + " (" + bits + " bits, " + wrapped.length + " bytes wrapped) ec=" + ecHeld + " (" + ecBits + " bits) there-before=" + before + " run=" + run;
             Log.i("DataTest", "keystore " + detail);
             return rsaHeld && ecHeld && before == (run > 1);
+        });
+    }
+
+    /**
+     * The decoders an app can have, which is none yet (the shell decodes whole files, not an app's samples): the list is empty
+     * every way it is asked for, nothing is found for a film's format, and asking for a decoder by type is the IOException
+     * Android throws when there is none -- nothing that ends an app.
+     */
+    private void codecs() {
+        step("codecs", () -> {
+            int count = android.media.MediaCodecList.getCodecCount();
+            android.media.MediaCodecList list = new android.media.MediaCodecList(android.media.MediaCodecList.ALL_CODECS);
+            int all = list.getCodecInfos().length;
+            String found = list.findDecoderForFormat(android.media.MediaFormat.createVideoFormat("video/avc", 640, 360));
+            String made;
+            try {
+                android.media.MediaCodec.createDecoderByType("video/avc").release();
+                made = "made";
+            } catch (java.io.IOException e) {
+                made = "IOException";
+            }
+            detail = "count=" + count + " all=" + all + " avc=" + found + " create=" + made;
+            return count == 0 && all == 0 && found == null && "IOException".equals(made);
         });
     }
 

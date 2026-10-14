@@ -526,12 +526,22 @@ N(Absent)
  * line above.
  */
 N(Sensors_available) { c->ret.j = 0; }
+/*
+ * MediaCodecNative.supported(mime): no, for every type, and no gap to report either. A MediaCodec is fed an app's compressed
+ * samples one at a time; the shell's decoding (megler_media_host, Media Foundation's source reader on a phone) takes a whole
+ * file by its path, which the NDK's AMediaExtractor and AMediaCodec are made to fit (ndk/hk_media.c) and a Java MediaCodec
+ * cannot be. Decoding samples needs a call of the shell's that megler.h does not have. The overlay's MediaCodecList lists a
+ * decoder only when this says yes, so its list is empty, as a phone's without decoders is (AIDA64's Codecs page is that
+ * list). The class's other methods are still "not there yet" when something calls them.
+ */
+N(MediaCodecNative_supported) { c->ret.j = 0; }
 /* An AudioTrack is initialised when its id is not negative. */
 N(Absent_minus_one) { Absent(c); c->ret.j = 0; c->ret.i = -1; }
 
 static const hk_jhle k_absent[] = {
     { "megler/Audio", "trackOpen", NULL, Absent_minus_one },
     { "megler/Sensors", "available", NULL, Sensors_available },
+    { "megler/MediaCodecNative", "supported", NULL, MediaCodecNative_supported },
     { "megler/Audio", NULL, NULL, Absent },
     { "megler/Web", NULL, NULL, Absent },
     { "megler/Sensors", NULL, NULL, Absent },

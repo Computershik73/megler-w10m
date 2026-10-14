@@ -96,8 +96,8 @@ bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-f
       75 checks, 0 failed          the Java test app demos, the keyboard's 25 and the frame meter's 3 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
       13 checks, 0 failed          the Java test app crash: an exception nothing catches, launcher aliases, an app written for Android 6
-      46 checks, 0 failed          the Java test app data: a database, the storage, the battery, the time zone, TLS and key pairs, the first run
-      47 checks, 0 failed          data again, on what the first run left, with another battery and a time zone that is none
+      48 checks, 0 failed          the Java test app data: a database, the storage, the battery, the time zone, TLS, key pairs and codecs, the first run
+      49 checks, 0 failed          data again, on what the first run left, with another battery and a time zone that is none
       47 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
     (then each app once more, its drawing recorded for the PC's run to draw again)
 ```
@@ -510,8 +510,10 @@ and `kept`: the app leaves three rows and counts its runs; `tools/build-tests.sh
 runs it twice, the second time on the data folder of the first, and the
 second run must find the rows of the first and say that it is run 2.
 With the storage's, the battery's and the time zone's steps (below) and one
-for a popup list, one for TLS and one for the key store's key pairs ("On
-libcore"), 46 checks in the first run and 47 in the second. The popup:
+for a popup list, one for TLS, one for the key store's key pairs ("On
+libcore") and one for the list of decoders (empty every way it is asked for,
+`createDecoderByType` an `IOException`, and no line that a class is missing),
+48 checks in the first run and 49 in the second. The popup:
 a `ListPopupWindow` of three rows that wraps its
 content, shown under a strip at the top of the window, has all three rows
 inside its list and clear of the list's padding (160 high: three rows of 48
@@ -1519,7 +1521,9 @@ no native code or has it for 32-bit ARM.
   framework asks at every start, is answered "no" without a word):
   `megler.Audio` (an `AudioTrack` that is not initialised, a sound that did not
   load), `megler.Web` (an empty rectangle), `megler.Sensors` (not available),
-  `megler.MediaCodecNative` (not supported), `megler.EGLNative` (no context) and
+  `megler.MediaCodecNative` (not supported; its `supported`, which the
+  overlay's `MediaCodecList` asks for every type, answers no without a word,
+  so the list of decoders is empty), `megler.EGLNative` (no context) and
   the `android.opengl.GLES*` wrappers (nothing happens). Also not asked of the
   shell yet: the keyboard, the clipboard (it is the app's own), sharing,
   opening a URL, insets (zero), dark mode (no), vibration.
@@ -2002,8 +2006,8 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: twenty-seven files** in the overlay,
-twenty-five of them a statement or a method each inside an otherwise untouched copy
+**What differs from the original's framework: twenty-eight files** in the overlay,
+twenty-six of them a statement or a method each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and five files of members added** to classes of the original's.
 
@@ -2253,6 +2257,20 @@ the context that knows.
   `KeyPairGenerator.getInstance(algorithm, provider)` refuses the system's
   BouncyCastle for RSA and EC, and BouncyCastle is what has them while
   conscrypt's native library is not in the root ("On libcore").
+- `android/media/MediaCodecList.java`, one method, this port's circumstance
+  again: every decoder is listed only when `megler.MediaCodecNative.supported`
+  says its type can be decoded (the original listed H.264, AAC and MP3
+  always and asked only for HEVC). Here none can be yet: a `MediaCodec` is
+  fed an app's compressed samples, and the shell decodes whole files by path
+  (`megler_media_host`, which the NDK's extractor and codec are made to fit);
+  decoding samples needs a call of the shell's that `megler.h` does not have
+  (Media Foundation's decoder transforms on the phone). So the list is empty,
+  which Android allows. AIDA64's Codecs page listed three decoders that could
+  not be made and logged "megler/MediaCodecNative is not there yet"; under qemu
+  it now shows one line of its own in place of the list (three words; the
+  stand-in draws no letters to read), nothing is logged, and the app runs on. The
+  original `MediaCodec.createDecoderByType` still says in its message that
+  Megler decodes H.264, HEVC, AAC and MP3, which is not so here.
 
 - `android/preference/PreferenceActivity.java`, the largest: the activity's
   content and preference headers. Android's `onCreate` sets a layout in which
@@ -2283,7 +2301,7 @@ test apps are that file's layouts, styles and nine-patches.
 | The original's file | What it is | Here |
 |---|---|---|
 | `megler-tl-dvm-sqlite.c` | the system's SQLite | (done) `drivers/hk_java_sqlite.c` on SQLite's amalgamation compiled into the core, with a VFS over the host layer: "Databases" |
-| `megler-tl-dvm-audio.c`, `-media.c` | `AudioTrack`, `SoundPool`, `MediaPlayer`, `MediaCodec` | onto `ndk/hk_audio.c`; decoding on Media Foundation |
+| `megler-tl-dvm-audio.c`, `-media.c` | `AudioTrack`, `SoundPool`, `MediaPlayer`, `MediaCodec` | onto `ndk/hk_audio.c`; decoding on Media Foundation. `MediaCodec` needs a call of the shell's that decodes samples, not files; until then `MediaCodecList` is empty |
 | `megler-tl-dvm-gles*.c`, `EGLNative` | generated calls into ANGLE | regenerated with this port's native signature; ANGLE is already here. With it comes a picture over OpenGL, which `present_pixels` does not provide for |
 | `megler-tl-dvm-web.m`, `-sensors.m` | `WebView`; sensors | the shell's XAML WebView; `Windows.Devices.Sensors` |
 | the keyboard, clipboard, sharing, URLs, orientation, insets | `megler.Native`'s calls to the host | calls of the shell's that `megler.h` does not have yet |

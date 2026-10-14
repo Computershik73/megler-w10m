@@ -1132,8 +1132,9 @@ static int run_data(void)
                                          "bad-sql", "memory", "upgrade", "left",
                                          /* And the storage as an app sees it. */
                                          "environment", "own-folders", "volumes", "space", "permissions", "download", "list-root",
-                                         /* And the battery, the time zone, TLS that fails politely, and Android's key store's key pairs. */
-                                         "battery", "timezone", "tls", "keystore" };
+                                         /* And the battery, the time zone, TLS that fails politely, Android's key store's key pairs, and
+                                            the list of decoders, which is empty and says nothing about it. */
+                                         "battery", "timezone", "tls", "keystore", "codecs" };
     int at = -1, want = 0, run = 0, line, i;
     char text[120];
     if (g_script_count) sscanf(g_script[0], "run:%d", &want);
@@ -1168,6 +1169,8 @@ static int run_data(void)
     battery_changes(run == 2 && want == 2);
     /* The core's own word that it is its SQLite, on its files. */
     CHECK(find_line("sqlite: SQLite 3.", 0) >= 0);
+    /* An empty list of decoders is the answer, not a gap: the codecs step asked, and nothing said the class was missing. */
+    CHECK(find_line("megler/MediaCodecNative is not there yet", 0) < 0);
     for (i = 0; i < g_nlines; i++)
         if (strstr(g_lines[i], "/DataTest: ") && strstr(g_lines[i], " FAILED")) say("  %s", g_lines[i]);
     settle();
