@@ -34,6 +34,11 @@
 #                           an app then starts bare -- no action bar, no
 #                           button shapes -- and fails where it asks for a
 #                           platform resource by id.
+#   fonts/*.ttf             the fonts of Android's named families (Roboto and
+#                           seven more), for the shell's drawing: a Java
+#                           app's text is then as wide and as tall as its
+#                           layout was made for. Without them the phone's own
+#                           fonts stand in.
 #   usr/icu/icudt60l.dat    ICU's data
 #   usr/share/zoneinfo/*    the time zones
 #
@@ -100,6 +105,14 @@ for f in "$A9/lib/"*.so; do
   LIBS=$((LIBS + 1))
 done
 [ "$LIBS" -gt 0 ] || echo "  (no native libraries in build/android9/lib: libcore will be its bytecode alone)"
+FONTS=0
+for f in "$A9/system/fonts/"*.ttf; do
+  [ -f "$f" ] || continue
+  mkdir -p "$OUT/fonts"
+  cp -u "$f" "$OUT/fonts/"
+  FONTS=$((FONTS + 1))
+done
+[ "$FONTS" -gt 0 ] || echo "  (no fonts in build/android9/system/fonts: tools/android9-unpack.sh fonts takes them out of the image)"
 # The Java framework an app with an Activity runs on, where it has been built (tools/build-framework.sh).
 FW="no Java framework"
 if [ -f "$ROOT/build/framework/megler-framework.dex" ]; then
@@ -107,4 +120,4 @@ if [ -f "$ROOT/build/framework/megler-framework.dex" ]; then
   FW="the Java framework"
 fi
 size() { du -sk "$1" | cut -f1; }
-echo "${OUT#$ROOT/}: $(size "$OUT") KB in all: framework $(size "$OUT/framework") KB ($FW, $RES_SAID), lib $(size "$OUT/lib") KB ($LIBS libraries), usr $(size "$OUT/usr") KB"
+echo "${OUT#$ROOT/}: $(size "$OUT") KB in all: framework $(size "$OUT/framework") KB ($FW, $RES_SAID), lib $(size "$OUT/lib") KB ($LIBS libraries), $FONTS fonts, usr $(size "$OUT/usr") KB"

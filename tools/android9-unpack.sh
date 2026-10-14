@@ -7,12 +7,15 @@
 #
 # into build/android9/system: the boot class path's bytecode (as the .vdex files
 # the image keeps it in; tools/vdex-dex.py takes the DEX files out), the
-# framework's resources, ICU's data, the time zones and the root certificates.
+# framework's resources, ICU's data, the time zones, the root certificates, and
+# the fonts of Android's named families (Roboto and seven more: 30 files, 8 MB
+# of the image's 68 MB of fonts; what they lack the phone's own fonts supply).
 #
 # The image is for 64-bit ARM only (ro.product.cpu.abilist=arm64-v8a): it has no
 # /system/lib, so the native halves of libcore for a 32-bit phone are not in it.
 #
 #   tools/android9-unpack.sh            (in WSL, or from Git Bash: it calls WSL itself)
+#   tools/android9-unpack.sh fonts      the fonts alone, into a build/android9/system that is there
 #
 # The zip is looked for in build/android9; system.img (2.7 GB) is unpacked next
 # to it and removed again. Needs unzip and e2fsprogs' debugfs (both part of an
@@ -36,11 +39,27 @@ cd "$DIR"
 [ -f arm64-v8a/system.img ] || unzip -o -q "$ZIP" arm64-v8a/system.img arm64-v8a/build.prop
 # The image is a disk with one partition, an ext4 file system a megabyte in.
 IMG="arm64-v8a/system.img?offset=1048576"
-rm -rf "$OUT"
-mkdir -p "$OUT/framework" "$OUT/usr/icu" "$OUT/usr/share/zoneinfo" "$OUT/etc/security" "$OUT/lib64-for-reference"
+ONLY="${1:-}"
+[ "$ONLY" = fonts ] || rm -rf "$OUT"
+mkdir -p "$OUT/framework" "$OUT/usr/icu" "$OUT/usr/share/zoneinfo" "$OUT/etc/security" "$OUT/lib64-for-reference" "$OUT/fonts"
 
 take() { "$DEBUGFS" -R "dump $1 $2" "$IMG" 2> /dev/null; [ -s "$2" ] || { echo "not in the image: $1" >&2; exit 1; }; }
 names() { "$DEBUGFS" -R "ls -l $1" "$IMG" 2> /dev/null | awk '$2 ~ /^10/ {print $NF}'; }
+
+# The families /system/etc/fonts.xml gives a name to: sans-serif, sans-serif-condensed, serif, monospace, serif-monospace,
+# casual, cursive, sans-serif-smallcaps. (app/Megler/player/GfxHost.cpp has the same list.)
+for f in $(names /system/fonts); do
+  case "$f" in
+    Roboto-*.ttf|RobotoCondensed-*.ttf|NotoSerif-Regular.ttf|NotoSerif-Bold.ttf|NotoSerif-Italic.ttf|NotoSerif-BoldItalic.ttf|DroidSansMono.ttf|CutiveMono.ttf|ComingSoon.ttf|DancingScript-*.ttf|CarroisGothicSC-Regular.ttf)
+      take "/system/fonts/$f" "$OUT/fonts/$f" ;;
+  esac
+done
+take /system/etc/fonts.xml "$OUT/etc/fonts.xml"
+if [ "$ONLY" = fonts ]; then
+  rm -f arm64-v8a/system.img
+  echo "fonts: $(ls "$OUT/fonts" | wc -l) files, $(du -sk "$OUT/fonts" | cut -f1) KB"
+  exit 0
+fi
 
 for f in $(names /system/framework); do
   case "$f" in

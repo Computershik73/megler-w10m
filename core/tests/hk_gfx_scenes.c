@@ -1971,9 +1971,9 @@ static void check_text(void)
     H->text_widths(H->user, k_latin, 15, &paint, mono, widths);
     for (i = 1, k = 0; i < 15; i++) k += fabs(widths[i] - widths[0]) > 1e-3;
     CHECK(k == 0);
-    /* A bold face is wider than the regular one; scale and spacing are in the answer. */
+    /* A bold face is wider than the regular one (Roboto's by little more than a hundredth); scale and spacing are in the answer. */
     w = measure(k_latin, 15, &paint, NULL);
-    CHECK(measure(k_latin, 15, &paint, bold) > w * 1.02f);
+    CHECK(measure(k_latin, 15, &paint, bold) > w * 1.005f);
     other = paint;
     other.text_scale_x = 2;
     CHECK_NEAR(measure(k_latin, 15, &other, NULL), 2 * w, 1e-3 * w);

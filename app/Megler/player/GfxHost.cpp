@@ -216,6 +216,18 @@ struct State {
     uint64_t nextFontKey = 1;
     std::unordered_map<uint64_t, std::shared_ptr<std::vector<uint8_t>>> fontData;
 
+    // Android's own fonts (GfxHost::setFontFolder): a collection for each of Android's families, made when first asked for.
+    struct AndroidFamily {
+        bool tried = false;
+        Ref<IDWriteFontCollection> collection; // null: its files are not there, and the system's fonts stand in
+        std::wstring family;                   // as DirectWrite calls it
+        DWRITE_FONT_STRETCH stretch = DWRITE_FONT_STRETCH_NORMAL;
+    };
+    std::wstring fontFolder; // set before the first drawing, read without a lock after
+    std::mutex androidMutex; // what follows
+    int folderLoaderState = 0; // 0 not registered, 1 registered, -1 DirectWrite would not
+    AndroidFamily androidFamilies[8];
+
     std::atomic<uint64_t> clipSerial{1};
     std::atomic<uint64_t> canvases{0}, sessions{0}, direct{0}, composed{0}, layers{0}, runsShaped{0}, runsReused{0}, notes{0};
 };
@@ -2087,6 +2099,43 @@ bool familyExists(IDWriteFontCollection* collection, const wchar_t* name) {
     return collection && SUCCEEDED(collection->FindFamilyName(name, &index, &exists)) && exists;
 }
 
+/// A font's ascent, descent and line gap as Android reads them, which is
+/// FreeType's way: the 'hhea' table's, unless the font says its typographic
+/// ones are to be used (the OS/2 table's fsSelection, bit 7) or 'hhea' has
+/// none. DirectWrite's own are Windows': the OS/2 table's winAscent and
+/// winDescent, which for Roboto make a line an eighth taller than it is on
+/// Android (26.4 for an em of 20, where Android has 23.4). Leaves the face
+/// as it is where the font has no such table.
+void androidLineMeasures(IDWriteFontFace* fontFace, float em, Typeface& face) {
+    struct Table {
+        IDWriteFontFace* from;
+        const uint8_t* bytes = nullptr;
+        UINT32 size = 0;
+        void* context = nullptr;
+        Table(IDWriteFontFace* fontFace, UINT32 tag) : from(fontFace) {
+            const void* data = nullptr;
+            BOOL exists = FALSE;
+            if (SUCCEEDED(from->TryGetFontTable(tag, &data, &size, &context, &exists)) && exists) bytes = static_cast<const uint8_t*>(data);
+            else size = 0;
+        }
+        ~Table() {
+            if (bytes) from->ReleaseFontTable(context);
+        }
+        int16_t at(UINT32 offset) const { return int16_t(uint16_t(bytes[offset] << 8 | bytes[offset + 1])); }
+    };
+    {
+        const Table os2(fontFace, DWRITE_MAKE_OPENTYPE_TAG('O', 'S', '/', '2'));
+        if (os2.size >= 64 && (uint16_t(os2.at(62)) & 0x80)) return; // typographic measures: what DirectWrite has given already
+    }
+    const Table hhea(fontFace, DWRITE_MAKE_OPENTYPE_TAG('h', 'h', 'e', 'a'));
+    if (hhea.size < 10) return;
+    const int ascender = hhea.at(4), descender = hhea.at(6), gap = hhea.at(8);
+    if (ascender <= 0 || descender > 0 || (ascender == 0 && descender == 0)) return;
+    face.ascent = -float(ascender) / em;
+    face.descent = -float(descender) / em;
+    face.leading = gap > 0 ? float(gap) / em : 0;
+}
+
 /// A face of `family` in `collection` (null: the system's), with its text
 /// format and its measures. Null when DirectWrite will not make the format.
 Typeface* makeFace(IDWriteFontCollection* collection, const std::wstring& family, int weight, bool italic, DWRITE_FONT_STRETCH stretch) {
@@ -2122,6 +2171,8 @@ Typeface* makeFace(IDWriteFontCollection* collection, const std::wstring& family
             face->ascent = -float(m.ascent) / em;
             face->descent = float(m.descent) / em;
             face->leading = m.lineGap > 0 ? float(m.lineGap) / em : 0;
+            Ref<IDWriteFontFace> fontFace;
+            if (SUCCEEDED(font->CreateFontFace(fontFace.put()))) androidLineMeasures(fontFace.get(), em, *face);
             face->top = face->ascent;
             face->bottom = face->descent;
             // The highest and lowest any glyph reaches: the face's glyph box, where DirectWrite tells it.
@@ -2312,6 +2363,179 @@ public:
 MemoryCollectionLoader* collectionLoader() {
     static MemoryCollectionLoader* const loader = new MemoryCollectionLoader();
     return loader;
+}
+
+// MARK: Android's own fonts
+
+/// Android 9's families and the files of each, as its /system/etc/fonts.xml
+/// has them. An app's layout is made for these: text in another font is
+/// wider or narrower and its lines taller, and labels stop fitting. What
+/// these fonts lack (other scripts, emoji) is the system's fallback, as for
+/// any face.
+struct AndroidFontFamily {
+    const char* name;
+    const wchar_t* files[13];
+};
+const AndroidFontFamily androidFontFamilies[] = {
+    {"sans-serif",
+     {L"Roboto-Regular.ttf", L"Roboto-Italic.ttf", L"Roboto-Bold.ttf", L"Roboto-BoldItalic.ttf", L"Roboto-Medium.ttf", L"Roboto-MediumItalic.ttf", L"Roboto-Light.ttf",
+      L"Roboto-LightItalic.ttf", L"Roboto-Thin.ttf", L"Roboto-ThinItalic.ttf", L"Roboto-Black.ttf", L"Roboto-BlackItalic.ttf"}},
+    {"sans-serif-condensed",
+     {L"RobotoCondensed-Regular.ttf", L"RobotoCondensed-Italic.ttf", L"RobotoCondensed-Bold.ttf", L"RobotoCondensed-BoldItalic.ttf", L"RobotoCondensed-Medium.ttf",
+      L"RobotoCondensed-MediumItalic.ttf", L"RobotoCondensed-Light.ttf", L"RobotoCondensed-LightItalic.ttf"}},
+    {"serif", {L"NotoSerif-Regular.ttf", L"NotoSerif-Italic.ttf", L"NotoSerif-Bold.ttf", L"NotoSerif-BoldItalic.ttf"}},
+    {"monospace", {L"DroidSansMono.ttf"}},
+    {"serif-monospace", {L"CutiveMono.ttf"}},
+    {"casual", {L"ComingSoon.ttf"}},
+    {"cursive", {L"DancingScript-Regular.ttf", L"DancingScript-Bold.ttf"}},
+    {"sans-serif-smallcaps", {L"CarroisGothicSC-Regular.ttf"}},
+};
+constexpr int androidFontFamilyCount = int(sizeof(androidFontFamilies) / sizeof(androidFontFamilies[0]));
+static_assert(androidFontFamilyCount == int(sizeof(State::androidFamilies) / sizeof(State::AndroidFamily)), "a place in State for each of Android's families");
+
+/// Which of Android's families a name asks for: fonts.xml's names and
+/// aliases, and for any other name the kind the layer read out of it.
+int androidFamilyIndex(const std::string& name, int generic) {
+    const auto has = [&](const char* part) { return name.find(part) != std::string::npos; };
+    if (has("condensed")) return 1;
+    if (name == "serif-monospace" || has("courier")) return 4;
+    if (has("monospace") || name == "monaco" || generic == MEGLER_GFX_MONOSPACE) return 3;
+    if (name == "casual") return 5;
+    if (name == "cursive") return 6;
+    if (has("smallcaps")) return 7;
+    if (generic == MEGLER_GFX_SERIF) return 2;
+    return 0;
+}
+
+/// The files of one of Android's families that are in the folder.
+class FolderFontEnumerator final : public IDWriteFontFileEnumerator, public Counted {
+public:
+    FolderFontEnumerator(IDWriteFactory* factory, int family) : family_(family) {
+        factory_.attach(factory);
+        factory->AddRef();
+    }
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
+        if (!out) return E_POINTER;
+        if (iid == __uuidof(IUnknown) || iid == __uuidof(IDWriteFontFileEnumerator)) {
+            *out = static_cast<IDWriteFontFileEnumerator*>(this);
+            addRef();
+            return S_OK;
+        }
+        *out = nullptr;
+        return E_NOINTERFACE;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return addRef(); }
+    ULONG STDMETHODCALLTYPE Release() override { return release(); }
+    HRESULT STDMETHODCALLTYPE MoveNext(BOOL* hasCurrentFile) override {
+        *hasCurrentFile = FALSE;
+        file_.reset();
+        const AndroidFontFamily& family = androidFontFamilies[family_];
+        while (next_ < int(sizeof(family.files) / sizeof(family.files[0])) && family.files[next_]) {
+            const std::wstring path = G().fontFolder + L"\\" + family.files[next_++];
+            // (A file that is not there is passed over: the family is what is left of it.)
+            if (SUCCEEDED(factory_->CreateFontFileReference(path.c_str(), nullptr, file_.put())) && file_) {
+                *hasCurrentFile = TRUE;
+                break;
+            }
+            file_.reset();
+        }
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE GetCurrentFontFile(IDWriteFontFile** file) override {
+        *file = file_.get();
+        if (!*file) return E_FAIL;
+        (*file)->AddRef();
+        return S_OK;
+    }
+
+private:
+    Ref<IDWriteFactory> factory_;
+    Ref<IDWriteFontFile> file_;
+    int family_;
+    int next_ = 0;
+};
+
+/// A collection's key here is the number of one of Android's families.
+class FolderCollectionLoader final : public IDWriteFontCollectionLoader, public Counted {
+public:
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
+        if (!out) return E_POINTER;
+        if (iid == __uuidof(IUnknown) || iid == __uuidof(IDWriteFontCollectionLoader)) {
+            *out = static_cast<IDWriteFontCollectionLoader*>(this);
+            addRef();
+            return S_OK;
+        }
+        *out = nullptr;
+        return E_NOINTERFACE;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return addRef(); }
+    ULONG STDMETHODCALLTYPE Release() override { return release(); }
+    HRESULT STDMETHODCALLTYPE CreateEnumeratorFromKey(IDWriteFactory* factory, const void* key, UINT32 keySize, IDWriteFontFileEnumerator** enumerator) override {
+        if (!enumerator) return E_POINTER;
+        *enumerator = nullptr;
+        if (!factory || !key || keySize != sizeof(int32_t)) return E_INVALIDARG;
+        int32_t family;
+        memcpy(&family, key, sizeof(family));
+        if (family < 0 || family >= androidFontFamilyCount) return E_INVALIDARG;
+        *enumerator = new (std::nothrow) FolderFontEnumerator(factory, family);
+        return *enumerator ? S_OK : E_OUTOFMEMORY;
+    }
+};
+
+FolderCollectionLoader* folderLoader() {
+    static FolderCollectionLoader* const loader = new FolderCollectionLoader();
+    return loader;
+}
+
+/// One of Android's families out of the folder of Android's fonts: its
+/// collection, and what DirectWrite calls it there. Null where there is no
+/// such folder or the family's files are not in it; the system's fonts then
+/// stand in, and the log says so once for each family.
+const State::AndroidFamily* androidFamily(int index) {
+    State& s = G();
+    if (s.fontFolder.empty() || index < 0 || index >= androidFontFamilyCount) return nullptr;
+    std::lock_guard<std::mutex> lock(s.androidMutex);
+    State::AndroidFamily& family = s.androidFamilies[index];
+    if (family.tried) return family.collection ? &family : nullptr;
+    family.tried = true;
+    if (s.folderLoaderState == 0) {
+        const HRESULT hr = s.dwrite->RegisterFontCollectionLoader(folderLoader());
+        if (FAILED(hr)) failed("IDWriteFactory::RegisterFontCollectionLoader", hr);
+        s.folderLoaderState = SUCCEEDED(hr) ? 1 : -1;
+    }
+    if (s.folderLoaderState < 0) return nullptr;
+    const int32_t key = index;
+    Ref<IDWriteFontCollection> collection;
+    const HRESULT hr = s.dwrite->CreateCustomFontCollection(folderLoader(), &key, sizeof(key), collection.put());
+    // DirectWrite sorts a family's files into families of its own by their names: the one with the most fonts is it.
+    Ref<IDWriteFontFamily> most;
+    UINT32 fonts = 0;
+    for (UINT32 i = 0, count = SUCCEEDED(hr) && collection ? collection->GetFontFamilyCount() : 0; i < count; i++) {
+        Ref<IDWriteFontFamily> one;
+        if (SUCCEEDED(collection->GetFontFamily(i, one.put())) && one->GetFontCount() > fonts) {
+            fonts = one->GetFontCount();
+            most = std::move(one);
+        }
+    }
+    Ref<IDWriteLocalizedStrings> names;
+    UINT32 length = 0;
+    if (most && SUCCEEDED(most->GetFamilyNames(names.put())) && names->GetCount() && SUCCEEDED(names->GetStringLength(0, &length))) {
+        std::wstring name(size_t(length) + 1, L'\0');
+        if (SUCCEEDED(names->GetString(0, &name[0], length + 1))) {
+            name.resize(length);
+            Ref<IDWriteFont> regular;
+            if (SUCCEEDED(most->GetFirstMatchingFont(DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL, regular.put()))) {
+                family.stretch = regular->GetStretch();
+                family.family = std::move(name);
+                family.collection = std::move(collection);
+            }
+        }
+    }
+    if (!family.collection) {
+        say("Android's fonts for %s are not in the folder of Android's fonts: the system's stand in for them", androidFontFamilies[index].name);
+        return nullptr;
+    }
+    return &family;
 }
 
 // MARK: A run of text, laid out
@@ -2895,13 +3119,22 @@ void textWidths(void*, const uint16_t* text, int count, const megler_gfx_paint* 
 
 // MARK: megler_gfx_host: typefaces
 
+/// A face by Android's family name: Android's own font where the folder of
+/// Android's fonts has it, else the system's nearest.
+Typeface* faceByName(const char* family, int generic, int weight, bool italic) {
+    const std::string name = family ? family : "";
+    if (const State::AndroidFamily* own = androidFamily(androidFamilyIndex(name, generic))) {
+        if (Typeface* made = makeFace(own->collection.get(), own->family, weight, italic, own->stretch)) return made;
+    }
+    const DWRITE_FONT_STRETCH stretch = name.find("condensed") != std::string::npos ? DWRITE_FONT_STRETCH_CONDENSED : DWRITE_FONT_STRETCH_NORMAL;
+    return makeFace(nullptr, systemFamily(family, generic), weight, italic, stretch);
+}
+
 void* typefaceCreate(void*, const char* family, int generic, int weight, bool italic) {
     Typeface* made = nullptr;
     guarded("typeface_create", [&] {
         if (!started()) return;
-        const std::string name = family ? family : "";
-        const DWRITE_FONT_STRETCH stretch = name.find("condensed") != std::string::npos ? DWRITE_FONT_STRETCH_CONDENSED : DWRITE_FONT_STRETCH_NORMAL;
-        made = makeFace(nullptr, systemFamily(family, generic), weight, italic, stretch);
+        made = faceByName(family, generic, weight, italic);
     });
     return made;
 }
@@ -3273,16 +3506,16 @@ bool start() {
                 s.resource->px = reinterpret_cast<uint8_t*>(&s.resourcePixel);
                 s.resource->w = s.resource->h = 1;
                 s.resource->stride = 4;
-                const std::wstring family = systemFamily("sans-serif", MEGLER_GFX_SANS);
-                s.defaultFace = makeFace(nullptr, family, 400, false, DWRITE_FONT_STRETCH_NORMAL);
+                s.defaultFace = faceByName("sans-serif", MEGLER_GFX_SANS, 400, false);
                 if (!s.resource->make() || !s.defaultFace) {
                     say("Direct2D and DirectWrite are there, but no brush or no text format can be made: a Java app's views cannot be drawn");
                 } else {
                     char name[96] = "";
-                    WideCharToMultiByte(CP_UTF8, 0, family.c_str(), -1, name, sizeof(name), nullptr, nullptr);
-                    say("Direct2D %s, DirectWrite %s; canvases draw %s; the default face is %s", s.d2d1 ? "1.1 or later" : "1.0 (no ID2D1Factory1: hairlines are approximate)",
+                    WideCharToMultiByte(CP_UTF8, 0, s.defaultFace->family.c_str(), -1, name, sizeof(name), nullptr, nullptr);
+                    say("Direct2D %s, DirectWrite %s; canvases draw %s; the default face is %s%s", s.d2d1 ? "1.1 or later" : "1.0 (no ID2D1Factory1: hairlines are approximate)",
                         s.dwrite2 ? "2 or later" : "before 2 (no IDWriteFactory2: emoji are not coloured)",
-                        s.copying ? "into WIC bitmaps that are copied from and to the app's memory" : "straight into the app's bitmaps", name);
+                        s.copying ? "into WIC bitmaps that are copied from and to the app's memory" : "straight into the app's bitmaps", name,
+                        s.defaultFace->collection ? ", Android's own" : s.fontFolder.empty() ? "" : ", the system's");
                     ok = true;
                 }
             }
@@ -3315,6 +3548,14 @@ void GfxHost::setCopying(bool copying) {
     State& s = G();
     std::lock_guard<std::mutex> lock(s.startMutex);
     s.copyingAsked = copying;
+}
+
+void GfxHost::setFontFolder(const wchar_t* folder) {
+    State& s = G();
+    std::lock_guard<std::mutex> lock(s.startMutex);
+    if (s.started.load()) return;
+    s.fontFolder = folder ? folder : L"";
+    while (!s.fontFolder.empty() && (s.fontFolder.back() == L'\\' || s.fontFolder.back() == L'/')) s.fontFolder.pop_back();
 }
 
 GfxHost::Counts GfxHost::counts() {

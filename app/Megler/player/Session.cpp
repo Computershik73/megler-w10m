@@ -80,6 +80,9 @@ void tell() {
 megler_gfx_host gfxCallbacks() {
     GfxHost& gfx = GfxHost::shared();
     gfx.setLog([](const char* line, void*) { shellLog::write(line); }, nullptr);
+    // Android's own fonts, where the package has them (tools/dvm-android-root.sh): an app's text is then as wide and
+    // as tall as its layout was made for.
+    gfx.setFontFolder((platform::installDirectory() + L"\\android\\fonts").c_str());
     if (files::exists(platform::localStateDirectory() + L"\\flags\\gfx-copy")) {
         shellLog::write("flag: gfx-copy is on");
         gfx.setCopying(true);

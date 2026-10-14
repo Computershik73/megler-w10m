@@ -12,7 +12,8 @@
 #       is built into this test program and run as its --gfx-windows mode:
 #       scenes drawn through megler_gfx_host, written to build/gfx-pictures as
 #       PNG files (sheet.png has all of them) and checked, twice -- the second
-#       time with every canvas copied to a WIC bitmap and back. Each run ends
+#       time with every canvas copied to a WIC bitmap and back -- and a third
+#       time with Android's own fonts where build/android9 has them. Each run ends
 #       with its own line of checks and failures. The ARM build has no
 #       Direct2D and says so. And where `tools/build-tests.sh arm` has left
 #       its records of the Java test apps' drawing (build/gfx-records), each
@@ -237,6 +238,12 @@ elif [ "$MODE" = win ]; then
     rm -rf "$ROOT/build/gfx-pictures"
     "$OUT/hk_tests.exe" --gfx-windows "$(w "$ROOT/build/gfx-pictures")" || STATUS=1
     "$OUT/hk_tests.exe" --gfx-windows - copy || STATUS=1
+    # And with Android's own fonts in place of the system's, as the phone's package has them, where they have been taken
+    # out of the image (tools/android9-unpack.sh fonts).
+    if [ -f "$ROOT/build/android9/root/fonts/Roboto-Regular.ttf" ]; then
+      echo "(with Android's own fonts)"
+      MEGLER_GFX_FONTS="$(w "$ROOT/build/android9/root/fonts")" "$OUT/hk_tests.exe" --gfx-windows - || STATUS=1
+    fi
     # The Java test apps' own drawing, as `tools/build-tests.sh arm` recorded it under qemu: drawn again by the stand-in,
     # which must give the recorded pictures back pixel for pixel, and then by the shell's drawing, into
     # build/gfx-pictures/app-<app>-N.png -- the app's views as a phone's Direct2D and DirectWrite would draw them, laid

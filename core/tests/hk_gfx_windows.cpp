@@ -9,17 +9,26 @@
 #include "player/GfxHost.h"
 
 #include <cstdio>
+#include <cstdlib>
+#include <string>
 
 extern "C" {
 
 /// The host, its lines going to `line`. `copying`: with every canvas copied
 /// to a WIC bitmap and back (GfxHost::setCopying), the way of drawing a
-/// Direct2D that refused the app's memory would be left with.
+/// Direct2D that refused the app's memory would be left with. The
+/// environment's MEGLER_GFX_FONTS names a folder of Android's own fonts
+/// (GfxHost::setFontFolder; build/android9/root/fonts), for a run with those.
 const megler_gfx_host* hk_gfx_windows_host(void (*line)(const char* text, void* user), void* user, int copying) {
     static megler_gfx_host host;
     megler::app::GfxHost& gfx = megler::app::GfxHost::shared();
     gfx.setLog(line, user);
     gfx.setCopying(copying != 0);
+    if (const char* fonts = std::getenv("MEGLER_GFX_FONTS")) {
+        std::wstring folder;
+        for (const char* at = fonts; *at; at++) folder += wchar_t(static_cast<unsigned char>(*at));
+        gfx.setFontFolder(folder.c_str());
+    }
     host = gfx.callbacks();
     return &host;
 }

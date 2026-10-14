@@ -37,8 +37,9 @@
 // advances, break places and ink box are kept, and drawing and all five
 // measuring functions answer from that. Runs are remembered by text, face,
 // size and spacing, since the framework measures the same strings over and
-// over. A typeface is a family in the system's collection, or in one made of
-// a font file's bytes; NULL is Segoe UI.
+// over. A typeface is a family in a collection of Android's own font files
+// (setFontFolder), in the system's collection where those are not to be had,
+// or in one made of a font file's bytes; NULL is Roboto, or Segoe UI.
 //
 // Threads. The callers are the app's threads (never the UI thread). The
 // Direct2D factory is the multithreaded kind, which serialises every call
@@ -87,6 +88,14 @@ public:
     /// and to the core's memory, as if Direct2D had refused the memory
     /// itself. Before the first drawing.
     void setCopying(bool copying);
+
+    /// A folder with Android's own fonts in it (Roboto-Regular.ttf and the
+    /// rest of Android 9's /system/fonts that its named families are made
+    /// of): they are then the faces an app gets by Android's family names,
+    /// the default face among them, measured as Android measures them. A
+    /// family whose files are not there is the system's nearest, as all are
+    /// without this. Before the first drawing.
+    void setFontFolder(const wchar_t* folder);
 
     /// What has been done so far, for a test or a line in a log.
     struct Counts {
