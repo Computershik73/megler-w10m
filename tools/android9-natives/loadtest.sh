@@ -15,10 +15,11 @@
 # under qemu, and the output says when it was built. Run tools/build-tests.sh
 # arm --no-run first to try the layer as it is now.
 #
-# Four libraries are named to it:
+# Five libraries are named to it:
 #
 #   libcrypto.so          hk_tests knows OpenSSL's names and tries a hash, a
 #                         cipher and a big-number product when it finds them
+#   libjavacrypto.so      conscrypt's, with libssl.so under it
 #   libjavacore.so        with all it needs: ICU, expat, libnativehelper
 #   libopenjdk.so         (its libopenjdkjvm.so does not exist; that is said)
 #   libnatives_probe.so   built here from probe.c, with ICU's data file in it:
@@ -30,6 +31,8 @@
 # here; `report.py loadtest` holds it against what the files themselves say.
 #
 #   MEGLER_NDK, MEGLER_NDK_HOST   as for tools/android9-natives.sh
+#   MEGLER_WSL_BUILD       the WSL folder tools/build-tests.sh arm built hk_tests in (~/megler-w10m-build); the
+#                             libraries are copied next to it, into <that folder>-natives
 #   MEGLER_QEMU_CPU             the processor qemu-arm is to be (cortex-a7: ARMv7-A with NEON, VFPv4 and integer
 #                             divide, what the ARMv7 Windows phones have; cortex-a8 has neither VFPv4 nor divide).
 #                             An instruction the processor does not have ends the run with an illegal instruction.
@@ -46,11 +49,14 @@ NDK="${MEGLER_NDK:-/c/Users/User/Documents/android-ndk-r21e}"
 HOST="${MEGLER_NDK_HOST:-windows-x86_64}"
 EXE=""; case "$HOST" in windows-*) EXE=".exe" ;; esac
 CC="$NDK/toolchains/llvm/prebuilt/$HOST/bin/clang$EXE"
-LIBS=(libcrypto.so libjavacore.so libopenjdk.so libnatives_probe.so)
+LIBS=(libcrypto.so libjavacore.so libopenjdk.so libjavacrypto.so libnatives_probe.so)
+WB="${MEGLER_WSL_BUILD:-}"
+[ -n "$WB" ] || WB='~/megler-w10m-build'
+WB="\$HOME${WB#\~}"
 CPU="${MEGLER_QEMU_CPU:-cortex-a7}"
 mkdir -p "$OUT" "$WORK"
 WROOT="/mnt/${ROOT:1:1}${ROOT:2}"
-for l in libjavacore.so libopenjdk.so libicuuc.so libicui18n.so libexpat.so; do
+for l in libjavacore.so libopenjdk.so libicuuc.so libicui18n.so libexpat.so libjavacrypto.so; do
   [ -f "$UNSTRIPPED/$l" ] || { echo "no $UNSTRIPPED/$l: run tools/android9-natives.sh first" >&2; exit 1; }
 done
 DAT=build/android9/system/usr/icu/icudt60l.dat
@@ -76,8 +82,8 @@ EOF
 
 # The script WSL runs. Written to a file: quoting it through wsl.exe's command line is not worth trying.
 cat > "$WORK/run.sh" <<EOF
-OUT=\$HOME/megler-w10m-natives
-HK=\$HOME/megler-w10m-build/hk_tests
+OUT=$WB-natives
+HK=$WB/hk_tests
 [ -x \$HK ] || { echo "no \$HK: run tools/build-tests.sh arm --no-run first"; exit 1; }
 rm -rf \$OUT && mkdir -p \$OUT/lib
 cp \$HK \$OUT/hk_tests

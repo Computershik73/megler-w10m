@@ -21,18 +21,23 @@
 #                                libcore/NativeCode.bp says
 #   libjavacore.so               libcore/luni/src/main/native
 #   libopenjdk.so                libcore/ojluni/src/main/native
-#   libcrypto.so                 not built: Android 9's own for ARMv7 (the VNDK
-#                                snapshot's), copied. It alone is compiled for
-#                                NEON, as its folder's name says.
+#   libjavacrypto.so             conscrypt's native half (external/conscrypt,
+#                                common/src/jni): NativeCrypto's methods over
+#                                BoringSSL, TLS included
+#   libcrypto.so, libssl.so      not built: Android 9's own for ARMv7 (the VNDK
+#                                snapshot's), copied. They alone are compiled
+#                                for NEON, as their folder's name says; every
+#                                Windows phone's processor has it.
 #
 # Not built: libopenjdkjvm.so and libart.so (the runtime itself answers their
 # functions), libc, libm, libdl, liblog, libz (Megler's layer is those). Where a
 # library has to be linked against one of them, it is linked against the NDK's
 # stub, or against a stub made here from a list of names
 # (tools/android9-natives/*.syms, stub.py), so that the result imports the same
-# names from the same libraries as Android's does. Three entries of Android's
-# DT_NEEDED lists are not in these: libc++.so (see below), and libutils.so and
-# libssl.so, from which Android's own libraries import nothing.
+# names from the same libraries as Android's does. Two entries of Android's
+# DT_NEEDED lists are not in these: libc++.so (see below), and libutils.so,
+# from which Android's own libraries import nothing; nor is libopenjdk's
+# libssl.so, for the same reason (libjavacrypto's is).
 #
 # Source lists and each module's own flags are read out of AOSP's Android.bp
 # files (tools/android9-natives/bp.py), not globbed. Soong's global flags are
@@ -123,8 +128,9 @@ die() { echo "android9-natives: $*" >&2; exit 1; }
 [ -x "$CC" ] || die "no clang at $CC (set MEGLER_NDK to an Android NDK, r21 or near it)"
 [ -f "$SYSLIB/libc.so" ] || die "the NDK has no API 28 libraries for ARM ($SYSLIB)"
 [ -f "$A/libcore/NativeCode.bp" ] || die "no $A/libcore: run tools/android9-sources.sh first"
-CRYPTO="$A/prebuilts/vndk/v28/arm/arch-arm-armv7-a-neon/shared/vndk-core/libcrypto.so"
-[ -f "$CRYPTO" ] || die "no $CRYPTO: run tools/android9-sources.sh first"
+VNDK="$A/prebuilts/vndk/v28/arm/arch-arm-armv7-a-neon/shared/vndk-core"
+for f in libcrypto.so libssl.so; do [ -f "$VNDK/$f" ] || die "no $VNDK/$f: run tools/android9-sources.sh first"; done
+[ -f "$A/external/conscrypt/Android.bp" ] || die "no $A/external/conscrypt: run tools/android9-sources.sh first"
 
 if [ "${1:-}" = clean ]; then
   rm -rf "$OBJ" "$LIB"/*.so "$LIB/report"       # the libraries and what report.py wrote; anything else lying there stays
@@ -138,7 +144,8 @@ bp() { python "$SHIM/bp.py" "$@" | tr -d '\r'; }
 for q in "external/icu/icu4c/source/common/Android.bp libicuuc" "external/icu/icu4c/source/i18n/Android.bp libicui18n" \
          "libnativehelper/Android.bp libnativehelper" "external/expat/Android.bp libexpat" "system/core/base/Android.bp libbase" \
          "external/fdlibm/Android.bp libfdlibm" "libcore/NativeCode.bp libjavacore" "libcore/NativeCode.bp libopenjdk" \
-         "libcore/luni/src/main/native/Android.bp luni_native_srcs" "libcore/ojluni/src/main/native/Android.bp libopenjdk_native_srcs"; do
+         "libcore/luni/src/main/native/Android.bp luni_native_srcs" "libcore/ojluni/src/main/native/Android.bp libopenjdk_native_srcs" \
+         "external/conscrypt/Android.bp libjavacrypto"; do
   set -- $q
   [ -n "$(bp "$A/$1" "$2" srcs)" ] || die "cannot read the sources of $2 out of $A/$1"
 done
@@ -292,9 +299,11 @@ for l in libc libdl; do
   "$NM" -D --defined-only "$SYSLIB/$l.so" | tr -d '\r' > "$STUBS/$l.ndk.txt"
   stub "$l.so" --nm "$STUBS/$l.ndk.txt" --names "$SHIM/$l-platform.syms"
 done
-cp "$CRYPTO" "$UNSTRIPPED/libcrypto.so"
-cp "$CRYPTO" "$LIB/libcrypto.so"
-echo "    libcrypto.so: $(stat -c%s "$LIB/libcrypto.so") bytes, Android 9's own (copied)"
+for f in libcrypto.so libssl.so; do
+  cp "$VNDK/$f" "$UNSTRIPPED/$f"
+  cp "$VNDK/$f" "$LIB/$f"
+  echo "    $f: $(stat -c%s "$LIB/$f") bytes, Android 9's own (copied)"
+done
 
 # ------------------------------------------------------------------ ICU
 
@@ -390,6 +399,30 @@ objects openjdk
 link libopenjdk.so c++ openjdk $OBJ/base/libbase.a $OBJ/fdlibm/libfdlibm.a \
   -llog -lcrypto -licuuc -lz -lnativehelper -lopenjdkjvm
 echo "    from libopenjdkjvm.so it imports: $("$NM" -D --undefined-only "$LIB/libopenjdk.so" | tr -d '\r' | awk '{print $NF}' | grep -xFf <(grep -v '^#' "$SHIM/libopenjdkjvm.syms") | tr '\n' ' ')"
+
+# ------------------------------------------------------------------ libjavacrypto
+
+# conscrypt's native half, as Android 9 builds it for the platform: the classes it answers for are com.android.org.conscrypt.*
+# (JNI_JARJAR_PREFIX, the jarjar rule conscrypt.dex was made with), and an fd waiting in a socket call is announced to
+# libnativehelper's AsynchronousCloseMonitor, so that a close from another thread wakes it. Its source list is a glob
+# (common/src/jni/main/cpp/**/*.cc), which bp.py hands back as it is: it is expanded here.
+echo "=== libjavacrypto ==="
+D=$A/external/conscrypt
+SRCS=()
+while read -r g; do
+  case "$g" in
+    */\*\*/\*.*) mapfile -t -O "${#SRCS[@]}" SRCS < <(find "$D/${g%%/\*\*/*}" -name "${g##*/}" -type f | sort) ;;
+    *) SRCS+=("$D/$g") ;;
+  esac
+done < <(bp $D/Android.bp libjavacrypto srcs)
+[ "${#SRCS[@]}" -gt 0 ] || die "libjavacrypto: its source glob found nothing under $D"
+mapfile -t MOD_CXX < <(bp_flags $D/Android.bp libjavacrypto cflags)
+MOD_CXX+=(-fno-rtti -I$D/common/src/jni/main/include -I$A/libcore/luni/src/main/native "${I_JNI[@]}" "${I_LOG[@]}"
+          -I$A/external/boringssl/src/include)
+MOD_C=()
+objects javacrypto
+link libjavacrypto.so c++ javacrypto -lcrypto -ljavacore -llog -lnativehelper -lssl
+echo "    registers its natives for: $(grep -ao 'com/android/org/conscrypt/[A-Za-z]*' "$UNSTRIPPED/libjavacrypto.so" | sort -u | tr '\n' ' ')"
 
 echo "=== in $LIB ==="
 ls -l "$LIB"/*.so | awk '{printf "    %9d  %s\n", $5, $NF}'
