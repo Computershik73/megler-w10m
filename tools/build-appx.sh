@@ -11,7 +11,10 @@
 #              megler_selftest, or `probe,selftest`; `gfx` draws the scenes of
 #              core/tests/hk_gfx_scenes.c with the shell's own Direct2D,
 #              DirectWrite and WIC (player/GfxHost.cpp), checks them, and
-#              leaves them in LocalState as shot-gfx-*.bmp; `play` opens the
+#              leaves them in LocalState as shot-gfx-*.bmp; `storage` goes
+#              through the phone's folders in an app's storage as an app
+#              would (player/StorageHost.cpp, megler_storage_check), in a
+#              folder of its own that it removes again; `play` opens the
 #              library's game; `java` starts the packaged Java test app hello.apk, takes
 #              its picture every five seconds, taps its button and presses
 #              Back (it brings --java with it). Default: none -- the normal
@@ -87,6 +90,7 @@ AUTO_SELFTEST=0
 AUTO_PLAY=0
 AUTO_JAVA=0
 AUTO_GFX=0
+AUTO_STORAGE=0
 LIBCORE=0
 JAVA=0
 while [ $# -gt 0 ]; do
@@ -107,15 +111,16 @@ while [ $# -gt 0 ]; do
           play) AUTO_PLAY=1 ;;
           java) AUTO_JAVA=1 ;;
           gfx) AUTO_GFX=1 ;;
+          storage) AUTO_STORAGE=1 ;;
           none) ;;
-          *) echo "unknown --auto mode: $mode (probe, selftest, gfx, play, java)" >&2; exit 2 ;;
+          *) echo "unknown --auto mode: $mode (probe, selftest, gfx, storage, play, java)" >&2; exit 2 ;;
         esac
       done ;;
     --libcore) LIBCORE=1 ;;
     --java) JAVA=1 ;;
     --clean) CLEAN=1 ;;
     --no-pack) PACK=0 ;;
-    -h|--help) sed -n '2,38p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,41p' "$0"; exit 0 ;;
     *) echo "unknown argument: $arg" >&2; exit 2 ;;
   esac
 done
@@ -123,6 +128,7 @@ AUTO_MODES=""
 [ "$AUTO_PROBE" = 1 ] && AUTO_MODES="probe"
 [ "$AUTO_SELFTEST" = 1 ] && AUTO_MODES="${AUTO_MODES:+$AUTO_MODES,}selftest"
 [ "$AUTO_GFX" = 1 ] && AUTO_MODES="${AUTO_MODES:+$AUTO_MODES,}gfx"
+[ "$AUTO_STORAGE" = 1 ] && AUTO_MODES="${AUTO_MODES:+$AUTO_MODES,}storage"
 [ "$AUTO_PLAY" = 1 ] && AUTO_MODES="${AUTO_MODES:+$AUTO_MODES,}play"
 [ "$AUTO_JAVA" = 1 ] && AUTO_MODES="${AUTO_MODES:+$AUTO_MODES,}java"
 # The self-test starts a small app of its own, and one app is all a start of Megler can run.
@@ -277,7 +283,7 @@ echo "=== shell (C++/WinRT, C++20) ==="
 # change of modes recompiles what includes it and nothing else.
 AUTO_CONFIG="$OBJ/auto-config"
 mkdir -p "$AUTO_CONFIG"
-AUTO_HEADER="$(printf '#define MEGLER_AUTO_PROBE %s\n#define MEGLER_AUTO_SELFTEST %s\n#define MEGLER_AUTO_PLAY %s\n#define MEGLER_AUTO_JAVA %s\n#define MEGLER_AUTO_GFX %s\n' "$AUTO_PROBE" "$AUTO_SELFTEST" "$AUTO_PLAY" "$AUTO_JAVA" "$AUTO_GFX")"
+AUTO_HEADER="$(printf '#define MEGLER_AUTO_PROBE %s\n#define MEGLER_AUTO_SELFTEST %s\n#define MEGLER_AUTO_PLAY %s\n#define MEGLER_AUTO_JAVA %s\n#define MEGLER_AUTO_GFX %s\n#define MEGLER_AUTO_STORAGE %s\n' "$AUTO_PROBE" "$AUTO_SELFTEST" "$AUTO_PLAY" "$AUTO_JAVA" "$AUTO_GFX" "$AUTO_STORAGE")"
 if [ "$(cat "$AUTO_CONFIG/AutoConfig.h" 2>/dev/null)" != "$AUTO_HEADER" ]; then
   echo "$AUTO_HEADER" > "$AUTO_CONFIG/AutoConfig.h"
   rm -f "$OBJ/shell/AutoRun.obj"

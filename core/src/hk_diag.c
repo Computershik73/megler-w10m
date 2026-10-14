@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 
+#include "../tests/hk_storage_tests.h"
 #include "../tests/hk_tests.h"
 #include "arm/hk_stubs.h"
 #include "bionic/hk_bionic.h"
@@ -53,6 +54,32 @@ int megler_selftest(megler_line_fn out, void *user)
     free(libs);
     free(scratch);
     return failed;
+}
+
+/*
+ * megler_storage_check: the steps are the tests' own (tests/hk_storage_tests.c,
+ * hk_storage_check_run), which the tests run on a stand-in for the shell.
+ * Here they run on what the shell really hands over.
+ */
+int megler_storage_check(const megler_storage_host *storage, megler_line_fn out, void *user, int *checks)
+{
+    const char *names[MEGLER_STORAGE_MAX_LINKS];
+    char line[160];
+    int i, count = 0, skipped = 0;
+    if (hk_run_active()) {
+        if (out) out("FAIL an app is running: the storage's links are not set under it", user);
+        if (checks) (*checks)++;
+        return 1;
+    }
+    hk_run_storage(megler_data_dir(), storage);
+    for (i = 0; storage && storage->links && i < storage->link_count && i < MEGLER_STORAGE_MAX_LINKS; i++) {
+        /* (A link that is only to be read has nothing here that could be tried without leaving something behind.) */
+        if (storage->links[i].writable) names[count++] = storage->links[i].name;
+        else skipped++;
+    }
+    snprintf(line, sizeof(line), "the phone's folders in an app's storage: %d to go through%s", count, skipped ? ", and some that are only to be read are left alone" : "");
+    if (out) out(line, user);
+    return hk_storage_check_run(names, count, out, user, checks);
 }
 
 static megler_line_fn g_out;

@@ -75,10 +75,12 @@
   <Capabilities>
     <!-- Android apps' own network access (the layer's sockets). -->
     <Capability Name="internetClient" />
-    <!-- An Android app's "SD card" shows the phone's own libraries and its
-         memory card as folders of it, as far as the phone lets the layer's
-         plain file functions into them (shell/Storage.cpp tries each at
-         start and says in the log what it found). -->
+    <!-- An Android app's "SD card" shows the phone's music, pictures and
+         videos as folders of it (player/StorageHost.cpp: the capabilities
+         let Windows.Storage hand over handles to files there; they do not
+         open the folders to the plain file functions). The documents
+         library and a memory card are not reached through these on the
+         phone tried; a folder there comes in through the folder picker. -->
     <uap:Capability Name="picturesLibrary" />
     <uap:Capability Name="videosLibrary" />
     <uap:Capability Name="musicLibrary" />

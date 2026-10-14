@@ -825,6 +825,7 @@ static int err_of(DWORD e)
     case ERROR_DISK_FULL: case ERROR_HANDLE_DISK_FULL: return HK_E_NOSPC;
     case ERROR_DIR_NOT_EMPTY: return HK_E_NOTEMPTY;
     case ERROR_INVALID_PARAMETER: return HK_E_INVAL;
+    case ERROR_NOT_SAME_DEVICE: return HK_E_XDEV;
     default: return HK_E_IO;
     }
 }
@@ -854,12 +855,32 @@ static char *utf8_of(const wchar_t *w)
     return s;
 }
 
+/* A foreign path's handle (hk_host.h), which the file's owner hands over; NULL with *err set. */
+static HANDLE foreign_handle(const char *path, int flags, int kind, int *err)
+{
+    HANDLE h = (HANDLE)hk_foreign_open(path, flags, kind, err);
+    if (h == INVALID_HANDLE_VALUE) {
+        if (err) *err = HK_E_IO;
+        return NULL;
+    }
+    return h;
+}
+
 hk_file *hk_file_open(const char *path, int flags, int *err)
 {
-    wchar_t *w = wide_path(path);
+    wchar_t *w;
     DWORD access = 0, disp;
     HANDLE h;
     hk_file *f;
+    if (hk_path_is_foreign(path)) {
+        h = foreign_handle(path, flags, HK_FOREIGN_FILE, err);
+        if (!h) return NULL;
+        f = (hk_file *)hk_alloc(sizeof(*f));
+        f->h = h;
+        f->append = (flags & HK_O_APPEND) != 0;
+        return f;
+    }
+    w = wide_path(path);
     if (flags & HK_O_READ) access |= GENERIC_READ;
     if (flags & HK_O_WRITE) access |= GENERIC_WRITE;
     if (!access) access = GENERIC_READ;
@@ -992,16 +1013,30 @@ bool hk_file_truncate(hk_file *f, u64 size, int *err)
 
 bool hk_file_sync(hk_file *f) { return FlushFileBuffers(f->h) != 0; }
 
-bool hk_file_stat(hk_file *f, hk_stat *st)
+static bool stat_handle(HANDLE h, hk_stat *st)
 {
     FILE_BASIC_INFO bi;
     FILE_STANDARD_INFO si;
     FILETIME ft;
     memset(st, 0, sizeof(*st));
-    if (!GetFileInformationByHandleEx(f->h, FileStandardInfo, &si, sizeof(si))) return false;
+    if (!GetFileInformationByHandleEx(h, FileStandardInfo, &si, sizeof(si))) {
+        /*
+         * The older call, for a handle that will not answer the newer one:
+         * it is the one a phone was seen to answer for a file of the user's
+         * music, handed over by Windows' broker.
+         */
+        BY_HANDLE_FILE_INFORMATION all;
+        if (!GetFileInformationByHandle(h, &all)) return false;
+        st->is_dir = (all.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+        st->size = ((u64)all.nFileSizeHigh << 32) | all.nFileSizeLow;
+        st->mtime_ns = (i64)filetime_to_unix_ns(all.ftLastWriteTime);
+        st->atime_ns = (i64)filetime_to_unix_ns(all.ftLastAccessTime);
+        st->ctime_ns = (i64)filetime_to_unix_ns(all.ftCreationTime);
+        return true;
+    }
     st->is_dir = si.Directory != 0;
     st->size = (u64)si.EndOfFile.QuadPart;
-    if (GetFileInformationByHandleEx(f->h, FileBasicInfo, &bi, sizeof(bi))) {
+    if (GetFileInformationByHandleEx(h, FileBasicInfo, &bi, sizeof(bi))) {
         ft.dwLowDateTime = bi.LastWriteTime.LowPart; ft.dwHighDateTime = (DWORD)bi.LastWriteTime.HighPart;
         st->mtime_ns = (i64)filetime_to_unix_ns(ft);
         ft.dwLowDateTime = bi.LastAccessTime.LowPart; ft.dwHighDateTime = (DWORD)bi.LastAccessTime.HighPart;
@@ -1012,11 +1047,23 @@ bool hk_file_stat(hk_file *f, hk_stat *st)
     return true;
 }
 
+bool hk_file_stat(hk_file *f, hk_stat *st) { return stat_handle(f->h, st); }
+
 bool hk_path_stat(const char *path, hk_stat *st, int *err)
 {
-    wchar_t *w = wide_path(path);
+    wchar_t *w;
     WIN32_FILE_ATTRIBUTE_DATA a;
-    BOOL ok = GetFileAttributesExW(w, GetFileExInfoStandard, &a);
+    BOOL ok;
+    if (hk_path_is_foreign(path)) {
+        HANDLE h = foreign_handle(path, HK_O_READ, HK_FOREIGN_ANY, err);
+        if (!h) return false;
+        ok = stat_handle(h, st);
+        if (!ok) SET_ERR();
+        CloseHandle(h);
+        return ok != 0;
+    }
+    w = wide_path(path);
+    ok = GetFileAttributesExW(w, GetFileExInfoStandard, &a);
     if (!ok) SET_ERR();
     free(w);
     if (!ok) return false;
@@ -1031,8 +1078,11 @@ bool hk_path_stat(const char *path, hk_stat *st, int *err)
 
 bool hk_path_mkdir(const char *path, int *err)
 {
-    wchar_t *w = wide_path(path);
-    BOOL ok = CreateDirectoryW(w, NULL);
+    wchar_t *w;
+    BOOL ok;
+    if (hk_path_is_foreign(path)) return hk_foreign_mkdir(path, err);
+    w = wide_path(path);
+    ok = CreateDirectoryW(w, NULL);
     if (!ok) SET_ERR();
     free(w);
     return ok != 0;
@@ -1040,8 +1090,11 @@ bool hk_path_mkdir(const char *path, int *err)
 
 bool hk_path_remove(const char *path, int *err)
 {
-    wchar_t *w = wide_path(path);
-    BOOL ok = DeleteFileW(w);
+    wchar_t *w;
+    BOOL ok;
+    if (hk_path_is_foreign(path)) return hk_foreign_remove(path, false, err);
+    w = wide_path(path);
+    ok = DeleteFileW(w);
     if (!ok) {
         DWORD e = GetLastError();
         if (e == ERROR_ACCESS_DENIED) {
@@ -1063,8 +1116,11 @@ bool hk_path_remove(const char *path, int *err)
 
 bool hk_path_rmdir(const char *path, int *err)
 {
-    wchar_t *w = wide_path(path);
-    BOOL ok = RemoveDirectoryW(w);
+    wchar_t *w;
+    BOOL ok;
+    if (hk_path_is_foreign(path)) return hk_foreign_remove(path, true, err);
+    w = wide_path(path);
+    ok = RemoveDirectoryW(w);
     if (!ok) SET_ERR();
     free(w);
     return ok != 0;
@@ -1072,20 +1128,74 @@ bool hk_path_rmdir(const char *path, int *err)
 
 bool hk_path_rename(const char *from, const char *to, int *err)
 {
-    wchar_t *a = wide_path(from), *b = wide_path(to);
-    BOOL ok = MoveFileExW(a, b, MOVEFILE_REPLACE_EXISTING);
+    wchar_t *a, *b;
+    BOOL ok;
+    if (hk_path_is_foreign(from) || hk_path_is_foreign(to)) return hk_foreign_rename(from, to, err);
+    a = wide_path(from);
+    b = wide_path(to);
+    ok = MoveFileExW(a, b, MOVEFILE_REPLACE_EXISTING);
     if (!ok) SET_ERR();
     free(a);
     free(b);
     return ok != 0;
 }
 
+/*
+ * A directory read through a handle to it, which is all there is of a
+ * foreign one: no pattern, no path. The entries come a bufferful at a time.
+ */
+static bool list_handle(HANDLE h, hk_dir_cb cb, void *user, int *err)
+{
+    enum { LIST_BYTES = 16384 };
+    /* (Not on the stack: the caller may be a thread of the app's, with a stack of the app's choosing.) */
+    FILE_ID_BOTH_DIR_INFO *buffer = (FILE_ID_BOTH_DIR_INFO *)hk_alloc(LIST_BYTES);
+    bool first = true, ok = true;
+    for (;;) {
+        const FILE_ID_BOTH_DIR_INFO *e = buffer;
+        if (!GetFileInformationByHandleEx(h, first ? FileIdBothDirectoryRestartInfo : FileIdBothDirectoryInfo, buffer, LIST_BYTES)) {
+            DWORD why = GetLastError();
+            /* The end; or, at the first call, a directory with nothing at all in it (a volume's root has not even "."). */
+            if (why != ERROR_NO_MORE_FILES && !(first && why == ERROR_FILE_NOT_FOUND)) {
+                if (err) *err = err_of(why);
+                ok = false;
+            }
+            break;
+        }
+        first = false;
+        for (;;) {
+            size_t n = e->FileNameLength / sizeof(wchar_t);
+            if (!(n == 1 && e->FileName[0] == L'.') && !(n == 2 && e->FileName[0] == L'.' && e->FileName[1] == L'.')) {
+                int bytes = WideCharToMultiByte(CP_UTF8, 0, e->FileName, (int)n, NULL, 0, NULL, NULL);
+                char *name = (char *)hk_alloc((size_t)(bytes > 0 ? bytes : 0) + 1);
+                if (bytes > 0) WideCharToMultiByte(CP_UTF8, 0, e->FileName, (int)n, name, bytes, NULL, NULL);
+                if (name[0]) cb(name, (e->FileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0, user);
+                free(name);
+            }
+            if (!e->NextEntryOffset) break;
+            e = (const FILE_ID_BOTH_DIR_INFO *)((const u8 *)e + e->NextEntryOffset);
+        }
+    }
+    free(buffer);
+    return ok;
+}
+
 bool hk_path_list(const char *path, hk_dir_cb cb, void *user, int *err)
 {
-    char *pattern = hk_sprintf("%s/*", path);
-    wchar_t *w = wide_path(pattern);
+    char *pattern;
+    wchar_t *w;
     WIN32_FIND_DATAW fd;
-    HANDLE h = FindFirstFileExW(w, FindExInfoBasic, &fd, FindExSearchNameMatch, NULL, 0);
+    HANDLE h;
+    if (hk_path_is_foreign(path)) {
+        bool ok;
+        h = foreign_handle(path, HK_O_READ, HK_FOREIGN_DIR, err);
+        if (!h) return false;
+        ok = list_handle(h, cb, user, err);
+        CloseHandle(h);
+        return ok;
+    }
+    pattern = hk_sprintf("%s/*", path);
+    w = wide_path(pattern);
+    h = FindFirstFileExW(w, FindExInfoBasic, &fd, FindExSearchNameMatch, NULL, 0);
     free(pattern);
     if (h == INVALID_HANDLE_VALUE) {
         DWORD e = GetLastError();
@@ -1112,15 +1222,20 @@ bool hk_path_list(const char *path, hk_dir_cb cb, void *user, int *err)
 
 bool hk_map_open(hk_map *m, const char *path)
 {
-    wchar_t *w = wide_path(path);
     HANDLE file, mapping;
     LARGE_INTEGER size;
     void *view;
     FILE_STANDARD_INFO si;
     memset(m, 0, sizeof(*m));
-    file = CreateFile2(w, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, OPEN_EXISTING, NULL);
-    free(w);
-    if (file == INVALID_HANDLE_VALUE) return false;
+    if (hk_path_is_foreign(path)) {
+        file = foreign_handle(path, HK_O_READ, HK_FOREIGN_FILE, NULL);
+        if (!file) return false;
+    } else {
+        wchar_t *w = wide_path(path);
+        file = CreateFile2(w, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, OPEN_EXISTING, NULL);
+        free(w);
+        if (file == INVALID_HANDLE_VALUE) return false;
+    }
     if (!GetFileInformationByHandleEx(file, FileStandardInfo, &si, sizeof(si)) || si.EndOfFile.QuadPart <= 0) {
         CloseHandle(file);
         return false;
@@ -1149,6 +1264,21 @@ bool hk_map_open(hk_map *m, const char *path)
     m->size = (u64)size.QuadPart;
     m->h1 = file;
     m->h2 = mapping;
+    return true;
+}
+
+bool hk_path_space(const char *path, u64 *total, u64 *available)
+{
+    wchar_t *w;
+    ULARGE_INTEGER mine, all, unused;
+    BOOL ok;
+    if (hk_path_is_foreign(path)) return false;
+    w = wide_path(path);
+    ok = GetDiskFreeSpaceExW(w, &mine, &all, &unused);
+    free(w);
+    if (!ok) return false;
+    *total = all.QuadPart;
+    *available = mine.QuadPart;
     return true;
 }
 

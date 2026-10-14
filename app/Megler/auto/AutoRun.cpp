@@ -1,13 +1,14 @@
 // The auto run (AutoRun.h): which stages this build has, the thread they run
 // on, and megler-auto.log. tools/build-appx.sh writes AutoConfig.h with
-// MEGLER_AUTO_PROBE, MEGLER_AUTO_SELFTEST, MEGLER_AUTO_GFX, MEGLER_AUTO_PLAY and
-// MEGLER_AUTO_JAVA set to 0 or 1.
+// MEGLER_AUTO_PROBE, MEGLER_AUTO_SELFTEST, MEGLER_AUTO_GFX, MEGLER_AUTO_STORAGE,
+// MEGLER_AUTO_PLAY and MEGLER_AUTO_JAVA set to 0 or 1.
 #include "pch.h"
 
 #include "auto/AutoRun.h"
 
 #include "library/Library.h"
 #include "player/Session.h"
+#include "player/StorageHost.h"
 #include "player/WindowHost.h"
 #include "shell/Checks.h"
 #include "shell/Files.h"
@@ -37,6 +38,9 @@
 #ifndef MEGLER_AUTO_GFX
 #define MEGLER_AUTO_GFX 0
 #endif
+#ifndef MEGLER_AUTO_STORAGE
+#define MEGLER_AUTO_STORAGE 0
+#endif
 
 #if MEGLER_AUTO_GFX
 // The one place where the shell looks past megler.h into the core: the scenes
@@ -60,6 +64,7 @@ const char* modes() {
         add(MEGLER_AUTO_PROBE, "probe");
         add(MEGLER_AUTO_SELFTEST, "selftest");
         add(MEGLER_AUTO_GFX, "gfx");
+        add(MEGLER_AUTO_STORAGE, "storage");
         add(MEGLER_AUTO_PLAY, "play");
         add(MEGLER_AUTO_JAVA, "java");
         return s;
@@ -67,7 +72,7 @@ const char* modes() {
     return text.c_str();
 }
 
-#if MEGLER_AUTO_PROBE || MEGLER_AUTO_SELFTEST || MEGLER_AUTO_GFX || MEGLER_AUTO_PLAY || MEGLER_AUTO_JAVA
+#if MEGLER_AUTO_PROBE || MEGLER_AUTO_SELFTEST || MEGLER_AUTO_GFX || MEGLER_AUTO_STORAGE || MEGLER_AUTO_PLAY || MEGLER_AUTO_JAVA
 namespace {
 
 /// How long the play stage lets a game run before it calls the run done
@@ -140,6 +145,36 @@ void runGfx() {
 }
 #endif
 
+#if MEGLER_AUTO_STORAGE
+/// The phone's folders in an app's storage, gone through as an app would go
+/// through them (StorageHost::check, megler_storage_check): the links the
+/// shell found, then every step, into megler-auto.log and the shell's log. It
+/// runs no app, so a play stage after it starts as it would without.
+void runStorage() {
+    autoLine("storage: started");
+    StorageHost& storage = StorageHost::shared();
+    // (The links are looked for from start-up on, on a thread of their own.)
+    for (int waited = 0; !storage.searched() && waited < 200; waited++) Sleep(100);
+    for (const StorageHost::Link& link : storage.links())
+        autoLine("storage: /sdcard/" + link.name + " is " + (link.path.empty() ? std::string("a folder with no path") : link.path) + ", " + link.what + ": " +
+                 (link.answers ? "it answers, " + link.note : "it does NOT answer (" + link.note + ") and is left out"));
+    std::string done;
+    try {
+        done = storage.check([](const std::string& line) {
+            autoLine(line);
+            shellLog::write("storage check: " + line);
+        });
+    } catch (const std::exception& error) {
+        done = std::string("DONE storage: aborted by an exception: ") + error.what();
+        autoLine(done);
+    } catch (...) {
+        done = "DONE storage: aborted by an exception";
+        autoLine(done);
+    }
+    shellLog::write("auto run: " + done);
+}
+#endif
+
 void runAll(const std::string& description) {
     const std::wstring& local = platform::localStateDirectory();
     // Every stage's log started afresh, this build's stages or not: an update
@@ -161,6 +196,9 @@ void runAll(const std::string& description) {
 #if MEGLER_AUTO_GFX
     runGfx();
 #endif
+#if MEGLER_AUTO_STORAGE
+    runStorage();
+#endif
     gChecksDone = true;
 #if !MEGLER_AUTO_PLAY && !MEGLER_AUTO_JAVA
     finish();
@@ -171,7 +209,7 @@ void runAll(const std::string& description) {
 #endif
 
 bool start(std::string description) {
-#if MEGLER_AUTO_PROBE || MEGLER_AUTO_SELFTEST || MEGLER_AUTO_GFX || MEGLER_AUTO_PLAY || MEGLER_AUTO_JAVA
+#if MEGLER_AUTO_PROBE || MEGLER_AUTO_SELFTEST || MEGLER_AUTO_GFX || MEGLER_AUTO_STORAGE || MEGLER_AUTO_PLAY || MEGLER_AUTO_JAVA
     // The stack of the Device screen's own checks (shell/Checks.cpp): the
     // self-test calls Android code on the thread it runs on.
     return platform::startThread([description] { runAll(description); }, size_t(8) << 20);

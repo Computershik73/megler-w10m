@@ -26,6 +26,7 @@ Back. No real app has been tried.
 | A NativeActivity app through `megler_run`: manifest, JNI, assets, looper, EGL, frames, touch, focus, pause, Back, teardown | **passes on the phone**, with a stand-in for OpenGL ES |
 | Sound: an OpenSL ES buffer-queue player, resampled and mixed to 44.1 kHz stereo for the shell | **passes on the phone** as far as the mixer's output (sample counts and levels) |
 | Films: `libmediandk.so` (extractor, decoders, formats) over the shell's Media Foundation reader; pictures onto a `SurfaceTexture` | **works on the phone** with Hollow Knight's two opening films (H.264 360x202, AAC): every picture decoded and shown full screen, the sound in step with them; watched and heard by the phone's owner, played through and skipped |
+| The shared storage: one `/sdcard` for every app, the app's own `Android/data` and `obb` in it, and links to folders of the phone's own through handles the shell hands over | **passes under qemu and on PC** with a stand-in for the shell (`core/tests/hk_storage_tests.c`, 424 checks), and on PC with the shell's own host over Windows.Storage (`player/StorageHost.cpp`, the same checks; a test program is no app container). **On the phone** (HP Elite x3, 0.1.0.126, `tools/build-appx.sh arm --auto storage`): Music, Pictures, Movies and DCIM are found and answer, and the check's 102 steps pass -- 24 in each link, in a folder of its own: files made, written, read back, appended to, emptied, renamed, moved, removed, folders likewise, and a file moved from one link to another. One thing the PC did not show: an open straight after a close is at times refused with a sharing violation, something of Windows' own having the new file for a moment (2 steps of 102, different ones each run); the host asks again for up to a second. A folder is not moved into another folder by renaming (the app is told EXDEV, and copies). **Not tried**: the Settings section (the list, Add a Folder with the folder picker, the folders Windows remembers across starts), Documents, Downloads, a memory card |
 | Sound out of the phone (XAudio2) | **heard on the phone** with build 0.1.0.21, the Probe's tone and the demo's; XAudio2 played every frame it was given. With 0.1.0.19 nothing was heard and the log could not say why: the engine was built on the app's own thread then, and nothing was counted |
 | ANGLE: its DLLs, a display, a context | **works on the phone**: Direct3D 11 at feature level 11_1, EGL 1.5, OpenGL ES 3.0; 16384-pixel textures, DXT, depth textures, NPOT; no ETC1, no ASTC |
 | A window surface over the shell's texture, the copy to the swap chain, the picture on screen | **works on the phone**: the right way up, the right colours, 1280x720 scaled to a 2560x1440 screen, 59 frames a second paced by `Present(1)` |
@@ -371,12 +372,17 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
     missing native of Java serialization, works again. Its lists of other
     apps are empty: there are no other apps.
   - *Apktool M 2.4.0* (two native libraries): starts on the phone, shows its
-    licence dialog and its main screen. Its Settings end it; its drawer of
-    folders is empty, storage being the next thing.
+    licence dialog (whose heading is cut off at the right) and, the licence
+    accepted, its main screen with the drawer open. The drawer of folders is
+    still empty: the folders are there (below), what the app asks of the
+    framework for them is the Java side's next thing.
   - *Device Info 3.4.3.4* (Kotlin, AndroidX, Material, two native libraries;
-    its target is Android 15): starts on the phone and ended at its first
-    WebP picture, which nothing decoded; a decoder is in the core since
-    0.1.0.121 and what comes after is not known yet.
+    its target is Android 15): runs on the phone since 0.1.0.122, the build
+    with the WebP decoder -- its dashboard with the memory chart, the
+    processor's cores, the display. Wrong on it: the selected tab's label is
+    all but invisible, the battery reads 0 % (nothing tells the framework),
+    the storage card showed a total of 0 (a sum done in 32 bits). Its GPU
+    page needs OpenGL from Java.
   Also since then: databases (`android.database.sqlite` on SQLite compiled
   into the core over the host layer's files, `tools/sqlite-fetch.sh`); WebP
   (libwebp's decoder in the core, `tools/webp-fetch.sh`: Windows 10 Mobile
@@ -389,11 +395,23 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   **Storage**, measured on the phone: with the library capabilities declared,
   the plain file functions are still refused in every library folder, but
   Windows.Storage's broker hands out real file and folder handles in Music,
-  Pictures and Videos (`app/Megler/shell/Storage.cpp` tries each at start
-  and says so in the log); Documents, Downloads and a memory card can only be
-  given by the user picking a folder. Links from an Android app's `/sdcard`
-  to those folders are being built on that; until then each app has its own
-  `/sdcard` in Megler's folder and sees nothing of the phone's.
+  Pictures and Videos; Documents, Downloads and a memory card can only be
+  given by the user picking a folder. On that the shared storage is built
+  (the table above; docs/ARCHITECTURE.md, "Files and the shared storage"):
+  one `/sdcard` for all apps in Megler's own folder, each app's `Android/data`
+  and `obb` where they were, and `Music`, `Pictures`, `Movies`, `DCIM` and
+  whatever the user adds in Settings being the phone's own folders. `statfs`
+  answers the phone's real room (34.9 GB free of 56.7 on that phone).
+  **Text** is Android's own since 0.1.0.124: the fonts of Android 9's named
+  families (Roboto, Roboto Condensed, Noto Serif, Droid Sans Mono and four
+  more, 7.7 MB) are in the package's Android folder and the shell's drawing
+  makes its faces of them, with the line measures Android reads out of a
+  font (a line of Roboto is 23.4 for an em of 20; by DirectWrite's own
+  measures it was 26.4, and Segoe UI before that 26.6). What the fonts lack
+  -- other scripts, emoji -- is the phone's own fallback. A label that is
+  still cut off is no longer the font's doing: QuickShortcutMaker's four
+  tabs are a quarter of the screen each where Android gives each its text's
+  width and a share of the rest.
   Not there: garbage collection (an app that animates lasts minutes); sound,
   WebView and OpenGL from Java; a `SurfaceView` drawn by native code; method
   handles; conscrypt's native half (no TLS); the network; other apps (the

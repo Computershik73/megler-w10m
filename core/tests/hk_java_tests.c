@@ -50,6 +50,7 @@
 #include "../src/dvm/hk_dvm.h"
 #include "../src/hk_base.h"
 #include "../src/host/hk_host.h"
+#include "../src/run/hk_run.h"
 #include "hk_gfx_standin.h"
 #include "hk_tests.h"
 
@@ -348,14 +349,9 @@ static bool start(const char *apk, const char *android_root)
          * here the driver is started as megler_run would have started it: the APK read, the app's folders named, the driver's start.
          */
         static hk_apk_info info;
-        char *internal, *external;
         say("  (megler_run: %s -- the Java driver is started directly)", megler_last_error());
         if (hk_apk_read_info(apk, &info) && !strcmp(info.engine, "java")) {
-            internal = hk_sprintf("%s/apps/%s/data", megler_data_dir(), info.package);
-            external = hk_sprintf("%s/apps/%s/sdcard", megler_data_dir(), info.package);
-            hk_fs_configure(info.package, internal, external);
-            free(internal);
-            free(external);
+            hk_run_files(megler_data_dir(), info.package, &cfg.storage);
             g_direct = hk_driver_java.start(&cfg, &info);
             if (g_direct) return true;
         }
