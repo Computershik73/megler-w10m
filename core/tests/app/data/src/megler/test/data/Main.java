@@ -273,6 +273,7 @@ public class Main extends Activity {
         keystore(run);
         codecs();
         xml();
+        assetFd();
         network();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
@@ -632,6 +633,25 @@ public class Main extends Activity {
             }
             detail = p.getClass().getName() + " " + w.getClass().getName() + " " + seen;
             return "<list{urn:megler}<item@1\"a < b & c\"</item</list".equals(seen.toString()) && text.contains("a &lt; b &amp; c");
+        });
+    }
+
+    /**
+     * A file of the APK from its root as a descriptor, the way Chromium's ApkAssets maps its data out of the APK:
+     * openNonAssetFd, then the number taken from getParcelFileDescriptor().detachFd(). resources.arsc is stored, so it can
+     * be had so; it begins with its table's header (type 2, header size 12).
+     */
+    private void assetFd() {
+        step("asset-fd", () -> {
+            android.content.res.AssetFileDescriptor afd = getAssets().openNonAssetFd("resources.arsc");
+            android.os.ParcelFileDescriptor pfd = afd.getParcelFileDescriptor();
+            byte[] head = new byte[4];
+            java.io.FileInputStream in = new java.io.FileInputStream(afd.getFileDescriptor());
+            in.getChannel().position(afd.getStartOffset());
+            int got = in.read(head);
+            int fd = pfd != null ? pfd.detachFd() : -1;
+            detail = "pfd=" + (pfd != null) + " fd=" + fd + " at " + afd.getStartOffset() + " length " + afd.getLength() + " head " + java.util.Arrays.toString(head);
+            return pfd != null && fd >= 0 && got == 4 && head[0] == 2 && head[1] == 0 && head[2] == 12 && head[3] == 0 && afd.getLength() > 12;
         });
     }
 

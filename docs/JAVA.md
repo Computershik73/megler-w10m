@@ -2902,7 +2902,7 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: thirty-three files** in the overlay,
+**What differs from the original's framework: thirty-five files** in the overlay,
 most of them a statement or a few methods each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and seven files of members added** to classes of the original's.
@@ -3253,7 +3253,26 @@ the context that knows.
   between Android 9 and later (`com.android.org.*`, `libcore.*` and the like,
   in `Class.forName` and string literals) found no other.
 
-The original has all twenty-two faults; they are its author's to take back.
+- `android/content/res/AssetFileDescriptor.java`, `getParcelFileDescriptor()`.
+  What `AssetManager.openFd` and `openNonAssetFd` give (the APK's file,
+  opened anew for each call, and where in it a stored entry starts) was made
+  from a plain `FileDescriptor`, and `getParcelFileDescriptor()` returned
+  null. On Android every `AssetFileDescriptor` has one, and code takes the
+  number from it: Chromium's `ApkAssets.open` (Brave 1.97) calls
+  `getParcelFileDescriptor().detachFd()` to map `icudtl.dat` and its `.pak`
+  files out of the APK, and ended in a `NullPointerException` that its native
+  side makes fatal. Now one is made on the first call. It owns nothing:
+  closing it, or the `AssetFileDescriptor`, leaves the descriptor open, as
+  `close()` always has here; whoever detaches the number may close it. The
+  core had a fault on the same path: a path from the APK's root, which
+  `openNonAsset` and `openNonAssetFd` pass with a leading "/", was looked for
+  under `assets/` (`core/src/drivers/hk_java.c`, `asset_name`), so neither
+  found what it was asked for.
+  The data app's step "asset-fd" opens `resources.arsc` (stored) with
+  `openNonAssetFd`, detaches the number from its `ParcelFileDescriptor`
+  and reads the table's header where the entry starts.
+
+The original has all twenty-three faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in

@@ -1427,8 +1427,9 @@ static int run_data(void)
                                          /* And the battery, the time zone, TLS that fails politely, Android's key store's key pairs, and
                                             the list of decoders, which is empty and says nothing about it. */
                                          "battery", "timezone", "tls", "keystore", "codecs",
-                                         /* And XML through android.util.Xml: a serializer and a pull parser, kXML's. */
-                                         "xml",
+                                         /* And XML through android.util.Xml: a serializer and a pull parser, kXML's. And a stored file of
+                                            the APK as a descriptor whose number is taken from its ParcelFileDescriptor. */
+                                         "xml", "asset-fd",
                                          /* And the network from Java, on loopback: names, an HTTP server of the app's own and HttpURLConnection, UDP, a server
                                             socket closed under the thread waiting in accept, a java.nio selector, the interfaces, ConnectivityManager. */
                                          "net-localhost", "net-http", "net-udp", "net-close", "net-nio", "net-interfaces", "net-connectivity" };

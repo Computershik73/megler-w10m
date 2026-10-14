@@ -154,10 +154,19 @@ static i64 apk_length(int apk, const char *path)
     return e ? (i64)e->usize : -1;
 }
 
+/*
+ * The APK's entry an asset path names: "x" is assets/x. A path that begins with "/" is from the APK's root instead: the
+ * framework's AssetManager.openNonAsset and openNonAssetFd pass "/" and the path (SoLoader reads lib/<abi>/ so;
+ * Chromium's ApkAssets opens "assets/icudtl.dat" so). Those were looked for under assets/ -- assets/lib/...,
+ * assets/assets/icudtl.dat -- and never found.
+ */
 static char *asset_name(hk_jobj *path)
 {
     const char *p = text_of(path);
-    while (*p == '/') p++;
+    if (*p == '/') {
+        while (*p == '/') p++;
+        return hk_strdup(p);
+    }
     return hk_sprintf("assets/%s", p);
 }
 
