@@ -145,10 +145,22 @@ public:
     typedef void (*LineFn)(const char* line, void* user);
     void setLog(LineFn fn, void* user);
 
+    /// Where canvases are drawn: on the graphics processor where there is a
+    /// device for it (the default), on WARP (Direct3D's software device,
+    /// which draws as a graphics processor would: for a test on a machine
+    /// without one, or of a second rasterizer), or in memory by Direct2D's
+    /// software rasterizer. Before the first drawing.
+    enum class Drawing { graphicsProcessor, warp, memory };
+    void setDrawing(Drawing drawing);
+
     /// Every canvas draws into a WIC bitmap of its own that is copied from
     /// and to the core's memory, as if Direct2D had refused the memory
-    /// itself. Before the first drawing.
+    /// itself; in memory, then. Before the first drawing.
     void setCopying(bool copying);
+
+    /// For a test: the graphics processor's device is taken as lost from
+    /// now on, as if Direct3D had said DXGI_ERROR_DEVICE_REMOVED.
+    void loseDevice();
 
     /// A folder with Android's own fonts in it (Roboto-Regular.ttf and the
     /// rest of Android 9's /system/fonts that its named families are made
@@ -171,6 +183,16 @@ public:
         uint64_t partTargets = 0;  // times a canvas's render target was moved to the part its clip leaves open
         bool started = false;      // Direct2D and DirectWrite are there
         bool copying = false;      // canvases are copied in and out
+        // On the graphics processor:
+        bool gpu = false;          // canvases are made there
+        bool gpuLost = false;      // ... and the device has been lost since
+        uint64_t uploads = 0;      // times memory was uploaded to a canvas's picture
+        uint64_t readBacks = 0;    // ... and read back from it
+        uint64_t byEffects = 0;    // drawing calls put on by Direct2D's effects
+        uint64_t throughMemory = 0; // ... and by this file's arithmetic, read back and uploaded again
+        uint64_t keptMade = 0;     // bitmaps of the core's uploaded to be kept
+        uint64_t keptReused = 0;   // ... and drawn again from there
+        char device[128] = {};     // the graphics processor's name, and Direct3D's feature level
     };
     Counts counts();
 

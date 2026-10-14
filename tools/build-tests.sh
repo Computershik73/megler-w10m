@@ -260,7 +260,7 @@ elif [ "$MODE" = win ]; then
   # `hk_dvm_interpret` first, so that what it measures is the change and not where the loop fell.)
   [ -n "${MEGLER_TESTS_ORDER:-}" ] && MAPOPT+=("/ORDER:@$(w "$MEGLER_TESTS_ORDER")")
   "$VC/bin/Hostx64/x64/link.exe" /nologo ${MAPOPT[@]+"${MAPOPT[@]}"} "/OUT:$(w "$OUT/hk_tests.exe")" "$(w "$OUT/obj")\\*.obj" "$(w "$OUT/zobj")\\*.obj" "$(w "$OUT/gfxobj")\\*.obj" \
-    "$(w "$OUT/storageobj")\\*.obj" bcrypt.lib synchronization.lib d2d1.lib dwrite.lib ole32.lib oleaut32.lib ws2_32.lib iphlpapi.lib
+    "$(w "$OUT/storageobj")\\*.obj" bcrypt.lib synchronization.lib d2d1.lib d3d11.lib dwrite.lib ole32.lib oleaut32.lib ws2_32.lib iphlpapi.lib
   echo "built $OUT/hk_tests.exe"
   if [ "$RUN" = 1 ]; then
     rm -rf "$OUT/scratch"
@@ -274,11 +274,16 @@ elif [ "$MODE" = win ]; then
       rm -rf "$OUT/scratch"
       "$OUT/hk_tests.exe" - "$(w "$OUT/scratch")" "${DVM[@]}" --dvm-android "$(w "$ROOT/build/android9/root")" "${EXTRA[@]}" || STATUS=1
     fi
-    # The shell's drawing: its scenes as PNG files in build/gfx-pictures, and once more, without the files, the way it
-    # would draw if Direct2D refused the app's memory.
+    # The shell's drawing: its scenes on this machine's graphics processor, as PNG files in build/gfx-pictures (and in
+    # memory without one, which its first line says); then, without the files, in memory by Direct2D's software
+    # rasterizer, which is what a phone without a device for it draws with; in memory the way it would draw if Direct2D
+    # refused the app's memory; and on WARP, Direct3D's software device, a second rasterizer of the graphics processor's
+    # kind.
     rm -rf "$ROOT/build/gfx-pictures"
     "$OUT/hk_tests.exe" --gfx-windows "$(w "$ROOT/build/gfx-pictures")" || STATUS=1
+    "$OUT/hk_tests.exe" --gfx-windows - memory || STATUS=1
     "$OUT/hk_tests.exe" --gfx-windows - copy || STATUS=1
+    "$OUT/hk_tests.exe" --gfx-windows - warp || STATUS=1
     # And with Android's own fonts in place of the system's, as the phone's package has them, where they have been taken
     # out of the image (tools/android9-unpack.sh fonts).
     if [ -f "$ROOT/build/android9/root/fonts/Roboto-Regular.ttf" ]; then
@@ -297,6 +302,7 @@ elif [ "$MODE" = win ]; then
       if [ -f "$ROOT/build/gfx-records/$app.rec" ]; then
         "$OUT/hk_tests.exe" --gfx-replay "$(w "$ROOT/build/gfx-records/$app.rec")" - "app-$app" standin || STATUS=1
         "$OUT/hk_tests.exe" --gfx-replay "$(w "$ROOT/build/gfx-records/$app.rec")" "$(w "$ROOT/build/gfx-pictures")" "app-$app" || STATUS=1
+        "$OUT/hk_tests.exe" --gfx-replay "$(w "$ROOT/build/gfx-records/$app.rec")" - "app-$app" memory || STATUS=1
       else
         echo "(no record of the Java test app $app's drawing in build/gfx-records: tools/build-tests.sh arm makes one)"
       fi

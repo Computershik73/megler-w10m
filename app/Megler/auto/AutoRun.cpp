@@ -129,6 +129,10 @@ void runGfx() {
         autoLine("gfx: the flag gfx-copy is on: every canvas is copied to a WIC bitmap and back");
         gfx.setCopying(true);
     }
+    if (files::exists(local + L"\\flags\\gfx-software")) {
+        autoLine("gfx: the flag gfx-software is on: canvases are drawn in memory, not on the graphics processor");
+        gfx.setDrawing(GfxHost::Drawing::memory);
+    }
     const megler_gfx_host host = gfx.callbacks();
     const std::string folder = narrow(local);
     hk_gfx_scenes_config config = {};
@@ -141,9 +145,14 @@ void runGfx() {
     gfx.setLog([](const char* line, void*) { shellLog::write(line); }, nullptr);
     const GfxHost::Counts counts = gfx.counts();
     const std::string done = format("DONE gfx: %d checks, %d failed; %llu canvases, %llu drawing calls put on by Direct2D and %llu by the host's own "
-                                    "arithmetic, %llu runs of text laid out, %llu kinds of thing said to be drawn not as asked%s",
+                                    "arithmetic, %llu runs of text laid out, %llu kinds of thing said to be drawn not as asked%s%s",
                                     checks, failed, counts.canvases, counts.direct, counts.composed, counts.runsShaped, counts.notes,
-                                    counts.copying ? "; canvases were copied in and out" : "");
+                                    counts.copying ? "; canvases were copied in and out" : "",
+                                    counts.gpu ? format("; on the graphics processor (%s): %llu uploads, %llu read-backs, %llu calls by Direct2D's effects "
+                                                        "and %llu through memory",
+                                                        counts.device, counts.uploads, counts.readBacks, counts.byEffects, counts.throughMemory)
+                                                     .c_str()
+                                               : "; in memory");
     autoLine(done);
     shellLog::write("auto run: " + done);
 }

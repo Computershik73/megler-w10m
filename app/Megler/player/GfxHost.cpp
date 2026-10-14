@@ -111,6 +111,7 @@
 
 #include <d2d1_1.h>
 #include <d2d1_1helper.h>
+#include <d3d11.h>
 #include <dwrite_2.h>
 #include <wincodec.h>
 
@@ -219,10 +220,28 @@ const GUID wic32bppPBGRA = {0x6fddc324, 0x4e03, 0x4bfe, {0xb1, 0x85, 0x3d, 0x77,
 const GUID wicPng = {0x1b7cfaf4, 0x713f, 0x473c, {0xbb, 0xcd, 0x61, 0x37, 0x42, 0x5f, 0xae, 0xaf}};
 const GUID wicJpeg = {0x19e4a5aa, 0x5662, 0x4fc5, {0xa0, 0xc0, 0x17, 0x58, 0x02, 0x8e, 0x10, 0x57}};
 
+// Direct2D's built-in effects, likewise (d2d1effects.h's values; dxguid.lib is not linked).
+const GUID effectArithmetic = {0xfc151437, 0x049a, 0x4784, {0xa2, 0x4a, 0xf1, 0xc4, 0xda, 0xf2, 0x09, 0x87}};
+const GUID effectBlend = {0x81c5b77b, 0x13f8, 0x4cdd, {0xad, 0x20, 0xc8, 0x90, 0x54, 0x7a, 0xc6, 0x5d}};
+const GUID effectColorMatrix = {0x921f03d6, 0x641c, 0x47df, {0x85, 0x2d, 0xb4, 0xbb, 0x61, 0x53, 0xae, 0x11}};
+const GUID effectComposite = {0x48fc9f51, 0xf6ac, 0x48f1, {0x8b, 0x58, 0x3b, 0x28, 0xac, 0x46, 0xf7, 0x6d}};
+const GUID effectFlood = {0x61c23c20, 0xae69, 0x4d8e, {0x94, 0xcf, 0x50, 0x07, 0x8d, 0xf6, 0x38, 0xf2}};
+const GUID effectGaussianBlur = {0x1feb6d69, 0x2fe6, 0x4ac9, {0x8c, 0x58, 0x1d, 0x7f, 0x93, 0xe7, 0xa6, 0xa5}};
+
 // MARK: The log
 
 struct Typeface;
 struct Surface;
+struct GpuContext;
+
+/// A bitmap of the core's kept on the graphics processor (draw_bitmap,
+/// shader_bitmap), under its megler_gfx_image id.
+struct Kept {
+    uint32_t version = 0;
+    Ref<ID2D1Bitmap1> bitmap;
+    uint64_t bytes = 0;
+    uint64_t used = 0; // when it was last drawn, by keptClock
+};
 
 /// Everything of the host's that outlives a call.
 struct State {
@@ -237,6 +256,27 @@ struct State {
     std::atomic<int> started{0}; // 0 not tried, 1 there, -1 cannot be
     bool copyingAsked = false;
     bool copying = false;
+
+    // The graphics processor (GfxHost.h): made at the first call too. `gpu`
+    // is set once, before any canvas is made; `gpuLost` from then on, by
+    // whichever thread finds the device gone.
+    GfxHost::Drawing drawingAsked = GfxHost::Drawing::graphicsProcessor;
+    bool gpu = false;
+    std::atomic<bool> gpuLost{false};
+    Ref<ID3D11Device> d3d;
+    Ref<ID2D1Device> d2dDevice;
+    Ref<ID2D1DeviceContext> gpuResource; // makes what several canvases share: a shader's brush, kept bitmaps
+    UINT32 gpuMaxSize = 4096;            // the largest bitmap the device takes, each way
+    std::string gpuName;                 // the adapter's, for the log
+    // Contexts and target bitmaps of canvases that are gone, for the next ones (gpuMutex).
+    std::mutex gpuMutex;
+    std::vector<GpuContext*> freeContexts;
+    std::vector<Ref<ID2D1Bitmap1>> freeTargets, freeReadables;
+    uint64_t freeBytes = 0;
+    // Bitmaps of the core's kept on the processor (keptMutex), and how many bytes of them there are.
+    std::mutex keptMutex;
+    std::unordered_map<uint32_t, Kept> kept;
+    uint64_t keptBytes = 0, keptClock = 0;
     Ref<ID2D1Factory> d2d;
     Ref<ID2D1Factory1> d2d1;
     Ref<IDWriteFactory> dwrite;
@@ -282,11 +322,16 @@ struct State {
     // Where the drawing's time goes, in performance-counter ticks, and how much it moved: a line in the log every 5 s
     // while an app draws (noteDrawing).
     std::atomic<uint64_t> targetsMade{0}, makeTicks{0}, endTicks{0}, composeTicks{0}, composedPixels{0}, sessionPixels{0};
+    // On the graphics processor: the memory uploaded, read back (the wait for the processor counted in), the calls
+    // put on by Direct2D's effects and through memory, and the kept bitmaps made and drawn again.
+    std::atomic<uint64_t> uploads{0}, uploadPixels{0}, uploadTicks{0}, readBacks{0}, readBackPixels{0}, readBackTicks{0}, byEffects{0},
+        throughMemory{0}, keptMade{0}, keptReused{0};
     std::mutex statsMutex;
     uint64_t statsAt = 0; // when the last line was written (ticks); 0: never
     struct Totals {
         uint64_t sessions = 0, direct = 0, composed = 0, layers = 0, partTargets = 0, targetsMade = 0, makeTicks = 0, endTicks = 0, composeTicks = 0,
-                 composedPixels = 0, sessionPixels = 0;
+                 composedPixels = 0, sessionPixels = 0, uploads = 0, uploadPixels = 0, uploadTicks = 0, readBacks = 0, readBackPixels = 0,
+                 readBackTicks = 0, byEffects = 0, throughMemory = 0, keptMade = 0, keptReused = 0;
     } statsLast;
 };
 
@@ -515,6 +560,19 @@ struct Box {
         t += dy;
         b += dy;
     }
+    /// The box round this and `o`.
+    void include(const Box& o) {
+        if (o.empty()) return;
+        if (empty()) {
+            *this = o;
+            return;
+        }
+        l = std::min(l, o.l);
+        t = std::min(t, o.t);
+        r = std::max(r, o.r);
+        b = std::max(b, o.b);
+    }
+    bool covers(const Box& o) const { return o.empty() || (!empty() && l <= o.l && t <= o.t && r >= o.r && b >= o.b); }
 };
 
 /// The box of a rectangle through a matrix: where its four corners land.
@@ -710,6 +768,150 @@ IWICImagingFactory* wic() {
     return s.wic.get();
 }
 
+// MARK: The graphics processor's device, and what is kept on it
+
+/// Whether a failure of Direct2D on the graphics processor is the device
+/// going away; that is said once, and from then on everything is drawn in
+/// memory (GfxHost.h). Any other failure is said once for its call.
+bool gpuFailed(const char* what, HRESULT hr) {
+    State& s = G();
+    const HRESULT reason = s.d3d ? s.d3d->GetDeviceRemovedReason() : S_OK;
+    if (hr == D2DERR_RECREATE_TARGET || hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET || FAILED(reason)) {
+        if (!s.gpuLost.exchange(true))
+            say("the graphics processor's device is lost (%s: 0x%08lX, the device's reason 0x%08lX): from now on everything is drawn in memory", what,
+                static_cast<unsigned long>(hr), static_cast<unsigned long>(reason));
+        return true;
+    }
+    failed(what, hr);
+    return false;
+}
+
+inline bool gpuGone() { return G().gpuLost.load(std::memory_order_relaxed); }
+
+/// How many bytes of target bitmaps (and the bitmaps read-backs go through)
+/// of canvases that are gone are kept for the next ones: a few windows'
+/// worth, which is what an app makes again and again.
+constexpr uint64_t freeBitmapBytes = 12ull << 20;
+
+/// A bitmap on the graphics processor of this size, B, G, R, A premultiplied,
+/// with these options: a target, one the processor's bitmaps are copied into
+/// for reading, or one to draw from. Its pixels are not set.
+Ref<ID2D1Bitmap1> gpuBitmap(int w, int h, D2D1_BITMAP_OPTIONS options) {
+    State& s = G();
+    Ref<ID2D1Bitmap1> made;
+    if (!s.gpuResource || gpuGone() || w <= 0 || h <= 0 || UINT32(w) > s.gpuMaxSize || UINT32(h) > s.gpuMaxSize) return made;
+    const HRESULT hr = s.gpuResource->CreateBitmap(
+        D2D1::SizeU(UINT32(w), UINT32(h)), nullptr, 0,
+        D2D1::BitmapProperties1(options, D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96.0f, 96.0f), made.put());
+    if (FAILED(hr)) {
+        gpuFailed("ID2D1DeviceContext::CreateBitmap", hr);
+        made.reset();
+    }
+    return made;
+}
+
+constexpr D2D1_BITMAP_OPTIONS targetOptions = D2D1_BITMAP_OPTIONS_TARGET;
+constexpr D2D1_BITMAP_OPTIONS readableOptions = D2D1_BITMAP_OPTIONS(D2D1_BITMAP_OPTIONS_CPU_READ | D2D1_BITMAP_OPTIONS_CANNOT_DRAW);
+
+/// A bitmap of that size from those kept (`readable`: one to read through,
+/// else a target), or a new one.
+Ref<ID2D1Bitmap1> takeBitmap(int w, int h, bool readable) {
+    State& s = G();
+    {
+        std::lock_guard<std::mutex> lock(s.gpuMutex);
+        std::vector<Ref<ID2D1Bitmap1>>& kept = readable ? s.freeReadables : s.freeTargets;
+        for (size_t i = kept.size(); i-- > 0;) {
+            const D2D1_SIZE_U size = kept[i]->GetPixelSize();
+            if (size.width != UINT32(w) || size.height != UINT32(h)) continue;
+            Ref<ID2D1Bitmap1> found = std::move(kept[i]);
+            kept.erase(kept.begin() + std::ptrdiff_t(i));
+            s.freeBytes -= uint64_t(w) * uint64_t(h) * 4;
+            return found;
+        }
+    }
+    return gpuBitmap(w, h, readable ? readableOptions : targetOptions);
+}
+
+/// A bitmap a canvas is done with, kept for the next one of its size while
+/// the kept ones are few; the oldest go first.
+void giveBitmap(Ref<ID2D1Bitmap1>&& bitmap, bool readable) {
+    State& s = G();
+    if (!bitmap || gpuGone()) return;
+    const D2D1_SIZE_U size = bitmap->GetPixelSize();
+    const uint64_t bytes = uint64_t(size.width) * size.height * 4;
+    if (bytes > freeBitmapBytes / 2) return;
+    std::lock_guard<std::mutex> lock(s.gpuMutex);
+    (readable ? s.freeReadables : s.freeTargets).push_back(std::move(bitmap));
+    s.freeBytes += bytes;
+    while (s.freeBytes > freeBitmapBytes) {
+        std::vector<Ref<ID2D1Bitmap1>>& from = s.freeTargets.empty() ? s.freeReadables : s.freeReadables.empty() ? s.freeTargets
+                                                : s.freeTargets.size() >= s.freeReadables.size() ? s.freeTargets : s.freeReadables;
+        const D2D1_SIZE_U gone = from.front()->GetPixelSize();
+        s.freeBytes -= uint64_t(gone.width) * gone.height * 4;
+        from.erase(from.begin());
+    }
+}
+
+/// What a canvas draws with on the graphics processor: a device context of
+/// its own, with two brushes. One surface of the canvas -- its picture, a
+/// layer -- is the context's target at a time, the `owner`; the context
+/// stays between BeginDraw and EndDraw while drawing goes from one to
+/// another, and ends it (handing what was drawn to the processor) before
+/// memory is uploaded or read back.
+struct GpuContext {
+    Ref<ID2D1DeviceContext> dc;
+    Ref<ID2D1SolidColorBrush> brush, second;
+    Ref<ID2D1ImageBrush> imageBrush; // a part of a kept bitmap, for draw_bitmap; made at the first
+    ID2D1Image* target = nullptr; // dc's target now (the surface holds the reference)
+    Surface* owner = nullptr;     // the surface drawing through it now
+    bool inDraw = false;          // between BeginDraw and EndDraw
+
+    /// Nothing drawing through it, and what was drawn handed over.
+    void finish();
+};
+
+/// A context from those kept, or a new one.
+GpuContext* takeContext() {
+    State& s = G();
+    {
+        std::lock_guard<std::mutex> lock(s.gpuMutex);
+        if (!s.freeContexts.empty()) {
+            GpuContext* c = s.freeContexts.back();
+            s.freeContexts.pop_back();
+            return c;
+        }
+    }
+    if (!s.d2dDevice || gpuGone()) return nullptr;
+    std::unique_ptr<GpuContext> c(new GpuContext());
+    HRESULT hr = s.d2dDevice->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, c->dc.put());
+    if (SUCCEEDED(hr)) hr = c->dc->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 1), c->brush.put());
+    if (SUCCEEDED(hr)) hr = c->dc->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 1), c->second.put());
+    if (FAILED(hr)) {
+        gpuFailed("ID2D1Device::CreateDeviceContext", hr);
+        return nullptr;
+    }
+    // Text in grey levels, never ClearType (megler.h): the bitmap may be scaled or blended afterwards.
+    c->dc->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+    return c.release();
+}
+
+/// A context a canvas is done with: kept, a few of them.
+void giveContext(GpuContext* c) {
+    if (!c) return;
+    State& s = G();
+    if (!gpuGone()) {
+        c->finish();
+        c->dc->SetTarget(nullptr);
+        c->target = nullptr;
+        std::lock_guard<std::mutex> lock(s.gpuMutex);
+        if (s.freeContexts.size() < 8) {
+            s.freeContexts.push_back(c);
+            return;
+        }
+    }
+    delete c;
+}
+
 // MARK: A surface: memory and the render target that draws into it
 
 struct Clip {
@@ -731,6 +933,14 @@ struct Surface {
     int pushed = 0;         // on the render target now: 0 nothing, 1 a rectangle clip, 2 that and a layer with a mask
     uint64_t pushedSerial = 0;
     bool clipApplied = false;
+    // On the graphics processor (GfxHost.h) the picture is `gpu`, drawn through the canvas's context, and rt is that
+    // context. The memory above -- the core's for a canvas's picture, this file's for a layer, made when first needed
+    // -- is kept one picture with it by two boxes of the canvas's pixels, of which one at most is ever not empty:
+    GpuContext* gc = nullptr;   // null: a surface in memory
+    Ref<ID2D1Bitmap1> gpu;
+    Ref<ID2D1Bitmap1> readable; // what read-backs go through, taken at the first
+    Box gpuAhead;               // drawn on the processor and not yet read back into the memory
+    Box memAhead;               // in the memory and not yet uploaded
 
     Box bounds() const {
         Box b;
@@ -752,6 +962,170 @@ struct Surface {
         std::vector<uint32_t>().swap(own);
         px = nullptr;
         w = h = stride = 0;
+    }
+
+    /// A surface on the graphics processor covering `box` of the canvas,
+    /// drawn through `context`, cleared to nothing: a layer. Its memory is
+    /// made when something has to be put on in memory.
+    bool allocateGpu(const Box& box, GpuContext* context) {
+        if (box.empty() || !context) return false;
+        gpu = takeBitmap(box.width(), box.height(), false);
+        if (!gpu) return false;
+        gc = context;
+        rt = Ref<ID2D1RenderTarget>(context->dc);
+        brush = context->brush;
+        second = context->second;
+        px = nullptr;
+        std::vector<uint32_t>().swap(own);
+        w = box.width();
+        h = box.height();
+        stride = w * 4;
+        ox = box.l;
+        oy = box.t;
+        gpuAhead = memAhead = Box();
+        if (!begin()) return false;
+        rt->Clear(D2D1::ColorF(0, 0, 0, 0));
+        return true;
+    }
+
+    /// The processor's bitmaps handed back to be kept for the next canvas --
+    /// after what the context has drawn with them is handed to the
+    /// processor, since the next canvas's context may draw into them first.
+    void giveBackGpu() {
+        if (!gc) return;
+        gc->finish();
+        giveBitmap(std::move(gpu), false);
+        giveBitmap(std::move(readable), true);
+        forgetGpu();
+    }
+
+    /// Nothing of the processor's any more (the device is gone, or its
+    /// bitmaps were handed back): a surface in memory from here on.
+    void forgetGpu() {
+        if (gc && gc->owner == this) gc->owner = nullptr;
+        gc = nullptr;
+        gpu.reset();
+        readable.reset();
+        rt.reset();
+        brush.reset();
+        second.reset();
+        drawing = false;
+        pushed = 0;
+        pushedSerial = 0;
+        clipApplied = false;
+        gpuAhead = memAhead = Box();
+    }
+
+    /// The memory, made (transparent, as a new layer's picture is) if this
+    /// file has to make it.
+    bool memory() {
+        if (px) return true;
+        if (w <= 0 || h <= 0) return false;
+        own.assign(size_t(w) * size_t(h), 0);
+        px = reinterpret_cast<uint8_t*>(own.data());
+        stride = w * 4;
+        return true;
+    }
+
+    /// `box` of the memory, as it is, onto the processor's picture.
+    void upload(Box box) {
+        box.intersect(bounds());
+        if (box.empty() || !px || !gpu || gpuGone()) return;
+        gc->finish();
+        const uint64_t from = ticksNow();
+        const D2D1_RECT_U rect = D2D1::RectU(UINT32(box.l - ox), UINT32(box.t - oy), UINT32(box.r - ox), UINT32(box.b - oy));
+        const HRESULT hr = gpu->CopyFromMemory(&rect, px + size_t(box.t - oy) * size_t(stride) + size_t(box.l - ox) * 4, UINT32(stride));
+        G().uploadTicks += ticksNow() - from;
+        ++G().uploads;
+        G().uploadPixels += uint64_t(box.width()) * uint64_t(box.height());
+        if (FAILED(hr)) gpuFailed("ID2D1Bitmap::CopyFromMemory", hr);
+    }
+
+    /// The memory has in `want` what the processor has drawn there: what it
+    /// has drawn since the last read-back is read back, all of it.
+    bool pull(const Box& want) {
+        if (!gc) return true;
+        if (!memory()) return false;
+        Box need = gpuAhead;
+        need.intersect(want);
+        if (need.empty()) return true;
+        Box box = gpuAhead;
+        box.intersect(bounds());
+        gpuAhead = Box();
+        if (box.empty()) return true;
+        if (gpuGone()) return false;
+        gc->finish();
+        const uint64_t from = ticksNow();
+        struct Timed {
+            uint64_t from;
+            ~Timed() { G().readBackTicks += ticksNow() - from; }
+        } timed{from};
+        ++G().readBacks;
+        G().readBackPixels += uint64_t(box.width()) * uint64_t(box.height());
+        if (!readable) readable = takeBitmap(w, h, true);
+        if (!readable) return false;
+        const D2D1_POINT_2U at = D2D1::Point2U(UINT32(box.l - ox), UINT32(box.t - oy));
+        const D2D1_RECT_U part = D2D1::RectU(UINT32(box.l - ox), UINT32(box.t - oy), UINT32(box.r - ox), UINT32(box.b - oy));
+        HRESULT hr = readable->CopyFromBitmap(&at, gpu.get(), &part);
+        if (FAILED(hr)) {
+            gpuFailed("ID2D1Bitmap::CopyFromBitmap", hr);
+            return false;
+        }
+        // (Mapping waits for the processor to have drawn everything before it: that wait is most of what a read-back costs.)
+        D2D1_MAPPED_RECT mapped = {};
+        hr = readable->Map(D2D1_MAP_OPTIONS_READ, &mapped);
+        if (FAILED(hr) || !mapped.bits) {
+            gpuFailed("ID2D1Bitmap1::Map", hr);
+            return false;
+        }
+        const size_t bytes = size_t(box.width()) * 4;
+        for (int y = box.t; y < box.b; y++)
+            memcpy(row(y) + (box.l - ox), mapped.bits + size_t(y - oy) * mapped.pitch + size_t(box.l - ox) * 4, bytes);
+        readable->Unmap();
+        return true;
+    }
+
+    /// Drawn on the processor in `box` (of the canvas's pixels): to be read
+    /// back at the next flush.
+    void drew(Box box) {
+        if (!gc) return;
+        box.intersect(bounds());
+        gpuAhead.include(box);
+    }
+
+    /// The context is to draw into another surface: this one's clip is
+    /// taken off it.
+    void detach() {
+        if (!drawing) return;
+        popClip();
+        drawing = false;
+        if (gc && gc->owner == this) gc->owner = nullptr;
+    }
+
+    bool beginGpu() {
+        if (drawing) return true;
+        if (!gpu || gpuGone()) return false;
+        if (gc->owner && gc->owner != this) gc->owner->detach();
+        // What the memory has goes up before anything is drawn over it.
+        if (!memAhead.empty()) {
+            upload(memAhead);
+            memAhead = Box();
+        }
+        if (gc->target != gpu.get()) {
+            gc->dc->SetTarget(gpu.get());
+            gc->target = gpu.get();
+        }
+        if (!gc->inDraw) {
+            gc->dc->BeginDraw();
+            gc->inDraw = true;
+            ++G().sessions;
+        }
+        gc->owner = this;
+        drawing = true;
+        pushed = 0;
+        pushedSerial = 0;
+        clipApplied = false;
+        return true;
     }
 
     /// Memory of its own, all transparent, covering `box` of the canvas.
@@ -779,6 +1153,7 @@ struct Surface {
 
     bool make() {
         State& s = G();
+        if (gc) return gpu && rt && !gpuGone();
         if (rt) return true;
         if (!px || w <= 0 || h <= 0) return false;
         const uint64_t from = ticksNow();
@@ -844,6 +1219,7 @@ struct Surface {
 
     /// Ready to be drawn on: false when Direct2D cannot.
     bool begin() {
+        if (gc) return beginGpu();
         if (drawing) return true;
         if (!make()) return false;
         if (mirror) copyMirror(true);
@@ -865,8 +1241,13 @@ struct Surface {
         clipApplied = false;
     }
 
-    /// Everything drawn so far is in the memory when this returns.
+    /// Everything drawn so far is in the memory when this returns -- or, on
+    /// the graphics processor, handed to it: pull() reads it back.
     void end() {
+        if (gc) {
+            if (drawing) gc->finish();
+            return;
+        }
         if (!drawing) return;
         popClip();
         const uint64_t from = ticksNow();
@@ -908,6 +1289,16 @@ struct Surface {
     /// The matrix for what is drawn next: `m` takes the drawing's coordinates to the canvas's pixels.
     void setMatrix(const Matrix3x2F& m) { rt->SetTransform(m * Matrix3x2F::Translation(float(-ox), float(-oy))); }
 };
+
+void GpuContext::finish() {
+    if (owner) owner->detach();
+    if (!inDraw) return;
+    inDraw = false;
+    const uint64_t from = ticksNow();
+    const HRESULT hr = dc->EndDraw();
+    G().endTicks += ticksNow() - from;
+    if (FAILED(hr)) gpuFailed("ID2D1DeviceContext::EndDraw", hr);
+}
 
 /// Direct2D and DirectWrite, at the first call from the core. False when the
 /// device has not got them, or Direct2D cannot draw into memory.
@@ -1025,16 +1416,34 @@ constexpr uint32_t canvasMagic = 0x31764347, shaderMagic = 0x31687347, faceMagic
 struct Shader {
     uint32_t magic = shaderMagic;
     enum Kind { linear, radial, sweep, bitmap } kind = linear;
-    // The brush Direct2D fills with (not for a sweep): its matrix, opacity
-    // and sampling are set for each drawing, under `mutex`.
+    // The brushes Direct2D fills with (not for a sweep), [0] for surfaces in
+    // memory and [1] for those on the graphics processor, each made when it
+    // is first drawn with (brushFor): their matrix, opacity and sampling are
+    // set for each drawing, under `mutex`.
     std::mutex mutex;
-    Ref<ID2D1Brush> brush;
-    Ref<ID2D1BitmapBrush> bitmapBrush;
+    Ref<ID2D1Brush> brushes[2];
+    Ref<ID2D1BitmapBrush> bitmapBrushes[2];
     Matrix3x2F local = Matrix3x2F::Identity(); // shader coordinates to the drawing's
     bool opaque = false;                       // every colour it can give has alpha 255
+    // What it was made of. A gradient: the line from `from` to `to`, or the circle round `from`, and the stops.
+    D2D1_POINT_2F from = {}, to = {};
+    float radius = 0;
+    std::vector<D2D1_GRADIENT_STOP> stops;
+    D2D1_EXTEND_MODE extend = D2D1_EXTEND_MODE_CLAMP;
+    // A bitmap: its pixels as they were when it was made (the graphics processor's brush is the kept bitmap's).
+    std::vector<uint32_t> pixels;
+    int width = 0, height = 0;
     // A sweep: where its centre is, and its colours at 1024 angles, premultiplied.
     float cx = 0, cy = 0;
     std::vector<uint32_t> table;
+
+    /// The brush for a surface on the graphics processor or in memory, made
+    /// now if it has not been. Null when it cannot be. Under `mutex`.
+    ID2D1Brush* brushFor(bool onGpu);
+    ID2D1BitmapBrush* bitmapBrushFor(bool onGpu) {
+        brushFor(onGpu);
+        return bitmapBrushes[onGpu ? 1 : 0].get();
+    }
 };
 
 Shader* shaderOf(void* handle) {
@@ -1065,11 +1474,9 @@ D2D1_EXTEND_MODE extendOf(int tile) {
     return tile == MEGLER_GFX_TILE_REPEAT ? D2D1_EXTEND_MODE_WRAP : tile == MEGLER_GFX_TILE_MIRROR ? D2D1_EXTEND_MODE_MIRROR : D2D1_EXTEND_MODE_CLAMP;
 }
 
-/// The stops as Direct2D keeps them: colours as they are (gamma 2.2 is "no
-/// conversion"), interpolated straight and premultiplied afterwards, which is
-/// what ID2D1RenderTarget's collection does.
-Ref<ID2D1GradientStopCollection> stopCollection(const uint32_t* colors, const float* positions, int count, int tile, bool* opaque) {
-    Ref<ID2D1GradientStopCollection> collection;
+/// A gradient's stops as Direct2D takes them, and whether every colour of
+/// them is opaque.
+std::vector<D2D1_GRADIENT_STOP> stopsOf(const uint32_t* colors, const float* positions, int count, bool* opaque) {
     std::vector<D2D1_GRADIENT_STOP> stops(static_cast<size_t>(count));
     *opaque = true;
     for (int i = 0; i < count; i++) {
@@ -1080,9 +1487,57 @@ Ref<ID2D1GradientStopCollection> stopCollection(const uint32_t* colors, const fl
         stops[size_t(i)].color = colorOf(colors[i]);
         if ((colors[i] >> 24) != 255) *opaque = false;
     }
-    const HRESULT hr = G().resource->rt->CreateGradientStopCollection(stops.data(), UINT32(count), D2D1_GAMMA_2_2, extendOf(tile), collection.put());
-    if (FAILED(hr)) failed("ID2D1RenderTarget::CreateGradientStopCollection", hr);
-    return collection;
+    return stops;
+}
+
+/// What makes the brushes and bitmaps several surfaces share: the render
+/// target of one pixel for those in memory (software render targets of one
+/// factory share what they make), the graphics processor's resource context
+/// for the others (a device's contexts share what they make).
+ID2D1RenderTarget* resourceMaker(bool onGpu) {
+    State& s = G();
+    if (onGpu) return s.gpuResource && !gpuGone() ? s.gpuResource.get() : nullptr;
+    return s.resource ? s.resource->rt.get() : nullptr;
+}
+
+Ref<ID2D1Bitmap1> keptBitmap(const megler_gfx_image& image);
+
+ID2D1Brush* Shader::brushFor(bool onGpu) {
+    const int k = onGpu ? 1 : 0;
+    if (brushes[k] || kind == sweep) return brushes[k].get();
+    ID2D1RenderTarget* maker = resourceMaker(onGpu);
+    if (!maker) return nullptr;
+    HRESULT hr = S_OK;
+    if (kind == bitmap) {
+        Ref<ID2D1Bitmap> image;
+        const D2D1_BITMAP_PROPERTIES properties = D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96.0f, 96.0f);
+        hr = maker->CreateBitmap(D2D1::SizeU(UINT32(width), UINT32(height)), pixels.data(), UINT32(width) * 4, properties, image.put());
+        if (SUCCEEDED(hr))
+            hr = maker->CreateBitmapBrush(image.get(), D2D1::BitmapBrushProperties(extend, extend, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR),
+                                          bitmapBrushes[k].put());
+        if (SUCCEEDED(hr)) brushes[k] = Ref<ID2D1Brush>(bitmapBrushes[k]);
+    } else {
+        Ref<ID2D1GradientStopCollection> collection;
+        // Colours as they are (gamma 2.2 is "no conversion"), interpolated straight and premultiplied afterwards, which is what
+        // ID2D1RenderTarget's collection does.
+        hr = maker->CreateGradientStopCollection(stops.data(), UINT32(stops.size()), D2D1_GAMMA_2_2, extend, collection.put());
+        if (SUCCEEDED(hr) && kind == linear) {
+            Ref<ID2D1LinearGradientBrush> brush;
+            hr = maker->CreateLinearGradientBrush(D2D1::LinearGradientBrushProperties(from, to), collection.get(), brush.put());
+            if (SUCCEEDED(hr)) brushes[k] = Ref<ID2D1Brush>(brush);
+        } else if (SUCCEEDED(hr)) {
+            Ref<ID2D1RadialGradientBrush> brush;
+            hr = maker->CreateRadialGradientBrush(D2D1::RadialGradientBrushProperties(from, D2D1::Point2F(0, 0), radius, radius), collection.get(), brush.put());
+            if (SUCCEEDED(hr)) brushes[k] = Ref<ID2D1Brush>(brush);
+        }
+    }
+    if (FAILED(hr)) {
+        if (onGpu) gpuFailed("making a shader's brush", hr);
+        else failed("making a shader's brush", hr);
+        brushes[k].reset();
+        bitmapBrushes[k].reset();
+    }
+    return brushes[k].get();
 }
 
 // MARK: Canvases
@@ -1114,9 +1569,10 @@ constexpr size_t partTargetsKept = 4;
 
 struct Canvas {
     uint32_t magic = canvasMagic;
-    Surface base;                  // the memory, or the part of it the clip leaves open (fitBase)
+    Surface base;                  // the memory, or the part of it the clip leaves open (fitBase); on the graphics processor all of it
     uint8_t* memory = nullptr;     // the canvas's memory as a whole
     int memoryW = 0, memoryH = 0, memoryStride = 0;
+    GpuContext* gc = nullptr;      // on the graphics processor: what base and the layers are drawn through
     std::vector<PartTarget> parts; // render targets made over parts of it before, newest last
     std::vector<Level> levels;     // levels.back() is the state in force; levels[0] is the canvas's own
     Matrix3x2F matrix = Matrix3x2F::Identity();
@@ -1131,8 +1587,29 @@ struct Canvas {
     Surface* target() {
         for (size_t i = levels.size(); i-- > 0;)
             if (levels[i].isLayer) return levels[i].layer.get();
-        fitBase();
+        if (!base.gc) fitBase();
         return &base;
+    }
+
+    /// The graphics processor's device is gone: the canvas is drawn in
+    /// memory from now on. Its memory has what the last flush put there; an
+    /// open layer keeps what was read back of it, which is nothing unless
+    /// something had to be put on in memory.
+    void leaveGpu() {
+        if (!gc) return;
+        for (Level& level : levels)
+            if (level.layer && level.layer->gc) {
+                level.layer->memory();
+                level.layer->forgetGpu();
+            }
+        base.forgetGpu();
+        base.px = memory;
+        base.w = memoryW;
+        base.h = memoryH;
+        base.stride = memoryStride;
+        base.ox = base.oy = 0;
+        delete gc;
+        gc = nullptr;
     }
 
     /// The bitmap's render target made over the part of the memory the clip
@@ -1198,7 +1675,10 @@ struct Canvas {
 
 Canvas* canvasOf(void* handle) {
     Canvas* c = static_cast<Canvas*>(handle);
-    return c && c->magic == canvasMagic ? c : nullptr;
+    if (!c || c->magic != canvasMagic) return nullptr;
+    // (Every call on a canvas comes through here, on the thread that draws it: the place to leave a lost device.)
+    if (c->gc && gpuGone()) c->leaveGpu();
+    return c;
 }
 
 void touchClip(Clip& clip) { clip.serial = G().clipSerial.fetch_add(1); }
@@ -1295,10 +1775,20 @@ inline uint32_t sweepAt(const Shader& s, const Matrix3x2F& toShader, int x, int 
 /// canvas, and the target is not drawing.
 void composeUntimed(Surface& target, Box box, const Source& src, const Surface* cover, int blend);
 
-/// compose, its time and pixels counted for the log's line.
+/// compose, its time and pixels counted for the log's line. A target on the
+/// graphics processor is read back where the drawing goes, put together in
+/// memory, and uploaded again there.
 void compose(Surface& target, Box box, const Source& src, const Surface* cover, int blend) {
     const uint64_t from = ticksNow();
-    composeUntimed(target, box, src, cover, blend);
+    if (target.gc) {
+        box.intersect(target.bounds());
+        if (box.empty() || !target.pull(box)) return;
+        composeUntimed(target, box, src, cover, blend);
+        target.upload(box);
+        ++G().throughMemory;
+    } else {
+        composeUntimed(target, box, src, cover, blend);
+    }
     G().composeTicks += ticksNow() - from;
     if (!box.empty()) G().composedPixels += uint64_t(box.width()) * uint64_t(box.height());
 }
@@ -1458,13 +1948,18 @@ const Surface* shaderPicture(Canvas& cv, Shader& shader, const Box& box, bool fi
     if (!s.allocate(box) || !s.begin()) return nullptr;
     {
         std::lock_guard<std::mutex> lock(shader.mutex);
-        shader.brush->SetTransform(shader.local * cv.matrix);
-        shader.brush->SetOpacity(1.0f);
-        if (shader.bitmapBrush)
-            shader.bitmapBrush->SetInterpolationMode(filterBitmap ? D2D1_BITMAP_INTERPOLATION_MODE_LINEAR : D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
+        ID2D1Brush* brush = shader.brushFor(false);
+        if (!brush) {
+            s.end();
+            return nullptr;
+        }
+        brush->SetTransform(shader.local * cv.matrix);
+        brush->SetOpacity(1.0f);
+        if (ID2D1BitmapBrush* bitmap = shader.bitmapBrushFor(false))
+            bitmap->SetInterpolationMode(filterBitmap ? D2D1_BITMAP_INTERPOLATION_MODE_LINEAR : D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
         s.rt->SetTransform(Matrix3x2F::Translation(float(-box.l), float(-box.t)));
         s.rt->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
-        s.rt->FillRectangle(D2D1::RectF(float(box.l), float(box.t), float(box.r), float(box.b)), shader.brush.get());
+        s.rt->FillRectangle(D2D1::RectF(float(box.l), float(box.t), float(box.r), float(box.b)), brush);
     }
     s.end();
     return &s;
@@ -1576,20 +2071,27 @@ void paintInk(Canvas& cv, const Ink& ink, const megler_gfx_paint& paint, Shader*
         target->useClip(cv.clip());
         if (shader) {
             std::lock_guard<std::mutex> lock(shader->mutex);
+            ID2D1Brush* brush = shader->brushFor(target->gc != nullptr);
+            if (!brush) return;
             // The brush's coordinates are the drawing's; glyphs are drawn in the run's own, so those are undone for it.
             Matrix3x2F brushMatrix = shader->local;
             if (ink.kind == Ink::glyphs) {
                 Matrix3x2F back = ink.textMatrix;
                 if (back.Invert()) brushMatrix = shader->local * back;
             }
-            shader->brush->SetTransform(brushMatrix);
-            shader->brush->SetOpacity(float(paint.color >> 24) / 255.0f);
-            if (shader->bitmapBrush)
-                shader->bitmapBrush->SetInterpolationMode(filterBitmap ? D2D1_BITMAP_INTERPOLATION_MODE_LINEAR : D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
-            drawInk(*target, ink, cv.matrix, shader->brush.get(), false, 255);
+            brush->SetTransform(brushMatrix);
+            brush->SetOpacity(float(paint.color >> 24) / 255.0f);
+            if (ID2D1BitmapBrush* bitmap = shader->bitmapBrushFor(target->gc != nullptr))
+                bitmap->SetInterpolationMode(filterBitmap ? D2D1_BITMAP_INTERPOLATION_MODE_LINEAR : D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
+            drawInk(*target, ink, cv.matrix, brush, false, 255);
         } else {
             target->brush->SetColor(colorOf(paint.color));
             drawInk(*target, ink, cv.matrix, target->brush.get(), true, paint.color >> 24);
+        }
+        if (target->gc) {
+            Box drawn = inkCover(ink, cv.matrix);
+            drawn.intersect(cv.clip().box);
+            target->drew(drawn);
         }
         ++G().direct;
         return;
@@ -1700,6 +2202,23 @@ void* canvasNew(void*, void* pixels, int width, int height, int stride) {
         made->base.w = width;
         made->base.h = height;
         made->base.stride = stride;
+        State& s = G();
+        if (s.gpu && !gpuGone() && UINT32(width) <= s.gpuMaxSize && UINT32(height) <= s.gpuMaxSize) {
+            // On the graphics processor: a context and a target of the canvas's size; the memory goes up before the first
+            // drawing that does not replace it. (A canvas too large for the device's bitmaps is drawn in memory.)
+            made->gc = takeContext();
+            if (made->gc) made->base.gpu = takeBitmap(width, height, false);
+            if (made->base.gpu) {
+                made->base.gc = made->gc;
+                made->base.rt = Ref<ID2D1RenderTarget>(made->gc->dc);
+                made->base.brush = made->gc->brush;
+                made->base.second = made->gc->second;
+                made->base.memAhead = made->base.bounds();
+            } else {
+                giveContext(made->gc);
+                made->gc = nullptr;
+            }
+        }
         if (!made->base.make()) return;
         made->levels.emplace_back();
         made->levels[0].clip.box = made->base.bounds();
@@ -1719,6 +2238,13 @@ void canvasFree(void*, void* canvas) {
         // (Every save has been restored by now, and the canvas flushed: megler.h. Should one not have been, its layers are still joined to the picture.)
         while (cv->levels.size() > 1) restoreLevel(*cv);
         cv->base.end();
+        if (cv->gc) {
+            // (And should it not have been flushed, the memory gets what was drawn now, before the memory is the core's again.)
+            cv->base.pull(cv->base.bounds());
+            cv->base.giveBackGpu();
+            giveContext(cv->gc);
+            cv->gc = nullptr;
+        }
     });
     cv->magic = 0;
     delete cv;
@@ -1743,17 +2269,44 @@ void noteDrawing() {
     t.composeTicks = s.composeTicks;
     t.composedPixels = s.composedPixels;
     t.sessionPixels = s.sessionPixels;
+    t.uploads = s.uploads;
+    t.uploadPixels = s.uploadPixels;
+    t.uploadTicks = s.uploadTicks;
+    t.readBacks = s.readBacks;
+    t.readBackPixels = s.readBackPixels;
+    t.readBackTicks = s.readBackTicks;
+    t.byEffects = s.byEffects;
+    t.throughMemory = s.throughMemory;
+    t.keptMade = s.keptMade;
+    t.keptReused = s.keptReused;
     const State::Totals& l = s.statsLast;
-    if (s.statsAt && t.sessions != l.sessions) {
+    typedef unsigned long long ull;
+    if (s.statsAt && t.sessions != l.sessions && s.gpu && !gpuGone()) {
+        // On the graphics processor: what went up and came back, which is where the time goes now, and what is kept there.
+        const double seconds = ticksToMs(now - s.statsAt) / 1000.0;
+        size_t keptCount;
+        uint64_t keptBytes;
+        {
+            std::lock_guard<std::mutex> lock(s.keptMutex);
+            keptCount = s.kept.size();
+            keptBytes = s.keptBytes;
+        }
+        say("%.1f s (graphics processor): %llu drawings begun and ended (%.1f ms ending them), %llu calls drawn by Direct2D, %llu by its effects, %llu "
+            "through memory (%.1f ms), %llu layers; %llu uploads of %.2f Mpx (%.1f ms), %llu read-backs of %.2f Mpx (%.1f ms, the wait for the processor "
+            "in it); bitmaps: %llu uploaded, %llu drawn from those kept, %zu kept in %.1f MB",
+            seconds, ull(t.sessions - l.sessions), ticksToMs(t.endTicks - l.endTicks), ull(t.direct - l.direct), ull(t.byEffects - l.byEffects),
+            ull(t.throughMemory - l.throughMemory), ticksToMs(t.composeTicks - l.composeTicks), ull(t.layers - l.layers), ull(t.uploads - l.uploads),
+            double(t.uploadPixels - l.uploadPixels) / 1e6, ticksToMs(t.uploadTicks - l.uploadTicks), ull(t.readBacks - l.readBacks),
+            double(t.readBackPixels - l.readBackPixels) / 1e6, ticksToMs(t.readBackTicks - l.readBackTicks), ull(t.keptMade - l.keptMade),
+            ull(t.keptReused - l.keptReused), keptCount, double(keptBytes) / 1048576.0);
+    } else if (s.statsAt && t.sessions != l.sessions) {
         const double seconds = ticksToMs(now - s.statsAt) / 1000.0;
         const uint64_t sessions = t.sessions - l.sessions;
         say("%.1f s: %llu drawings begun and ended over %.1f Mpx in all (%.1f ms ending them), %llu calls drawn by Direct2D, %llu by the host's arithmetic over "
             "%.1f Mpx (%.1f ms), %llu layers, %llu render targets made (%.1f ms), a target moved to a part %llu times",
-            seconds, static_cast<unsigned long long>(sessions), double(t.sessionPixels - l.sessionPixels) / 1e6, ticksToMs(t.endTicks - l.endTicks),
-            static_cast<unsigned long long>(t.direct - l.direct), static_cast<unsigned long long>(t.composed - l.composed),
-            double(t.composedPixels - l.composedPixels) / 1e6, ticksToMs(t.composeTicks - l.composeTicks), static_cast<unsigned long long>(t.layers - l.layers),
-            static_cast<unsigned long long>(t.targetsMade - l.targetsMade), ticksToMs(t.makeTicks - l.makeTicks),
-            static_cast<unsigned long long>(t.partTargets - l.partTargets));
+            seconds, ull(sessions), double(t.sessionPixels - l.sessionPixels) / 1e6, ticksToMs(t.endTicks - l.endTicks), ull(t.direct - l.direct),
+            ull(t.composed - l.composed), double(t.composedPixels - l.composedPixels) / 1e6, ticksToMs(t.composeTicks - l.composeTicks), ull(t.layers - l.layers),
+            ull(t.targetsMade - l.targetsMade), ticksToMs(t.makeTicks - l.makeTicks), ull(t.partTargets - l.partTargets));
     }
     s.statsLast = t;
     s.statsAt = now;
@@ -1766,6 +2319,8 @@ void flush(void*, void* canvas) {
     // What is drawn into a layer that is still open is in the layer's picture, and reaches the memory at the layer's restore.
     guarded("flush", [&] {
         cv->base.end();
+        // On the graphics processor: what was drawn outside the layers since the last flush is read back.
+        if (cv->base.gc) cv->base.pull(cv->base.bounds());
         // The memory a composed drawing was put together in is kept for the next one, unless it is large: a phone has little.
         for (Surface* scratch : {&cv->cover, &cv->source, &cv->extra})
             if (scratch->own.capacity() > scratchKept) scratch->release();
@@ -1777,8 +2332,13 @@ void flush(void*, void* canvas) {
     });
 }
 
-void touched(void*, void*) {
-    // Nothing to do: Direct2D reads the memory when it draws on it, and nothing drawn is waiting (the core has flushed).
+void touched(void*, void* canvas) {
+    // In memory nothing is to be done: Direct2D reads the memory when it draws on it, and nothing drawn is waiting (the
+    // core has flushed). On the graphics processor the memory is uploaded before the next drawing (Surface::beginGpu).
+    Canvas* cv = canvasOf(canvas);
+    if (!cv || !cv->base.gc) return;
+    cv->base.gpuAhead = Box();
+    cv->base.memAhead = cv->base.bounds();
 }
 
 void save(void*, void* canvas) {
@@ -1819,7 +2379,8 @@ void saveLayer(void*, void* canvas, const float* bounds, int alpha, int blend) {
         else extent.r = extent.l;
         if (!extent.empty()) {
             std::unique_ptr<Surface> layer(new Surface());
-            if (layer->allocate(extent)) level.layer = std::move(layer);
+            // On the graphics processor where the canvas is: a target of the extent's size, cleared.
+            if (cv->gc ? layer->allocateGpu(extent, cv->gc) : layer->allocate(extent)) level.layer = std::move(layer);
         }
         ++G().layers;
         cv->levels.push_back(std::move(level));
@@ -1832,15 +2393,33 @@ void restoreLevel(Canvas& cv) {
     Level top = std::move(cv.levels.back());
     cv.levels.pop_back();
     if (!top.isLayer || !top.layer) return;
+    struct GiveBack {
+        Surface* layer;
+        ~GiveBack() { layer->giveBackGpu(); }
+    } giveBack{top.layer.get()};
     top.layer->end();
     Surface* outer = cv.target();
     // A DST layer leaves the picture as it was: it is thrown away.
     if (!outer || top.blend == MEGLER_GFX_BLEND_DST) return;
-    outer->end();
     // The blend takes in the layer's whole extent, as far as the clip at the save lets it.
     Box box = top.layer->bounds();
     box.intersect(cv.clip().box);
     if (box.empty()) return;
+    if (top.layer->gc && outer->gc && top.blend == MEGLER_GFX_BLEND_SRC_OVER) {
+        // On the graphics processor, laid over the picture at the layer's alpha, under the clip at the save.
+        if (!outer->begin()) return;
+        outer->useClip(cv.clip());
+        outer->rt->SetTransform(Matrix3x2F::Identity());
+        outer->rt->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
+        const Surface& layer = *top.layer;
+        const D2D1_RECT_F onto = D2D1::RectF(float(layer.ox - outer->ox), float(layer.oy - outer->oy), float(layer.ox + layer.w - outer->ox),
+                                             float(layer.oy + layer.h - outer->oy));
+        outer->rt->DrawBitmap(layer.gpu.get(), onto, float(top.alpha) / 255.0f, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR, nullptr);
+        outer->drew(box);
+        return;
+    }
+    outer->end();
+    if (top.layer->gc && !top.layer->pull(top.layer->bounds())) return;
     Source src;
     src.pixels = top.layer.get();
     src.alpha = uint32_t(top.alpha);
@@ -1936,6 +2515,34 @@ void drawColor(void*, void* canvas, uint32_t color, int blend) {
         Box box = cv->clip().box;
         box.intersect(target->bounds());
         if (box.empty()) return;
+        if (target->gc) {
+            const Clip& clip = cv->clip();
+            const bool replaces = blend == MEGLER_GFX_BLEND_SRC || blend == MEGLER_GFX_BLEND_CLEAR || (blend == MEGLER_GFX_BLEND_SRC_OVER && (color >> 24) == 255);
+            if (replaces && !clip.g) {
+                // Every pixel of the box gets the colour: what the memory had there need not go up first (a window's frame
+                // begins so), and Direct2D's Clear, which an axis-aligned clip bounds, is the whole of it.
+                if (box.covers(target->memAhead)) target->memAhead = Box();
+                if (!target->begin()) return;
+                target->useClip(clip);
+                target->rt->Clear(blend == MEGLER_GFX_BLEND_CLEAR ? D2D1::ColorF(0, 0, 0, 0) : colorOf(color));
+                target->drew(box);
+                ++G().direct;
+                return;
+            }
+            if (blend == MEGLER_GFX_BLEND_SRC_OVER) {
+                // Over what is there, as far as the clip lets it: a rectangle filled through the clip.
+                if (!target->begin()) return;
+                target->useClip(clip);
+                target->rt->SetTransform(Matrix3x2F::Identity());
+                target->rt->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
+                target->brush->SetColor(colorOf(color));
+                target->rt->FillRectangle(D2D1::RectF(float(box.l - target->ox), float(box.t - target->oy), float(box.r - target->ox), float(box.b - target->oy)),
+                                          target->brush.get());
+                target->drew(box);
+                ++G().direct;
+                return;
+            }
+        }
         target->end();
         Source src;
         src.solid = premultiplied(color);
@@ -2055,6 +2662,61 @@ Ref<ID2D1Bitmap> bitmapCopy(Surface& maker, const megler_gfx_image& image, const
 /// image's memory is only good during the call).
 constexpr int64_t sharedFromPixels = 256 * 256;
 
+/// How many bytes of the core's bitmaps are kept on the graphics processor:
+/// an app's icons, backgrounds and pictures of a screen or two. A bitmap
+/// larger than a quarter of it is not kept: the part drawn is copied for
+/// each drawing, as in memory.
+constexpr uint64_t keptBudget = 48ull << 20;
+
+/// The core's bitmap on the graphics processor, kept under its id: the one
+/// kept if its version is the image's, else uploaded now and kept, the least
+/// recently drawn going while the kept are over the budget. Null when it is
+/// not to be kept, or cannot be made.
+Ref<ID2D1Bitmap1> keptBitmap(const megler_gfx_image& image) {
+    State& s = G();
+    Ref<ID2D1Bitmap1> out;
+    const uint64_t bytes = uint64_t(image.width) * uint64_t(image.height) * 4;
+    if (!s.gpuResource || gpuGone() || !image.id || !image.pixels || bytes > keptBudget / 4 || UINT32(image.width) > s.gpuMaxSize ||
+        UINT32(image.height) > s.gpuMaxSize)
+        return out;
+    std::lock_guard<std::mutex> lock(s.keptMutex);
+    auto found = s.kept.find(image.id);
+    if (found != s.kept.end()) {
+        if (found->second.version == image.version) {
+            found->second.used = ++s.keptClock;
+            ++s.keptReused;
+            return found->second.bitmap;
+        }
+        s.keptBytes -= found->second.bytes;
+        s.kept.erase(found);
+    }
+    const uint64_t from = ticksNow();
+    const HRESULT hr = s.gpuResource->CreateBitmap(
+        D2D1::SizeU(UINT32(image.width), UINT32(image.height)), image.pixels, UINT32(image.stride),
+        D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE, D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96.0f, 96.0f), out.put());
+    s.uploadTicks += ticksNow() - from;
+    if (FAILED(hr)) {
+        gpuFailed("ID2D1DeviceContext::CreateBitmap", hr);
+        out.reset();
+        return out;
+    }
+    ++s.keptMade;
+    while (s.keptBytes + bytes > keptBudget && !s.kept.empty()) {
+        auto oldest = s.kept.begin();
+        for (auto it = s.kept.begin(); it != s.kept.end(); ++it)
+            if (it->second.used < oldest->second.used) oldest = it;
+        s.keptBytes -= oldest->second.bytes;
+        s.kept.erase(oldest);
+    }
+    Kept& entry = s.kept[image.id];
+    entry.version = image.version;
+    entry.bitmap = out;
+    entry.bytes = bytes;
+    entry.used = ++s.keptClock;
+    s.keptBytes += bytes;
+    return out;
+}
+
 void drawBitmap(void*, void* canvas, const megler_gfx_image* image, const float* src, const float* dst, const megler_gfx_paint* given) {
     Canvas* cv = canvasOf(canvas);
     if (!cv || !image || !image->pixels || !src || !dst || !given || image->width <= 0 || image->height <= 0 || image->stride < image->width * 4) return;
@@ -2088,6 +2750,59 @@ void drawBitmap(void*, void* canvas, const megler_gfx_image* image, const float*
         if (paint->shadow_radius > 0 && (paint->shadow_color >> 24) != 0) {
             note("bitmap-shadow", "a shadow under a bitmap is that of its rectangle, not of its own shape (said once)");
             drawShadow(*cv, *target, ink, *paint);
+        }
+
+        if (paint->blend == MEGLER_GFX_BLEND_SRC_OVER && target->gc) {
+            // On the graphics processor: from the kept bitmap. A part of it through an image brush that is the part alone,
+            // its edge pixels going on beyond it, so that nothing outside the part shows; a colour filter is done to a copy
+            // of the part, as in memory.
+            const bool filtered = paint->filter_mode >= 0;
+            if (!target->begin()) return;
+            target->useClip(cv->clip());
+            target->setMatrix(cv->matrix);
+            target->rt->SetAntialiasMode(smoothEdges ? D2D1_ANTIALIAS_MODE_PER_PRIMITIVE : D2D1_ANTIALIAS_MODE_ALIASED);
+            const float opacity = filtered ? 1.0f : float(paint->color >> 24) / 255.0f;
+            Ref<ID2D1Bitmap1> kept = filtered ? Ref<ID2D1Bitmap1>() : keptBitmap(*image);
+            const bool whole = part.l == 0 && part.t == 0 && part.r == image->width && part.b == image->height;
+            if (kept && whole) {
+                target->rt->DrawBitmap(kept.get(), &onto, opacity, sampling, &from);
+            } else if (kept) {
+                GpuContext& gc = *target->gc;
+                const D2D1_RECT_F within = D2D1::RectF(float(part.l), float(part.t), float(part.r), float(part.b));
+                const D2D1_INTERPOLATION_MODE interpolation = filterBitmap ? D2D1_INTERPOLATION_MODE_LINEAR : D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR;
+                // (An image brush's own coordinates have the source rectangle's corner at their origin, as a brush over a copy
+                // of the part would.)
+                const float sx = (dst[2] - dst[0]) / (src[2] - src[0]), sy = (dst[3] - dst[1]) / (src[3] - src[1]);
+                const Matrix3x2F placed = Matrix3x2F::Translation(float(part.l) - src[0], float(part.t) - src[1]) * Matrix3x2F::Scale(sx, sy) *
+                                          Matrix3x2F::Translation(dst[0], dst[1]);
+                if (!gc.imageBrush) {
+                    const HRESULT hr = gc.dc->CreateImageBrush(kept.get(), D2D1::ImageBrushProperties(within, D2D1_EXTEND_MODE_CLAMP, D2D1_EXTEND_MODE_CLAMP, interpolation),
+                                                               D2D1::BrushProperties(opacity, placed), gc.imageBrush.put());
+                    if (FAILED(hr)) {
+                        gpuFailed("ID2D1DeviceContext::CreateImageBrush", hr);
+                        gc.imageBrush.reset();
+                        return;
+                    }
+                } else {
+                    gc.imageBrush->SetImage(kept.get());
+                    gc.imageBrush->SetSourceRectangle(&within);
+                    gc.imageBrush->SetInterpolationMode(interpolation);
+                    gc.imageBrush->SetTransform(placed);
+                    gc.imageBrush->SetOpacity(opacity);
+                }
+                target->rt->FillRectangle(onto, gc.imageBrush.get());
+                // (The brush lets go of the bitmap, which may be dropped from the kept ones: Direct2D holds what it still has to draw.)
+                gc.imageBrush->SetImage(nullptr);
+            } else {
+                Ref<ID2D1Bitmap> copy = bitmapCopy(*target, *image, part, filtered ? paint : nullptr, cv->tint);
+                if (!copy) return;
+                target->rt->DrawBitmap(copy.get(), &onto, opacity, sampling, &from);
+            }
+            Box drawn = inkCover(ink, cv->matrix);
+            drawn.intersect(cv->clip().box);
+            target->drew(drawn);
+            ++G().direct;
+            return;
         }
 
         if (paint->blend == MEGLER_GFX_BLEND_SRC_OVER) {
@@ -2164,22 +2879,21 @@ void drawBitmap(void*, void* canvas, const megler_gfx_image* image, const float*
 
 // MARK: megler_gfx_host: shaders
 
+/// Whether canvases are made on the graphics processor now: where a shader's
+/// first brush is made, at once, so that one that cannot be is NULL.
+inline bool drawingOnGpu() { return G().gpu && !gpuGone(); }
+
 void* shaderLinear(void*, float x0, float y0, float x1, float y1, const uint32_t* colors, const float* positions, int count, int tile) {
     Shader* made = nullptr;
     guarded("shader_linear", [&] {
         if (!started() || !colors || count < 1 || !sane(x0, y0, x1, y1)) return;
         std::unique_ptr<Shader> s(new Shader());
         s->kind = Shader::linear;
-        Ref<ID2D1GradientStopCollection> stops = stopCollection(colors, positions, count, tile, &s->opaque);
-        Ref<ID2D1LinearGradientBrush> brush;
-        if (!stops) return;
-        const HRESULT hr = G().resource->rt->CreateLinearGradientBrush(
-            D2D1::LinearGradientBrushProperties(D2D1::Point2F(x0, y0), D2D1::Point2F(x1, y1)), stops.get(), brush.put());
-        if (FAILED(hr)) {
-            failed("ID2D1RenderTarget::CreateLinearGradientBrush", hr);
-            return;
-        }
-        s->brush = Ref<ID2D1Brush>(brush);
+        s->stops = stopsOf(colors, positions, count, &s->opaque);
+        s->extend = extendOf(tile);
+        s->from = D2D1::Point2F(x0, y0);
+        s->to = D2D1::Point2F(x1, y1);
+        if (!s->brushFor(drawingOnGpu())) return;
         made = s.release();
     });
     return made;
@@ -2191,17 +2905,11 @@ void* shaderRadial(void*, float cx, float cy, float radius, const uint32_t* colo
         if (!started() || !colors || count < 1 || !sane(cx) || !sane(cy) || !sane(radius)) return;
         std::unique_ptr<Shader> s(new Shader());
         s->kind = Shader::radial;
-        Ref<ID2D1GradientStopCollection> stops = stopCollection(colors, positions, count, tile, &s->opaque);
-        Ref<ID2D1RadialGradientBrush> brush;
-        if (!stops) return;
-        if (!(radius > 0)) radius = 0.001f;
-        const HRESULT hr = G().resource->rt->CreateRadialGradientBrush(
-            D2D1::RadialGradientBrushProperties(D2D1::Point2F(cx, cy), D2D1::Point2F(0, 0), radius, radius), stops.get(), brush.put());
-        if (FAILED(hr)) {
-            failed("ID2D1RenderTarget::CreateRadialGradientBrush", hr);
-            return;
-        }
-        s->brush = Ref<ID2D1Brush>(brush);
+        s->stops = stopsOf(colors, positions, count, &s->opaque);
+        s->extend = extendOf(tile);
+        s->from = D2D1::Point2F(cx, cy);
+        s->radius = radius > 0 ? radius : 0.001f;
+        if (!s->brushFor(drawingOnGpu())) return;
         made = s.release();
     });
     return made;
@@ -2238,20 +2946,24 @@ void* shaderBitmap(void*, const megler_gfx_image* image, int tile) {
         if (!started() || !image || !image->pixels || image->width <= 0 || image->height <= 0 || image->stride < image->width * 4) return;
         std::unique_ptr<Shader> s(new Shader());
         s->kind = Shader::bitmap;
-        Box all;
-        all.r = image->width;
-        all.b = image->height;
-        std::vector<uint32_t> unused;
-        // (The copy the shader keeps: it does not follow the bitmap afterwards.)
-        Ref<ID2D1Bitmap> bitmap = bitmapCopy(*G().resource, *image, all, nullptr, unused);
-        if (!bitmap) return;
-        const HRESULT hr = G().resource->rt->CreateBitmapBrush(
-            bitmap.get(), D2D1::BitmapBrushProperties(extendOf(tile), extendOf(tile), D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR), s->bitmapBrush.put());
-        if (FAILED(hr)) {
-            failed("ID2D1RenderTarget::CreateBitmapBrush", hr);
-            return;
+        s->extend = extendOf(tile);
+        // (The copy the shader keeps: it does not follow the bitmap afterwards. On the graphics processor the kept bitmap
+        // of this version is it, shared with draw_bitmap and with other shaders of the same bitmap.)
+        s->width = image->width;
+        s->height = image->height;
+        s->pixels.resize(size_t(image->width) * size_t(image->height));
+        for (int y = 0; y < image->height; y++)
+            memcpy(s->pixels.data() + size_t(y) * size_t(image->width), static_cast<const uint8_t*>(image->pixels) + size_t(y) * size_t(image->stride),
+                   size_t(image->width) * 4);
+        if (drawingOnGpu()) {
+            if (Ref<ID2D1Bitmap1> kept = keptBitmap(*image)) {
+                const HRESULT hr = G().gpuResource->CreateBitmapBrush(
+                    kept.get(), D2D1::BitmapBrushProperties(s->extend, s->extend, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR), s->bitmapBrushes[1].put());
+                if (SUCCEEDED(hr)) s->brushes[1] = Ref<ID2D1Brush>(s->bitmapBrushes[1]);
+                else s->bitmapBrushes[1].reset();
+            }
         }
-        s->brush = Ref<ID2D1Brush>(s->bitmapBrush);
+        if (!s->brushFor(drawingOnGpu())) return;
         s->opaque = true;
         for (int y = 0; y < image->height && s->opaque; y++) {
             const uint32_t* row = reinterpret_cast<const uint32_t*>(static_cast<const uint8_t*>(image->pixels) + size_t(y) * size_t(image->stride));
@@ -3662,8 +4374,14 @@ bool imageEncode(void*, const void* pixels, int width, int height, int stride, i
     return ok;
 }
 
-void bitmapGone(void*, uint32_t) {
-    // No copy of a bitmap is kept from one call to the next: nothing to drop.
+void bitmapGone(void*, uint32_t id) {
+    // In memory no copy of a bitmap is kept from one call to the next; on the graphics processor the kept one goes.
+    State& s = G();
+    std::lock_guard<std::mutex> lock(s.keptMutex);
+    auto found = s.kept.find(id);
+    if (found == s.kept.end()) return;
+    s.keptBytes -= found->second.bytes;
+    s.kept.erase(found);
 }
 
 // MARK: Starting, in full
@@ -3683,6 +4401,122 @@ bool drawsIntoMemory() {
     s.rt->FillRectangle(D2D1::RectF(4, 4, 12, 12), s.brush.get());
     s.end();
     return s.rt && pixels[4 * 16 + 4] == 0xFFFF0000u && pixels[11 * 16 + 11] == 0xFFFF0000u && pixels[3 * 16 + 3] == 0 && pixels[12 * 16 + 12] == 0;
+}
+
+/// Whether a canvas on the graphics processor draws and reads back as this
+/// file makes them now: a red square on nothing, and its pixels read back.
+bool drawsOnGpu() {
+    uint32_t pixels[16 * 16] = {};
+    GpuContext* gc = takeContext();
+    if (!gc) return false;
+    bool ok = false;
+    {
+        Surface s;
+        s.px = reinterpret_cast<uint8_t*>(pixels);
+        s.w = s.h = 16;
+        s.stride = 64;
+        s.gc = gc;
+        s.gpu = takeBitmap(16, 16, false);
+        s.rt = Ref<ID2D1RenderTarget>(gc->dc);
+        s.brush = gc->brush;
+        if (s.gpu && s.begin()) {
+            s.rt->Clear(D2D1::ColorF(0, 0, 0, 0));
+            s.rt->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
+            s.rt->SetTransform(Matrix3x2F::Identity());
+            s.brush->SetColor(D2D1::ColorF(1, 0, 0, 1));
+            s.rt->FillRectangle(D2D1::RectF(4, 4, 12, 12), s.brush.get());
+            s.drew(s.bounds());
+            ok = s.pull(s.bounds()) && !gpuGone() && pixels[4 * 16 + 4] == 0xFFFF0000u && pixels[11 * 16 + 11] == 0xFFFF0000u && pixels[3 * 16 + 3] == 0 &&
+                 pixels[12 * 16 + 12] == 0;
+        }
+        s.giveBackGpu();
+    }
+    giveContext(gc);
+    return ok;
+}
+
+const char* levelName(D3D_FEATURE_LEVEL level) {
+    switch (level) {
+    case D3D_FEATURE_LEVEL_9_1: return "9_1";
+    case D3D_FEATURE_LEVEL_9_2: return "9_2";
+    case D3D_FEATURE_LEVEL_9_3: return "9_3";
+    case D3D_FEATURE_LEVEL_10_0: return "10_0";
+    case D3D_FEATURE_LEVEL_10_1: return "10_1";
+    case D3D_FEATURE_LEVEL_11_0: return "11_0";
+    case D3D_FEATURE_LEVEL_11_1: return "11_1";
+    default: return "12 or later";
+    }
+}
+
+/// Everything of the graphics processor's let go: canvases are drawn in memory.
+void dropGpu() {
+    State& s = G();
+    s.gpu = false;
+    {
+        std::lock_guard<std::mutex> lock(s.gpuMutex);
+        for (GpuContext* c : s.freeContexts) delete c;
+        s.freeContexts.clear();
+        s.freeTargets.clear();
+        s.freeReadables.clear();
+        s.freeBytes = 0;
+    }
+    s.gpuResource.reset();
+    s.d2dDevice.reset();
+    s.d3d.reset();
+}
+
+/// The graphics processor, unless drawing in memory was asked for: a
+/// hardware Direct3D 11 device that Direct2D can draw with (BGRA support; or
+/// WARP, for a test), Direct2D's device on it, and a canvas there tried.
+/// False, said in the log, when canvases are to be drawn in memory.
+bool startGpu() {
+    State& s = G();
+    if (s.drawingAsked == GfxHost::Drawing::memory || s.copying) return false;
+    if (!s.d2d1) {
+        say("Direct2D has no ID2D1Factory1 here: canvases are drawn in memory");
+        return false;
+    }
+    const bool warp = s.drawingAsked == GfxHost::Drawing::warp;
+    static const D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_10_0,
+                                               D3D_FEATURE_LEVEL_9_3,  D3D_FEATURE_LEVEL_9_2,  D3D_FEATURE_LEVEL_9_1};
+    D3D_FEATURE_LEVEL level = D3D_FEATURE_LEVEL_9_1;
+    const D3D_DRIVER_TYPE type = warp ? D3D_DRIVER_TYPE_WARP : D3D_DRIVER_TYPE_HARDWARE;
+    HRESULT hr = D3D11CreateDevice(nullptr, type, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels, UINT(sizeof(levels) / sizeof(levels[0])),
+                                   D3D11_SDK_VERSION, s.d3d.put(), &level, nullptr);
+    // (A Direct3D that does not know 11_1 refuses a list with it in.)
+    if (hr == E_INVALIDARG)
+        hr = D3D11CreateDevice(nullptr, type, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels + 1, UINT(sizeof(levels) / sizeof(levels[0]) - 1),
+                               D3D11_SDK_VERSION, s.d3d.put(), &level, nullptr);
+    if (FAILED(hr)) {
+        s.d3d.reset();
+        say("no Direct3D device of the graphics processor's that Direct2D can draw with (0x%08lX): canvases are drawn in memory", static_cast<unsigned long>(hr));
+        return false;
+    }
+    Ref<IDXGIDevice> dxgi = s.d3d.as<IDXGIDevice>();
+    Ref<IDXGIAdapter> adapter;
+    DXGI_ADAPTER_DESC desc = {};
+    char name[96] = "a graphics processor";
+    if (dxgi && SUCCEEDED(dxgi->GetAdapter(adapter.put())) && SUCCEEDED(adapter->GetDesc(&desc)))
+        WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, name, sizeof(name), nullptr, nullptr);
+    char described[160];
+    snprintf(described, sizeof(described), "%s, Direct3D feature level %s%s", name, levelName(level), warp ? " (WARP, Direct3D's software device)" : "");
+    s.gpuName = described;
+    hr = dxgi ? s.d2d1->CreateDevice(dxgi.get(), s.d2dDevice.put()) : E_NOINTERFACE;
+    if (SUCCEEDED(hr)) hr = s.d2dDevice->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, s.gpuResource.put());
+    if (FAILED(hr)) {
+        say("Direct2D cannot draw on %s (0x%08lX): canvases are drawn in memory", described, static_cast<unsigned long>(hr));
+        dropGpu();
+        return false;
+    }
+    s.gpuMaxSize = s.gpuResource->GetMaximumBitmapSize();
+    s.gpu = true;
+    if (!drawsOnGpu()) {
+        say("a canvas on %s does not draw or read back as it should: canvases are drawn in memory", described);
+        dropGpu();
+        s.gpuLost = false;
+        return false;
+    }
+    return true;
 }
 
 bool start() {
@@ -3723,9 +4557,12 @@ bool start() {
                 } else {
                     char name[96] = "";
                     WideCharToMultiByte(CP_UTF8, 0, s.defaultFace->family.c_str(), -1, name, sizeof(name), nullptr, nullptr);
+                    const bool gpu = startGpu();
+                    const std::string where = gpu ? "on the graphics processor (" + s.gpuName + "), read back into the app's bitmaps at each flush"
+                                              : s.copying ? "into WIC bitmaps that are copied from and to the app's memory"
+                                                          : "straight into the app's bitmaps";
                     say("Direct2D %s, DirectWrite %s; canvases draw %s; the default face is %s%s", s.d2d1 ? "1.1 or later" : "1.0 (no ID2D1Factory1: hairlines are approximate)",
-                        s.dwrite2 ? "2 or later" : "before 2 (no IDWriteFactory2: emoji are not coloured)",
-                        s.copying ? "into WIC bitmaps that are copied from and to the app's memory" : "straight into the app's bitmaps", name,
+                        s.dwrite2 ? "2 or later" : "before 2 (no IDWriteFactory2: emoji are not coloured)", where.c_str(), name,
                         s.defaultFace->collection ? ", Android's own" : s.fontFolder.empty() ? "" : ", the system's");
                     ok = true;
                 }
@@ -3761,6 +4598,19 @@ void GfxHost::setCopying(bool copying) {
     s.copyingAsked = copying;
 }
 
+void GfxHost::setDrawing(Drawing drawing) {
+    State& s = G();
+    std::lock_guard<std::mutex> lock(s.startMutex);
+    if (s.started.load()) return;
+    s.drawingAsked = drawing;
+}
+
+void GfxHost::loseDevice() {
+    State& s = G();
+    if (!s.gpu || s.gpuLost.exchange(true)) return;
+    say("the graphics processor's device is taken as lost (a test asks): from now on everything is drawn in memory");
+}
+
 void GfxHost::setFontFolder(const wchar_t* folder) {
     State& s = G();
     std::lock_guard<std::mutex> lock(s.startMutex);
@@ -3783,6 +4633,15 @@ GfxHost::Counts GfxHost::counts() {
     c.partTargets = s.partTargets;
     c.started = s.started.load() > 0;
     c.copying = s.copying;
+    c.gpu = s.gpu;
+    c.gpuLost = s.gpuLost.load();
+    c.uploads = s.uploads;
+    c.readBacks = s.readBacks;
+    c.byEffects = s.byEffects;
+    c.throughMemory = s.throughMemory;
+    c.keptMade = s.keptMade;
+    c.keptReused = s.keptReused;
+    if (c.started && s.gpu) snprintf(c.device, sizeof(c.device), "%s", s.gpuName.c_str());
     return c;
 }
 
