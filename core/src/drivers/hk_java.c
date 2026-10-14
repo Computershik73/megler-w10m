@@ -440,16 +440,38 @@ static const hk_jhle k_native[] = {
  */
 N(Absent)
 {
-    /* (The native method's own frame is the top one: its class is what is missing.) */
-    const hk_dvm_frame *f = hk_dvm_self()->top;
-    hk_note_once("java: %s is not there yet: its native methods answer nothing", f && f->m ? f->m->cls->name : "a class of the framework");
+    /* (The native method's own frame is the top one: its class is what is missing.) The callers say who wanted it. */
+    static const hk_dvm_class *said[16];
+    static volatile i32 nsaid;
+    const hk_dvm_frame *f = hk_dvm_self()->top, *up;
+    const hk_dvm_class *cls = f && f->m ? f->m->cls : NULL;
+    char who[500];
+    size_t k = 0;
+    int n, i;
     c->ret.j = 0;
+    /* Once for each class, whoever asks. (Two threads asking at the same moment may each say it.) */
+    for (i = 0; i < nsaid && i < (int)HK_COUNT(said); i++)
+        if (said[i] == cls) return;
+    i = hk_atomic_add(&nsaid, 1) - 1;
+    if (i < (int)HK_COUNT(said)) said[i] = cls;
+    who[0] = 0;
+    for (up = f ? f->prev : NULL, n = 0; up && n < 5 && k + 120 < sizeof(who); up = up->prev, n++)
+        k += (size_t)snprintf(who + k, sizeof(who) - k, "%s%s.%s", n ? " < " : "", up->m->cls->name, up->m->name);
+    hk_warn("java: %s is not there yet: its native methods answer nothing (first asked by %s)", cls ? cls->name : "a class of the framework", who[0] ? who : "the layer");
 }
+/*
+ * Sensors.available(type): no, and that is no gap to report. The framework's SensorManager asks it for every kind of sensor
+ * when the class is first used, which is at every app's start (ContextImpl's table of system services names the class).
+ * "There is no such sensor" is the true answer until there are sensors; an app that registers a listener still meets the
+ * line above.
+ */
+N(Sensors_available) { c->ret.j = 0; }
 /* An AudioTrack is initialised when its id is not negative. */
 N(Absent_minus_one) { Absent(c); c->ret.j = 0; c->ret.i = -1; }
 
 static const hk_jhle k_absent[] = {
     { "megler/Audio", "trackOpen", NULL, Absent_minus_one },
+    { "megler/Sensors", "available", NULL, Sensors_available },
     { "megler/Audio", NULL, NULL, Absent },
     { "megler/Web", NULL, NULL, Absent },
     { "megler/Sensors", NULL, NULL, Absent },

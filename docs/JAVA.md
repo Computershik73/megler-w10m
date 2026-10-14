@@ -1105,7 +1105,10 @@ no native code or has it for 32-bit ARM.
   the root, when it is there) and the split APKs (2 and up) through
   `zip/hk_zip.c`; a stored file can also be had as a descriptor and an offset.
 - **What is not answered yet** answers "no" in a way the framework's Java
-  already handles, said once in the log for each class:
+  already handles, said once in the log for each class, with the methods that
+  first asked (so that it can be told whether the app wants it or the
+  framework's own start-up touched it; `megler.Sensors.available`, which the
+  framework asks at every start, is answered "no" without a word):
   `megler.Audio` (an `AudioTrack` that is not initialised, a sound that did not
   load), `megler.Web` (an empty rectangle), `megler.Sensors` (not available),
   `megler.MediaCodecNative` (not supported), `megler.EGLNative` (no context) and
