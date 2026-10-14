@@ -2237,7 +2237,22 @@ static int g_fcntl(int fd, int cmd, int arg)
         o->flags = (o->flags & ~(G_O_NONBLOCK | G_O_APPEND)) | (arg & (G_O_NONBLOCK | G_O_APPEND));
         if (o->type == OBJ_EXT && o->ops->set_nonblock) o->ops->set_nonblock(o->ext, (arg & G_O_NONBLOCK) != 0);
         break;
-    default: break;                                /* locks and the rest: granted */
+    case 5:  /* F_GETLK */
+    case 12: /* F_GETLK64 */
+        /*
+         * The lock that would stop the one described: none. Every lock here is this process's, and a process's own locks
+         * never stop it (POSIX), so the answer is l_type F_UNLCK, the struct's first field in both forms. SQLite in WAL
+         * mode asks this of its -shm file before it uses it; the struct came back as it was asked, F_WRLCK, which says
+         * another process holds the lock: SQLITE_BUSY at every try, then SQLITE_PROTOCOL ("locking protocol").
+         */
+        if (!arg) {
+            hk_set_errno(GE_FAULT);
+            r = -1;
+        } else {
+            hk_wr16((u8 *)(hk_addr)(u32)arg, 2);
+        }
+        break;
+    default: break;                                /* setting locks, and the rest: granted */
     }
     fd_put(o);
     return r;

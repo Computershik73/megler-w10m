@@ -816,6 +816,36 @@ int t_fonts(void)
 }
 
 /*
+ * Byte-range locks as SQLite's WAL takes them on its -shm file: a write lock set (F_SETLK), then F_GETLK on the same
+ * range, which a process's own locks never block: F_UNLCK, in the 32-bit struct and in flock64. 3, or the negated step.
+ */
+int t_flock(const char *dir)
+{
+    struct { short type, whence; long start, len; int pid; } lk;
+    struct { short type, whence; int pad; long long start, len; int pid; } lk64;
+    char path[256];
+    int fd;
+    snprintf(path, sizeof(path), "%s/lock.db-shm", dir);
+    fd = open(path, 0102, 0600);                        /* O_RDWR | O_CREAT */
+    if (fd < 0) return -1;
+    memset(&lk, 0, sizeof(lk));
+    lk.type = 1;                                         /* F_WRLCK */
+    lk.start = 128;
+    lk.len = 1;
+    if (fcntl(fd, 6, &lk) != 0) return -1;               /* F_SETLK */
+    lk.type = 1;
+    if (fcntl(fd, 5, &lk) != 0 || lk.type != 2) return -2;                /* F_GETLK: F_UNLCK */
+    memset(&lk64, 0, sizeof(lk64));
+    lk64.type = 1;
+    lk64.start = 120;
+    lk64.len = 8;
+    if (fcntl(fd, 12, &lk64) != 0 || lk64.type != 2) return -3;           /* F_GETLK64 */
+    close(fd);
+    unlink(path);
+    return 3;
+}
+
+/*
  * fnmatch, which Chromium's FileEnumerator asks of every name it lists: the number of the 16 cases that came out as POSIX
  * and bionic have them.
  */
