@@ -2921,7 +2921,7 @@ linked, 0 not; 0 classes, methods and fields named and not found.
 **What differs from the original's framework: forty files** in the overlay,
 most of them a statement or a few methods each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
-**and eight files of members added** to classes of the original's.
+**and nine files of members added** to classes of the original's.
 
 The second kind is for the platform's public members that the original's
 class does not have and an app calls -- a `NoSuchMethodError` where Android
@@ -2966,6 +2966,14 @@ registers through such a wrapper in all three forms.
 classes: `meglerBase()`, the activity at the bottom of the stack, which
 `ActivityManager` (below) gives as the root of the app's task; the original
 had only the top.
+
+`android/os/MessageQueue.java.members` adds `next()`, Android's own name
+for what `Looper.loop` takes the next message with (it calls the original's
+`next(boolean main)` as `loop` does). It is hidden API, and code that runs its
+own event loop takes the Java looper's messages with it: Gecko asks for it by
+JNI on its own thread, and without it ended on a `NoSuchMethodError`
+(`MOZ_CRASH()`) as it started. The data app's step "queue-next" sends a message
+on a looper thread of its own and takes it back with `next()`.
 
 - `android/webkit/MimeTypeMap.java`: the original hands its table to
   `libcore.content.type.MimeMap`, an Android 10 class; Android 9's `MimeUtils`
@@ -3383,7 +3391,7 @@ had only the top.
   and a file's descriptor, closes the originals, writes through the
   duplicate, detaches it and adopts it again.
 
-The original has all twenty-nine faults; they are its author's to take back.
+The original has all thirty faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in

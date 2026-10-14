@@ -292,6 +292,7 @@ public class Main extends Activity {
         textDrawables();
         pfdDup();
         themeSelfRef();
+        queueNext();
         network();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
@@ -770,6 +771,32 @@ public class Main extends Activity {
             a.recycle();
             detail = seen + "highlight there=" + highlight;
             return true;
+        });
+    }
+
+    /**
+     * MessageQueue.next(), hidden API, as Gecko takes the Java looper's messages on its own thread: a message sent on a
+     * looper thread of the step's own comes back from it.
+     */
+    private void queueNext() {
+        step("queue-next", () -> {
+            final Object[] got = new Object[1];
+            Thread t = new Thread(() -> {
+                android.os.Looper.prepare();
+                new android.os.Handler().sendEmptyMessage(42);
+                try {
+                    java.lang.reflect.Method next = android.os.MessageQueue.class.getDeclaredMethod("next");
+                    next.setAccessible(true);
+                    android.os.Message m = (android.os.Message) next.invoke(android.os.Looper.myQueue());
+                    got[0] = m == null ? null : m.what;
+                } catch (Throwable e) {
+                    got[0] = e;
+                }
+            }, "queue-next");
+            t.start();
+            t.join(5000);
+            detail = "next() gave " + got[0];
+            return Integer.valueOf(42).equals(got[0]);
         });
     }
 
