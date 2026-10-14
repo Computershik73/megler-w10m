@@ -290,6 +290,7 @@ public class Main extends Activity {
         wrapperReceiver();
         viewGroupFlag();
         textDrawables();
+        pfdDup();
         network();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
@@ -717,6 +718,35 @@ public class Main extends Activity {
             held &= android.widget.TextView.class.getMethod("getTextSelectHandleLeft").invoke(e) == mine;
             detail = seen.toString();
             return held;
+        });
+    }
+
+    /**
+     * ParcelFileDescriptor's descriptors, as GeckoView hands its crash helper a socket pair's ends: dup makes a descriptor
+     * of its own, which outlives the original's close and writes where it did; detachFd gives the number away, so that
+     * closing the ParcelFileDescriptor leaves it; adoptFd takes it over, and closing that closes it.
+     */
+    private void pfdDup() {
+        step("pfd-dup", () -> {
+            java.io.FileDescriptor a = new java.io.FileDescriptor(), b = new java.io.FileDescriptor();
+            android.system.Os.socketpair(android.system.OsConstants.AF_UNIX, android.system.OsConstants.SOCK_SEQPACKET, 0, a, b);
+            android.os.ParcelFileDescriptor da = android.os.ParcelFileDescriptor.dup(a);
+            android.system.Os.close(a);
+            java.io.File file = new java.io.File(getCacheDir(), "pfd-dup.txt");
+            java.io.FileOutputStream out = new java.io.FileOutputStream(file);
+            android.os.ParcelFileDescriptor d = android.os.ParcelFileDescriptor.dup(out.getFD());
+            out.close();
+            new java.io.FileOutputStream(d.getFileDescriptor()).write("kept".getBytes("UTF-8"));
+            int n = d.detachFd();
+            d.close();
+            android.os.ParcelFileDescriptor adopted = android.os.ParcelFileDescriptor.adoptFd(n);
+            boolean open = adopted.getFileDescriptor().valid();
+            adopted.close();
+            int na = da.detachFd();
+            detail = "socket end " + na + ", file " + n + " (" + file.length() + " bytes), open before adoptFd's close " + open
+                + ", after " + adopted.getFileDescriptor().valid();
+            android.system.Os.close(b);
+            return na >= 0 && n >= 0 && file.length() == 4 && open && !adopted.getFileDescriptor().valid() && file.delete();
         });
     }
 

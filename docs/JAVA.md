@@ -2918,7 +2918,7 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: thirty-nine files** in the overlay,
+**What differs from the original's framework: forty files** in the overlay,
 most of them a statement or a few methods each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and eight files of members added** to classes of the original's.
@@ -3359,7 +3359,20 @@ had only the top.
   drawn as before. The data app's step "text-drawables" asks an `EditText`
   for all four, tints them, and sets one.
 
-The original has all twenty-seven faults; they are its author's to take back.
+- `android/os/ParcelFileDescriptor.java`, what `dup` and the descriptors it
+  is given own, which is now Android's: `dup(FileDescriptor)`, `dup()` and
+  `fromFd(int)` make a descriptor of their own (`Os.dup`) that closing the
+  result closes; `adoptFd(int)` takes the number over; `detachFd()` gives it
+  away, so that closing no longer closes it. The original's wrapped the same
+  descriptor and owned nothing. GeckoView's `startCrashHelper` (Firefox 152)
+  makes two socket pairs, wraps each end with `dup`, closes the four
+  originals and hands the duplicates' numbers to Gecko: with no duplicate
+  those were the closed ones' -1, and Gecko stopped on `MOZ_CRASH: fd != -1`
+  as it started. The data app's step "pfd-dup" duplicates a socket pair's end
+  and a file's descriptor, closes the originals, writes through the
+  duplicate, detaches it and adopts it again.
+
+The original has all twenty-eight faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in
