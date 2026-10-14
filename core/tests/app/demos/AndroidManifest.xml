@@ -11,5 +11,6 @@
         </activity>
         <activity android:name=".Second" android:label="@string/second" />
         <activity android:name=".Typing" android:label="@string/typing" />
+        <activity android:name=".KeyboardDialogs" />
     </application>
 </manifest>

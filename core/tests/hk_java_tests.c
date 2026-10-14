@@ -798,6 +798,83 @@ static void type_into_fields(const int row[4], int *at)
     say("  the keyboard was asked for %d times and sent away %d times", (int)K.shown, (int)K.hidden);
 }
 
+/* The last line from `from` on that holds `text`, or -1. */
+static int last_line(const char *text, int from)
+{
+    int found = -1, i;
+    while ((i = find_line(text, found >= 0 ? found + 1 : from)) >= 0) found = i;
+    return found;
+}
+
+/*
+ * Dialogs with a text field, over which the keyboard comes up (core/tests/app/demos, KeyboardDialogs): what each window's
+ * softInputMode asks is done, as Android does it. A keyboard that covers 500 of the 800 rows leaves 300.
+ *  - The focused field must lie wholly between the top of the screen and the top of the keyboard.
+ *  - A dialog that is resized ("top", which asks so; "scroll", which leaves it unspecified and holds a ScrollView) must be
+ *    centred in those 300 rows.
+ *  - One that is panned ("bottom", which asks so; "theme", which says nothing and has its theme's adjustPan) must keep its
+ *    size and be moved up exactly as far as brings its field's bottom edge to the keyboard's top.
+ *  - Once the keyboard has gone, each is where it was before.
+ * On the phone the shell said the keyboard covered 513 of 1280 rows, and Apktool M's search dialog had its field above the
+ * screen's top edge.
+ */
+static void keyboard_and_dialogs(const int row[4], int *at)
+{
+    static const char *const tags[] = { "top", "bottom", "scroll", "theme" };
+    static const bool panned[] = { false, true, false, true };
+    const int kbd = 500, space = g_screen_h - kbd;
+    int k;
+    say("the keyboard over dialogs: resized, panned, and as the contents or the theme decide");
+    tap(row[0] + row[2] / 2, row[1] + row[3] * 8 + row[3] / 2);
+    expect_line("I/DemoTest: list: clicked row 8 \"dialogs and the keyboard\"", at, 30);
+    expect_line("I/DemoTest: keyboard: created", at, 30);
+    for (k = 0; k < 4; k++) {
+        char want[80];
+        int field0[4] = { 0 }, window0[4] = { 0 }, field[4] = { 0 }, window[4] = { 0 }, line;
+        i32 shown;
+        snprintf(want, sizeof(want), "I/DemoTest: keyboard: %s field=", tags[k]);
+        line = wait_line(want, *at + 1, 30);
+        CHECK(line >= 0);
+        if (line < 0) return;
+        *at = line;
+        settle();
+        line = last_line(want, *at);
+        CHECK(rect_in(line_at(line), "field", field0) && rect_in(line_at(line), "window", window0));
+        /* A touch of the field asks for the keyboard; the keyboard says how much it covers. */
+        shown = K.shown;
+        tap(field0[0] + 30, field0[1] + field0[3] / 2);
+        CHECK(shown_times(shown + 1));
+        megler_keyboard_height(kbd);
+        settle();
+        line = last_line(want, *at);
+        CHECK(rect_in(line_at(line), "field", field) && rect_in(line_at(line), "window", window));
+        say("  %s: the field at rows %d to %d and the window at %d to %d, under a keyboard from row %d; without it %d to %d and %d to %d", tags[k], field[1],
+            field[1] + field[3], window[1], window[1] + window[3], space, field0[1], field0[1] + field0[3], window0[1], window0[1] + window0[3]);
+        CHECK(field[1] >= 0 && field[1] + field[3] <= space);
+        if (panned[k]) {
+            CHECK(field[1] + field[3] == space && window[3] == window0[3]);
+        } else {
+            CHECK(window[3] <= space && abs(window[1] - (space - window[3]) / 2) <= 1);
+        }
+        /* The keyboard put away by the user: the dialog goes back where it was. Back then closes it, and the next one comes. */
+        megler_keyboard_closed();
+        megler_keyboard_height(0);
+        settle();
+        line = last_line(want, *at);
+        CHECK(rect_in(line_at(line), "field", field) && rect_in(line_at(line), "window", window));
+        CHECK(field[1] == field0[1] && window[1] == window0[1] && window[3] == window0[3]);
+        megler_key(4, true);
+        megler_key(4, false);
+        snprintf(want, sizeof(want), "I/DemoTest: keyboard: %s closed", tags[k]);
+        expect_line(want, at, 30);
+    }
+    expect_line("I/DemoTest: keyboard: all shown", at, 30);
+    settle();
+    megler_key(4, true);
+    megler_key(4, false);
+    settle();
+}
+
 /* ------------------------------------------------------------------ demos */
 
 /* The last picture, kept: to be compared with a later one. */
@@ -1087,6 +1164,7 @@ static int run_demos(void)
     }
     free(list);
     type_into_fields(row, &at);
+    keyboard_and_dialogs(row, &at);
     back_and_end("I/DemoTest: list: destroyed", &at);
     {
         /*

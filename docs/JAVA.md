@@ -2268,6 +2268,52 @@ No reason was found in the core or the framework why the phone would lose
 typed text that this path delivers under qemu. The next phone log will show
 at which of the three steps it goes missing.
 
+**What the keyboard does to a window is Android's.** The window's
+`softInputMode` decides (`adjustMode` in the overlay's `megler/ViewRoot.java`):
+
+- **adjustResize.** An activity's window gets the keyboard in its insets, and
+  the decor keeps the content above it. A dialog is measured to fit the
+  screen above the keyboard and placed there by its gravity (centred, as a
+  rule). Its views get no keyboard inset, because none of the dialog is under
+  the keyboard.
+- **adjustPan.** The window keeps its size and place and is moved up (`mPan`).
+  It moves only as far as brings the focused view's bottom edge to the
+  keyboard's top, and no further than brings that view's top edge to the
+  screen's top. The pan is worked out at every frame, since the focus can
+  move without a layout.
+- **adjustUnspecified.** Resize when a view of the window is a scroll
+  container (a `ScrollView`, a list, or a view set so with
+  `setScrollContainer`, which the overlay's `View` now keeps); pan when none
+  is.
+- **adjustNothing.** Nothing.
+
+A dialog's theme (`Theme.Material.Dialog`) says adjustPan. An activity's
+window now takes the manifest's `android:windowSoftInputMode` (the overlay's
+`Activity.getWindow`, as `Activity.attach` does on Android).
+
+What was wrong before, on the phone: Apktool M's search dialog had its field
+above the screen's top edge while the user typed into it (0.1.0.145, a
+keyboard over 513 of 1280 rows).
+- Every dialog was laid out against the whole screen and then placed by
+  gravity in the part above the keyboard. A dialog taller than that part
+  went off the top.
+- A dialog (`TYPE_APPLICATION`) also got the keyboard as an inset. A view
+  that fits system windows turned it into padding, and that made the dialog
+  taller still.
+- Every activity was resized, whatever it asked.
+
+Tested in demos ("dialogs and the keyboard", `KeyboardDialogs`; 39 checks),
+with a keyboard over 500 of the 800 rows:
+
+| dialog | mode | before | after |
+| --- | --- | --- | --- |
+| field at the top | resize | window 24 to 276, centred in 300 | the same |
+| field at the bottom, 492 rows high | pan | centred anyway: window -96 to 396, field 320 to 380, under the keyboard | moved up 330: field 240 to 300, window -176 to 316 |
+| field in a ScrollView | unspecified | resized | resized: window 24 to 276 |
+| the theme's own mode | pan | resized | moved up 50: field 240 to 300 |
+
+Once the keyboard is put away, each dialog is back where it was.
+
 **Not there:** composing text (a keyboard that composes sends each piece when
 it is final), the selection handles and the copy and paste bar (the
 framework's), and telling the shell where the cursor is on the screen.
@@ -3106,7 +3152,7 @@ the context that knows.
   highlight as a disc of half its longer side: for a pressed row of a list, a
   grey disc as wide as the screen over the rows above and below.
 
-- `android/app/Activity.java`, one method: `initWindowDecorActionBar` makes
+- `android/app/Activity.java`, two methods: `initWindowDecorActionBar` makes
   the window's decor before it asks whether the window has an action bar, as
   Android's does. Whether there is a bar is the theme's to say, and the
   window reads its theme when its decor is made. Without this
@@ -3115,6 +3161,8 @@ the context that knows.
   `getSupportActionBar()` wraps `Activity.getActionBar()` on Android 4 and
   later. QuickShortcutMaker's About screen ended the app with a
   `NullPointerException` on it.
+  And, the original's fault too, `getWindow` gives the window the manifest's
+  `android:windowSoftInputMode`, which the original read and never used.
 
 - `android/widget/LinearLayout.java`, four statements: what a child with a
   weight and a size of 0 is given when the layout's own size is not exact.
@@ -3140,7 +3188,12 @@ the context that knows.
   much of the screen it drew, for the frame meter ("The frame meter", above).
   And a window's dirty rectangle, which `drawAll` draws alone, with the tests'
   check of it ("Drawing only what changed"). And `keyFocus`, the focused
-  view of the window that keys go to, for the next file's log line.
+  view of the window that keys go to, for the next file's log line. And,
+  this time the original's fault, what the keyboard does to a window: its
+  `softInputMode` decides, as on Android ("The keyboard"). The original
+  placed every dialog by gravity in the part above the keyboard without
+  fitting it there, gave dialogs the keyboard as an inset, and resized every
+  activity.
 - `megler/InputMethods.java`: only what `deliverPending` writes in the log.
   What it does with the keyboard's text is the original's, unchanged
   ("The keyboard": where typed text went). This is for diagnosis; the
@@ -3151,6 +3204,8 @@ the context that knows.
   drawn. The original asked for the whole window each time, which the window
   then drew whole. (`megler/Gfx.java.members` adds `bmDiffer`, the tests'
   comparison of two bitmaps in C.)
+  And `setScrollContainer`, which the original dropped: `isScrollContainer`
+  now says what was set, which decides an unspecified `softInputMode`.
 - `megler/KeyStoreProvider.java`, one method, and this port's circumstance
   rather than the original's fault: `PairGen.generateKeyPair` takes another
   provider's key pair generator from its service, because

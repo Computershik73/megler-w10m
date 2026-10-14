@@ -16,6 +16,19 @@
 // And in keyFocus(), which the original does not have: the focused view of the window keys go to, which the overlay's
 // megler.InputMethods names in the log when typed text arrives.
 //
+// And in what the keyboard does to a window, which is now Android's: the window's softInputMode decides (adjustMode).
+//  - adjustResize: an activity's window gets the keyboard in its insets, so the decor keeps the content above it, as before;
+//    a dialog is measured to fit the screen above the keyboard and placed in that by its gravity (centred, usually), and
+//    its views get no keyboard inset, since none of it is under the keyboard.
+//  - adjustPan: the window keeps its size and place and is moved up (mPan) only as far as brings the focused view's bottom
+//    edge above the keyboard, and no further than its top edge to the top of the screen.
+//  - adjustUnspecified: resize when the window has a scroll container (ScrollView, a list, a view set as one), pan when not.
+//  - adjustNothing: nothing.
+// The original laid every dialog out against the whole screen and placed it by gravity in the part above the keyboard, so
+// a dialog taller than that part went off the top: on the phone Apktool M's search dialog had its field above the screen's
+// top edge while the user typed into it. And it gave a dialog the part of it the keyboard covered as an inset, which a view
+// that fits system windows turned into padding, making the dialog taller still. An activity was always resized.
+//
 // Why. Where a frame's time goes -- in Java and in which part of the frame, in the shell's drawing, in handing the picture
 // over -- is measured from the core's side (core/src/drivers/hk_java.c, "the frame meter", a line in the log every five
 // seconds while the app draws), and only the frame itself knows where its phases begin. Nothing else changes: the calls
@@ -47,6 +60,10 @@ public final class ViewRoot implements ViewParent {
     final View mView;
     WindowManager.LayoutParams mLp;
     private int mX, mY, mW, mH;
+    /* Where the layout put the window, and how far the keyboard pans it up from there (adjustPan): mY is the one less the other. */
+    private int mLaidY, mPan;
+    /* What the keyboard does to the window (adjustMode), as found when its insets were last worked out. */
+    private int mAdjust = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
     private boolean mDumpTimer;
     private boolean mLayoutRequested = true, mFirst = true, mRemoved, mHasFocus = true, mInLayout, mInsetsDirty = true;
     /** What of this window is to be drawn again, in its own coordinates; or all of it. */
@@ -92,7 +109,59 @@ public final class ViewRoot implements ViewParent {
     }
     private WindowInsets computeInsets() {
         boolean full = mLp.type == WindowManager.LayoutParams.TYPE_BASE_APPLICATION || mLp.type == WindowManager.LayoutParams.TYPE_APPLICATION;
-        return full ? screenInsets() : WindowInsets.meglerOf(0, 0, 0, 0, Math.max(0, sImeBottom - (screenH() - mY - mH)), null);
+        mAdjust = adjustMode();
+        boolean resize = mAdjust == WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
+        /* A dialog lies above the keyboard when it is resized and is moved, not shrunk, when it is panned: no part of it is an inset. */
+        if (floatingAppWindow()) return WindowInsets.meglerOf(0, 0, 0, 0, 0, null);
+        if (full) return WindowInsets.meglerOf(sInsets[0], sInsets[1], sInsets[2], sInsets[3], resize ? sImeBottom : 0, cutout());
+        return WindowInsets.meglerOf(0, 0, 0, 0, Math.max(0, sImeBottom - (screenH() - mY - mH)), null);
+    }
+
+    /** An application's window that does not fill the screen: a dialog (Android lays these out in the space the keyboard leaves). */
+    private boolean floatingAppWindow() {
+        return mLp.type > WindowManager.LayoutParams.TYPE_BASE_APPLICATION && mLp.type <= WindowManager.LayoutParams.LAST_APPLICATION_WINDOW
+               && (mLp.width != ViewGroup.LayoutParams.MATCH_PARENT || mLp.height != ViewGroup.LayoutParams.MATCH_PARENT);
+    }
+
+    /**
+     * What the keyboard does to this window, as Android's window manager decides it: the adjustment its softInputMode names,
+     * and for one that names none, resize when a view of the window is a scroll container and pan when none is.
+     */
+    private int adjustMode() {
+        int m = mLp.softInputMode & WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST;
+        if (m == WindowManager.LayoutParams.SOFT_INPUT_ADJUST_UNSPECIFIED)
+            m = hasScrollContainer(mView) ? WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE : WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN;
+        return m;
+    }
+
+    /* On Android a view with vertical scrollbars (ScrollView's and the lists' styles have them) or set so is a scroll container. */
+    private static boolean hasScrollContainer(View v) {
+        if (v.isScrollContainer() || v instanceof android.widget.ScrollView || v instanceof android.widget.AbsListView) return true;
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) if (hasScrollContainer(g.getChildAt(i))) return true;
+        }
+        return false;
+    }
+
+    /**
+     * adjustPan: how far the window is moved up so that the focused view is above the keyboard -- as far as brings its bottom
+     * edge to the keyboard's top, no further than brings its top edge to the screen's top -- or 0. Asked at every frame, since
+     * the focus can move without a layout.
+     */
+    private void updatePan() {
+        int pan = 0;
+        if (sImeBottom > 0 && mAdjust == WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN && mHasFocus && mFocused != null && mFocused.isShown()) {
+            int[] at = new int[2];
+            mFocused.getLocationInWindow(at);
+            int top = mLaidY + at[1], bottom = top + mFocused.getHeight(), visible = screenH() - sImeBottom;
+            if (bottom > visible) pan = Math.max(0, Math.min(bottom - visible, top));
+        }
+        if (pan != mPan) {
+            mPan = pan;
+            mY = mLaidY - mPan;
+            sFullRedraw = true;
+        }
     }
     private void attach() {
         // as ViewRootImpl: the window's insets are known by the time its views hear they are attached (getRootWindowInsets)
@@ -258,13 +327,19 @@ public final class ViewRoot implements ViewParent {
             mView.dispatchApplyWindowInsets(mWindowInsets);
             mLayoutRequested = true;
         }
-        if (!mLayoutRequested && !mView.isLayoutRequested()) return;
+        if (!mLayoutRequested && !mView.isLayoutRequested()) {
+            updatePan();
+            return;
+        }
         mLayoutRequested = false;
         mInLayout = true;
         try {
             int ws, hs;
             int lw = mLp.width, lh = mLp.height;
             int maxW = sw, maxH = sh;
+            boolean resize = sImeBottom > 0 && mAdjust == WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
+            /* A dialog resized for the keyboard is laid out in the space above it, as Android's window manager fits its frame there. */
+            if (resize && floatingAppWindow()) maxH = Math.max(0, sh - sInsets[1] - Math.max(sInsets[3], sImeBottom));
             if (lw == ViewGroup.LayoutParams.MATCH_PARENT) ws = View.MeasureSpec.makeMeasureSpec(maxW, View.MeasureSpec.EXACTLY);
             else if (lw == ViewGroup.LayoutParams.WRAP_CONTENT) ws = View.MeasureSpec.makeMeasureSpec(maxW, View.MeasureSpec.AT_MOST);
             else ws = View.MeasureSpec.makeMeasureSpec(lw, View.MeasureSpec.EXACTLY);
@@ -280,15 +355,18 @@ public final class ViewRoot implements ViewParent {
             if (g == 0) out.set(0, 0, w, h);
             else {
                 Rect area = new Rect(0, 0, sw, sh);
+                /* (A dialog that is panned is placed as if there were no keyboard, and moved up afterwards: updatePan.) */
+                int ime = floatingAppWindow() && !resize ? 0 : sImeBottom;
                 if (mLp.type >= 1000 || (mLp.flags & WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS) == 0 && mLp.type != WindowManager.LayoutParams.TYPE_BASE_APPLICATION)
-                    area.set(sInsets[0], sInsets[1], sw - sInsets[2], sh - Math.max(sInsets[3], sImeBottom));
+                    area.set(sInsets[0], sInsets[1], sw - sInsets[2], sh - Math.max(sInsets[3], ime));
                 Gravity.apply(g, w, h, area, mLp.x, mLp.y, out);
             }
-            if (out.left != mX || out.top != mY || w != mW || h != mH) sFullRedraw = true;
-            mX = out.left; mY = out.top; mW = w; mH = h;
+            if (out.left != mX || out.top != mLaidY || w != mW || h != mH) sFullRedraw = true;
+            mX = out.left; mLaidY = out.top; mY = mLaidY - mPan; mW = w; mH = h;
             mView.layout(0, 0, w, h);
         } finally { mInLayout = false; }
         mObserver.dispatchOnGlobalLayout();
+        updatePan();
         if (sDump == null) sDump = System.getenv("TL_VIEW_DUMP") != null;
         if (sDump) {
             long now = android.os.SystemClock.uptimeMillis();

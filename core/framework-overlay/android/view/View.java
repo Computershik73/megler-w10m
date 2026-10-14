@@ -7,6 +7,9 @@
 //    is clipped away, or a view that is not visible (Android's skipInvalidate), asks for nothing. A view with an Animation on
 //    the way asks for the whole window, since its transformation is known only while it is drawn.
 //  - drawFromParent skips a child whose box lies outside the canvas's clip while the window draws only part of itself.
+//  - setScrollContainer is kept and isScrollContainer says it (the original said false whatever was set). ViewRoot asks it
+//    when a window's softInputMode leaves to the system whether the keyboard resizes or pans it, as Android's window
+//    manager does: a window with a scroll container is resized.
 //
 // Why. The original's invalidate asked the window to be drawn again whole, and the window cleared the screen and drew every
 // view, so a blinking cursor cost a whole screen. ViewRoot (overlaid) now keeps each window's dirty rectangle and draws only
@@ -1137,8 +1140,9 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         return cx || cy;
     }
     protected void onOverScrolled(int x, int y, boolean cx, boolean cy) {}
-    public boolean isScrollContainer() { return false; }
-    public void setScrollContainer(boolean c) {}
+    private boolean mMeglerScrollContainer;
+    public boolean isScrollContainer() { return mMeglerScrollContainer; }
+    public void setScrollContainer(boolean c) { mMeglerScrollContainer = c; }
     public boolean requestRectangleOnScreen(Rect r) { return requestRectangleOnScreen(r, false); }
     public boolean requestRectangleOnScreen(Rect r, boolean immediate) {
         View child = this; ViewGroup parent = mParent; Rect pos = new Rect(r);

@@ -1,5 +1,5 @@
 // megler-w10m overlay of Megler/src/java-framework/src/android/app/Activity.java (tools/build-framework.sh).
-// It differs in one method: initWindowDecorActionBar makes the window's decor before it asks whether the window has an action bar.
+// It differs in two methods. initWindowDecorActionBar makes the window's decor before it asks whether the window has an action bar.
 //
 // Why. Whether a window has an action bar is the theme's to say (windowActionBar, windowNoTitle), and the window reads its
 // theme when its decor is made, not before. Android's Activity.initWindowDecorActionBar therefore begins with
@@ -9,7 +9,12 @@
 // its bar before setContentView -- which is the usual order with ActionBarSherlock, whose getSupportActionBar() on Android
 // 4 and later wraps Activity.getActionBar() and is null when that is: QuickShortcutMaker's About screen ended the app with
 // "NullPointerException: ... ActionBar.setHomeButtonEnabled(Z)V on a null object reference", while its Settings screen,
-// which happens to call getWindow().getDecorView() first, had its bar. Everything else is the original's, unchanged.
+// which happens to call getWindow().getDecorView() first, had its bar.
+//
+// And in getWindow: the window takes the manifest's android:windowSoftInputMode, as Activity.attach does on Android (when it
+// says anything). The original read the attribute and never used it, so an activity was resized for the keyboard whatever
+// it asked; ViewRoot (overlaid) now resizes, pans or leaves a window as its softInputMode says. Everything else is the
+// original's, unchanged.
 package android.app;
 
 import android.content.*;
@@ -236,6 +241,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             mWindow.setCallback(this);
             mWindow.meglerSetActivityWindow(true);
             mWindow.setTitle(mTitle);
+            if (mInfo != null && mInfo.windowSoftInputMode != 0) mWindow.setSoftInputMode(mInfo.windowSoftInputMode);
             if (mRequestedOrientation >= 0) megler.Native.setOrientation(mRequestedOrientation);
         }
         return mWindow;

@@ -81,6 +81,11 @@ public class ListDemo extends Activity implements AdapterView.OnItemClickListene
             startActivity(new Intent(this, Typing.class));
             return;
         }
+        if (position == 8) {
+            /* Dialogs with a field, over which the keyboard comes up. */
+            startActivity(new Intent(this, KeyboardDialogs.class));
+            return;
+        }
         step = position;
         run();
     }
