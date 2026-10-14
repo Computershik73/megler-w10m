@@ -22,38 +22,59 @@
 
 #define FRAME_WORDS ((sizeof(hk_dvm_frame) + sizeof(hk_dvm_reg) - 1) / sizeof(hk_dvm_reg))
 
-static hk_dvm_frame *push_frame(hk_dvm_thread *t, hk_dvm_method *m, size_t words)
+/* The stack has no room for a frame of `words` registers: the error, or nothing when even the reserve is used up. */
+static HK_NOINLINE hk_dvm_frame *stack_full(hk_dvm_thread *t, hk_dvm_method *m, size_t words)
 {
-    hk_dvm_reg *limit = t->overflowing ? t->stack + DVM_STACK_WORDS : t->stack_end;
+    hk_dvm_reg *limit = t->stack + DVM_STACK_WORDS;
     hk_dvm_frame *f;
-    if (words + FRAME_WORDS > (size_t)(limit - t->sp)) {
-        if (t->overflowing) {
-            /* Even the reserve is used up, by the making of the error itself: what is pending by now has to do. */
-            if (!t->pending) hk_fatal("dvm: the stack is exhausted and no StackOverflowError could be made");
-            return NULL;
-        }
-        t->overflowing = true;
-        {
-            /*
-             * A stack this deep is a recursion that does not end, and the error's own trace is too long to be read for which
-             * one: the innermost frames go to the log, where the cycle shows. The first few times only; a program that
-             * catches the error and tries again would otherwise fill the log.
-             */
-            static volatile i32 said;
-            if (hk_atomic_add(&said, 1) <= 3) {
-                char text[1800];
-                size_t k = 0;
-                const hk_dvm_frame *up;
-                int n;
-                for (up = t->top, n = 0; up && n < 28 && k + 160 < sizeof(text); up = up->prev, n++)
-                    k += (size_t)snprintf(text + k, sizeof(text) - k, "%s%s.%s", n ? " < " : "", up->m->cls->name, up->m->name);
-                hk_warn("dvm: the stack is full %d frames deep, calling %s.%s; innermost first: %s", t->depth, m->cls->name, m->name, text);
-            }
-        }
-        hk_dvm_throw("java/lang/StackOverflowError", "%d frames deep, calling %s.%s", t->depth, m->cls->name, m->name);
-        t->overflowing = false;
+    if (t->overflowing && words + FRAME_WORDS <= (size_t)(limit - t->sp)) {
+        /* The making of the error itself, in the reserve. */
+        f = (hk_dvm_frame *)(void *)t->sp;
+        f->prev = t->top;
+        f->m = m;
+        f->regs = t->sp + FRAME_WORDS;
+        f->pc = 0;
+        f->entry = false;
+        f->sync = NULL;
+        f->prof_start = t->prof_total;
+        t->sp += FRAME_WORDS + words;
+        t->top = f;
+        t->depth++;
+        return f;
+    }
+    if (t->overflowing) {
+        /* Even the reserve is used up, by the making of the error itself: what is pending by now has to do. */
+        if (!t->pending) hk_fatal("dvm: the stack is exhausted and no StackOverflowError could be made");
         return NULL;
     }
+    t->overflowing = true;
+    {
+        /*
+         * A stack this deep is a recursion that does not end, and the error's own trace is too long to be read for which
+         * one: the innermost frames go to the log, where the cycle shows. The first few times only; a program that
+         * catches the error and tries again would otherwise fill the log.
+         */
+        static volatile i32 said;
+        if (hk_atomic_add(&said, 1) <= 3) {
+            char text[1800];
+            size_t k = 0;
+            const hk_dvm_frame *up;
+            int n;
+            for (up = t->top, n = 0; up && n < 28 && k + 160 < sizeof(text); up = up->prev, n++)
+                k += (size_t)snprintf(text + k, sizeof(text) - k, "%s%s.%s", n ? " < " : "", up->m->cls->name, up->m->name);
+            hk_warn("dvm: the stack is full %d frames deep, calling %s.%s; innermost first: %s", t->depth, m->cls->name, m->name, text);
+        }
+    }
+    hk_dvm_throw("java/lang/StackOverflowError", "%d frames deep, calling %s.%s", t->depth, m->cls->name, m->name);
+    t->overflowing = false;
+    return NULL;
+}
+
+/* A frame for `m` with `words` registers on the thread's stack, made the method being run. NULL when the stack is full (thrown). */
+static inline hk_dvm_frame *push_frame(hk_dvm_thread *t, hk_dvm_method *m, size_t words)
+{
+    hk_dvm_frame *f;
+    if (words + FRAME_WORDS > (size_t)(t->stack_end - t->sp)) return stack_full(t, m, words);
     f = (hk_dvm_frame *)(void *)t->sp;
     f->prev = t->top;
     f->m = m;
@@ -68,7 +89,7 @@ static hk_dvm_frame *push_frame(hk_dvm_thread *t, hk_dvm_method *m, size_t words
     return f;
 }
 
-static void pop_frame(hk_dvm_thread *t)
+static inline void pop_frame(hk_dvm_thread *t)
 {
     hk_dvm_frame *f = t->top;
     if (g_dvm.profiling) {
@@ -800,11 +821,14 @@ static bool interpret(hk_dvm_thread *t, hk_dvm_frame *f, hk_jvalue *ret)
             inv_idx = FETCH(1);
             inv_count = B4 > 5 ? 5 : B4;
             /* Only the registers the count names: the nibbles beyond it may name registers the method does not have. */
-            if (inv_count > 4) inv_five[4] = regs[A4];
-            if (inv_count > 3) inv_five[3] = regs[list >> 12];
-            if (inv_count > 2) inv_five[2] = regs[(list >> 8) & 0xF];
-            if (inv_count > 1) inv_five[1] = regs[(list >> 4) & 0xF];
-            if (inv_count > 0) inv_five[0] = regs[list & 0xF];
+            switch (inv_count) {
+            case 5: inv_five[4] = regs[A4]; /* fall through */
+            case 4: inv_five[3] = regs[list >> 12]; /* fall through */
+            case 3: inv_five[2] = regs[(list >> 8) & 0xF]; /* fall through */
+            case 2: inv_five[1] = regs[(list >> 4) & 0xF]; /* fall through */
+            case 1: inv_five[0] = regs[list & 0xF]; /* fall through */
+            default: break;
+            }
             inv_argv = inv_five;
             goto do_invoke;
         }
@@ -1009,11 +1033,19 @@ static bool interpret(hk_dvm_thread *t, hk_dvm_frame *f, hk_jvalue *ret)
         if (g_dvm.trace >= 2) hk_info("dvm: %*s-> %s.%s%s", t->depth, "", target->cls->name, target->name, target->sig);
         nf = push_frame(t, target, target->regs);
         if (!nf) goto exception;
-        /* The arguments are the callee's last registers, in the order and the widths the caller's hold them. */
+        /*
+         * The arguments are the callee's last registers, in the order and the widths the caller's hold them; the others
+         * start at zero. (Loops, not memset and memcpy: a call has a few registers, and the C library's calls cost more.)
+         */
         base = (u32)target->regs - target->ins;
         n = inv_count < target->ins ? inv_count : target->ins;
-        memset(nf->regs, 0, sizeof(hk_dvm_reg) * target->regs);
-        memcpy(nf->regs + base, inv_argv, sizeof(hk_dvm_reg) * n);
+        {
+            hk_dvm_reg *to = nf->regs;
+            u32 k;
+            for (k = 0; k < base; k++) to[k] = 0;
+            for (k = 0; k < n; k++) to[base + k] = inv_argv[k];
+            for (k = base + n; k < target->regs; k++) to[k] = 0;
+        }
         if (target->flags & DVM_ACC_SYNCHRONIZED) {
             nf->sync = (target->flags & DVM_ACC_STATIC) ? hk_dvm_mirror(target->cls) : self;
             if (nf->sync) hk_dvm_monitor_enter(nf->sync);
