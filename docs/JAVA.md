@@ -54,7 +54,7 @@ where; **expected** and **not verified** mean what they say.
 | `core/src/webp/` | WebP pictures decoded in the core: `hk_webp.c`, and libwebp's decoder compiled in where it is there, file by file |
 | `core/include/megler.h` | `megler_gfx_host`, the contract for the shell's drawing; `megler_window_host.present_pixels`; `megler_run_config.android_root` |
 | `core/framework-overlay/` | what differs here from the original's Java framework: files that replace the original's and members added to its classes, each saying at its top what differs and why |
-| `core/src/dvm/art/*.smali`, `hk_dvm_art_dex.h` | seven classes the runtime adds to libcore's: a security provider that stands in for conscrypt's, with SSLContexts whose connections fail politely and a trust manager factory that trusts nothing, and the getter libcore asks for the phone's time zone |
+| `core/src/dvm/art/*.smali`, `hk_dvm_art_dex.h` | seven classes the runtime adds to libcore's: a security provider that stands in for conscrypt's where conscrypt's library is not in the Android root, with SSLContexts whose connections fail politely and a trust manager factory that trusts nothing, and the getter libcore asks for the phone's time zone |
 | `tools/build-framework.sh` | builds the framework's DEX from the original's sources and the overlay |
 | `core/tests/app/`, `tools/build-test-app.sh` | the test apps, ordinary Android apps (aapt2, javac, d8), and their build |
 | `core/tests/hk_java_tests.c` | the test of the driver: the apps started through `megler_run`, their log and their pictures checked |
@@ -271,26 +271,29 @@ work: `libjavacore`, `libopenjdk`, `libicuuc`, `libicui18n`, `libnativehelper`,
   `Java_sun_nio_fs_UnixNativeDispatcher_...`, and those are found by name (a
   check that some were; 15 by the end of the two programs).
 - **Who answers each native method** (`bash tools/dvm-report.sh natives arm`):
-  the boot class path declares 1237 in 96 classes. The runtime answers 296 in
-  C, the libraries 645 (568 they registered, 77 found by their JNI names), and
-  296 have no answer: 280 of conscrypt's `NativeCrypto` (its library,
-  `libjavacrypto.so`, is not built) and 16 others (`sun.misc.Version` 4,
-  `NativeStart` 2, `Package` 2, `TimeZone` 2, `sun.nio.ch.Net` 2, and one each
-  of `Runtime`, `MethodHandleImpl`, `Constructor`, a test class). Calling one
-  is an `UnsatisfiedLinkError`.
+  the boot class path declares 1239 in 97 classes. The runtime answers 304 in
+  C, the libraries 923 (846 they registered, 77 found by their JNI names), and
+  12 have no answer (`sun.misc.Version` 4, `NativeStart` 2, `TimeZone` 2,
+  `sun.nio.ch.Net` 2, and one each of `MethodHandleImpl` and a test class).
+  Calling one is an `UnsatisfiedLinkError`. conscrypt's `NativeCrypto` has
+  280, all registered by `libjavacrypto.so` when `NativeCrypto` starts (the
+  report starts it; 2026-10-15); before that library was built they were
+  nobody's.
 - **Which static initialisers fail with the libraries** (`bash
-  tools/dvm-report.sh init arm`): of 7619, 7607 run. `NativeCrypto` itself and
-  ten of conscrypt's that follow from it cannot, for want of its library; and
-  `android.icu.text.Transliterator` did not finish in the 50 million
-  instructions each is given there, which is *not* shown to be a failure or
-  not to be one.
+  tools/dvm-report.sh init arm`): of 7624, 7620 run, conscrypt's
+  `NativeCrypto` and the ten that follow from it among them (2026-10-15;
+  before its library was built they could not). The four that did not each
+  used up the 50 million instructions they are given there, all in
+  `android.icu.text.UnicodeSet.applyFilter` (ICU's transliterators), which is
+  *not* shown to be a failure or not to be one.
 - **What apps use of `java.security`** (two more tests of `Lib`, against the
   JVM): `MessageDigest` MD5, SHA-1, SHA-256 and SHA-512, in one piece and in
   several; `SecureRandom` (bytes, ints, seeds); `UUID.randomUUID()` and the
   name-based kind; `CRC32` and `Adler32`; and one step further, `Mac`
   HmacSHA256, `Cipher` AES/CBC/PKCS5Padding there and back, PBKDF2 key
-  derivation, `Base64`. All give the JVM's answers. None of it is conscrypt's:
-  see "The security providers".
+  derivation, `Base64`. All give the JVM's answers. Under qemu, with
+  conscrypt's library in the root, it is conscrypt's; on the PC's build the
+  runtime's stand-in's: see "The security providers".
 
 ### A Java app with an Activity (qemu-arm)
 
@@ -634,7 +637,7 @@ and `kept`: the app leaves three rows and counts its runs; `tools/build-tests.sh
 runs it twice, the second time on the data folder of the first, and the
 second run must find the rows of the first and say that it is run 2.
 With the storage's, the battery's and the time zone's steps (below), one
-for a popup list, one for TLS, one for the key store's key pairs ("On
+for a popup list, three for TLS, one for the key store's key pairs ("On
 libcore"), one for the list of decoders (empty every way it is asked for,
 `createDecoderByType` an `IOException`, and no line that a class is missing)
 and seven for the network (docs/ARCHITECTURE.md, "The network": names,
@@ -985,7 +988,7 @@ the framework should not let it think (not looked into).
 | EGL and OpenGL ES from Java (`megler.EGLNative`, `GLES20` over ANGLE) | Device Info's GPU page; any `GLSurfaceView` | done (2026-10-14): "OpenGL ES from Java" above; on a phone not yet tried |
 | `megler.Web` (a `WebView`) | ads, licence and help pages in all three | very large; an empty rectangle today |
 | Processes (`Runtime.exec`) | root checkers and file managers probing `su`, `getprop`, `sh` | answered: "no such program" (`error=2`), for every program, `sh` included. An app that wants `getprop`'s output gets the exception, not an empty answer |
-| TLS (conscrypt's `libjavacrypto.so`) | anything that talks HTTPS; until then such a connection fails with an `SSLException` ("no TLS on this phone yet") | the two libraries, built like the other seven |
+| TLS (conscrypt's `libjavacrypto.so`) | anything that talks HTTPS | done (2026-10-14): the library is built like the other seven, over Android 9's own `libssl.so` ("The security providers"); TLS 1.2 on loopback and https through Android's HTTP client under qemu; on a phone not yet tried |
 | `invoke-custom`, method handles | not met in these three (d8 desugared them) | large |
 
 ### The phone's package
@@ -1801,8 +1804,39 @@ thing asks for any, and takes one that cannot be made for a broken system: an
 `AssertionError` in the static initialiser of `sun.security.jca.Providers`,
 after which there is no `MessageDigest`, no `SecureRandom` and no
 `UUID.randomUUID()` for the life of the process. That is what happened here
-at every app's start (the framework adds a provider of its own first thing),
-since conscrypt's library is not built.
+at every app's start (the framework adds a provider of its own first thing)
+while conscrypt's library was not built.
+
+It is built now (2026-10-14). `tools/android9-sources.sh` fetches
+`external/conscrypt`'s `common/src/jni` and its `Android.bp`, and `libssl.so`
+for ARMv7 from the same VNDK snapshot as `libcrypto.so`;
+`tools/android9-natives.sh` compiles `libjavacrypto.so` from them as Soong
+would for the platform (`JNI_JARJAR_PREFIX=com/android/`, so it answers
+`com.android.org.conscrypt.*`), Thumb-2 and VFPv3-D16 like the others, and
+links it against Android's own `libcrypto.so` and `libssl.so` (which alone are
+NEON code; every Windows phone's processor has NEON). It needs what Android's
+own does less `libc++.so`, and Megler's linker finds every import of it and of
+`libssl.so` (`tools/android9-natives/loadtest.sh`). `tools/dvm-android-root.sh`
+puts both in `lib/`, and Android 9's 137 certificate authorities in
+`etc/security/cacerts`, where conscrypt's `TrustedCertificateStore` reads them.
+With `lib/libjavacrypto.so` in the root, on a host that runs ARM code and
+where libcore's libraries loaded (`hk_dvm.c`), the list is Android's own:
+`System.loadLibrary("javacrypto")` loads it from the root when conscrypt's
+`NativeCrypto` first starts, its `JNI_OnLoad` registers conscrypt's natives,
+and digests, ciphers, key factories, certificates and TLS are conscrypt's over
+BoringSSL. The data app's `tls`, `tls-loopback` and `tls-https` steps show it
+under qemu: the platform's trust manager holds the 137 authorities and refuses
+a self-signed certificate; a TLS server and client of the app's own on
+127.0.0.1 shake hands (TLSv1.2, `TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256`
+-- ChaCha20 because BoringSSL sees no AES instructions), a line goes each way,
+and a client with the platform's trust is refused by the same server; and an
+https URL by name ("localhost", which the test certificate names) through
+Android's own HTTP client (`com.android.okhttp`, behind `URL.openConnection`)
+gets 200 and the body.
+
+What follows is what stands in where conscrypt's library is not in the root
+(an Android root made before the library was built, or the PC's own build of
+the tests, which cannot load ARM libraries).
 
 So while `lib/libjavacrypto.so` is not in the root, the list is changed just
 before that initialiser runs (a hook on class initialisation,
@@ -1835,7 +1869,8 @@ factory is `UnsupportedOperationException`; `KeyManagerFactory` is not
 there.) The data app's `tls` step asks for the contexts and the defaults, has
 the factory refuse a socket with that message, opens an https URL whose
 connection must fail as an `IOException`, and has the trust manager refuse a
-certificate. A cipher asked of "AndroidOpenSSL"
+certificate; it logs "tls-is none" (with conscrypt, "tls-is conscrypt"), and
+the test holds that against the root. A cipher asked of "AndroidOpenSSL"
 by name is not there.
 
 Key pairs are BouncyCastle's too, and that needed one thing more. Android 9
@@ -1872,7 +1907,8 @@ framework/core-oj.dex, core-libart.dex, conscrypt.dex, okhttp.dex, bouncycastle.
 framework/core-oj.jar, core-libart.jar       the jars as the device has them (no bytecode in them)
 framework/megler-framework.dex                  the Java framework (tools/build-framework.sh); for an app, not for libcore
 framework/framework-res.apk                   the platform's own resources, Android 9's; for an app
-lib/*.so                                      libcore's native libraries, 32-bit ARM
+lib/*.so                                      libcore's native libraries, 32-bit ARM, conscrypt's among them
+etc/security/cacerts/*                        the certificate authorities Android 9 trusts, for conscrypt
 usr/icu/icudt60l.dat                          ICU's data
 usr/share/zoneinfo/tzdata, tzlookup.xml       the time zones
 ```
@@ -2836,10 +2872,12 @@ native code is.
   own Winsock's (`bionic/hk_net.c`, `hk_netdb.c`; docs/ARCHITECTURE.md, "The
   network"), and `java.net`, `HttpURLConnection` over http and `java.nio`
   work on them under qemu.
-- **No TLS and no conscrypt**: `libjavacrypto.so` is not built (it needs
-  `libssl`). Digests, random numbers, MACs and ciphers are had without it
-  ("The security providers"); TLS and whatever asks conscrypt's provider by
-  name for more than a digest are not.
+- **TLS is conscrypt's** where `libjavacrypto.so` is in the root ("The
+  security providers"): seen under qemu, on loopback; not yet on a phone, and
+  not yet against a server on the Internet. Where it is not in the root,
+  digests, random numbers, MACs and ciphers are had without it, and TLS and
+  whatever asks conscrypt's provider by name for more than a digest are not.
+  conscrypt's `SSLEngine` (what Netty and gRPC use) has not been tried.
 - Bytecode cannot call a method of a class only C implements.
 - Thread interruption does not wake a waiting thread. A thread's state is not
   freed when it ends.
@@ -3294,7 +3332,7 @@ What stands between this and an app from a shop, as far as reading tells
   reads the `kotlin.Metadata` annotation, which is a run-time annotation with
   string arrays: read here.
 - **The big libraries**: an HTTP client needs sockets, which are here, and
-  TLS, which is not; a JSON library that reflects on generic field types needs
+  TLS, which is conscrypt's where its library is in the root; a JSON library that reflects on generic field types needs
   `Signature`, which is; dependency injection that generates code needs
   nothing; one that scans a `DexFile`'s class names gets them.
 - **A collector**, before any of them runs for long (below).
@@ -3521,8 +3559,9 @@ Still to change, for the steps above:
 `build/android9` (not in the repository; `tools/android9-*.sh` made it) has
 Android 9's boot class path as DEX files (`boot/`), the system image's
 `framework` folder, ICU's data and the time zones (`system/`), libcore's and
-ART's sources at `android-9.0.0_r47` (`aosp/`), and the seven native libraries
-built or taken for 32-bit ARM (`lib/`). Everything above runs from those, from
+ART's sources at `android-9.0.0_r47` (`aosp/`), and the nine native libraries
+built or taken for 32-bit ARM (`lib/`: conscrypt's `libjavacrypto.so` is built,
+`libcrypto.so` and `libssl.so` are Android 9's own from the VNDK snapshot). Everything above runs from those, from
 the original's repository beside this one (its Java framework's sources), and
 from what the build scripts make of them: `build/framework/megler-framework.dex`
 and `build/guest/java/*.apk`.
@@ -3531,7 +3570,6 @@ Not there:
 
 | What | For |
 |---|---|
-| `libjavacrypto.so` and `libssl.so` for 32-bit ARM | conscrypt: TLS, `SecureRandom`, message digests through the provider. Built from the same sources as the rest, not downloaded. |
 | R8 8.5 or later (Google's Maven, `com.android.tools:r8`, 10 to 15 MB) | only if the local d8's output of the framework proves unusable |
 | SQLite's source (sqlite.org, `sqlite-amalgamation-3540000.zip`) | (there: `build/sqlite`, fetched by `tools/sqlite-fetch.sh`) |
 

@@ -454,14 +454,17 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   Display page and Device Info on its CPU tab. Not tried on a phone.
   Not there: garbage collection (an app that animates lasts minutes); sound
   and WebView from Java; a `SurfaceView` drawn by native code; method
-  handles; conscrypt's native half (no TLS, so no https: plain sockets and
-  http are there, above, and not yet tried on a phone); other apps (the
+  handles; other apps (the
   package manager knows only the one running); Kotlin has run only as part of
   Device Info.
 - **Sound from files.** OpenSL ES players fed PCM through a buffer queue are mixed; a player given a file or a URL (which would need MP3/Ogg decoding here) is refused. AAudio is not there.
 - **The network on a phone.** Sockets and names work under qemu and on the PC
-  (the table above) and have not run on a phone. **TLS** is not there: an
-  https connection fails with an `SSLException`. Not there either: ancillary
+  (the table above) and have not run on a phone. **TLS** is conscrypt's
+  (2026-10-14: `libjavacrypto.so` built for ARMv7 over Android 9's own
+  `libssl.so`; docs/JAVA.md, "The security providers"): under qemu a TLS 1.2
+  handshake on loopback and an https request through Android's HTTP client
+  work, and the platform trusts Android 9's 137 certificate authorities; not
+  tried on a phone or against a server on the Internet. Not there: ancillary
   data over sockets (no descriptors passed), `AF_NETLINK` (an app asking the
   kernel for routes is told there is no such family), and a
   `ConnectivityManager` that follows the phone: the framework always says
