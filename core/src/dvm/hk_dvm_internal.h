@@ -219,11 +219,17 @@ struct hk_dvm_thread {
     hk_dvm_thread *next;
     u64 prof_total;                    /* instructions this thread has executed while the profile was on */
     /*
-     * Always counted (hk_dvm_thread_counts): instructions the interpreter has executed on this thread, as of its last call
+     * Always counted (hk_dvm_thread_costs): instructions the interpreter has executed on this thread, as of its last call
      * of a native method or return to C, and the time it has spent waiting in Object.wait (and so in Thread.sleep).
      */
     volatile u64 executed;
     volatile u64 waited_ns;
+    /*
+     * And where the rest of its time goes (hk_dvm_thread_costs): native methods (the outermost of nested ones, what they
+     * call back included), allocation made by bytecode, and waiting for a monitor another thread holds, from bytecode.
+     */
+    int native_depth;
+    volatile u64 native_ns, natives, alloc_ns, allocs, blocked_ns;
 };
 
 /* How much of a thread's stack only the making of a StackOverflowError may use, in registers. */

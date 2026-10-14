@@ -134,7 +134,7 @@ static bool invoke_native(hk_dvm_thread *t, hk_dvm_method *m, hk_jobj *self, con
     hk_dvm_frame *f;
     hk_jobj *sync = NULL, *target;
     const hk_jvalue *params = cparams;
-    u64 native_started = 0;
+    u64 native_started = 0, call_started = 0;
     bool is_static = (m->flags & DVM_ACC_STATIC) != 0;
     result->j = 0;
     if (!m->bound && !hk_dvm_bind_native(m)) return false;
@@ -154,6 +154,9 @@ static bool invoke_native(hk_dvm_thread *t, hk_dvm_method *m, hk_jobj *self, con
     }
     if (g_dvm.trace >= 2) hk_info("dvm: %*s-> %s.%s%s (native)", t->depth, "", m->cls->name, m->name, m->sig);
     if (g_dvm.profiling) native_started = hk_time_monotonic_ns();
+    /* The always-on count (hk_dvm_thread_costs): the outermost native method's time; one called back from it is in it. */
+    if (t->native_depth++ == 0) call_started = native_started ? native_started : hk_time_monotonic_ns();
+    t->natives++;
     if (m->native) {
         hk_jcall c;
         memset(&c, 0, sizeof(c));
@@ -177,6 +180,7 @@ static bool invoke_native(hk_dvm_thread *t, hk_dvm_method *m, hk_jobj *self, con
     } else {
         hk_dvm_throw("java/lang/UnsatisfiedLinkError", "%s.%s%s is in a library, and the way to it is gone", m->cls->name, m->name, m->sig);
     }
+    if (--t->native_depth == 0) t->native_ns += hk_time_monotonic_ns() - call_started;
     if (sync) hk_dvm_monitor_exit(sync);
     if (native_started) m->prof_ns += hk_time_monotonic_ns() - native_started;
     pop_frame(t);
@@ -451,7 +455,7 @@ static bool interpret(hk_dvm_thread *t, hk_dvm_frame *f, hk_jvalue *ret)
     const hk_dvm_reg *inv_argv = NULL;
     hk_dvm_reg inv_five[5];
     u16 w;
-    /* Instructions executed, given to the thread at each native call and at the way out (hk_dvm_thread_counts). */
+    /* Instructions executed, given to the thread at each native call and at the way out (hk_dvm_thread_costs). */
     u32 executed = 0;
     result.j = 0;
 

@@ -1004,10 +1004,11 @@ qemu, the window with the app's start, the drag of its list by half the screen
 and back, and the first dialog:
 
 ```
-java: frames 6.5 s: 34 drawn, 78.2 ms of work each on average (the longest frame 185.0 without input and messages): Java
-78.1 (input and messages 10.1, measure and layout 3.7, draw traversal 64.3), of it in the shell's drawing 62.2, present 0.1;
-idle 58%; interpreter 13.9 M instructions/s, 7.5 M executed on all threads; heap 8 MB (objects 7, nothing collected, 3 more
-in these 6.5 s; bitmaps 1); redrawn 100% of the screen a frame
+java: frames 6.6 s: 35 drawn, 79.9 ms of work each on average (the longest frame 184.2 without input and messages): Java
+79.8 (input and messages 10.1, measure and layout 3.5, draw traversal 66.2), of it in the shell's drawing 64.0, in other
+native methods 4.8 (2354 calls), allocating 0.4 (1063 objects), waiting for monitors 0.0, interpreting 10.6 at 20.2 M
+instructions/s; 7.6 M instructions on all threads; present 0.1; idle 57%; heap 8 MB (objects 7, nothing collected, 3 more
+in these 6.6 s; bitmaps 1); redrawn 100% of the screen a frame
 ```
 
 How it is had. The overlay's `megler/ViewRoot.java` calls
@@ -1015,16 +1016,21 @@ How it is had. The overlay's `megler/ViewRoot.java` calls
 `megler/Native.java.members`): as a frame begins with its measure and layout,
 as its draw traversal begins, and as it ends, with the pixels it drew. At each
 mark the driver (`hk_java.c`, "the frame meter") reads the main thread's clock
-and four sums the thread keeps all the time: its time in the shell's drawing
+and the sums the thread keeps all the time: its time in the shell's drawing
 (every call of `megler_gfx_host` in `hk_java_gfx.c` is timed, two readings of the
 clock a call, `hk_java_gfx_host_ns`), its time in `present`, its time waiting in
 `Object.wait` (and so `Thread.sleep`, and the main loop's wait for the next
-message) and its instructions executed (`hk_dvm_thread_counts`: the
+message), and from `hk_dvm_thread_costs`: its time in native methods and how
+many (the outermost of nested ones, timed in `invoke_native`), its time
+allocating for bytecode's own instructions and the objects it made
+(`alloc_raw`), its time waiting to enter a monitor another thread held (timed
+only when `hk_lock_try` fails), and its instructions executed (the
 interpreter counts in a local and hands the count to the thread at each call
 of a native method and each return to C). What passed since the mark before
 is added to the part of the frame it was spent in. Nothing is logged per call
 or per frame; the cost is an addition per instruction, two clock readings per
-call of the shell's drawing and three native calls a frame.
+native call, per allocation from bytecode and per call of the shell's drawing,
+and three native calls a frame.
 
 What each figure is, all in milliseconds per frame except where said:
 
@@ -1038,13 +1044,20 @@ What each figure is, all in milliseconds per frame except where said:
 - **Java**: that busy time less `present`, in its three parts: **input and
   messages** (between frames: the main loop, input, the app's messages and
   timers), **measure and layout**, **draw traversal**; and **of it in the
-  shell's drawing**, the calls of `megler_gfx_host` made in any of the three.
-  Other native methods (libcore's, an app's JNI) are in Java's time.
+  shell's drawing**, the calls of `megler_gfx_host` made in any of the three;
+  **in other native methods** (libcore's, the framework's own, an app's JNI:
+  the natives' time less the shell's drawing, `present` and the waits, all of
+  which happen inside natives) with how many native calls a frame;
+  **allocating** (bytecode's own `new-instance`, `new-array` and the like;
+  allocation inside a native is the native's) with how many objects a frame,
+  made anywhere; **waiting for monitors** another thread held; and
+  **interpreting**, the rest: bytecode, calls and returns, resolution, the
+  interpreter's own work.
 - **present**: handing the picture to the shell (`present_pixels`).
 - **idle**: the share of the line's time the main thread spent waiting.
-- **interpreter**: the main thread's instructions over its Java time less the
-  shell's drawing, so a measure of the interpreter's pace with other natives'
-  time still in it; and the instructions every thread executed in the time.
+- **at N M instructions/s**: the main thread's instructions over its
+  interpreting time, the interpreter's own pace; and then the instructions
+  every thread executed in the time.
 - **heap**: the runtime's objects -- every object made, since nothing is
   collected (and how much of it was made in the time the line covers) -- and
   the bitmaps' memory now; and the process's own use where the host knows it
@@ -1061,9 +1074,22 @@ instructions a second under qemu is qemu's figure. Once a list is on the
 screen measure and layout costs almost nothing (0.1 ms a frame in the windows
 after the first), and the draw traversal's own Java is 1 to 2 ms. The figures
 are exact for the main thread at the marks; a thread in a long stretch of
-bytecode without a native call is behind in "executed on all threads" until it
-makes one. Waiting other than `Object.wait` -- a monitor held by another
-thread, a read that blocks in a native -- counts as busy.
+bytecode without a native call is behind in "on all threads" until it
+makes one. A read that blocks inside a native counts as that native's time.
+
+What the phone said first (0.1.0.136, Apktool M, three and a half minutes):
+measure and layout 30 to 150 ms a frame, the shell's drawing only 10 to 17,
+present 2, never idle, and an interpreter pace of 5 to 8 M instructions/s
+against 52 at the start -- so most of the main thread's time was not
+bytecode, and the line then could not say what it was. The layout was a loop
+in the framework's lists (`AbsListView`, in the overlay's list). The
+breakdown into other natives, allocation, monitors and interpreting was added
+after it so that the next log says where the rest goes. Under qemu with the
+old lists, profiled (`HK_JAVA_PROFILE=after:3`): native methods other than
+drawing and waiting were small (`String.charAt` 2.4 million calls, half a
+second in all; listing directories 0.3 s); a fifth of all instructions were
+`String.format` for each row's size text, which the loop asked for again in
+every frame.
 
 `hk_tests --java demos` checks that the meter's lines are there with the whole
 run's last, that the run drew at least ten frames, and that the share is 100%.

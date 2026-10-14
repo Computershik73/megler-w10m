@@ -173,12 +173,19 @@ int hk_dvm_pending_stack(char *buf, size_t n);
 /* ------------------------------------------------------------ diagnostics */
 
 /*
- * The calling thread's instructions executed and time spent waiting (Object.wait, Thread.sleep), counted always; and the
- * instructions executed by every thread there has been. The counts move at each call of a native method and each return to
- * C, so a thread that is in a long stretch of bytecode is a little behind. For a frame meter, not for exactness.
+ * For a frame meter, counted always: the instructions executed by every thread there has been; and the calling thread's
+ * instructions executed, time spent waiting (Object.wait, Thread.sleep), time in native methods (the outermost of nested
+ * ones, what they called back included) and how many it called, time allocating objects for bytecode's own instructions
+ * (allocations inside native methods are in those) and how many objects it made in all, and time waiting to enter a
+ * monitor another thread held, from bytecode. Two readings of the clock a native call and an allocation. The instruction
+ * counts move at each call of a native method and each return to C, so a thread in a long stretch of bytecode is a little
+ * behind.
  */
-void hk_dvm_thread_counts(u64 *executed, u64 *waited_ns);
 u64 hk_dvm_executed_all(void);
+typedef struct hk_dvm_costs {
+    u64 executed, waited_ns, native_ns, natives, alloc_ns, allocs, blocked_ns;
+} hk_dvm_costs;
+void hk_dvm_thread_costs(hk_dvm_costs *out);
 
 /* 0: quiet. 1: classes linked and initialised, natives bound, exceptions thrown. 2: every call. 3: every instruction. */
 void hk_dvm_set_trace(int level);

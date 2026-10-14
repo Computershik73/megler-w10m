@@ -585,7 +585,8 @@ void hk_java_get_stats(hk_java_stats *out) { *out = J.stats; }
  * call or per frame. megler.ViewRoot.doFrame (overlaid for this) calls Native.frameMark(1) as a frame begins with its measure
  * and layout, frameMark(2) as its draw traversal begins and frameMark(3, pixels drawn) as it ends. At each mark the main
  * thread's clock, its time in the shell's drawing (hk_java_gfx_host_ns), in handing pictures over (present, above), in
- * Object.wait and Thread.sleep, and its instructions (hk_dvm_thread_counts) are read, and what passed since the mark before
+ * Object.wait and Thread.sleep, in native methods, allocating and waiting for monitors, and its instructions
+ * (hk_dvm_thread_costs) are read, and what passed since the mark before
  * goes to the part of the frame it was spent in: between frames (input, messages, and waiting for them), measure and
  * layout, the draw traversal. A line every five seconds while the app draws; at its end the last of them and one for the
  * whole run. docs/JAVA.md ("The frame meter") says what each figure is.
@@ -593,7 +594,7 @@ void hk_java_get_stats(hk_java_stats *out) { *out = J.stats; }
 enum { PART_BETWEEN, PART_LAYOUT, PART_DRAW, PARTS };
 
 typedef struct {
-    u64 wall, host, present, waited, executed;
+    u64 wall, host, present, waited, executed, native, natives, alloc, allocs, blocked;
 } meter_sum;
 
 typedef struct {
@@ -617,8 +618,16 @@ static void meter_read(meter_sum *r)
 {
     r->wall = hk_time_monotonic_ns();
     r->host = hk_java_gfx_host_ns();
+    hk_dvm_costs c;
     r->present = t_present_ns;
-    hk_dvm_thread_counts(&r->executed, &r->waited);
+    hk_dvm_thread_costs(&c);
+    r->executed = c.executed;
+    r->waited = c.waited_ns;
+    r->native = c.native_ns;
+    r->natives = c.natives;
+    r->alloc = c.alloc_ns;
+    r->allocs = c.allocs;
+    r->blocked = c.blocked_ns;
 }
 
 static void meter_start(meter_window *w, u64 now)
@@ -645,6 +654,11 @@ static void meter_advance(const meter_sum *now)
         p->present += now->present - M.last.present;
         p->waited += now->waited - M.last.waited;
         p->executed += now->executed - M.last.executed;
+        p->native += now->native - M.last.native;
+        p->natives += now->natives - M.last.natives;
+        p->alloc += now->alloc - M.last.alloc;
+        p->allocs += now->allocs - M.last.allocs;
+        p->blocked += now->blocked - M.last.blocked;
     }
     M.last = *now;
 }
@@ -655,9 +669,10 @@ static void meter_line(const char *what, const meter_window *w, u64 now)
 {
     hk_dvm_stats s;
     u64 busy[PARTS], java = 0, host = 0, present = 0, waited = 0, executed = 0, elapsed = now - w->started, screen;
-    u64 bitmap_bytes = 0, interpreted, process = hk_mem_usage();
+    u64 native = 0, natives = 0, alloc = 0, allocs = 0, blocked = 0, wall = 0, other, interpreted;
+    u64 bitmap_bytes = 0, process = hk_mem_usage();
     u32 bitmaps = 0, n = w->frames;
-    char of[40], redrawn[60], rates[100], mem[40];
+    char of[40], redrawn[60], rates[300], mem[40];
     int i;
     for (i = 0; i < PARTS; i++) {
         const meter_sum *p = &w->part[i];
@@ -668,6 +683,12 @@ static void meter_line(const char *what, const meter_window *w, u64 now)
         present += p->present;
         waited += p->waited;
         executed += p->executed;
+        native += p->native;
+        natives += p->natives;
+        alloc += p->alloc;
+        allocs += p->allocs;
+        blocked += p->blocked;
+        wall += p->wall;
     }
     hk_dvm_get_stats(&s);
     hk_java_gfx_stats(&bitmap_bytes, &bitmaps);
@@ -679,21 +700,27 @@ static void meter_line(const char *what, const meter_window *w, u64 now)
     else
         hk_strlcpy(redrawn, "nothing drawn", sizeof(redrawn));
     /*
-     * The interpreter's pace: the main thread's instructions over its Java time less the shell's drawing (the time in other
-     * natives stays in). And what every thread executed in the time, for the threads that are not the main one.
+     * Where Java's time went besides the shell's drawing. The shell's drawing, present and the waits all happen inside native
+     * methods, so the other natives are what is left of the natives' time without them. Interpreting is the rest: the time
+     * outside native methods, allocation and waits for monitors -- bytecode, calls and returns, resolution, the
+     * interpreter's own work. The pace is the instructions over that time. And what every thread executed.
      */
-    interpreted = java > host ? java - host : 0;
-    snprintf(rates, sizeof(rates), "interpreter %.1f M instructions/s, %.1f M executed on all threads",
-             interpreted ? (double)executed * 1e3 / (double)interpreted : 0.0, (double)(hk_dvm_executed_all() - w->all_executed) / 1e6);
+    other = native > host + present + waited ? native - host - present - waited : 0;
+    interpreted = wall > native + alloc + blocked ? wall - native - alloc - blocked : 0;
+    snprintf(rates, sizeof(rates), "in other native methods %.1f (%.0f calls), allocating %.1f (%.0f objects), waiting for monitors %.1f, "
+             "interpreting %.1f at %.1f M instructions/s; %.1f M instructions on all threads",
+             per_frame_ms(other, n), n ? (double)natives / n : 0.0, per_frame_ms(alloc, n), n ? (double)allocs / n : 0.0, per_frame_ms(blocked, n),
+             per_frame_ms(interpreted, n), interpreted ? (double)executed * 1e3 / (double)interpreted : 0.0,
+             (double)(hk_dvm_executed_all() - w->all_executed) / 1e6);
     mem[0] = 0;
     if (process) snprintf(mem, sizeof(mem), "; the process %u MB", (unsigned)(process >> 20));
     hk_info("java: frames %s%.1f s: %u drawn%s, %.1f ms of work each on average (the longest frame %.1f without input and messages): Java %.1f "
             "(input and messages %.1f, measure and layout %.1f, "
-            "draw traversal %.1f), of it in the shell's drawing %.1f, present %.1f; idle %u%%; %s; heap %u MB (objects %u, nothing collected, %u more in "
-            "these %.1f s; bitmaps %u)%s; %s",
+            "draw traversal %.1f), of it in the shell's drawing %.1f, %s; present %.1f; idle %u%%; heap %u MB (objects %u, nothing collected, %u "
+            "more in these %.1f s; bitmaps %u)%s; %s",
             what, (double)elapsed / 1e9, (unsigned)w->drawn, of, per_frame_ms(java + present, n), per_frame_ms(w->longest, 1), per_frame_ms(java, n),
-            per_frame_ms(busy[PART_BETWEEN], n), per_frame_ms(busy[PART_LAYOUT], n), per_frame_ms(busy[PART_DRAW], n), per_frame_ms(host, n),
-            per_frame_ms(present, n), (unsigned)(elapsed ? waited * 100 / elapsed : 0), rates,
+            per_frame_ms(busy[PART_BETWEEN], n), per_frame_ms(busy[PART_LAYOUT], n), per_frame_ms(busy[PART_DRAW], n), per_frame_ms(host, n), rates,
+            per_frame_ms(present, n), (unsigned)(elapsed ? waited * 100 / elapsed : 0),
             (unsigned)((s.object_bytes + bitmap_bytes) >> 20), (unsigned)(s.object_bytes >> 20), (unsigned)((s.object_bytes - w->object_bytes) >> 20),
             (double)elapsed / 1e9, (unsigned)(bitmap_bytes >> 20), mem, redrawn);
 }

@@ -15,11 +15,16 @@
 static HK_THREAD_LOCAL hk_dvm_thread *t_self;
 static hk_dvm_thread *g_threads;
 
-void hk_dvm_thread_counts(u64 *executed, u64 *waited_ns)
+void hk_dvm_thread_costs(hk_dvm_costs *out)
 {
     hk_dvm_thread *t = hk_dvm_self();
-    if (executed) *executed = t->executed;
-    if (waited_ns) *waited_ns = t->waited_ns;
+    out->executed = t->executed;
+    out->waited_ns = t->waited_ns;
+    out->native_ns = t->native_ns;
+    out->natives = t->natives;
+    out->alloc_ns = t->alloc_ns;
+    out->allocs = t->allocs;
+    out->blocked_ns = t->blocked_ns;
 }
 
 u64 hk_dvm_executed_all(void)
@@ -64,7 +69,12 @@ static hk_jobj *alloc_raw(hk_dvm_class *c, int kind, u64 body)
     hk_dvm_obj *o = NULL;
     size_t size = HK_DVM_HEADER + (size_t)body;
     i32 low;
+    hk_dvm_thread *self = hk_dvm_self();
+    /* The time it takes, for bytecode's own allocations: those made inside a native method are in that method's time. */
+    u64 started = self->native_depth ? 0 : hk_time_monotonic_ns();
+    self->allocs++;
     if (body <= 0x7FFF0000u) o = (hk_dvm_obj *)calloc(1, size);
+    if (started) self->alloc_ns += hk_time_monotonic_ns() - started;
     if (!o) {
         if (!g_out_of_memory) hk_fatal("dvm: out of memory (%u bytes for a %s)", (unsigned)body, c->name);
         hk_dvm_throw_object(g_out_of_memory);
@@ -442,7 +452,13 @@ void hk_dvm_monitor_enter(hk_jobj *o)
         m->count++;
         return;
     }
-    hk_lock_acquire(&m->mu);
+    if (!hk_lock_try(&m->mu)) {
+        /* Another thread has it: the wait, counted for bytecode's own monitor-enter (inside a native method it is the method's). */
+        hk_dvm_thread *self = hk_dvm_self();
+        u64 started = self->native_depth ? 0 : hk_time_monotonic_ns();
+        hk_lock_acquire(&m->mu);
+        if (started) self->blocked_ns += hk_time_monotonic_ns() - started;
+    }
     m->owner = me;
     m->count = 1;
 }
