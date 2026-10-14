@@ -1,0 +1,11 @@
+    // megler-w10m: members added to the original's android.content.ContextWrapper (tools/build-framework.sh, "X.java.members").
+    // A wrapper answers what the context it wraps answers. For the app's folders on the shared storage the original's
+    // wrapper passed on only getExternalFilesDir and let Context's own defaults work the rest out from that; an Activity is
+    // a wrapper, so getObbDir() and getExternalMediaDirs() asked of an Activity never reached the context that knows where
+    // those folders are (megler.ContextImpl, whose members file says where).
+    @Override public java.io.File getObbDir() { return b().getObbDir(); }
+    @Override public java.io.File[] getObbDirs() { return b().getObbDirs(); }
+    @Override public java.io.File[] getExternalMediaDirs() { return b().getExternalMediaDirs(); }
+    @Override public java.io.File getExternalCacheDir() { return b().getExternalCacheDir(); }
+    @Override public java.io.File[] getExternalCacheDirs() { return b().getExternalCacheDirs(); }
+    @Override public java.io.File[] getExternalFilesDirs(String type) { return b().getExternalFilesDirs(type); }

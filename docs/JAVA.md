@@ -1619,10 +1619,10 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: twelve files** in the overlay,
-ten of them a statement or a method each inside an otherwise untouched copy
+**What differs from the original's framework: thirteen files** in the overlay,
+eleven of them a statement or a method each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
-**and two files of members added** to classes of the original's.
+**and four files of members added** to classes of the original's.
 
 The second kind is for the platform's public members that the original's
 class does not have and an app calls -- a `NoSuchMethodError` where Android
@@ -1643,6 +1643,17 @@ no run reached them, `Typeface.Builder(FileDescriptor)`,
 `TextUtils.CHAR_SEQUENCE_CREATOR` (there, but of the wrong type),
 `PdfDocument.Page.getCanvas`, and members of Android 15 and 16 behind
 version checks.
+
+The other two files of members are the app's own folders on the shared
+storage. `megler/ContextImpl.java.members`: `getObbDir()` is
+`Android/obb/<package>` and `getExternalMediaDirs()` `Android/media/<package>`,
+each made when asked for; the original's `Context` worked both out from
+`getExternalFilesDir` and got `Android/data/<package>` (the parent of the
+files folder) for the first and the files folder itself for the second.
+`android/content/ContextWrapper.java.members`: a wrapper passes these, and
+`getExternalCacheDir(s)` and `getExternalFilesDirs`, on to the context it
+wraps; an Activity is a wrapper, and asked of an Activity they never reached
+the context that knows.
 
 - `android/webkit/MimeTypeMap.java`: the original hands its table to
   `libcore.content.type.MimeMap`, an Android 10 class; Android 9's `MimeUtils`
@@ -1690,6 +1701,13 @@ version checks.
   the shared storage, which the original's `StorageVolume` describes; a path
   that is no volume is "unknown". And `UUID_DEFAULT` is Android's constant
   (it was null), which is what `getUuidForPath` answers.
+- `android/os/Environment.java`: `getDataDirectory()` is `/data`, as on
+  Android; the original answered the app's own folder, so that the documented
+  `new File(getDataDirectory(), "data/" + packageName + ...)` named that
+  folder twice over. `getDownloadCacheDirectory()` is `/data/cache`. And four
+  generated signatures answer what the hand-written ones beside them answer:
+  `getStorageState(File)`, `isExternalStorageEmulated(File)`,
+  `isExternalStorageManager(File)`, `isStandardDirectory`.
 - `android/content/res/ResTable.java`, two methods: a resource is found by
   its name without indexing the whole package ("What an AlertDialog cost").
 - `android/content/res/Resources.java`, the class `Bag`: a style's items are
@@ -1747,7 +1765,7 @@ version checks.
   was empty on the second; it shows its seven headers and their screens.
   Not done: two panes, bread crumbs.
 
-The original has all eleven faults; they are its author's to take back.
+The original has all twelve faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in

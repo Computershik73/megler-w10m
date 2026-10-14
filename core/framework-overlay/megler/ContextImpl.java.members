@@ -1,0 +1,16 @@
+    // megler-w10m: members added to the original's megler.ContextImpl (tools/build-framework.sh, "X.java.members").
+    // The app's own folders on the shared storage other than its files: Android/obb/<package> and Android/media/<package>,
+    // made when first asked for, as Android makes them. The original's Context answers both from getExternalFilesDir:
+    // getObbDir() was Android/data/<package> -- the parent of the files folder, where an app that unpacks its expansion file
+    // would write beside its own cache -- and getExternalMediaDirs() the files folder itself.
+    @Override public File getObbDir() {
+        File f = new File(Native.externalDir(), "Android/obb/" + getPackageName());
+        f.mkdirs();
+        return f;
+    }
+    @Override public File[] getObbDirs() { return new File[] { getObbDir() }; }
+    @Override public File[] getExternalMediaDirs() {
+        File f = new File(Native.externalDir(), "Android/media/" + getPackageName());
+        f.mkdirs();
+        return new File[] { f };
+    }
