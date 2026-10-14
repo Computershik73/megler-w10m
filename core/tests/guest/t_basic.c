@@ -779,6 +779,38 @@ int t_ffcalls(const char *dir)
 }
 
 /*
+ * The system's fonts as Gecko and Chromium enumerate them (API 29): an iterator, each font's file under /system/fonts
+ * with a weight and a slant, and the end. Where there is no /system/fonts (the tests without an Android root) the
+ * iterator is empty. The number of fonts, or the negated step that failed.
+ */
+void *ASystemFontIterator_open(void);
+void *ASystemFontIterator_next(void *);
+void ASystemFontIterator_close(void *);
+void AFont_close(void *);
+const char *AFont_getFontFilePath(const void *);
+unsigned short AFont_getWeight(const void *);
+int AFont_isItalic(const void *);
+size_t AFont_getAxisCount(const void *);
+int strncmp(const char *, const char *, size_t);
+
+int t_fonts(void)
+{
+    void *it = ASystemFontIterator_open(), *f;
+    int n = 0;
+    if (!it) return -1;
+    while ((f = ASystemFontIterator_next(it)) != 0) {
+        const char *path = AFont_getFontFilePath(f);
+        unsigned short w = AFont_getWeight(f);
+        if (!path || strncmp(path, "/system/fonts/", 14) || w < 100 || w > 900 || AFont_getAxisCount(f) != 0) return -2;
+        if (strstr(path, "Italic") && !AFont_isItalic(f)) return -3;
+        AFont_close(f);
+        n++;
+    }
+    ASystemFontIterator_close(it);
+    return n;
+}
+
+/*
  * fnmatch, which Chromium's FileEnumerator asks of every name it lists: the number of the 16 cases that came out as POSIX
  * and bionic have them.
  */
