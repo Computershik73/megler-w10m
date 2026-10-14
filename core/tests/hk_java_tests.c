@@ -491,6 +491,8 @@ static int run_hello(void)
     CHECK(pixel(swatch[0] + 300, swatch[1] + 60 * dp) == 0x2060C0);
     CHECK(pixel(swatch[0] + 20, swatch[1] + 20) == 0xFF0000 && pixel(swatch[0] + 9, swatch[1] + 20) == 0x2060C0 && pixel(swatch[0] + 50, swatch[1] + 20) == 0x2060C0);
     CHECK(pixel(swatch[0] + 70, swatch[1] + 20) == 0x00C000 && pixel(swatch[0] + 90, swatch[1] + 20) == 0x2060C0);
+    /* A shape with no colour of its own, tinted, is filled with the tint, and its rounded corner leaves the field showing: Material's tab indicator. */
+    CHECK(pixel(swatch[0] + 40, swatch[1] + 65) == 0xC06020 && pixel(swatch[0] + 10, swatch[1] + 50) == 0x2060C0 && pixel(swatch[0] + 75, swatch[1] + 65) == 0x2060C0);
     /* The PNG from the resources, 16 pixels stretched to 64 dp: orange left, green right, a transparent border through which the layout's grey shows. */
     CHECK(pixel(mark[0] + mark[2] / 4, mark[1] + mark[3] / 2) == 0xFF8000 && pixel(mark[0] + 3 * mark[2] / 4, mark[1] + mark[3] / 2) == 0x00A040);
     CHECK(pixel(mark[0] + 1, mark[1] + 1) == 0xE0E0E0 && pixel(mark[0] + mark[2] + 100, mark[1] + mark[3] / 2) == 0xE0E0E0);

@@ -92,13 +92,13 @@ bash tools/build-tests.sh win      (MSVC x64, run on the PC; libcore's native li
 bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-float, under qemu-arm)
     3719 checks, 0 failed          on the built-in java.lang
     3759 checks, 0 failed          on libcore with its native libraries
-      38 checks, 0 failed          the Java test app hello, through megler_run
+      39 checks, 0 failed          the Java test app hello, through megler_run
       72 checks, 0 failed          the Java test app demos, the keyboard's 25 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
       12 checks, 0 failed          the Java test app crash: an exception nothing catches, and launcher aliases
       33 checks, 0 failed          the Java test app data: a database and the storage, the first run
       33 checks, 0 failed          data again, on what the first run left
-      38 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
+      39 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
     (then each app once more, its drawing recorded for the PC's run to draw again)
 ```
 
@@ -290,7 +290,7 @@ its resources (a `LinearLayout` with a `TextView`, a `Button`, a view of its own
 that draws with `Canvas`, and an `ImageView` of a PNG), strings and colours. It
 has no native library. `hk_tests --java hello ...` starts it through
 `megler_run`, on a 480 x 800 screen at 160 dpi so that a dp is a pixel, with a
-stand-in for the shell's drawing, and checks (38 checks):
+stand-in for the shell's drawing, and checks (39 checks):
 
 - **What the shell reads first**, `megler_apk_report`: the engine is `java`, the
   APK is runnable, and how its launcher activity asks to be held
@@ -312,7 +312,9 @@ stand-in for the shell's drawing, and checks (38 checks):
   other.
 - **The first picture**, on pixels: the drawn view's blue field, its red
   rectangle at (10,10)-(50,30) and nothing just outside it, its green one moved
-  by `translate`; the PNG stretched from 16 to 64 pixels with its orange and
+  by `translate`; a `GradientDrawable` with rounded corners and no colour but
+  a tint, filled with the tint and its corner left to the field; the PNG
+  stretched from 16 to 64 pixels with its orange and
   green halves and the layout's grey showing through its transparent border;
   black boxes where the text is.
 - **A touch on the button** (down and up through `megler_touch`): the
@@ -623,6 +625,10 @@ the first tab is inflated. In the order met:
    directory`, what Android says of a program that is not on the phone.
 5. `Class.forName("com.android.internal.os.PowerProfile")`: not there (the
    battery's capacity by reflection). The app catches it.
+
+   Shown wrong on the phone and put right since: the selected tab's label
+   all but invisible (the overlay's `GradientDrawable`); "Internal Storage
+   -2147483648%, Total: 0.0 GB" (the overlay's `StorageStatsManager`).
 
 6. `NoSuchMethodError: android/view/View.getDrawingTime()J` when the second
    tab was touched (a chart's animation), which ended the app. Added, with the
@@ -1668,8 +1674,8 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: thirteen files** in the overlay,
-eleven of them a statement or a method each inside an otherwise untouched copy
+**What differs from the original's framework: fourteen files** in the overlay,
+twelve of them a statement or a method each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and four files of members added** to classes of the original's.
 
@@ -1757,6 +1763,18 @@ the context that knows.
   generated signatures answer what the hand-written ones beside them answer:
   `getStorageState(File)`, `isExternalStorageEmulated(File)`,
   `isExternalStorageManager(File)`, `isStandardDirectory`.
+- `android/graphics/drawable/GradientDrawable.java`, two statements in
+  `draw`: a shape with neither a solid colour nor a gradient is filled all
+  the same when it is tinted or has a colour filter. Android's `draw` says so
+  in one line (`if (colorFilter != null && st.mSolidColors == null)
+  mFillPaint.setColor(mAlpha << 24)`): filled with opaque black, which the
+  filter turns into the tint. A `<shape>` that gives only its corners is the
+  usual way to say "this outline, in whatever colour I am tinted", and
+  Material's `TabLayout` tints its `tabIndicator` with `tabIndicatorColor`
+  exactly so. The original filled only a solid or a gradient, and such a
+  shape drew nothing: Device Info's indicator is a rounded rectangle in the
+  theme's primary colour behind the selected tab, whose label is white to be
+  read on it, and without it "Dashboard" was white on near-white.
 - `android/content/res/ResTable.java`, two methods: a resource is found by
   its name without indexing the whole package ("What an AlertDialog cost").
 - `android/content/res/Resources.java`, the class `Bag`: a style's items are
@@ -1814,7 +1832,7 @@ the context that knows.
   was empty on the second; it shows its seven headers and their screens.
   Not done: two panes, bread crumbs.
 
-The original has all twelve faults; they are its author's to take back.
+The original has all thirteen faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in
