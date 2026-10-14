@@ -451,10 +451,13 @@ static bool interpret(hk_dvm_thread *t, hk_dvm_frame *f, hk_jvalue *ret)
     const hk_dvm_reg *inv_argv = NULL;
     hk_dvm_reg inv_five[5];
     u16 w;
+    /* Instructions executed, given to the thread at each native call and at the way out (hk_dvm_thread_counts). */
+    u32 executed = 0;
     result.j = 0;
 
     for (;;) {
         w = insns[pc];
+        executed++;
         if (g_dvm.slow && !slow_step(t, f, pc)) goto exception;
         switch (w & 0xFF) {
         case 0x00:                                               /* nop */
@@ -960,6 +963,8 @@ static bool interpret(hk_dvm_thread *t, hk_dvm_frame *f, hk_jvalue *ret)
                 hk_dvm_throw("java/lang/AbstractMethodError", "%s.%s%s", target->cls->name, target->name, target->sig);
                 goto exception;
             }
+            t->executed += executed;
+            executed = 0;
             if (!invoke_native(t, target, self, inv_argv, NULL, &result)) goto exception;
             NEXT(3);
         }
@@ -986,6 +991,7 @@ static bool interpret(hk_dvm_thread *t, hk_dvm_frame *f, hk_jvalue *ret)
         if (f->entry) {
             *ret = result;
             pop_frame(t);
+            t->executed += executed;
             return true;
         }
         pop_frame(t);
@@ -1011,6 +1017,7 @@ static bool interpret(hk_dvm_thread *t, hk_dvm_frame *f, hk_jvalue *ret)
             if (f->sync) hk_dvm_monitor_exit(f->sync);
             if (f->entry) {
                 pop_frame(t);
+                t->executed += executed;
                 return false;
             }
             pop_frame(t);

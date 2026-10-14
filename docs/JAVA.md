@@ -93,7 +93,7 @@ bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-f
     4172 checks, 0 failed          on the built-in java.lang
     4227 checks, 0 failed          on libcore with its native libraries
       47 checks, 0 failed          the Java test app hello, through megler_run
-      72 checks, 0 failed          the Java test app demos, the keyboard's 25 among them
+      75 checks, 0 failed          the Java test app demos, the keyboard's 25 and the frame meter's 3 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
       13 checks, 0 failed          the Java test app crash: an exception nothing catches, launcher aliases, an app written for Android 6
       45 checks, 0 failed          the Java test app data: a database, the storage, the battery, the time zone and TLS, the first run
@@ -986,6 +986,79 @@ measured (the two mappings were logged) and is the first thing to fix before a
 phone with 1 GB runs this: one shared read-only mapping in
 `bionic/hk_libc_mem.c`.
 
+### The frame meter (always on; the check under qemu-arm)
+
+Where the main thread's time goes while a Java app draws, in the log, from the
+core's side: a line every five seconds while the app draws (at the end of the
+first frame after five seconds have passed; nothing while it draws nothing),
+and when the app ends the window not said yet and one line for the whole run.
+On the phone it is in the same log as everything else. One of `demos` under
+qemu, the window with the app's start, the drag of its list by half the screen
+and back, and the first dialog:
+
+```
+java: frames 6.5 s: 34 drawn, 77.6 ms each on average (longest 185.4): Java 77.4 (input and messages 9.6, measure and
+layout 3.6, draw traversal 64.2), of it in the shell's drawing 62.1, present 0.1; idle 59%; interpreter 14.3 M
+instructions/s, 7.5 M executed on all threads; heap 8 MB (objects 7, nothing collected, 3 more in these 6.5 s; bitmaps 1);
+redrawn 100% of the screen a frame
+```
+
+How it is had. The overlay's `megler/ViewRoot.java` calls
+`megler.Native.frameMark` three times in `doFrame` (a native added by
+`megler/Native.java.members`): as a frame begins with its measure and layout,
+as its draw traversal begins, and as it ends, with the pixels it drew. At each
+mark the driver (`hk_java.c`, "the frame meter") reads the main thread's clock
+and four sums the thread keeps all the time: its time in the shell's drawing
+(every call of `megler_gfx_host` in `hk_java_gfx.c` is timed, two readings of the
+clock a call, `hk_java_gfx_host_ns`), its time in `present`, its time waiting in
+`Object.wait` (and so `Thread.sleep`, and the main loop's wait for the next
+message) and its instructions executed (`hk_dvm_thread_counts`: the
+interpreter counts in a local and hands the count to the thread at each call
+of a native method and each return to C). What passed since the mark before
+is added to the part of the frame it was spent in. Nothing is logged per call
+or per frame; the cost is an addition per instruction, two clock readings per
+call of the shell's drawing and three native calls a frame.
+
+What each figure is, all in milliseconds per frame except where said:
+
+- **frames**: the time the line covers; frames drawn (that presented
+  something), and of how many when some drew nothing.
+- **each on average**: the main thread's busy time per frame (not waiting),
+  input and messages between frames included; **longest**: the longest frame
+  from its layout to its end, the time between frames not included.
+- **Java**: that busy time less `present`, in its three parts: **input and
+  messages** (between frames: the main loop, input, the app's messages and
+  timers), **measure and layout**, **draw traversal**; and **of it in the
+  shell's drawing**, the calls of `megler_gfx_host` made in any of the three.
+  Other native methods (libcore's, an app's JNI) are in Java's time.
+- **present**: handing the picture to the shell (`present_pixels`).
+- **idle**: the share of the line's time the main thread spent waiting.
+- **interpreter**: the main thread's instructions over its Java time less the
+  shell's drawing, so a measure of the interpreter's pace with other natives'
+  time still in it; and the instructions every thread executed in the time.
+- **heap**: the runtime's objects -- every object made, since nothing is
+  collected (and how much of it was made in the time the line covers) -- and
+  the bitmaps' memory now; and the process's own use where the host knows it
+  (the phone does, a test program does not).
+- **redrawn**: the share of the screen drawn per frame drawn. It is 100% and
+  will stay so until the framework keeps a dirty region: `drawAll` clears the
+  screen's bitmap and draws every window again whenever anything was
+  invalidated, so a cursor that blinks costs a whole screen.
+
+What the demos run says. Under qemu the shell's drawing is the test program's
+stand-in, in C, emulated: 62 of 77 ms, which says nothing about Direct2D on the
+phone; the phone's own lines will. The interpreter's 14 to 17 million
+instructions a second under qemu is qemu's figure. Once a list is on the
+screen measure and layout costs almost nothing (0.1 ms a frame in the windows
+after the first), and the draw traversal's own Java is 1 to 2 ms. The figures
+are exact for the main thread at the marks; a thread in a long stretch of
+bytecode without a native call is behind in "executed on all threads" until it
+makes one. Waiting other than `Object.wait` -- a monitor held by another
+thread, a read that blocks in a native -- counts as busy.
+
+`hk_tests --java demos` checks that the meter's lines are there with the whole
+run's last, that the run drew at least ten frames, and that the share is 100%.
+
 ### Measured, not tests
 
 - **`invoke-polymorphic` is not needed yet.** `python tools/dexasm.py dump
@@ -1402,7 +1475,9 @@ no native code or has it for 32-bit ARM.
   and call `Gfx.present`. That is `megler_window_host.present_pixels`: the
   picture as memory (B, G, R, A premultiplied, top row first), which the shell
   must copy before it returns. Nothing goes through OpenGL. A picture comes
-  when something changed, not at a steady rate.
+  when something changed, not at a steady rate. Where a frame's time goes is
+  said in the log every five seconds while the app draws ("The frame meter",
+  above).
 - **The end**: when its last activity is gone the framework calls
   `Native.exit`, which has the main `Looper` quit; `AppRunner.run` returns and
   the app is reported ended with status 0. `megler_stop` sets a flag the next
@@ -1909,8 +1984,8 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: twenty-five files** in the overlay,
-twenty-three of them a statement or a method each inside an otherwise untouched copy
+**What differs from the original's framework: twenty-six files** in the overlay,
+twenty-four of them a statement or a method each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and five files of members added** to classes of the original's.
 
@@ -2150,6 +2225,10 @@ the context that knows.
   average. QuickShortcutMaker 2.5.0 says it is written for Android 10, so its
   four tabs are each a quarter of what the four labels need, and the longest
   label is cut; by Android's code that is what Android does with this APK.
+
+- `megler/ViewRoot.java`, three calls and a field, and no fault of the
+  original's: `doFrame` tells the driver where a frame's phases begin and how
+  much of the screen it drew, for the frame meter ("The frame meter", above).
 
 - `android/preference/PreferenceActivity.java`, the largest: the activity's
   content and preference headers. Android's `onCreate` sets a layout in which

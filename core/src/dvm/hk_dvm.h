@@ -172,6 +172,14 @@ int hk_dvm_pending_stack(char *buf, size_t n);
 
 /* ------------------------------------------------------------ diagnostics */
 
+/*
+ * The calling thread's instructions executed and time spent waiting (Object.wait, Thread.sleep), counted always; and the
+ * instructions executed by every thread there has been. The counts move at each call of a native method and each return to
+ * C, so a thread that is in a long stretch of bytecode is a little behind. For a frame meter, not for exactness.
+ */
+void hk_dvm_thread_counts(u64 *executed, u64 *waited_ns);
+u64 hk_dvm_executed_all(void);
+
 /* 0: quiet. 1: classes linked and initialised, natives bound, exceptions thrown. 2: every call. 3: every instruction. */
 void hk_dvm_set_trace(int level);
 /*

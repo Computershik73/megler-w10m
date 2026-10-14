@@ -22,6 +22,8 @@ void hk_java_gfx_set_host(const megler_gfx_host *host);
 void hk_java_gfx_set_present(void (*fn)(void *user, const void *pixels, int width, int height, int stride), void *user);
 /* Bytes of bitmap memory now allocated and bitmaps alive, for the memory report. */
 void hk_java_gfx_stats(uint64_t *bitmap_bytes, uint32_t *bitmaps);
+/* Nanoseconds the calling thread has spent in the shell's drawing (the megler_gfx_host's calls), summed: the frame meter's. */
+u64 hk_java_gfx_host_ns(void);
 
 /*
  * A bitmap by its handle, which is what android.graphics.Bitmap keeps in its

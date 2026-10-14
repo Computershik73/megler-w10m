@@ -15,6 +15,23 @@
 static HK_THREAD_LOCAL hk_dvm_thread *t_self;
 static hk_dvm_thread *g_threads;
 
+void hk_dvm_thread_counts(u64 *executed, u64 *waited_ns)
+{
+    hk_dvm_thread *t = hk_dvm_self();
+    if (executed) *executed = t->executed;
+    if (waited_ns) *waited_ns = t->waited_ns;
+}
+
+u64 hk_dvm_executed_all(void)
+{
+    hk_dvm_thread *t;
+    u64 n = 0;
+    hk_dvm_lock();
+    for (t = g_threads; t; t = t->next) n += t->executed;
+    hk_dvm_unlock();
+    return n;
+}
+
 hk_dvm_thread *hk_dvm_self(void)
 {
     hk_dvm_thread *t = t_self;
@@ -465,7 +482,8 @@ bool hk_dvm_monitor_wait(hk_jobj *o, i64 ms)
          * wait to end for no reason, but code that sleeps by waiting should get the time it asked for.
          */
         u32 seen = m->notified;
-        u64 deadline = ms > 0 ? hk_time_monotonic_ns() + (u64)ms * 1000000ull : 0;
+        u64 started = hk_time_monotonic_ns(), deadline = ms > 0 ? started + (u64)ms * 1000000ull : 0;
+        hk_dvm_thread *self = hk_dvm_self();
         while (m->notified == seen) {
             u64 now;
             if (!deadline) {
@@ -476,6 +494,7 @@ bool hk_dvm_monitor_wait(hk_jobj *o, i64 ms)
             if (now >= deadline) break;
             hk_cond_wait_ns(&m->cv, &m->mu, deadline - now);
         }
+        self->waited_ns += hk_time_monotonic_ns() - started;
     }
     m->owner = me;
     m->count = held;

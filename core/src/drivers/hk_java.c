@@ -263,6 +263,7 @@ N(Native_screenWidth) { c->ret.i = J.config->width; }
 N(Native_screenHeight) { c->ret.i = J.config->height; }
 N(Native_density) { c->ret.f = (float)(J.config->density_dpi > 0 ? J.config->density_dpi : 160) / 160.0f; }
 N(Native_uptimeNanos) { c->ret.j = (i64)hk_time_monotonic_ns(); }
+static void Native_frameMark(hk_jcall *c);
 
 /*
  * The battery has been set to something else since the app was last told (hk_battery_set, from any thread; this is the
@@ -481,6 +482,7 @@ static const hk_jhle k_native[] = {
     { "megler/Native", "openUrl", NULL, Native_openUrl },
     { "megler/Native", "exit", NULL, Native_exit },
     { "megler/Native", "uptimeNanos", NULL, Native_uptimeNanos },
+    { "megler/Native", "frameMark", NULL, Native_frameMark },
     { NULL, NULL, NULL, NULL },
 };
 
@@ -548,17 +550,196 @@ static const hk_jhle k_absent[] = {
 
 /* ------------------------------------------------------------ the screen */
 
+/* The time each thread has spent in present: the frame meter's. */
+static HK_THREAD_LOCAL u64 t_present_ns;
+
 /* Gfx.present: the window's views, drawn. The shell is handed the picture; a frame is counted either way, so that a run with no shell can be followed. */
 static void present(void *user, const void *pixels, int width, int height, int stride)
 {
+    u64 started;
     (void)user;
     if (!pixels) return;
+    started = hk_time_monotonic_ns();
     if (J.config->window.present_pixels) J.config->window.present_pixels(J.config->window.user, pixels, width, height, stride);
     hk_run_count_frame();
     hk_atomic_add(&J.stats.frames, 1);
+    t_present_ns += hk_time_monotonic_ns() - started;
 }
 
 void hk_java_get_stats(hk_java_stats *out) { *out = J.stats; }
+
+/* ------------------------------------------------------- the frame meter */
+
+/*
+ * Where the main thread's time goes while the app draws, from the core's side and in summed counters: nothing is logged per
+ * call or per frame. megler.ViewRoot.doFrame (overlaid for this) calls Native.frameMark(1) as a frame begins with its measure
+ * and layout, frameMark(2) as its draw traversal begins and frameMark(3, pixels drawn) as it ends. At each mark the main
+ * thread's clock, its time in the shell's drawing (hk_java_gfx_host_ns), in handing pictures over (present, above), in
+ * Object.wait and Thread.sleep, and its instructions (hk_dvm_thread_counts) are read, and what passed since the mark before
+ * goes to the part of the frame it was spent in: between frames (input, messages, and waiting for them), measure and
+ * layout, the draw traversal. A line every five seconds while the app draws; at its end the last of them and one for the
+ * whole run. docs/JAVA.md ("The frame meter") says what each figure is.
+ */
+enum { PART_BETWEEN, PART_LAYOUT, PART_DRAW, PARTS };
+
+typedef struct {
+    u64 wall, host, present, waited, executed;
+} meter_sum;
+
+typedef struct {
+    u64 started, all_executed, object_bytes; /* at the beginning: the clock, every thread's instructions, the objects made */
+    u32 frames, drawn;
+    u64 longest, redrawn;                    /* the longest frame from mark 1 to mark 3; pixels drawn */
+    meter_sum part[PARTS];
+} meter_window;
+
+static struct {
+    const hk_dvm_thread *thread;             /* the main thread, at its first mark; NULL: no frame yet */
+    meter_sum last;                          /* the readings at the last mark (wall: the clock) */
+    int part;                                /* where the time since the last mark goes */
+    u64 frame_started;
+    meter_window window, run;
+} M;
+
+#define METER_EVERY_NS 5000000000ull
+
+static void meter_read(meter_sum *r)
+{
+    r->wall = hk_time_monotonic_ns();
+    r->host = hk_java_gfx_host_ns();
+    r->present = t_present_ns;
+    hk_dvm_thread_counts(&r->executed, &r->waited);
+}
+
+static void meter_start(meter_window *w, u64 now)
+{
+    hk_dvm_stats s;
+    memset(w, 0, sizeof(*w));
+    hk_dvm_get_stats(&s);
+    w->started = now;
+    w->all_executed = hk_dvm_executed_all();
+    w->object_bytes = s.object_bytes;
+}
+
+/* What has passed since the last mark, to the part it was spent in, in the window and in the run. */
+static void meter_advance(const meter_sum *now)
+{
+    meter_window *w[2];
+    int i;
+    w[0] = &M.window;
+    w[1] = &M.run;
+    for (i = 0; i < 2; i++) {
+        meter_sum *p = &w[i]->part[M.part];
+        p->wall += now->wall - M.last.wall;
+        p->host += now->host - M.last.host;
+        p->present += now->present - M.last.present;
+        p->waited += now->waited - M.last.waited;
+        p->executed += now->executed - M.last.executed;
+    }
+    M.last = *now;
+}
+
+static double per_frame_ms(u64 ns, u32 frames) { return frames ? (double)ns / 1e6 / frames : 0; }
+
+static void meter_line(const char *what, const meter_window *w, u64 now)
+{
+    hk_dvm_stats s;
+    u64 busy[PARTS], java = 0, host = 0, present = 0, waited = 0, executed = 0, elapsed = now - w->started, screen;
+    u64 bitmap_bytes = 0, interpreted, process = hk_mem_usage();
+    u32 bitmaps = 0, n = w->frames;
+    char of[40], redrawn[60], rates[100], mem[40];
+    int i;
+    for (i = 0; i < PARTS; i++) {
+        const meter_sum *p = &w->part[i];
+        /* The main thread's time in this part less its waiting and its presenting: Java, the shell's drawing included. */
+        busy[i] = p->wall > p->waited + p->present ? p->wall - p->waited - p->present : 0;
+        java += busy[i];
+        host += p->host;
+        present += p->present;
+        waited += p->waited;
+        executed += p->executed;
+    }
+    hk_dvm_get_stats(&s);
+    hk_java_gfx_stats(&bitmap_bytes, &bitmaps);
+    screen = (u64)(J.config->width > 0 ? J.config->width : 0) * (u64)(J.config->height > 0 ? J.config->height : 0);
+    of[0] = 0;
+    if (w->drawn != n) snprintf(of, sizeof(of), " of %u frames", (unsigned)n);
+    if (w->drawn && screen)
+        snprintf(redrawn, sizeof(redrawn), "redrawn %u%% of the screen a frame", (unsigned)(w->redrawn * 100 / (screen * w->drawn)));
+    else
+        hk_strlcpy(redrawn, "nothing drawn", sizeof(redrawn));
+    /*
+     * The interpreter's pace: the main thread's instructions over its Java time less the shell's drawing (the time in other
+     * natives stays in). And what every thread executed in the time, for the threads that are not the main one.
+     */
+    interpreted = java > host ? java - host : 0;
+    snprintf(rates, sizeof(rates), "interpreter %.1f M instructions/s, %.1f M executed on all threads",
+             interpreted ? (double)executed * 1e3 / (double)interpreted : 0.0, (double)(hk_dvm_executed_all() - w->all_executed) / 1e6);
+    mem[0] = 0;
+    if (process) snprintf(mem, sizeof(mem), "; the process %u MB", (unsigned)(process >> 20));
+    hk_info("java: frames %s%.1f s: %u drawn%s, %.1f ms each on average (longest %.1f): Java %.1f (input and messages %.1f, measure and layout %.1f, "
+            "draw traversal %.1f), of it in the shell's drawing %.1f, present %.1f; idle %u%%; %s; heap %u MB (objects %u, nothing collected, %u more in "
+            "these %.1f s; bitmaps %u)%s; %s",
+            what, (double)elapsed / 1e9, (unsigned)w->drawn, of, per_frame_ms(java + present, n), per_frame_ms(w->longest, 1), per_frame_ms(java, n),
+            per_frame_ms(busy[PART_BETWEEN], n), per_frame_ms(busy[PART_LAYOUT], n), per_frame_ms(busy[PART_DRAW], n), per_frame_ms(host, n),
+            per_frame_ms(present, n), (unsigned)(elapsed ? waited * 100 / elapsed : 0), rates,
+            (unsigned)((s.object_bytes + bitmap_bytes) >> 20), (unsigned)(s.object_bytes >> 20), (unsigned)((s.object_bytes - w->object_bytes) >> 20),
+            (double)elapsed / 1e9, (unsigned)(bitmap_bytes >> 20), mem, redrawn);
+}
+
+/* megler.Native.frameMark(phase, redrawn), from megler.ViewRoot.doFrame on the main thread. */
+N(Native_frameMark)
+{
+    int phase = c->args[0].i;
+    const hk_dvm_thread *self = hk_dvm_self();
+    meter_sum now;
+    if (M.thread && M.thread != self) return;
+    meter_read(&now);
+    if (!M.thread) {
+        M.thread = self;
+        M.last = now;
+        M.part = PART_BETWEEN;
+        meter_start(&M.window, now.wall);
+        M.run = M.window;
+    }
+    meter_advance(&now);
+    if (phase == 1) {
+        M.frame_started = now.wall;
+        M.part = PART_LAYOUT;
+    } else if (phase == 2) {
+        M.part = PART_DRAW;
+    } else if (phase == 3 && M.part != PART_BETWEEN) {
+        u64 took = now.wall - M.frame_started;
+        meter_window *w[2];
+        int i;
+        w[0] = &M.window;
+        w[1] = &M.run;
+        for (i = 0; i < 2; i++) {
+            w[i]->frames++;
+            if (c->args[1].i > 0) {
+                w[i]->drawn++;
+                w[i]->redrawn += (u64)c->args[1].i;
+            }
+            if (took > w[i]->longest) w[i]->longest = took;
+        }
+        M.part = PART_BETWEEN;
+        if (now.wall - M.window.started >= METER_EVERY_NS) {
+            meter_line("", &M.window, now.wall);
+            meter_start(&M.window, now.wall);
+        }
+    }
+}
+
+/* The app has ended (its main thread, AppRunner.run returned): the window that was not said yet, and the whole run. */
+static void meter_end(void)
+{
+    meter_sum now;
+    if (!M.thread || M.thread != hk_dvm_self()) return;
+    meter_read(&now);
+    meter_advance(&now);
+    if (M.window.frames) meter_line("", &M.window, now.wall);
+    meter_line("in all, ", &M.run, now.wall);
+}
 
 /* ------------------------------------------------------- the main thread */
 
@@ -770,6 +951,7 @@ static void main_thread(void *arg)
             shorten(what);
             snprintf(why, sizeof(why), "the app stopped because nothing caught %s%s%s%s, which ends an app on Android too", what, where[0] ? " (in " : "", where, where[0] ? ")" : "");
         }
+        meter_end();
     }
     free(framework);
     free(res);

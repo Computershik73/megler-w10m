@@ -134,6 +134,18 @@ typedef struct gface {
 } gface;
 
 static megler_gfx_host G;
+/*
+ * The time spent in the shell's drawing, summed for each thread: GFX(statement) runs a statement that calls G and adds what
+ * it took, by the clock. Two readings of the clock a call; the Java driver's frame meter reads the main thread's sum
+ * (hk_java_gfx_host_ns).
+ */
+static HK_THREAD_LOCAL u64 t_host_ns;
+#define GFX(statement)                                    \
+    do {                                                  \
+        u64 gfx_started_ = hk_time_monotonic_ns();        \
+        statement;                                        \
+        t_host_ns += hk_time_monotonic_ns() - gfx_started_; \
+    } while (0)
 static struct {
     void (*fn)(void *user, const void *pixels, int width, int height, int stride);
     void *user;
@@ -309,7 +321,7 @@ static void bm_settle(gbitmap *b)
     hk_lock_acquire(&g_lock);
     for (v = b->canvases; v; v = v->next)
         if (v->dirty) {
-            if (v->host && G.flush) G.flush(G.user, v->host);
+            if (v->host && G.flush) GFX(G.flush(G.user, v->host));
             v->dirty = false;
         }
     hk_lock_release(&g_lock);
@@ -338,9 +350,9 @@ static void bm_free(gbitmap *b)
      */
     for (v = b->canvases; v; v = v->next) {
         if (v->host) {
-            for (i = v->depth; i > 0 && G.restore; i--) G.restore(G.user, v->host);
-            if (v->dirty && G.flush) G.flush(G.user, v->host);
-            if (G.canvas_free) G.canvas_free(G.user, v->host);
+            for (i = v->depth; i > 0 && G.restore; i--) GFX(G.restore(G.user, v->host));
+            if (v->dirty && G.flush) GFX(G.flush(G.user, v->host));
+            if (G.canvas_free) GFX(G.canvas_free(G.user, v->host));
         }
         v->host = NULL;
         v->bm = NULL;
@@ -349,7 +361,7 @@ static void bm_free(gbitmap *b)
     g_bytes -= (u64)b->stride * (u64)b->h;
     g_count--;
     hk_lock_release(&g_lock);
-    if (G.bitmap_gone) G.bitmap_gone(G.user, b->id);
+    if (G.bitmap_gone) GFX(G.bitmap_gone(G.user, b->id));
     b->magic = 0;
     free(b->px);
     free(b);
@@ -1181,7 +1193,7 @@ static void cv_send_matrix(gcanvas *v, const float *m)
 {
     if (!v->host || memcmp(v->sent, m, sizeof(v->sent)) == 0) return;
     memcpy(v->sent, m, sizeof(v->sent));
-    if (HAS(set_matrix)) G.set_matrix(G.user, v->host, m);
+    if (HAS(set_matrix)) GFX(G.set_matrix(G.user, v->host, m));
 }
 
 /* Whether a drawing call through the canvas now reaches every pixel of the bitmap: nothing saved, so no layer, and nothing taken from the clip. */
@@ -1202,14 +1214,14 @@ static void cv_changes(gcanvas *v, bool replaces)
     for (o = v->bm->canvases; o; o = o->next) {
         if (o == v) continue;
         if (o->dirty) {
-            if (o->host && G.flush) G.flush(G.user, o->host);
+            if (o->host && G.flush) GFX(G.flush(G.user, o->host));
             o->dirty = false;
             v->stale = true;
         }
         o->stale = true;
     }
     if (v->stale) {
-        if (G.touched && !replaces) G.touched(G.user, v->host);
+        if (G.touched && !replaces) GFX(G.touched(G.user, v->host));
         v->stale = false;
     }
     v->dirty = true;
@@ -1244,8 +1256,8 @@ static i32 cv_save(gcanvas *v, const float *bounds, bool layer, int alpha, int b
     }
     if (v->host) {
         /* A layer the shell cannot make is still a save: the restores must go on matching. */
-        if (layer && HAS(save_layer)) G.save_layer(G.user, v->host, bounds, alpha, blend);
-        else if (HAS(save)) G.save(G.user, v->host);
+        if (layer && HAS(save_layer)) GFX(G.save_layer(G.user, v->host, bounds, alpha, blend));
+        else if (HAS(save)) GFX(G.save(G.user, v->host));
     }
     /* What Canvas.save returns: the count before it, the number restoreToCount takes to undo it. */
     return v->depth;
@@ -1260,7 +1272,7 @@ static void cv_restore(gcanvas *v)
     if (v->host) {
         /* A layer ending is drawing: it is put onto the picture now. */
         if (layer && v->bm) cv_changes(v, false);
-        if (HAS(restore)) G.restore(G.user, v->host);
+        if (HAS(restore)) GFX(G.restore(G.user, v->host));
         cv_send_matrix(v, cv_state(v)->m);
     }
 }
@@ -1278,8 +1290,8 @@ static void cv_free(gcanvas *v)
             }
     }
     if (v->host) {
-        if (v->dirty && G.flush) G.flush(G.user, v->host);
-        if (G.canvas_free) G.canvas_free(G.user, v->host);
+        if (v->dirty && G.flush) GFX(G.flush(G.user, v->host));
+        if (G.canvas_free) GFX(G.canvas_free(G.user, v->host));
     }
     hk_lock_release(&g_lock);
     v->magic = 0;
@@ -1316,7 +1328,7 @@ N(G_bmErase)
         if (through->host && cv_whole(through)) break;
     hk_lock_release(&g_lock);
     if (through && G.draw_color && cv_draw(through, true)) {
-        G.draw_color(G.user, through->host, (u32)c->args[1].i, MEGLER_GFX_BLEND_SRC);
+        GFX(G.draw_color(G.user, through->host, (u32)c->args[1].i, MEGLER_GFX_BLEND_SRC));
         return;
     }
     bm_settle(b);
@@ -1429,7 +1441,7 @@ N(G_bmDecode)
     i32 sample = c->args[3].i, *wh = (i32 *)elements(c->args[4].l, 'I', 2);
     int w = 0, h = 0;
     gbitmap *b;
-    bool webp;
+    bool webp, decoded = false;
     if (!data || off < 0 || n <= 0 || off + n > len) return;
     if (sample < 1) sample = 1;
     data += (size_t)off;
@@ -1444,8 +1456,10 @@ N(G_bmDecode)
     }
     if (webp) {
         if (!hk_webp_size(data, (size_t)n, &w, &h)) return;
-    } else if (!HAS(image_size) || !G.image_size(G.user, data, (size_t)n, &w, &h) || w <= 0 || h <= 0) {
-        return;
+    } else {
+        bool sized = false;
+        if (HAS(image_size)) GFX(sized = G.image_size(G.user, data, (size_t)n, &w, &h));
+        if (!sized || w <= 0 || h <= 0) return;
     }
     w = w / sample > 0 ? w / sample : 1;
     h = h / sample > 0 ? h / sample : 1;
@@ -1459,7 +1473,9 @@ N(G_bmDecode)
     if (!webp && !HAS(image_decode)) return;
     b = bm_new(w, h);
     if (!b) return;
-    if (webp ? !hk_webp_decode(data, (size_t)n, b->px, b->w, b->h, b->stride) : !G.image_decode(G.user, data, (size_t)n, b->px, b->w, b->h, b->stride)) {
+    if (webp) decoded = hk_webp_decode(data, (size_t)n, b->px, b->w, b->h, b->stride);
+    else GFX(decoded = G.image_decode(G.user, data, (size_t)n, b->px, b->w, b->h, b->stride));
+    if (!decoded) {
         bm_free(b);
         return;
     }
@@ -1499,12 +1515,14 @@ N(G_bmCompress)
     i32 quality = c->args[2].i;
     gbytes out;
     hk_jobj *array;
+    bool encoded = false;
     if (!b || !HAS(image_encode)) return;
     memset(&out, 0, sizeof(out));
     bm_settle(b);
     if (quality < 0) quality = 0;
     if (quality > 100) quality = 100;
-    if (G.image_encode(G.user, b->px, b->w, b->h, b->stride, c->args[1].i == 0 ? MEGLER_GFX_JPEG : MEGLER_GFX_PNG, quality, bytes_write, &out) && out.size) {
+    GFX(encoded = G.image_encode(G.user, b->px, b->w, b->h, b->stride, c->args[1].i == 0 ? MEGLER_GFX_JPEG : MEGLER_GFX_PNG, quality, bytes_write, &out));
+    if (encoded && out.size) {
         array = hk_dvm_new_array("[B", (i32)out.size);
         if (array) memcpy(array->u.arr.data, out.data, out.size);
         c->ret.l = array;
@@ -1521,7 +1539,7 @@ static void bm_copy_drawn(gbitmap *s, i32 x, i32 y, i32 w, i32 h, const float *m
     float src[4], dst[4];
     void *cv;
     if (!HAS(canvas_new) || !HAS(draw_bitmap)) return;
-    cv = G.canvas_new(G.user, d->px, d->w, d->h, d->stride);
+    GFX(cv = G.canvas_new(G.user, d->px, d->w, d->h, d->stride));
     if (!cv) return;
     paint_of(NULL, &def);
     p = def.p;
@@ -1534,10 +1552,10 @@ static void bm_copy_drawn(gbitmap *s, i32 x, i32 y, i32 w, i32 h, const float *m
     dst[0] = dst[1] = 0;
     dst[2] = (float)w;
     dst[3] = (float)h;
-    if (G.set_matrix) G.set_matrix(G.user, cv, m);
-    G.draw_bitmap(G.user, cv, &image, src, dst, &p);
-    if (G.flush) G.flush(G.user, cv);
-    if (G.canvas_free) G.canvas_free(G.user, cv);
+    if (G.set_matrix) GFX(G.set_matrix(G.user, cv, m));
+    GFX(G.draw_bitmap(G.user, cv, &image, src, dst, &p));
+    if (G.flush) GFX(G.flush(G.user, cv));
+    if (G.canvas_free) GFX(G.canvas_free(G.user, cv));
 }
 
 /*
@@ -1607,7 +1625,7 @@ N(G_cvNew)
     /* What other canvases have drawn is in the memory before the shell reads it as this one's picture. */
     bm_settle(b);
     /* Without the shell's half the canvas still counts saves and keeps its matrix and clip, so that the Java's bookkeeping holds; it draws nothing. */
-    if (HAS(canvas_new)) v->host = G.canvas_new(G.user, b->px, b->w, b->h, b->stride);
+    if (HAS(canvas_new)) GFX(v->host = G.canvas_new(G.user, b->px, b->w, b->h, b->stride));
     hk_lock_acquire(&g_lock);
     v->next = b->canvases;
     b->canvases = v;
@@ -1718,7 +1736,7 @@ N(G_cvClipRect)
     s->clipped = true;
     if (op == MEGLER_GFX_CLIP_INTERSECT) clip_intersect(s, box);
     else if (s->m[1] == 0 && s->m[3] == 0) clip_difference(s, box);
-    if (v->host && HAS(clip_rect)) G.clip_rect(G.user, v->host, l, t, r, b, op);
+    if (v->host && HAS(clip_rect)) GFX(G.clip_rect(G.user, v->host, l, t, r, b, op));
     c->ret.z = !s->empty;
 }
 
@@ -1745,7 +1763,7 @@ N(G_cvClipPath)
             clip_intersect(s, box);
         }
     }
-    if (v->host && HAS(clip_path)) G.clip_path(G.user, v->host, p.v, p.n, fill, op);
+    if (v->host && HAS(clip_path)) GFX(G.clip_path(G.user, v->host, p.v, p.n, fill, op));
     path_free(&p);
     c->ret.z = !s->empty;
 }
@@ -1781,7 +1799,7 @@ N(G_cvDrawColor)
     int blend = blend_number(c->args[2].i);
     bool replaces = blend == MEGLER_GFX_BLEND_SRC || blend == MEGLER_GFX_BLEND_CLEAR;
     if (blend == MEGLER_GFX_BLEND_DST || !v || !v->host || !HAS(draw_color) || !cv_draw(v, replaces && cv_whole(v))) return;
-    G.draw_color(G.user, v->host, (u32)c->args[1].i, blend);
+    GFX(G.draw_color(G.user, v->host, (u32)c->args[1].i, blend));
 }
 
 static void draw_rect(gcanvas *v, float l, float t, float r, float b, const gpaint *p, void *shader)
@@ -1798,13 +1816,13 @@ static void draw_rect(gcanvas *v, float l, float t, float r, float b, const gpai
         b = swap;
     }
     if (!v || !v->host || !HAS(draw_rect) || !cv_draw(v, false)) return;
-    G.draw_rect(G.user, v->host, l, t, r, b, &p->p, shader);
+    GFX(G.draw_rect(G.user, v->host, l, t, r, b, &p->p, shader));
 }
 
 static void draw_path(gcanvas *v, const gpath *path, int fill, const gpaint *p, void *shader)
 {
     if (!v || !v->host || !path_draws(path) || !HAS(draw_path) || !cv_draw(v, false)) return;
-    G.draw_path(G.user, v->host, path->v, path->n, fill, &p->p, shader);
+    GFX(G.draw_path(G.user, v->host, path->v, path->n, fill, &p->p, shader));
 }
 
 /* (long, l, t, r, b, int[] paint, long shader) */
@@ -1841,7 +1859,7 @@ N(G_cvDrawRRect)
         return;
     }
     if (!v || !v->host || !HAS(draw_round_rect) || !cv_draw(v, false)) return;
-    G.draw_round_rect(G.user, v->host, l, t, r, b, rx, ry, &p.p, shader);
+    GFX(G.draw_round_rect(G.user, v->host, l, t, r, b, rx, ry, &p.p, shader));
 }
 
 /* (long, l, t, r, b, int[] paint, long shader) */
@@ -1863,7 +1881,7 @@ N(G_cvDrawOval)
         b = swap;
     }
     if (!v || !v->host || !HAS(draw_oval) || !cv_draw(v, false)) return;
-    G.draw_oval(G.user, v->host, l, t, r, b, &p.p, shader);
+    GFX(G.draw_oval(G.user, v->host, l, t, r, b, &p.p, shader));
 }
 
 /* (long, l, t, r, b, float start, float sweep, boolean useCenter, int[] paint, long shader): the arc alone, or the wedge to the oval's centre. */
@@ -1973,7 +1991,7 @@ static void draw_bitmap(gcanvas *v, gbitmap *b, float *src, float *dst, hk_jobj 
     bm_settle(b);
     if (!cv_draw(v, false)) return;
     image_of(b, &image);
-    G.draw_bitmap(G.user, v->host, &image, src, dst, &p.p);
+    GFX(G.draw_bitmap(G.user, v->host, &image, src, dst, &p.p));
 }
 
 /* (long cv, long bm, sl, st, sr, sb, dl, dt, dr, db, int[] paint or null) */
@@ -2038,7 +2056,10 @@ static const u16 *text_of(hk_jobj *s, i32 start, i32 end, i32 *count)
 
 static float text_width(const u16 *text, i32 count, const gpaint *p, void *face)
 {
-    return count > 0 && HAS(text_measure) ? number(G.text_measure(G.user, text, count, &p->p, face), 0) : 0;
+    float width = 0;
+    if (count <= 0 || !HAS(text_measure)) return 0;
+    GFX(width = G.text_measure(G.user, text, count, &p->p, face));
+    return number(width, 0);
 }
 
 /*
@@ -2059,7 +2080,7 @@ N(G_cvDrawText)
     gpaint p;
     text = text_of(c->args[1].l, c->args[2].i, c->args[3].i, &count);
     if (!v || !v->host || !text || count <= 0 || !paint_for(c->args[6].l, !shader, &p)) return;
-    if (HAS(draw_text) && cv_draw(v, false)) G.draw_text(G.user, v->host, text, count, x, y, &p.p, face, shader);
+    if (HAS(draw_text) && cv_draw(v, false)) GFX(G.draw_text(G.user, v->host, text, count, x, y, &p.p, face, shader));
     if (!p.underline && !p.strike) return;
     width = text_width(text, count, &p, face);
     size = p.p.text_size;
@@ -2096,7 +2117,7 @@ N(G_txMetrics)
     int i;
     paint_of(c->args[0].l, &p);
     if (!HAS(text_metrics)) return;
-    spacing = G.text_metrics(G.user, &p.p, tf_host(c->args[1].j), m);
+    GFX(spacing = G.text_metrics(G.user, &p.p, tf_host(c->args[1].j), m));
     if (out)
         for (i = 0; i < 5; i++) out[i] = number(m[i], 0);
     c->ret.f = number(spacing, 0);
@@ -2113,7 +2134,7 @@ N(G_txBounds)
     out[0] = out[1] = out[2] = out[3] = 0;
     paint_of(c->args[3].l, &p);
     if (!text || count <= 0 || !HAS(text_bounds)) return;
-    G.text_bounds(G.user, text, count, &p.p, tf_host(c->args[4].j), box);
+    GFX(G.text_bounds(G.user, text, count, &p.p, tf_host(c->args[4].j), box));
     if (!(box[2] > box[0]) || !(box[3] > box[1])) return;
     out[0] = whole(floor(box[0]));
     out[1] = whole(floor(box[1]));
@@ -2137,7 +2158,7 @@ N(G_txBreak)
     paint_of(c->args[4].l, &p);
     if (!text || count <= 0 || !HAS(text_break)) return;
     if (!(max_width > 0)) return;
-    fit = G.text_break(G.user, text, count, max_width, &p.p, tf_host(c->args[5].j), c->args[6].z != 0);
+    GFX(fit = G.text_break(G.user, text, count, max_width, &p.p, tf_host(c->args[5].j), c->args[6].z != 0));
     c->ret.i = fit < 0 ? 0 : fit > count ? count : fit;
 }
 
@@ -2151,7 +2172,7 @@ N(G_txWidths)
     paint_of(c->args[3].l, &p);
     if (!text || count <= 0) return;
     out = (float *)elements(c->args[5].l, 'F', (u32)count);
-    if (out && HAS(text_widths)) G.text_widths(G.user, text, count, &p.p, tf_host(c->args[4].j), out);
+    if (out && HAS(text_widths)) GFX(G.text_widths(G.user, text, count, &p.p, tf_host(c->args[4].j), out));
 }
 
 /* --------------------------------------------------------- Gfx: typefaces */
@@ -2189,7 +2210,7 @@ N(G_tfCreate)
     else if (strstr(family, "black")) weight = 900;
     if (strstr(family, "mono")) generic = MEGLER_GFX_MONOSPACE;
     else if (strstr(family, "serif") && !strstr(family, "sans")) generic = MEGLER_GFX_SERIF;
-    if (HAS(typeface_create)) host = G.typeface_create(G.user, family, generic, weight, (style & 2) != 0);
+    if (HAS(typeface_create)) GFX(host = G.typeface_create(G.user, family, generic, weight, (style & 2) != 0));
     c->ret.j = handle(tf_new(host, weight, (style & 2) != 0));
 }
 
@@ -2214,7 +2235,7 @@ N(G_tfDerive)
         if (g_derived[i].from == from && g_derived[i].weight == weight && g_derived[i].italic == italic) made = g_derived[i].made;
     hk_lock_release(&g_lock);
     if (!made) {
-        if (HAS(typeface_derive)) host = G.typeface_derive(G.user, from->host, weight, italic);
+        if (HAS(typeface_derive)) GFX(host = G.typeface_derive(G.user, from->host, weight, italic));
         made = tf_new(host, weight, italic);
         hk_lock_acquire(&g_lock);
         if (g_nderived == g_cap_derived) {
@@ -2237,7 +2258,7 @@ N(G_tfFromData)
     const u8 *data = (const u8 *)elements(c->args[0].l, 'B', 1);
     void *host;
     if (!data || !HAS(typeface_from_data)) return;
-    host = G.typeface_from_data(G.user, data, length_of(c->args[0].l));
+    GFX(host = G.typeface_from_data(G.user, data, length_of(c->args[0].l)));
     if (host) c->ret.j = handle(tf_new(host, 400, false));
 }
 
@@ -2298,8 +2319,8 @@ N(G_shLinear)
     gstops s;
     if (!HAS(shader_linear)) return;
     stops_of(c->args[4].l, c->args[5].l, &s);
-    c->ret.j = handle(G.shader_linear(G.user, c->args[0].f, c->args[1].f, c->args[2].f, c->args[3].f, s.colors, s.positions, s.count,
-                                      tile_number(c->args[6].i)));
+    GFX(c->ret.j = handle(G.shader_linear(G.user, c->args[0].f, c->args[1].f, c->args[2].f, c->args[3].f, s.colors, s.positions, s.count,
+                                          tile_number(c->args[6].i))));
     stops_free(&s);
 }
 
@@ -2309,7 +2330,7 @@ N(G_shRadial)
     gstops s;
     if (!HAS(shader_radial)) return;
     stops_of(c->args[3].l, c->args[4].l, &s);
-    c->ret.j = handle(G.shader_radial(G.user, c->args[0].f, c->args[1].f, c->args[2].f, s.colors, s.positions, s.count, tile_number(c->args[5].i)));
+    GFX(c->ret.j = handle(G.shader_radial(G.user, c->args[0].f, c->args[1].f, c->args[2].f, s.colors, s.positions, s.count, tile_number(c->args[5].i))));
     stops_free(&s);
 }
 
@@ -2319,7 +2340,7 @@ N(G_shSweep)
     gstops s;
     if (!HAS(shader_sweep)) return;
     stops_of(c->args[2].l, c->args[3].l, &s);
-    c->ret.j = handle(G.shader_sweep(G.user, c->args[0].f, c->args[1].f, s.colors, s.positions, s.count));
+    GFX(c->ret.j = handle(G.shader_sweep(G.user, c->args[0].f, c->args[1].f, s.colors, s.positions, s.count)));
     stops_free(&s);
 }
 
@@ -2331,7 +2352,7 @@ N(G_shBitmap)
     if (!b || !HAS(shader_bitmap)) return;
     bm_settle(b);
     image_of(b, &image);
-    c->ret.j = handle(G.shader_bitmap(G.user, &image, tile_number(c->args[1].i)));
+    GFX(c->ret.j = handle(G.shader_bitmap(G.user, &image, tile_number(c->args[1].i))));
 }
 
 /* (long shader, float[6] or null): Shader.setLocalMatrix */
@@ -2343,13 +2364,13 @@ N(G_shMatrix)
     if (!shader || !HAS(shader_matrix)) return;
     for (i = 0; m && i < 6; i++)
         if (!isfinite(m[i])) return;
-    G.shader_matrix(G.user, shader, m);
+    GFX(G.shader_matrix(G.user, shader, m));
 }
 
 N(G_shFree)
 {
     void *shader = pointer(c->args[0].j);
-    if (shader && HAS(shader_free)) G.shader_free(G.user, shader);
+    if (shader && HAS(shader_free)) GFX(G.shader_free(G.user, shader));
 }
 
 /* ------------------------------------------------------------- Gfx: paths */
@@ -2486,6 +2507,8 @@ void hk_java_gfx_set_host(const megler_gfx_host *host)
     if (host) G = *host;
     else memset(&G, 0, sizeof(G));
 }
+
+u64 hk_java_gfx_host_ns(void) { return t_host_ns; }
 
 void hk_java_gfx_set_present(void (*fn)(void *user, const void *pixels, int width, int height, int stride), void *user)
 {

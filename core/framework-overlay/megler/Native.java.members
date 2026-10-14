@@ -6,3 +6,8 @@
     public static native int[] battery();
     /** The battery's kind as Android names it, "Li-ion". */
     public static native String batteryTechnology();
+    /**
+     * The frame meter (core/src/drivers/hk_java.c): 1 a frame begins, with its measure and layout; 2 its draw traversal begins; 3 it
+     * has ended, having drawn `redrawn` pixels of the screen. Called by megler.ViewRoot.doFrame on the main thread.
+     */
+    public static native void frameMark(int phase, int redrawn);

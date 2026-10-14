@@ -1008,6 +1008,19 @@ static int run_demos(void)
     free(list);
     type_into_fields(row, &at);
     back_and_end("I/DemoTest: list: destroyed", &at);
+    {
+        /*
+         * The frame meter (hk_java.c): a line every five seconds while the app draws, and at its end one for the whole run,
+         * with the frames drawn and the share of the screen drawn again in each -- all of it, in this framework.
+         */
+        int meter = find_line("java: frames in all, ", 0);
+        const char *counts = strstr(line_at(meter), " s: ");
+        unsigned drawn = 0;
+        CHECK(meter >= 0 && counts && sscanf(counts + 4, "%u drawn", &drawn) == 1 && drawn >= 10);
+        CHECK(strstr(line_at(meter), "redrawn 100% of the screen a frame") != NULL);
+        CHECK(find_line("java: frames ", 0) >= 0 && find_line("java: frames ", 0) < meter);
+        if (meter >= 0) say("  %s", line_at(meter));
+    }
     say_app_lines("/DemoTest: ");
     return g_failed;
 }
