@@ -347,6 +347,23 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   insides equal to the stand-in's pixel for pixel, and text right in Latin,
   Cyrillic, Chinese, Japanese, Korean and colour emoji.
 
+  **On the graphics processor** (2026-10-14; docs/ARCHITECTURE.md, "A Java
+  app's views, on the graphics processor"): Direct2D's software rasterizer
+  cost 18-20 ms of drawing for a caret's frame on the phone, so the shell now
+  draws through Direct2D 1.1 on a hardware Direct3D 11 device (the flag file
+  `gfx-software` brings the old way back), the host's own arithmetic on
+  Direct2D's effects. Seen on the phone (build 0.1.0.202, Apktool M): the
+  Adreno 530 found, drawing itself 1.4-2.7 ms a frame, but every read-back of
+  a canvas into memory 10-17 ms whatever its size -- so the window's pictures
+  are now shown straight from the processor (`megler_gfx_host.present`), and a
+  window with OpenGL ES views is composed there too, from ANGLE's surfaces
+  shared by handle (`gl_frame`, `gl_place`; seen with AIDA64 on build 0.1.0.204
+  still composed in memory, the way builds before 0.1.0.205 take). On the PC
+  (`tools/build-tests.sh win`): the scenes on the RTX 3090 and on WARP, 294
+  checks each, the eighteen modes within a step of the table, nothing read back
+  for the window. Not yet seen on the phone: 0.1.0.203's window path and
+  0.1.0.205's GL composition.
+
   Four faults found on the way were the framework's own, each fixed in a copy
   of one file under `core/framework-overlay` (the original project has them
   too): a list that no longer answers a finger once its Activity has been
