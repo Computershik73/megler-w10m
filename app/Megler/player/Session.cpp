@@ -5,6 +5,7 @@
 #include "player/GfxHost.h"
 #include "player/KeyboardHost.h"
 #include "player/MediaHost.h"
+#include "player/PhoneState.h"
 #include "player/StorageHost.h"
 
 #include "shell/Checks.h"
@@ -165,6 +166,8 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
     // begun now, at the rate the core's mixer runs at, it is there before the
     // app's first sound.
     audio->prepare(44100);
+    // The phone's time zone and battery, which an app asks the layer for.
+    phoneState::tell();
     shellLog::write(format("session: starting %s (%s) at %dx%d, %d dpi", apk.id.c_str(), apk.report.package.c_str(), width, height,
                            densityDpi));
     std::thread([window, audio, width, height, densityDpi] {
