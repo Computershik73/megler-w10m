@@ -1454,7 +1454,7 @@ static int run_data(void)
     {
         char *crypto = hk_sprintf("%s/lib/libjavacrypto.so", g_android_root ? g_android_root : ".");
         hk_stat st;
-        bool with = HK_HOST_ARM32 && hk_path_stat(crypto, &st, NULL) && !st.is_dir;
+        bool there = hk_path_stat(crypto, &st, NULL) && !st.is_dir, with = HK_HOST_ARM32 && there;
         free(crypto);
         say("  TLS: %s", with ? "conscrypt's (its library is in the Android root)" : "the runtime's stand-in, which has none");
         CHECK(find_line(with ? "I/DataTest: tls-is conscrypt provider=com.android.org.conscrypt.OpenSSLProvider" : "I/DataTest: tls-is none provider=megler.security.RuntimeProvider", 0) >= 0);
