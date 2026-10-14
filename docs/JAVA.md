@@ -92,13 +92,13 @@ bash tools/build-tests.sh win      (MSVC x64, run on the PC; libcore's native li
 bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-float, under qemu-arm)
     3719 checks, 0 failed          on the built-in java.lang
     3759 checks, 0 failed          on libcore with its native libraries
-      36 checks, 0 failed          the Java test app hello, through megler_run
+      38 checks, 0 failed          the Java test app hello, through megler_run
       72 checks, 0 failed          the Java test app demos, the keyboard's 25 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
       12 checks, 0 failed          the Java test app crash: an exception nothing catches, and launcher aliases
       25 checks, 0 failed          the Java test app data: a database, the first run
       25 checks, 0 failed          data again, on what the first run left
-      36 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
+      38 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
     (then each app once more, its drawing recorded for the PC's run to draw again)
 ```
 
@@ -290,7 +290,7 @@ its resources (a `LinearLayout` with a `TextView`, a `Button`, a view of its own
 that draws with `Canvas`, and an `ImageView` of a PNG), strings and colours. It
 has no native library. `hk_tests --java hello ...` starts it through
 `megler_run`, on a 480 x 800 screen at 160 dpi so that a dp is a pixel, with a
-stand-in for the shell's drawing, and checks (36 checks):
+stand-in for the shell's drawing, and checks (38 checks):
 
 - **What the shell reads first**, `megler_apk_report`: the engine is `java`, the
   APK is runnable, and how its launcher activity asks to be held
@@ -303,6 +303,10 @@ stand-in for the shell's drawing, and checks (36 checks):
   throws `ClassNotFoundException` for one that is not there; then the
   activity's `onCreate`, the views found by id with the texts the resources
   give them, `onStart`, `onResume`.
+- **A message copied and the copy sent** (`Message.obtain(Message)`,
+  `sendToTarget`): the copy is another message for the same handler, and
+  arrives there saying what the first said. A dialog of the support library
+  sends its buttons' messages this way.
 - **The layout**, as the app reads it back: every view the full 480 wide, the
   button 64 high, the drawn view 100, the picture 64 square, one under the
   other.
@@ -514,18 +518,26 @@ are empty because the framework's `PackageManager` knows no other app.
 
 **Apktool M 2.4.0** (AndroidX appcompat views, jadx and apktool inside;
 `libpngquantandroid.so`, `librmdir.so`). Starts through its launcher alias,
-shows its licence dialog with both buttons, and after a tap its main screen:
-a toolbar and, open over it, the drawer that is its file manager, empty.
+shows its licence dialog with its three buttons (Translation, Do not accept,
+Accept), and after Accept its main screen: a toolbar and, open over it, the
+drawer that is its file manager -- two panes and a third tab, the path
+`/storage/emulated/0` with a line about it underneath, the folders there, each
+with its date and what it holds ("2026/10/14 01:10, dirs 0, files 0"), and a
+row of five tools at the bottom. Two more dialogs follow the licence (a
+choice with a spinner; whether to exempt the app from the battery optimiser).
 Settings opens: seven headers, each with its screen of preferences. Fixed on
 the way: the launcher `<activity-alias>`, the height of a dialog's content
 (the overlay's `LinearLayout`), the content and the headers of a
-`PreferenceActivity`. Both libraries load with nothing unresolved (the APK
+`PreferenceActivity`, and `Message.obtain(Message)`: until that one, no
+button of the licence dialog did anything but close it, the licence was never
+accepted, and the drawer, which the app fills on acceptance, stayed empty
+(the overlay's `Message`). Both libraries load with nothing unresolved (the APK
 report's "2 imports not in the system" are weak references of libgcc's
 unwinder to the C++ runtime, null here as on Android without libc++); neither
 is called until the app compresses a PNG or deletes a folder, which the test
-did not reach. Not right: a grey strip 144 pixels wide down the right edge of
-the main screen (a drawer or pane laid out on screen), and the file list is
-empty because the app's shared storage is.
+did not reach. The grey strip 144 pixels wide down the right edge of the main
+screen is the app's own: the drawer is 576 wide and open, and the strip is
+`DrawerLayout`'s shade over what the drawer leaves uncovered.
 
 **Device Info 3.4.3.4** (minSdk 24, targetSdk 37; views, not Compose: no
 `androidx.compose` anywhere in its DEX; AndroidX appcompat, fragment,
@@ -1596,8 +1608,8 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: nine files** in the overlay,
-seven of them a statement or a method each inside an otherwise untouched copy
+**What differs from the original's framework: ten files** in the overlay,
+eight of them a statement or a method each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and two files of members added** to classes of the original's.
 
@@ -1638,6 +1650,17 @@ version checks.
   not public, which AppCompat's `DropDownListView` (every popup menu and
   spinner of an AppCompat app) takes by reflection; without it each such list
   logged a `NoSuchFieldException` with its stack.
+- `android/os/Message.java`, seven methods that were signatures answering
+  null or nothing: `obtain(Message)`, `copyFrom`, `getWhen`, `peekData`,
+  `setCallback`, `setTarget`, `setWhat`. The first is the one that was felt.
+  The support library's dialog (`androidx.appcompat.app.AlertController`, and
+  the older `android.support.v7` one) keeps a message for each button and on
+  a press sends a copy of it, `Message.obtain(mButtonPositiveMessage)`, then a
+  second message that closes the dialog. The copy was null, so nothing was
+  sent: every button of every such dialog closed it and did nothing else.
+  (The platform's own `AlertDialog`, which the demos app uses, is the
+  original's and calls its listeners directly.) Found with the runtime's
+  trace and the profile of a run: of the two listeners neither had run.
 - `android/content/res/ResTable.java`, two methods: a resource is found by
   its name without indexing the whole package ("What an AlertDialog cost").
 - `android/content/res/Resources.java`, the class `Bag`: a style's items are
@@ -1695,7 +1718,7 @@ version checks.
   was empty on the second; it shows its seven headers and their screens.
   Not done: two panes, bread crumbs.
 
-The original has all eight faults; they are its author's to take back.
+The original has all nine faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in

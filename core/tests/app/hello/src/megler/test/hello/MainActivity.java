@@ -2,6 +2,8 @@ package megler.test.hello;
 
 import android.app.Activity;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Message;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
@@ -30,6 +32,17 @@ public class MainActivity extends Activity {
                 Log.i("HelloTest", "onClick presses=" + presses + " text=\"" + text.getText() + "\"");
             }
         });
+        /* A message copied and the copy sent, which is how a support-library dialog sends its buttons' messages: the copy says what the first says, to the same handler. */
+        Handler handler = new Handler() {
+            @Override
+            public void handleMessage(Message m) {
+                Log.i("HelloTest", "message what=" + m.what + " arg=" + m.arg1 + "," + m.arg2 + " obj=" + m.obj + " when=" + (m.getWhen() > 0));
+            }
+        };
+        Message first = handler.obtainMessage(7, 1, 2, "word");
+        Message copy = Message.obtain(first);
+        Log.i("HelloTest", "message copy=" + (copy != null && copy != first && copy.getTarget() == handler));
+        if (copy != null) copy.sendToTarget();
     }
 
     @Override

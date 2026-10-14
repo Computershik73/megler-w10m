@@ -457,10 +457,14 @@ static int run_hello(void)
     expect_line("I/HelloTest: loader=dalvik.system.PathClassLoader same=true manifest=true loads=true missing=true system=java.lang.BootClassLoader apk=true", &at, 60);
     expect_line("I/HelloTest: onCreate app=1 state=none", &at, 60);
     expect_line("I/HelloTest: views text=\"not pressed\" button=\"Press\"", &at, 60);
+    /* A copy of a message is a message (Message.obtain(Message) answered null, and no button of a support-library dialog did anything)... */
+    expect_line("I/HelloTest: message copy=true", &at, 30);
     expect_line("I/HelloTest: onStart", &at, 30);
     expect_line("I/HelloTest: onResume", &at, 30);
     layout = wait_line("I/HelloTest: layout focus=true", 0, 30);
     CHECK(layout >= 0);
+    /* ... and the copy, sent, arrives at the first one's handler saying what the first said. */
+    CHECK(wait_line("I/HelloTest: message what=7 arg=1,2 obj=word when=true", 0, 30) >= 0);
     wait_line("I/HelloTest: layout text=", layout, 10);
     CHECK(rect_in(line_at(layout), "button", button) && rect_in(line_at(find_line("layout swatch=", layout)), "swatch", swatch));
     CHECK(rect_in(line_at(find_line("layout mark=", layout)), "mark", mark) && rect_in(line_at(find_line("layout text=", layout)), "text", text));
