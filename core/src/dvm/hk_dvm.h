@@ -205,11 +205,13 @@ void hk_dvm_gc_run_finalization(void);
 /* ------------------------------------------------------------ diagnostics */
 
 /*
- * For a frame meter, counted always: the instructions executed by every thread there has been; and the calling thread's
+ * For a frame meter, counted always: the instructions executed by every thread there has been, those that have ended
+ * included; and the calling thread's
  * instructions executed, time spent waiting (Object.wait, Thread.sleep), time in native methods (the outermost of nested
  * ones, what they called back included) and how many it called, time allocating objects for bytecode's own instructions
  * (allocations inside native methods are in those) and how many objects it made in all, and time waiting to enter a
- * monitor another thread held, from bytecode. Two readings of the clock a native call and an allocation. The instruction
+ * monitor another thread held, from bytecode. Native calls and allocations are timed now and then and counted at their
+ * average (hk_dvm_interp.c, invoke_native; hk_dvm_object.c, alloc_raw). The instruction
  * counts move at each call of a native method and each return to C, so a thread in a long stretch of bytecode is a little
  * behind.
  */

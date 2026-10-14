@@ -251,8 +251,10 @@ static void test_threads(void)
     size_t i;
     int k;
     bool same = true;
+    u64 executed_before, executed_after;
     say("two threads");
     w[0].sync = w[1].sync = hk_dvm_new("t/Sync", "()V", NULL);
+    executed_before = hk_dvm_executed_all();
     for (k = 0; k < 2; k++) {
         w[k].id = k;
         t[k] = hk_thread_start(work, &w[k], 1 << 20, "dvm-test");
@@ -261,6 +263,13 @@ static void test_threads(void)
     for (k = 0; k < 2; k++)
         if (t[k]) hk_thread_join(t[k]);
     CHECK(w[0].ok && w[1].ok);
+    /*
+     * What the two executed stays in the total once they have ended: t/Slow's initialiser summed 200000 numbers in one of
+     * them, at least an instruction a number. (The total once fell back when a thread ended, and the meter's differences
+     * went negative.)
+     */
+    executed_after = hk_dvm_executed_all();
+    CHECK(executed_after >= executed_before + 200000ull);
     CHECK_INT(w[0].slow, (i32)(u32)(200000ull * 200001ull / 2));
     CHECK_INT(w[1].slow, w[0].slow);
     /* Slow's initialiser counts itself in Sync.scount: once. */

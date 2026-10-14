@@ -14,8 +14,12 @@
 
 static HK_THREAD_LOCAL hk_dvm_thread *t_self;
 static hk_dvm_thread *g_threads;
-/* What threads that have ended had made (the living ones keep their own counts: hk_dvm_thread.made_objects). */
-static u64 g_gone_objects, g_gone_bytes;
+/*
+ * What threads that have ended had made and executed (the living ones keep their own counts: hk_dvm_thread.made_objects,
+ * executed). Without them a total over the threads falls back when one ends, and the frame meter's difference of two
+ * totals went hugely negative.
+ */
+static u64 g_gone_objects, g_gone_bytes, g_gone_executed;
 
 void hk_dvm_thread_costs(hk_dvm_costs *out)
 {
@@ -32,8 +36,9 @@ void hk_dvm_thread_costs(hk_dvm_costs *out)
 u64 hk_dvm_executed_all(void)
 {
     hk_dvm_thread *t;
-    u64 n = 0;
+    u64 n;
     hk_dvm_lock();
+    n = g_gone_executed;
     for (t = g_threads; t; t = t->next) n += t->executed;
     hk_dvm_unlock();
     return n;
@@ -53,6 +58,7 @@ static void thread_ends(void)
     hk_dvm_gc_thread_gone(t);
     g_gone_objects += t->made_objects;
     g_gone_bytes += t->made_bytes;
+    g_gone_executed += t->executed;
     hk_dvm_unlock();
     t_self = NULL;
     /* Its frame stack goes; the small rest stays, for whoever still holds its address (a Thread whose nativePeer was read a moment ago). */
