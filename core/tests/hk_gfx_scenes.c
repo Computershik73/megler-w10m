@@ -1622,16 +1622,42 @@ static void check_blend_table(void)
     static const float ends[2] = { 0, 1 };
     pic p, s;
     int mode, k, how, worst = 0, wrong = 0;
-    say("  the eighteen transfer modes against megler.h's table, drawn five ways each on four pairs of colours");
+    say("  the eighteen transfer modes against megler.h's table, drawn seven ways each on four pairs of colours, and as colour filters");
     pic_make(&p, H, 8, 8);
     pic_make(&s, H, 2, 2);
     for (mode = 0; mode < 18; mode++)
         for (k = 0; k < 4; k++)
-            for (how = 0; how < 5; how++) {
+            for (how = 0; how < 8; how++) {
                 u32 src = pairs[k][0], dst = pairs[k][1], want = table_pixel(mode, premultiplied(src), premultiplied(dst)), got;
                 megler_gfx_paint paint = paint_of(src);
                 int d;
-                if (mode == MEGLER_GFX_BLEND_DST && how != 3) continue;
+                if (mode == MEGLER_GFX_BLEND_DST && how != 3 && how != 5 && how != 7) continue;
+                if (how == 5) {
+                    /* A colour filter by the mode, of the source's colour, on a shader that is the destination's colour all
+                       along, drawn by SRC: each colour C of the shader becomes the mode of S = the filter's colour and D = C
+                       (megler.h, THE PAINT), which is the table's pixel again. */
+                    u32 two[2];
+                    void *sh;
+                    two[0] = two[1] = dst;
+                    sh = linear(H, 0, 0, 8, 0, two, ends, 2, MEGLER_GFX_TILE_CLAMP);
+                    color(&p, 0xFF808080u, MEGLER_GFX_BLEND_SRC);
+                    paint = paint_of(0xFF000000u);
+                    paint.blend = MEGLER_GFX_BLEND_SRC;
+                    paint.filter_mode = mode;
+                    paint.filter_color = src;
+                    rect(&p, 2, 2, 6, 6, &paint, sh);
+                    H->shader_free(H->user, sh);
+                    settle(&p);
+                    got = at(&p, 3, 3);
+                    d = apart(got, want);
+                    if (d > worst) worst = d;
+                    if (d > 2) {
+                        wrong++;
+                        if (wrong <= 6) say("    filter by mode %d, %08x on %08x: %08x, the table says %08x", mode, src, dst, got, want);
+                    }
+                    if (at(&p, 0, 0) != 0xFF808080u || at(&p, 7, 7) != 0xFF808080u) wrong++;
+                    continue;
+                }
                 color(&p, dst, MEGLER_GFX_BLEND_SRC);
                 paint.blend = mode;
                 if (how == 0) {
@@ -1658,10 +1684,26 @@ static void check_blend_table(void)
                     color(&p, src | 0xFF000000u, MEGLER_GFX_BLEND_SRC);
                     restore(&p, layer);
                     if (mode == MEGLER_GFX_BLEND_DST) want = premultiplied(dst);
-                } else {
+                } else if (how == 4) {
                     saved clip = save(&p);
                     clip_rect(&p, 2, 2, 6, 6, MEGLER_GFX_CLIP_INTERSECT);
                     color(&p, src, mode);
+                    restore(&p, clip);
+                } else {
+                    /* The last two again under a clip that is a path, whose edge is smoothed: a pixel well inside it is
+                       covered whole, and gets the table's colour as well. */
+                    static const float square[] = { MEGLER_GFX_PATH_MOVE, 2, 2, MEGLER_GFX_PATH_LINE, 6, 2, MEGLER_GFX_PATH_LINE, 6, 6, MEGLER_GFX_PATH_LINE, 2, 6,
+                                                    MEGLER_GFX_PATH_CLOSE };
+                    saved clip = save(&p);
+                    clip_path(&p, square, (int)HK_COUNT(square), MEGLER_GFX_WINDING, MEGLER_GFX_CLIP_INTERSECT);
+                    if (how == 6) {
+                        color(&p, src, mode);
+                    } else {
+                        saved layer = save_layer(&p, NULL, (int)(src >> 24), mode);
+                        color(&p, src | 0xFF000000u, MEGLER_GFX_BLEND_SRC);
+                        restore(&p, layer);
+                        if (mode == MEGLER_GFX_BLEND_DST) want = premultiplied(dst);
+                    }
                     restore(&p, clip);
                 }
                 settle(&p);
