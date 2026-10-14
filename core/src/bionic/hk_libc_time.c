@@ -410,7 +410,6 @@ const hk_sym hk_tab_time[] = {
     HK_WRAP("ctime", g_ctime), HK_WRAP("ctime_r", g_ctime_r), HK_WRAP("tzset", g_tzset), HK_WRAP("settimeofday", g_settimeofday),
     HK_WRAP("getitimer", g_itimer), HK_WRAP("setitimer", g_itimer), HK_WRAP("alarm", g_alarm),
     HK_WRAP("timer_create", g_timer_fail), HK_WRAP("timer_settime", g_timer_fail), HK_WRAP("timer_delete", g_timer_fail),
-    HK_WRAP("timerfd_create", g_timer_fail),
     HK_DATA("timezone", &g_timezone), HK_DATA("daylight", &g_daylight), HK_DATA("tzname", g_tzname),
     HK_END
 };

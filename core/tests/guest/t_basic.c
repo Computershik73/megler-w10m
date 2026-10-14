@@ -625,6 +625,62 @@ int t_shm(void)
     return 9;
 }
 
+/*
+ * timerfd, as Chromium's message pump keeps its delayed work: nothing to read before its time, readable when it comes
+ * (poll and epoll both wake for it, though nothing writes to it), the count of expirations read, a repeating one counting
+ * each, an absolute time on CLOCK_MONOTONIC, and disarmed by a zero time. 8, or the negated step that failed.
+ */
+typedef struct { int interval_sec, interval_nsec, value_sec, value_nsec; } t_itimerspec;
+typedef struct { int fd; short events, revents; } t_pollfd;
+int timerfd_create(int, int);
+int timerfd_settime(int, int, const t_itimerspec *, t_itimerspec *);
+int timerfd_gettime(int, t_itimerspec *);
+int poll(t_pollfd *, unsigned, int);
+int epoll_create1(int);
+int epoll_ctl(int, int, int, void *);
+int epoll_wait(int, void *, int, int);
+
+int t_timerfd(void)
+{
+    int fd = timerfd_create(1, 0x800 | 0x80000), ep;  /* CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC */
+    unsigned long long n = 0;
+    t_itimerspec it, cur;
+    t_pollfd p;
+    struct t_timespec now;
+    struct { unsigned events; unsigned long long data; } ev[2];   /* ARM's epoll_event: the data at 8 */
+    if (fd < 0) return -1;
+    if (read(fd, &n, 8) != -1 || *__errno() != 11) return -2;            /* EAGAIN */
+    memset(&it, 0, sizeof(it));
+    it.value_nsec = 20 * 1000000;
+    p.fd = fd;
+    p.events = 1;
+    p.revents = 0;
+    if (timerfd_settime(fd, 0, &it, 0) != 0 || poll(&p, 1, 2000) != 1 || !(p.revents & 1) || read(fd, &n, 8) != 8 || n != 1) return -3;
+    it.interval_nsec = it.value_nsec = 5 * 1000000;
+    if (timerfd_settime(fd, 0, &it, 0) != 0) return -4;
+    usleep(40 * 1000);
+    if (read(fd, &n, 8) != 8 || n < 3) return -4;
+    if (timerfd_gettime(fd, &cur) != 0 || cur.interval_nsec != 5 * 1000000 || cur.value_sec != 0 || cur.value_nsec <= 0) return -5;
+    memset(&it, 0, sizeof(it));
+    if (timerfd_settime(fd, 0, &it, 0) != 0 || timerfd_gettime(fd, &cur) != 0 || cur.value_sec || cur.value_nsec || read(fd, &n, 8) != -1) return -6;
+    clock_gettime(1, &now);
+    it.value_sec = (int)now.tv_sec;
+    it.value_nsec = (int)now.tv_nsec + 10 * 1000000;
+    if (it.value_nsec >= 1000000000) {
+        it.value_sec++;
+        it.value_nsec -= 1000000000;
+    }
+    ep = epoll_create1(0);
+    memset(ev, 0, sizeof(ev));
+    ev[0].events = 1;                                /* EPOLLIN */
+    ev[0].data = 77;
+    if (ep < 0 || epoll_ctl(ep, 1, fd, ev) != 0 || timerfd_settime(fd, 1, &it, 0) != 0) return -7;  /* EPOLL_CTL_ADD, TFD_TIMER_ABSTIME */
+    if (epoll_wait(ep, ev, 2, 2000) != 1 || ev[0].data != 77 || read(fd, &n, 8) != 8 || n != 1) return -8;
+    close(ep);
+    close(fd);
+    return 8;
+}
+
 /* A deep enough frame to need the stack protector's cookie, when built with it. */
 int t_stack(const char *s)
 {
