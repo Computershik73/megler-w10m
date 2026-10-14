@@ -35,8 +35,8 @@ has to answer.
   Java run on a phone with it -- views, lists, dialogs, a second Activity,
   preferences, background tasks, databases, a native library of their own --
   and the first real apps start there (docs/STATUS.md says how far each
-  gets); what they still wait for is garbage collection, the phone's
-  folders, sound and the network.
+  gets), their text in Android's own fonts; what they still wait for is
+  garbage collection, sound and the network.
 - OpenGL ES 2.0 on any phone; 3.0 where the GPU's driver gives Direct3D feature
   level 10 or more. No Vulkan.
 - Sound through OpenSL ES buffer queues (what FMOD, OpenAL Soft and SDL sit on).
@@ -128,8 +128,9 @@ camera's as `DCIM`). **Settings › Android Storage** lists them and adds any
 other folder under a name of your choosing -- the phone's Documents or
 Downloads, a folder of a memory card -- and **Check the Folders** there tries
 in each what an app will do to files, in a folder of its own that it removes
-again; every step is in the Log. None of this has run on a phone yet
-([docs/STATUS.md](docs/STATUS.md)).
+again; every step is in the Log. The four folders and the check have run on a
+phone (102 steps, all passed); the Settings section and adding a folder have
+not ([docs/STATUS.md](docs/STATUS.md)).
 
 One app runs per start of Megler: Android libraries cannot be unloaded, so the app has
 to be closed and opened again to play another.
