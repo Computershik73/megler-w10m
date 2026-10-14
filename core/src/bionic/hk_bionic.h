@@ -113,8 +113,12 @@ typedef struct hk_gthread {
     /* Signals sent to the thread (hk_libc_misc.c, "signals"). */
     volatile i32 sig_pending;          /* bit n-1: signal n is waiting for its handler */
     u32 sig_blocked;                   /* the thread's signal mask */
+    /* The same for the real-time signals, 33 to 64 (bit n-33), which a 32-bit sigset_t has no room for: libcore sends 34 to a thread blocked on a socket that is being closed. */
+    volatile i32 sig_pending_rt;
+    u32 sig_blocked_rt;
     volatile i32 sig_park;             /* goes up with every signal sent to it: what sigsuspend and long sleeps wait on */
     volatile i32 sig_handled;          /* how many handlers have run on it */
+    volatile i32 sig_unrestarted;      /* how many of them did not ask for SA_RESTART: a wait for a socket they cut short ends with EINTR */
     volatile i32 *volatile sig_wait_addr;  /* the word the thread is waiting on, while it is */
     hk_cond *volatile sig_wait_cond;   /* or the condition */
     hk_thread *volatile sig_thread;    /* the thread itself, to interrupt it in the middle of guest code */
@@ -137,11 +141,14 @@ hk_gthread *hk_gthread_self(void);
  * somewhere else in this layer or the system, where it is left alone and
  * asked again a millisecond later.
  */
-int hk_signal_send(hk_gthread *t, int sig);            /* pthread_kill: 0 or an errno */
+int hk_signal_send(hk_gthread *t, int sig);            /* pthread_kill: 0 or an errno; signals 1 to 64 */
 int hk_signal_mask(int how, const u32 *set, u32 *old); /* pthread_sigmask */
 /* Runs the handlers of the signals waiting for the calling thread. Only where no lock of this layer is held. */
 void hk_signals_check(void);
-static inline bool hk_signals_ready(const hk_gthread *t) { return ((u32)t->sig_pending & ~t->sig_blocked) != 0; }
+static inline bool hk_signals_ready(const hk_gthread *t)
+{
+    return ((u32)t->sig_pending & ~t->sig_blocked) != 0 || ((u32)t->sig_pending_rt & ~t->sig_blocked_rt) != 0;
+}
 /* hk_futex_wait for a guest thread: a signal for it ends the wait, and its handler has run by the time this returns. */
 bool hk_gwait(volatile i32 *addr, i32 expect, u64 timeout_ns);
 /* hk_sleep_ns likewise; the handlers run, and the sleep goes on for the time that is left. */
