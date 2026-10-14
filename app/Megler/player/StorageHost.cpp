@@ -93,6 +93,13 @@ int errorOf(HRESULT hr) {
     }
 }
 
+/// A path below a link as the app sees it, for the log: "/sdcard/<link>/<path>".
+std::wstring shown(const std::string& link, const std::wstring& path) {
+    std::wstring text = L"/sdcard/" + widen(link);
+    if (!path.empty()) text += L"/" + path;
+    return text;
+}
+
 /// An answer of Windows' that the table above has no word for: the first
 /// forty go to the log, which is all there is to learn the broker from.
 std::atomic<int> gUnknown{0};
@@ -496,9 +503,21 @@ std::string StorageHost::add(StorageFolder const& folder, const std::string& nam
     } catch (const winrt::hresult_error& e) {
         return format("Windows would not keep the folder for Megler (0x%08X).", unsigned(e.code()));
     }
-    // Whether it answers is asked on a worker: this is the UI thread, which waits for no call to the broker.
+    // Whether it answers is asked on a worker: this is the UI thread, which waits for no call to the broker. And what is
+    // kept is the folder as Windows' list hands it back there, not the picker's: the picker's object belongs to the UI
+    // thread, and on the phone the workers' calls on it were at first answered and then, a minute later, refused as made
+    // on the wrong thread (0x8001010E) -- the folder's own handle, and some files of it with 0x80004005. A folder read
+    // back from the list at a start never was.
     Root root;
-    run([&] { root = found(name, "a folder you added", folder, token); });
+    run([&] {
+        StorageFolder kept{nullptr};
+        try {
+            kept = winrt::Windows::Storage::AccessCache::StorageApplicationPermissions::FutureAccessList().GetFolderAsync(hs(token)).get();
+        } catch (const winrt::hresult_error& e) {
+            shellLog::write(format("storage: the folder just added is not handed back by Windows' list (0x%08X): the picker's is used", unsigned(e.code())));
+        }
+        root = found(name, "a folder you added", kept ? kept : folder, token);
+    });
     std::lock_guard<std::mutex> lock(mutex_);
     found_.push_back(std::move(root));
     return std::string();
@@ -715,7 +734,7 @@ HANDLE StorageHost::openOnWorker(const Roots& roots, int root, const std::wstrin
         const HANDLE h = ownHandle(folder, HAO_READ, hr);
         if (!h) {
             error = errorOf(hr);
-            unknown("the handle of the folder", path, hr);
+            unknown("the handle of the folder", shown(roots[size_t(root)].link.name, path), hr);
         }
         return h;
     }
@@ -742,7 +761,7 @@ HANDLE StorageHost::openOnWorker(const Roots& roots, int root, const std::wstrin
                 hr = HRESULT_FROM_WIN32(GetLastError());
                 CloseHandle(h);
                 error = errorOf(hr);
-                unknown("emptying", path, hr);
+                unknown("emptying", shown(roots[size_t(root)].link.name, path), hr);
                 return nullptr;
             }
         }
@@ -762,7 +781,7 @@ HANDLE StorageHost::openOnWorker(const Roots& roots, int root, const std::wstrin
     const IStorageItem item = parent.TryGetItemAsync(name).get();
     if (!item) {
         error = errorOf(refused) == MEGLER_STORAGE_NOT_FOUND || !(flags & MEGLER_STORAGE_CREATE) ? MEGLER_STORAGE_NOT_FOUND : errorOf(refused);
-        if (error != MEGLER_STORAGE_NOT_FOUND) unknown("making the file", path, refused);
+        if (error != MEGLER_STORAGE_NOT_FOUND) unknown("making the file", shown(roots[size_t(root)].link.name, path), refused);
         return nullptr;
     }
     if (item.IsOfType(StorageItemTypes::Folder)) {
@@ -786,7 +805,7 @@ HANDLE StorageHost::openOnWorker(const Roots& roots, int root, const std::wstrin
     }
     if (!h) {
         error = errorOf(hr);
-        unknown("the handle of", path, hr);
+        unknown("the handle of", shown(roots[size_t(root)].link.name, path), hr);
     }
     return h;
 }
@@ -970,7 +989,7 @@ void* StorageHost::openThunk(void* user, int link, const char* path, int flags, 
     const std::wstring wide = widen(path);
     HANDLE handle = nullptr;
     int why = MEGLER_STORAGE_FAILED;
-    self.run([&] { guarded("opening", wide, why, [&] { handle = self.openOnWorker(*roots, link, wide, flags, kind, why); }); });
+    self.run([&] { guarded("opening", shown((*roots)[size_t(link)].link.name, wide), why, [&] { handle = self.openOnWorker(*roots, link, wide, flags, kind, why); }); });
     *error = handle ? MEGLER_STORAGE_OK : why;
     return handle;
 }
@@ -985,7 +1004,7 @@ bool StorageHost::makeFolderThunk(void* user, int link, const char* path, int* e
     const std::wstring wide = widen(path);
     bool ok = false;
     int why = MEGLER_STORAGE_FAILED;
-    self.run([&] { guarded("making the folder", wide, why, [&] { ok = self.makeFolderOnWorker(*roots, link, wide, why); }); });
+    self.run([&] { guarded("making the folder", shown((*roots)[size_t(link)].link.name, wide), why, [&] { ok = self.makeFolderOnWorker(*roots, link, wide, why); }); });
     *error = ok ? MEGLER_STORAGE_OK : why;
     return ok;
 }
@@ -1000,7 +1019,7 @@ bool StorageHost::removeThunk(void* user, int link, const char* path, bool folde
     const std::wstring wide = widen(path);
     bool ok = false;
     int why = MEGLER_STORAGE_FAILED;
-    self.run([&] { guarded("removing", wide, why, [&] { ok = self.removeOnWorker(*roots, link, wide, folder, why); }); });
+    self.run([&] { guarded("removing", shown((*roots)[size_t(link)].link.name, wide), why, [&] { ok = self.removeOnWorker(*roots, link, wide, folder, why); }); });
     *error = ok ? MEGLER_STORAGE_OK : why;
     return ok;
 }
@@ -1015,7 +1034,9 @@ bool StorageHost::renameThunk(void* user, int fromLink, const char* from, int to
     const std::wstring wideFrom = widen(from), wideTo = widen(to);
     bool ok = false;
     int why = MEGLER_STORAGE_FAILED;
-    self.run([&] { guarded("renaming", wideFrom, why, [&] { ok = self.renameOnWorker(*roots, fromLink, wideFrom, toLink, wideTo, why); }); });
+    self.run([&] {
+        guarded("renaming", shown((*roots)[size_t(fromLink)].link.name, wideFrom), why, [&] { ok = self.renameOnWorker(*roots, fromLink, wideFrom, toLink, wideTo, why); });
+    });
     *error = ok ? MEGLER_STORAGE_OK : why;
     return ok;
 }
