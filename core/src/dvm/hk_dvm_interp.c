@@ -558,7 +558,7 @@ static bool find_handler(hk_dvm_thread *t, hk_dvm_method *m, u32 pc, hk_jobj *e,
 /* ------------------------------------------------------- the slow instruction */
 
 /* Tracing at level 3 and the step limit: what every instruction does first while g_dvm.slow is set. False when it threw. */
-static bool slow_step(hk_dvm_thread *t, hk_dvm_frame *f, u32 pc)
+static HK_NOINLINE bool slow_step(hk_dvm_thread *t, hk_dvm_frame *f, u32 pc)
 {
     g_dvm.steps++;
     if (g_dvm.profiling) {
