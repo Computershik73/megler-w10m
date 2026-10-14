@@ -1079,6 +1079,27 @@ void megler_probe(megler_line_fn out, void *user);
  */
 int megler_storage_check(const megler_storage_host *storage, megler_line_fn out, void *user, int *checks);
 
+/*
+ * Whether the network does for an app what an app will ask of it, through
+ * the layer's own C library as an app's code calls it: "localhost" is
+ * resolved without the network; the interfaces are listed (their names and
+ * how many addresses each has, not the addresses); a public name
+ * (connectivitycheck.gstatic.com, which Android itself asks) is resolved, a
+ * TCP connection made to its port 80, a HEAD request sent and the answer's
+ * status line read; then the same against a server of the check's own on
+ * 127.0.0.1, and a UDP round trip between two sockets on 127.0.0.1. One line
+ * for each step, "ok" or "FAIL" first. Returns the number of steps that
+ * failed and adds the number of steps to *checks (which may be NULL).
+ *
+ * A phone may refuse an app a connection to itself over loopback; that is
+ * said on a line of its own beginning "REFUSED BY THE PHONE", counted in
+ * *refused (which may be NULL) and not among the failures.
+ *
+ * Takes up to half a minute when the network does not answer; call it from
+ * a background thread, not the UI thread.
+ */
+int megler_net_check(megler_line_fn out, void *user, int *checks, int *refused);
+
 #ifdef __cplusplus
 }
 #endif

@@ -1,6 +1,6 @@
 // The unattended on-device run: a build made with
 //
-//   tools/build-appx.sh arm --auto probe|selftest|gfx|storage|play|java (or several, with commas)
+//   tools/build-appx.sh arm --auto probe|selftest|gfx|storage|net|play|java (or several, with commas)
 //
 // does, at start-up, without anyone touching the phone:
 //
@@ -25,6 +25,14 @@
 //    Windows answered, then "DONE storage: N checks, M failed". It works in a
 //    folder of its own in each, megler-storage-check, removes it again, and
 //    touches nothing else of the user's. It runs no app;
+//  * net: the network gone through as an app goes through it, by the
+//    layer's own C library (megler_net_check): "localhost", the interfaces
+//    (names, not addresses), a public name resolved and a HEAD request
+//    answered on its port 80, the same against a server of its own on
+//    127.0.0.1, a UDP round trip on 127.0.0.1. A line in megler-auto.log for
+//    each step, then "DONE net: N checks, M failed" (and how many steps the
+//    phone itself refused, when it refused an app its own loopback). It runs
+//    no app;
 //  * play: opens the player on the library's game (the first that can run
 //    and is not the demo; the demo when there is nothing else) as a tap on
 //    Play would, and lets it run for two minutes or until it ends. What it
@@ -67,7 +75,7 @@ bool start(std::string description);
 /// without it.
 void tick(ui::AppShell& shell);
 
-/// "probe,selftest", "probe", "selftest", "gfx", "storage", "play", "java"..., or "" in a normal build.
+/// "probe,selftest", "probe", "selftest", "gfx", "storage", "net", "play", "java"..., or "" in a normal build.
 const char* modes();
 
 } // namespace megler::app::autorun

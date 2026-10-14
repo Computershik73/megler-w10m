@@ -509,7 +509,10 @@ static i32 g_getrandom(void *buf, size_t n, unsigned flags) { (void)flags; hk_ra
  * thread (hk_bionic.h says where and when). Nothing comes from the system: a
  * fault in guest code is this layer's to repair or to report, not the guest's.
  *
- * 32-bit bionic's sigset_t is one word: signals 1 to 32.
+ * 32-bit bionic's sigset_t is one word: signals 1 to 32. The real-time ones,
+ * 33 to 64, are sent all the same (libcore's AsynchronousCloseMonitor sends
+ * 34 to wake a thread blocked on a socket being closed); a thread keeps them
+ * in a word of their own, and a 32-bit mask has no say over them.
  */
 typedef struct g_sigaction {
     u32 handler, mask, flags, restorer;
@@ -517,7 +520,9 @@ typedef struct g_sigaction {
 static g_sigaction g_sigs[65];
 
 #define SIG_BIT(sig) (1u << ((sig) - 1))
+#define SIG_RT_BIT(sig) (1u << ((sig) - 33))
 #define G_SA_SIGINFO 4u
+#define G_SA_RESTART 0x10000000u
 #define G_SA_NODEFER 0x40000000u
 
 static int g_sigaction_fn(int sig, const g_sigaction *act, g_sigaction *old)
@@ -573,25 +578,41 @@ void hk_signals_check(void)
 {
     hk_gthread *t = hk_gthread_self();
     for (;;) {
-        u32 ready = (u32)t->sig_pending & ~t->sig_blocked, bit, saved;
+        u32 ready = (u32)t->sig_pending & ~t->sig_blocked, ready_rt = (u32)t->sig_pending_rt & ~t->sig_blocked_rt, bit, saved, saved_rt;
+        volatile i32 *word = &t->sig_pending;
         g_sigaction a;
         int sig = 1;
-        if (!ready) return;
-        while (!(ready & SIG_BIT(sig))) sig++;
-        bit = SIG_BIT(sig);
+        if (ready) {
+            while (!(ready & SIG_BIT(sig))) sig++;
+            bit = SIG_BIT(sig);
+        } else if (ready_rt) {
+            sig = 33;
+            while (!(ready_rt & SIG_RT_BIT(sig))) sig++;
+            bit = SIG_RT_BIT(sig);
+            word = &t->sig_pending_rt;
+        } else {
+            return;
+        }
         for (;;) {
-            i32 seen = t->sig_pending;
-            if (hk_atomic_cas(&t->sig_pending, seen, (i32)((u32)seen & ~bit)) == seen) break;
+            i32 seen = *word;
+            if (hk_atomic_cas(word, seen, (i32)((u32)seen & ~bit)) == seen) break;
         }
         a = g_sigs[sig];
         if (a.handler <= 1) continue;
         /* While it runs, the signals its sigaction names are held back, and the signal itself unless it asked otherwise. */
         saved = t->sig_blocked;
-        t->sig_blocked |= a.mask | ((a.flags & G_SA_NODEFER) ? 0 : bit);
+        saved_rt = t->sig_blocked_rt;
+        t->sig_blocked |= a.mask;
+        if (!(a.flags & G_SA_NODEFER)) {
+            if (sig <= 32) t->sig_blocked |= bit;
+            else t->sig_blocked_rt |= bit;
+        }
         hk_atomic_add(&t->sig_handled, 1);
+        if (!(a.flags & G_SA_RESTART)) hk_atomic_add(&t->sig_unrestarted, 1);
         hk_trace("signal %d handled on thread %d", sig, (int)t->tid);
         call_handler(&a, sig);
         t->sig_blocked = saved;
+        t->sig_blocked_rt = saved_rt;
     }
 }
 
@@ -675,9 +696,11 @@ void hk_signals_thread_gone(hk_gthread *t)
 int hk_signal_send(hk_gthread *t, int sig)
 {
     u32 handler;
+    volatile i32 *word;
+    u32 bit;
     if (!t) return 3;                              /* ESRCH */
     if (sig == 0) return 0;
-    if (sig < 1 || sig > 32) return GE_INVAL;
+    if (sig < 1 || sig > 64) return GE_INVAL;
     handler = g_sigs[sig].handler;
     if (handler == 1) return 0;
     if (handler == 0) {
@@ -685,9 +708,11 @@ int hk_signal_send(hk_gthread *t, int sig)
         return 0;
     }
     hk_trace("signal %d sent to thread %d", sig, (int)t->tid);
+    word = sig <= 32 ? &t->sig_pending : &t->sig_pending_rt;
+    bit = sig <= 32 ? SIG_BIT(sig) : SIG_RT_BIT(sig);
     for (;;) {
-        i32 seen = t->sig_pending;
-        if (hk_atomic_cas(&t->sig_pending, seen, (i32)((u32)seen | SIG_BIT(sig))) == seen) break;
+        i32 seen = *word;
+        if (hk_atomic_cas(word, seen, (i32)((u32)seen | bit)) == seen) break;
     }
     if (t == hk_gthread_self()) {
         hk_signals_check();

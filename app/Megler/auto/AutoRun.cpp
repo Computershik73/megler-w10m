@@ -1,7 +1,7 @@
 // The auto run (AutoRun.h): which stages this build has, the thread they run
 // on, and megler-auto.log. tools/build-appx.sh writes AutoConfig.h with
 // MEGLER_AUTO_PROBE, MEGLER_AUTO_SELFTEST, MEGLER_AUTO_GFX, MEGLER_AUTO_STORAGE,
-// MEGLER_AUTO_PLAY and MEGLER_AUTO_JAVA set to 0 or 1.
+// MEGLER_AUTO_NET, MEGLER_AUTO_PLAY and MEGLER_AUTO_JAVA set to 0 or 1.
 #include "pch.h"
 
 #include "auto/AutoRun.h"
@@ -41,6 +41,9 @@
 #ifndef MEGLER_AUTO_STORAGE
 #define MEGLER_AUTO_STORAGE 0
 #endif
+#ifndef MEGLER_AUTO_NET
+#define MEGLER_AUTO_NET 0
+#endif
 
 #if MEGLER_AUTO_GFX
 // The one place where the shell looks past megler.h into the core: the scenes
@@ -65,6 +68,7 @@ const char* modes() {
         add(MEGLER_AUTO_SELFTEST, "selftest");
         add(MEGLER_AUTO_GFX, "gfx");
         add(MEGLER_AUTO_STORAGE, "storage");
+        add(MEGLER_AUTO_NET, "net");
         add(MEGLER_AUTO_PLAY, "play");
         add(MEGLER_AUTO_JAVA, "java");
         return s;
@@ -72,7 +76,7 @@ const char* modes() {
     return text.c_str();
 }
 
-#if MEGLER_AUTO_PROBE || MEGLER_AUTO_SELFTEST || MEGLER_AUTO_GFX || MEGLER_AUTO_STORAGE || MEGLER_AUTO_PLAY || MEGLER_AUTO_JAVA
+#if MEGLER_AUTO_PROBE || MEGLER_AUTO_SELFTEST || MEGLER_AUTO_GFX || MEGLER_AUTO_STORAGE || MEGLER_AUTO_NET || MEGLER_AUTO_PLAY || MEGLER_AUTO_JAVA
 namespace {
 
 /// How long the play stage lets a game run before it calls the run done
@@ -175,6 +179,31 @@ void runStorage() {
 }
 #endif
 
+#if MEGLER_AUTO_NET
+/// The network gone through as an app would go through it (megler_net_check):
+/// every step into megler-auto.log and the shell's log, then the DONE line.
+/// It runs no app, so a play stage after it starts as it would without.
+void runNet() {
+    autoLine("net: started");
+    int checks = 0, refused = 0, failed = 0;
+    try {
+        failed = megler_net_check(
+            [](const char* line, void*) {
+                autoLine(line);
+                shellLog::write(std::string("net check: ") + line);
+            },
+            nullptr, &checks, &refused);
+    } catch (...) {
+        autoLine("net: aborted by an exception");
+        failed++;
+    }
+    const std::string done = format("DONE net: %d checks, %d failed", checks, failed) +
+                             (refused ? format("; %d refused by the phone itself, not counted as failed", refused) : std::string());
+    autoLine(done);
+    shellLog::write("auto run: " + done);
+}
+#endif
+
 void runAll(const std::string& description) {
     const std::wstring& local = platform::localStateDirectory();
     // Every stage's log started afresh, this build's stages or not: an update
@@ -199,6 +228,9 @@ void runAll(const std::string& description) {
 #if MEGLER_AUTO_STORAGE
     runStorage();
 #endif
+#if MEGLER_AUTO_NET
+    runNet();
+#endif
     gChecksDone = true;
 #if !MEGLER_AUTO_PLAY && !MEGLER_AUTO_JAVA
     finish();
@@ -209,7 +241,7 @@ void runAll(const std::string& description) {
 #endif
 
 bool start(std::string description) {
-#if MEGLER_AUTO_PROBE || MEGLER_AUTO_SELFTEST || MEGLER_AUTO_GFX || MEGLER_AUTO_STORAGE || MEGLER_AUTO_PLAY || MEGLER_AUTO_JAVA
+#if MEGLER_AUTO_PROBE || MEGLER_AUTO_SELFTEST || MEGLER_AUTO_GFX || MEGLER_AUTO_STORAGE || MEGLER_AUTO_NET || MEGLER_AUTO_PLAY || MEGLER_AUTO_JAVA
     // The stack of the Device screen's own checks (shell/Checks.cpp): the
     // self-test calls Android code on the thread it runs on.
     return platform::startThread([description] { runAll(description); }, size_t(8) << 20);

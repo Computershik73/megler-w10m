@@ -57,7 +57,7 @@ bool hk_bionic_is_system_lib(const char *soname);
 
 /* The tables, one per file; each ends with HK_END. */
 extern const hk_sym hk_tab_mem[], hk_tab_str[], hk_tab_wchar[], hk_tab_stdio[], hk_tab_io[], hk_tab_misc[], hk_tab_time[], hk_tab_math[],
-    hk_tab_pthread[], hk_tab_dl[], hk_tab_log[], hk_tab_aeabi[], hk_tab_net[], hk_tab_zlib[], hk_tab_ndk[], hk_tab_native_activity[];
+    hk_tab_pthread[], hk_tab_dl[], hk_tab_log[], hk_tab_aeabi[], hk_tab_net[], hk_tab_netdb[], hk_tab_zlib[], hk_tab_ndk[], hk_tab_native_activity[];
 const hk_sym *hk_opensles_table(void);
 const hk_sym *hk_media_table(void);    /* ndk/hk_media.c */
 /* The device's API level as native code is told it (the property ro.build.version.sdk, 28 unless a driver has said otherwise). */
@@ -79,9 +79,11 @@ enum {
     GE_AGAIN = 11, GE_NOMEM = 12, GE_ACCES = 13, GE_FAULT = 14, GE_BUSY = 16, GE_EXIST = 17, GE_XDEV = 18, GE_NODEV = 19, GE_NOTDIR = 20,
     GE_ISDIR = 21, GE_INVAL = 22, GE_NFILE = 23, GE_MFILE = 24, GE_NOTTY = 25, GE_FBIG = 27, GE_NOSPC = 28, GE_SPIPE = 29, GE_ROFS = 30,
     GE_PIPE = 32, GE_DOM = 33, GE_RANGE = 34, GE_DEADLK = 35, GE_NAMETOOLONG = 36, GE_NOSYS = 38, GE_NOTEMPTY = 39, GE_ILSEQ = 84,
-    GE_OVERFLOW = 75, GE_NOTSOCK = 88, GE_OPNOTSUPP = 95, GE_AFNOSUPPORT = 97, GE_ADDRINUSE = 98, GE_NETUNREACH = 101, GE_CONNABORTED = 103,
-    GE_CONNRESET = 104, GE_NOBUFS = 105, GE_ISCONN = 106, GE_NOTCONN = 107, GE_TIMEDOUT = 110, GE_CONNREFUSED = 111, GE_HOSTUNREACH = 113,
-    GE_ALREADY = 114, GE_INPROGRESS = 115
+    GE_OVERFLOW = 75, GE_NOTSOCK = 88, GE_DESTADDRREQ = 89, GE_MSGSIZE = 90, GE_PROTOTYPE = 91, GE_NOPROTOOPT = 92, GE_PROTONOSUPPORT = 93,
+    GE_SOCKTNOSUPPORT = 94, GE_OPNOTSUPP = 95, GE_PFNOSUPPORT = 96, GE_AFNOSUPPORT = 97, GE_ADDRINUSE = 98, GE_ADDRNOTAVAIL = 99,
+    GE_NETDOWN = 100, GE_NETUNREACH = 101, GE_NETRESET = 102, GE_CONNABORTED = 103, GE_CONNRESET = 104, GE_NOBUFS = 105, GE_ISCONN = 106,
+    GE_NOTCONN = 107, GE_SHUTDOWN = 108, GE_TIMEDOUT = 110, GE_CONNREFUSED = 111, GE_HOSTDOWN = 112, GE_HOSTUNREACH = 113, GE_ALREADY = 114,
+    GE_INPROGRESS = 115
 };
 
 int *hk_errno_ptr(void);
@@ -113,8 +115,12 @@ typedef struct hk_gthread {
     /* Signals sent to the thread (hk_libc_misc.c, "signals"). */
     volatile i32 sig_pending;          /* bit n-1: signal n is waiting for its handler */
     u32 sig_blocked;                   /* the thread's signal mask */
+    /* The same for the real-time signals, 33 to 64 (bit n-33), which a 32-bit sigset_t has no room for: libcore sends 34 to a thread blocked on a socket that is being closed. */
+    volatile i32 sig_pending_rt;
+    u32 sig_blocked_rt;
     volatile i32 sig_park;             /* goes up with every signal sent to it: what sigsuspend and long sleeps wait on */
     volatile i32 sig_handled;          /* how many handlers have run on it */
+    volatile i32 sig_unrestarted;      /* how many of them did not ask for SA_RESTART: a wait for a socket they cut short ends with EINTR */
     volatile i32 *volatile sig_wait_addr;  /* the word the thread is waiting on, while it is */
     hk_cond *volatile sig_wait_cond;   /* or the condition */
     hk_thread *volatile sig_thread;    /* the thread itself, to interrupt it in the middle of guest code */
@@ -137,11 +143,14 @@ hk_gthread *hk_gthread_self(void);
  * somewhere else in this layer or the system, where it is left alone and
  * asked again a millisecond later.
  */
-int hk_signal_send(hk_gthread *t, int sig);            /* pthread_kill: 0 or an errno */
+int hk_signal_send(hk_gthread *t, int sig);            /* pthread_kill: 0 or an errno; signals 1 to 64 */
 int hk_signal_mask(int how, const u32 *set, u32 *old); /* pthread_sigmask */
 /* Runs the handlers of the signals waiting for the calling thread. Only where no lock of this layer is held. */
 void hk_signals_check(void);
-static inline bool hk_signals_ready(const hk_gthread *t) { return ((u32)t->sig_pending & ~t->sig_blocked) != 0; }
+static inline bool hk_signals_ready(const hk_gthread *t)
+{
+    return ((u32)t->sig_pending & ~t->sig_blocked) != 0 || ((u32)t->sig_pending_rt & ~t->sig_blocked_rt) != 0;
+}
 /* hk_futex_wait for a guest thread: a signal for it ends the wait, and its handler has run by the time this returns. */
 bool hk_gwait(volatile i32 *addr, i32 expect, u64 timeout_ns);
 /* hk_sleep_ns likewise; the handlers run, and the sleep goes on for the time that is left. */

@@ -3,9 +3,10 @@
  *
  * Guest descriptors are this layer's own small integers. Behind one is a host
  * file, an in-memory file this layer made up (/proc/cpuinfo), a pipe, an
- * eventfd, or one of the standard streams -- which go to the log. Pipes and
- * eventfds exist here because native_app_glue and every engine's main loop
- * are built on them, and nothing on the host has their shape.
+ * eventfd, one of the standard streams -- which go to the log -- or an object
+ * of another module's: a socket (bionic/hk_net.c). Pipes and eventfds exist
+ * here because native_app_glue and every engine's main loop are built on
+ * them, and nothing on the host has their shape.
  *
  * Guest paths are Android's. A mount table says where each prefix lives on
  * the host; what has no mount does not exist, except the handful of /proc and
@@ -426,6 +427,8 @@ typedef struct epoll_item {
     int fd;
     u32 events;
     u64 data;
+    int last;                      /* what was last reported and still holds (EPOLLET) */
+    bool disarmed;                 /* reported once with EPOLLONESHOT */
 } epoll_item;
 
 typedef struct gobj {
@@ -443,7 +446,7 @@ typedef struct gobj {
     u32 line_len;
     int log_level;
     epoll_item *items;
-    int nitems;
+    int nitems, epoll_next;
     const hk_fd_ops *ops;          /* OBJ_EXT: another module's object (a socket) */
     void *ext;
 } gobj;
@@ -554,7 +557,7 @@ static void fd_put(gobj *o)
     }
 }
 
-int hk_fd_register(const hk_fd_ops *ops, void *ext)
+int hk_fd_register_with(const hk_fd_ops *ops, void *ext, int flags)
 {
     gobj *o = (gobj *)hk_alloc(sizeof(*o));
     int fd;
@@ -562,10 +565,14 @@ int hk_fd_register(const hk_fd_ops *ops, void *ext)
     o->refs = 1;
     o->ops = ops;
     o->ext = ext;
+    o->flags = flags & (G_O_ACCMODE | G_O_NONBLOCK);
     fd = fd_new(o);
     if (fd < 0) free(o);
+    else if (flags & G_O_CLOEXEC) g_cloexec[fd] = 1;
     return fd;
 }
+
+int hk_fd_register(const hk_fd_ops *ops, void *ext) { return hk_fd_register_with(ops, ext, 2); }
 
 void *hk_fd_ext(int fd, const hk_fd_ops *ops)
 {
@@ -575,6 +582,24 @@ void *hk_fd_ext(int fd, const hk_fd_ops *ops)
     if (o->type == OBJ_EXT && o->ops == ops) e = o->ext;
     fd_put(o);
     return e;
+}
+
+void *hk_fd_ext_hold(int fd, const hk_fd_ops *ops, void **held, int *flags)
+{
+    gobj *o = fd_get(fd);
+    *held = NULL;
+    if (!o) {
+        hk_set_errno(GE_BADF);
+        return NULL;
+    }
+    if (o->type != OBJ_EXT || o->ops != ops) {
+        fd_put(o);
+        hk_set_errno(GE_NOTSOCK);
+        return NULL;
+    }
+    *held = o;
+    if (flags) *flags = o->flags;
+    return o->ext;
 }
 
 void hk_fd_notify(void)
@@ -736,11 +761,14 @@ static int g_close(int fd)
 /*
  * Waits, with the lock held, for the state of some descriptor to change.
  * A signal sent to the thread ends the wait, and its handler runs -- with the
- * lock let go of -- before this returns. False when the time (0: none) ran out.
+ * lock let go of -- before this returns. Returns HK_FD_* (hk_fd.h): woken,
+ * the time (0: none) ran out, or a handler ran, and whether that one asked
+ * for SA_RESTART.
  */
-static bool io_wait(u64 ns)
+static int io_wait(u64 ns)
 {
     hk_gthread *t = hk_gthread_self();
+    i32 handled = t->sig_handled, unrestarted = t->sig_unrestarted;
     bool ok = true;
     t->sig_wait_cond = &g_io_cond;
     if (!hk_signals_ready(t)) {
@@ -753,8 +781,19 @@ static bool io_wait(u64 ns)
         hk_signals_check();
         hk_lock_acquire(&g_io_lock);
     }
-    return ok;
+    if (t->sig_unrestarted != unrestarted) return HK_FD_INTERRUPTED;
+    if (t->sig_handled != handled) return HK_FD_HANDLER_RAN;
+    return ok ? HK_FD_WOKEN : HK_FD_TIMED_OUT;
 }
+
+void hk_fd_lock(void)
+{
+    io_init();
+    hk_lock_acquire(&g_io_lock);
+}
+void hk_fd_unlock(void) { hk_lock_release(&g_io_lock); }
+void hk_fd_notify_locked(void) { hk_cond_broadcast(&g_io_cond); }
+int hk_fd_wait_locked(u64 timeout_ns) { return io_wait(timeout_ns); }
 
 static i32 obj_read(gobj *o, void *buf, u32 n, bool positioned, u64 offset)
 {
@@ -1191,6 +1230,12 @@ static int g_fstat(int fd, g_stat *out)
     case OBJ_MEM: fill_special(out, G_S_IFREG | 0444, o->mem_size, o->path); break;
     case OBJ_DIRFD: fill_special(out, G_S_IFDIR | 0771, 4096, o->path); break;
     case OBJ_PIPE_R: case OBJ_PIPE_W: fill_special(out, G_S_IFIFO | 0600, 0, "pipe"); break;
+    case OBJ_EXT:
+        if (o->ops->file_type) {
+            fill_special(out, o->ops->file_type | 0777, 0, "ext");
+            break;
+        }
+        /* fall through */
     default: fill_special(out, G_S_IFCHR | 0620, 0, "chr"); break;
     }
     fd_put(o);
@@ -1900,6 +1945,8 @@ static int g_ioctl(int fd, unsigned request, void *arg)
         else o->flags &= ~G_O_NONBLOCK;
         if (o->type == OBJ_EXT && o->ops->set_nonblock) o->ops->set_nonblock(o->ext, *(int *)arg != 0);
         r = 0;
+    } else if (o->type == OBJ_EXT && o->ops->ioctl) {
+        r = o->ops->ioctl(o->ext, request, arg);
     } else {
         hk_set_errno(GE_NOTTY);
     }
@@ -1921,7 +1968,8 @@ static int g_isatty(int fd) { (void)fd; hk_set_errno(GE_NOTTY); return 0; }
 /* What of `events` is true of the object now. Called with the lock held. */
 static int ready_locked(gobj *o, int events)
 {
-    int r = 0;
+    static int epoll_depth;            /* (an epoll set in an epoll set: looked into, not for ever) */
+    int r = 0, i;
     switch (o->type) {
     case OBJ_PIPE_R:
         if (o->pipe->count) r |= G_POLLIN;
@@ -1939,6 +1987,16 @@ static int ready_locked(gobj *o, int events)
         if (o->ops->poll) r = o->ops->poll(o->ext, events);
         break;
     case OBJ_EPOLL:
+        /* Readable when something in its set is ready, as Linux has it. */
+        if (epoll_depth < 4) {
+            epoll_depth++;
+            for (i = 0; i < o->nitems && !r; i++) {
+                int fd = o->items[i].fd;
+                gobj *x = fd >= 0 && fd < MAX_FDS ? g_fds[fd] : NULL;
+                if (x && x != o && !o->items[i].disarmed && ready_locked(x, (int)(o->items[i].events & 0x23FFu))) r = G_POLLIN;
+            }
+            epoll_depth--;
+        }
         break;
     default:
         r = G_POLLIN | G_POLLOUT;
@@ -1947,76 +2005,170 @@ static int ready_locked(gobj *o, int events)
     return r & (events | G_POLLERR | G_POLLHUP);
 }
 
-int hk_fd_poll(hk_pollfd *fds, int count, int timeout_ms)
+/*
+ * The one loop every wait for descriptors goes round: `check` says, with the
+ * lock held, how many of the descriptors it watches are ready (and fills in
+ * what it reports of them); between looks the thread waits on the condition
+ * every change is announced on -- by this file's pipes and eventfds, and by
+ * the objects of other modules that announce theirs (hk_fd_ops.announces):
+ * sockets, whose host tells of every change on a thread of its own
+ * (bionic/hk_net.c). An object that does not announce is looked at again
+ * every 5 ms. So one wait covers sockets, pipes, eventfds and files together,
+ * whatever the host's own sockets can be waited on with.
+ *
+ * `interruptible`: a signal handled meanwhile ends the wait with EINTR, as
+ * poll, select and epoll_wait do on Linux whatever the handler asked for.
+ * The layer's own callers (the looper) go on waiting instead. `mask`: the
+ * signal mask while waiting (ppoll, pselect, epoll_pwait).
+ */
+typedef int (*ready_check)(void *ctx, bool *looks_itself);
+
+static int wait_ready(ready_check check, void *ctx, int timeout_ms, bool interruptible, const u32 *mask)
 {
     u64 deadline = timeout_ms > 0 ? hk_time_monotonic_ns() + (u64)timeout_ms * 1000000ull : 0;
-    bool any_ext = false;
-    int i;
+    hk_gthread *t = mask ? hk_gthread_self() : NULL;
+    u32 saved = 0;
+    int result;
     io_init();
+    if (t) {
+        saved = t->sig_blocked;
+        t->sig_blocked = *mask;
+    }
     hk_lock_acquire(&g_io_lock);
     for (;;) {
-        int hits = 0;
-        for (i = 0; i < count; i++) {
-            gobj *o = fds[i].fd >= 0 && fds[i].fd < MAX_FDS ? g_fds[fds[i].fd] : NULL;
-            fds[i].revents = 0;
-            if (fds[i].fd < 0) continue;
-            if (!o) fds[i].revents = G_POLLNVAL;
-            else {
-                fds[i].revents = (i16)ready_locked(o, fds[i].events);
-                if (o->type == OBJ_EXT) any_ext = true;
-            }
-            if (fds[i].revents) hits++;
-        }
+        bool looks_itself = false;
+        int hits = check(ctx, &looks_itself), w;
+        u64 left = 0;
         if (hits || timeout_ms == 0) {
-            hk_lock_release(&g_io_lock);
-            return hits;
+            result = hits;
+            break;
         }
-        if (timeout_ms < 0) {
-            /* Objects of other modules (sockets) cannot wake this condition from the host's side: look again soon. */
-            if (any_ext) io_wait(5000000ull);
-            else io_wait(0);
-        } else {
-            u64 now = hk_time_monotonic_ns(), left;
+        if (timeout_ms > 0) {
+            u64 now = hk_time_monotonic_ns();
             if (now >= deadline) {
-                hk_lock_release(&g_io_lock);
-                return 0;
+                result = 0;
+                break;
             }
             left = deadline - now;
-            if (any_ext && left > 5000000ull) left = 5000000ull;
-            io_wait(left);
+        }
+        if (looks_itself && (!left || left > 5000000ull)) left = 5000000ull;
+        w = io_wait(left);
+        if (interruptible && w >= HK_FD_HANDLER_RAN) {
+            result = -1;
+            break;
         }
     }
+    hk_lock_release(&g_io_lock);
+    if (t) {
+        t->sig_blocked = saved;
+        if (hk_signals_ready(t)) hk_signals_check();
+    }
+    if (result < 0) hk_set_errno(GE_INTR);
+    return result;
 }
 
-static int g_poll(hk_pollfd *fds, unsigned count, int timeout_ms) { return hk_fd_poll(fds, (int)count, timeout_ms); }
+typedef struct poll_ctx {
+    hk_pollfd *fds;
+    int count;
+} poll_ctx;
 
-static int g_ppoll(hk_pollfd *fds, unsigned count, const i32 *ts, const void *mask)
+static int poll_check(void *ctx, bool *looks_itself)
 {
-    (void)mask;
-    return hk_fd_poll(fds, (int)count, ts ? (int)(ts[0] * 1000 + ts[1] / 1000000) : -1);
+    poll_ctx *c = (poll_ctx *)ctx;
+    int i, hits = 0;
+    for (i = 0; i < c->count; i++) {
+        hk_pollfd *p = &c->fds[i];
+        gobj *o = p->fd >= 0 && p->fd < MAX_FDS ? g_fds[p->fd] : NULL;
+        p->revents = 0;
+        if (p->fd < 0) continue;
+        if (!o) {
+            p->revents = G_POLLNVAL;
+        } else {
+            p->revents = (i16)ready_locked(o, (u16)p->events);
+            if (o->type == OBJ_EXT && !o->ops->announces) *looks_itself = true;
+        }
+        if (p->revents) hits++;
+    }
+    return hits;
 }
 
-/* select: bionic's fd_set is 1024 bits in 32-bit words. */
-static int g_select(int nfds, u32 *rd, u32 *wr, u32 *ex, const i32 *tv)
+/* poll for the layer's own callers: a signal's handler runs, and the wait goes on. */
+int hk_fd_poll(hk_pollfd *fds, int count, int timeout_ms)
+{
+    poll_ctx c;
+    c.fds = fds;
+    c.count = count;
+    return wait_ready(poll_check, &c, timeout_ms, false, NULL);
+}
+
+static int g_poll(hk_pollfd *fds, unsigned count, int timeout_ms)
+{
+    poll_ctx c;
+    c.fds = fds;
+    c.count = (int)count;
+    return wait_ready(poll_check, &c, timeout_ms, true, NULL);
+}
+
+/* A struct timespec / timeval (two 32-bit words) as milliseconds, rounded up; -2 when it is not one. */
+static int timeout_of(const i32 *t, i64 per_ms)
+{
+    i64 ms;
+    if (t[0] < 0 || t[1] < 0 || t[1] >= per_ms * 1000) return -2;
+    ms = (i64)t[0] * 1000 + ((i64)t[1] + per_ms - 1) / per_ms;
+    return ms > 0x7FFFFFFF ? 0x7FFFFFFF : (int)ms;
+}
+
+static int g_ppoll(hk_pollfd *fds, unsigned count, const i32 *ts, const u32 *mask)
+{
+    poll_ctx c;
+    int ms = ts ? timeout_of(ts, 1000000) : -1;
+    if (ms == -2) {
+        hk_set_errno(GE_INVAL);
+        return -1;
+    }
+    c.fds = fds;
+    c.count = (int)count;
+    return wait_ready(poll_check, &c, ms, true, mask);
+}
+
+/* select: bionic's fd_set is 1024 bits in 32-bit words. Readable, writable and exceptional are what Linux makes of poll's bits. */
+static int select_wait(int nfds, u32 *rd, u32 *wr, u32 *ex, int timeout_ms, const u32 *mask)
 {
     hk_pollfd *p;
+    poll_ctx c;
     int n = 0, i, hits, total = 0;
-    if (nfds < 0 || nfds > MAX_FDS) {
+    if (nfds < 0 || nfds > MAX_FDS || timeout_ms == -2) {
         hk_set_errno(GE_INVAL);
         return -1;
     }
     p = (hk_pollfd *)hk_alloc(sizeof(hk_pollfd) * (size_t)(nfds + 1));
+    io_init();
+    hk_lock_acquire(&g_io_lock);
     for (i = 0; i < nfds; i++) {
         int ev = 0;
         if (rd && (rd[i / 32] >> (i % 32)) & 1) ev |= G_POLLIN;
         if (wr && (wr[i / 32] >> (i % 32)) & 1) ev |= G_POLLOUT;
         if (ex && (ex[i / 32] >> (i % 32)) & 1) ev |= G_POLLPRI;
         if (!ev) continue;
+        if (!g_fds[i]) {
+            /* Linux refuses a set with a descriptor that is not open in it, before waiting. */
+            hk_lock_release(&g_io_lock);
+            free(p);
+            hk_set_errno(GE_BADF);
+            return -1;
+        }
         p[n].fd = i;
         p[n].events = (i16)ev;
         n++;
     }
-    hits = hk_fd_poll(p, n, tv ? (int)(tv[0] * 1000 + tv[1] / 1000) : -1);
+    hk_lock_release(&g_io_lock);
+    c.fds = p;
+    c.count = n;
+    hits = wait_ready(poll_check, &c, timeout_ms, true, mask);
+    if (hits < 0) {
+        free(p);
+        return -1;
+    }
     if (rd) memset(rd, 0, (size_t)((nfds + 31) / 32) * 4);
     if (wr) memset(wr, 0, (size_t)((nfds + 31) / 32) * 4);
     if (ex) memset(ex, 0, (size_t)((nfds + 31) / 32) * 4);
@@ -2024,16 +2176,49 @@ static int g_select(int nfds, u32 *rd, u32 *wr, u32 *ex, const i32 *tv)
         int fd = p[i].fd;
         if (rd && (p[i].revents & (G_POLLIN | G_POLLHUP | G_POLLERR)) && (p[i].events & G_POLLIN)) { rd[fd / 32] |= 1u << (fd % 32); total++; }
         if (wr && (p[i].revents & (G_POLLOUT | G_POLLERR)) && (p[i].events & G_POLLOUT)) { wr[fd / 32] |= 1u << (fd % 32); total++; }
+        if (ex && (p[i].revents & G_POLLPRI) && (p[i].events & G_POLLPRI)) { ex[fd / 32] |= 1u << (fd % 32); total++; }
     }
     free(p);
     return total;
 }
 
-/* epoll, as a list that poll is run over. */
+static int g_select(int nfds, u32 *rd, u32 *wr, u32 *ex, i32 *tv)
+{
+    u64 began = hk_time_monotonic_ns();
+    int ms = tv ? timeout_of(tv, 1000) : -1, r = select_wait(nfds, rd, wr, ex, ms, NULL);
+    if (tv && ms >= 0 && r >= 0) {
+        /* As Linux does: the time that was left. */
+        u64 spent = (hk_time_monotonic_ns() - began) / 1000ull, all = (u64)ms * 1000ull, left = spent < all ? all - spent : 0;
+        tv[0] = (i32)(left / 1000000ull);
+        tv[1] = (i32)(left % 1000000ull);
+    }
+    return r;
+}
+
+static int g_pselect(int nfds, u32 *rd, u32 *wr, u32 *ex, const i32 *ts, const u32 *mask)
+{
+    return select_wait(nfds, rd, wr, ex, ts ? timeout_of(ts, 1000000) : -1, mask);
+}
+
+/*
+ * epoll, as a list that the wait above goes through. Level-triggered as
+ * Linux's is by default. EPOLLET is taken to mean what an app that asks for
+ * it relies on: a descriptor is not reported again while what was reported
+ * still holds, and is once something new holds or a condition went and came
+ * back. (Linux also reports it again when more data arrives on a descriptor
+ * not yet emptied, which this cannot tell.) EPOLLONESHOT disarms an item once
+ * it is reported, until EPOLL_CTL_MOD.
+ */
 typedef struct g_epoll_event {
     u32 events;
     u64 data;
 } g_epoll_event;
+
+#define G_EPOLLRDHUP 0x2000u
+#define G_EPOLLONESHOT 0x40000000u
+#define G_EPOLLET 0x80000000u
+/* The events an item can be waiting for, which are poll's bits. */
+#define G_EPOLL_EVENTS (0x3FFu | G_EPOLLRDHUP)
 
 static int g_epoll_create(int size)
 {
@@ -2047,21 +2232,32 @@ static int g_epoll_create(int size)
     return fd;
 }
 
+static int g_epoll_create1(int flags)
+{
+    int fd = g_epoll_create(1);
+    if (fd >= 0 && (flags & G_O_CLOEXEC)) g_cloexec[fd] = 1;
+    return fd;
+}
+
 static int g_epoll_ctl(int epfd, int op, int fd, const g_epoll_event *ev)
 {
     int i, r = 0;
     WITH_FD(epfd, o, -1)
-    if (o->type != OBJ_EPOLL) {
+    if (o->type != OBJ_EPOLL || fd == epfd) {
         fd_put(o);
         hk_set_errno(GE_INVAL);
         return -1;
     }
     hk_lock_acquire(&g_io_lock);
     for (i = 0; i < o->nitems && o->items[i].fd != fd; i++) { }
-    if (op == 1) {                                 /* EPOLL_CTL_ADD */
+    if ((op == 1 || op == 3) && !ev) {
+        r = GE_FAULT;
+    } else if (op == 1) {                          /* EPOLL_CTL_ADD */
         if (i < o->nitems) r = GE_EXIST;
+        else if (fd < 0 || fd >= MAX_FDS || !g_fds[fd]) r = GE_BADF;
         else {
             o->items = (epoll_item *)hk_realloc(o->items, sizeof(epoll_item) * (size_t)(o->nitems + 1));
+            memset(&o->items[o->nitems], 0, sizeof(epoll_item));
             o->items[o->nitems].fd = fd;
             o->items[o->nitems].events = ev->events;
             o->items[o->nitems].data = ev->data;
@@ -2070,11 +2266,13 @@ static int g_epoll_ctl(int epfd, int op, int fd, const g_epoll_event *ev)
     } else if (op == 2) {                          /* EPOLL_CTL_DEL */
         if (i == o->nitems) r = GE_NOENT;
         else o->items[i] = o->items[--o->nitems];
-    } else if (op == 3) {                          /* EPOLL_CTL_MOD */
+    } else if (op == 3) {                          /* EPOLL_CTL_MOD: armed again */
         if (i == o->nitems) r = GE_NOENT;
         else {
             o->items[i].events = ev->events;
             o->items[i].data = ev->data;
+            o->items[i].last = 0;
+            o->items[i].disarmed = false;
         }
     } else {
         r = GE_INVAL;
@@ -2089,45 +2287,64 @@ static int g_epoll_ctl(int epfd, int op, int fd, const g_epoll_event *ev)
     return 0;
 }
 
-static int g_epoll_wait(int epfd, g_epoll_event *out, int max, int timeout_ms)
+typedef struct epoll_ctx {
+    gobj *ep;
+    g_epoll_event *out;
+    int max;
+} epoll_ctx;
+
+static int epoll_check(void *ctx, bool *looks_itself)
 {
-    hk_pollfd *p;
-    u64 *data;
-    int n, i, hits, got = 0;
+    epoll_ctx *c = (epoll_ctx *)ctx;
+    gobj *ep = c->ep;
+    int i, n, got = 0;
+    /* A file that has gone is gone from every epoll set too, as on Linux when its last descriptor is closed. */
+    for (i = 0; i < ep->nitems;) {
+        int fd = ep->items[i].fd;
+        if (fd < 0 || fd >= MAX_FDS || !g_fds[fd]) ep->items[i] = ep->items[--ep->nitems];
+        else i++;
+    }
+    n = ep->nitems;
+    /* Round from where the last report stopped, so that a full `out` does not leave the same items out every time. */
+    for (i = 0; i < n && got < c->max; i++) {
+        epoll_item *it = &ep->items[(ep->epoll_next + i) % n];
+        gobj *o = g_fds[it->fd];
+        int now, fresh;
+        if (it->disarmed) continue;
+        if (o->type == OBJ_EXT && !o->ops->announces) *looks_itself = true;
+        now = ready_locked(o, (int)(it->events & G_EPOLL_EVENTS));
+        fresh = (it->events & G_EPOLLET) ? now & ~it->last : now;
+        it->last &= now;
+        if (!fresh) continue;
+        it->last = now;
+        c->out[got].events = (u32)now;
+        c->out[got].data = it->data;
+        got++;
+        if (it->events & G_EPOLLONESHOT) it->disarmed = true;
+    }
+    if (n) ep->epoll_next = (ep->epoll_next + i) % n;
+    return got;
+}
+
+static int g_epoll_pwait(int epfd, g_epoll_event *out, int max, int timeout_ms, const u32 *mask)
+{
+    epoll_ctx c;
+    int got;
     WITH_FD(epfd, o, -1)
     if (o->type != OBJ_EPOLL || max <= 0) {
         fd_put(o);
         hk_set_errno(GE_INVAL);
         return -1;
     }
-    hk_lock_acquire(&g_io_lock);
-    n = o->nitems;
-    p = (hk_pollfd *)hk_alloc(sizeof(hk_pollfd) * (size_t)(n + 1));
-    data = (u64 *)hk_alloc(sizeof(u64) * (size_t)(n + 1));
-    for (i = 0; i < n; i++) {
-        p[i].fd = o->items[i].fd;
-        p[i].events = (i16)(o->items[i].events & 0x1F);
-        data[i] = o->items[i].data;
-    }
-    hk_lock_release(&g_io_lock);
-    hits = hk_fd_poll(p, n, timeout_ms);
-    for (i = 0; i < n && got < max && hits > 0; i++) {
-        if (!p[i].revents) continue;
-        out[got].events = (u32)p[i].revents;
-        out[got].data = data[i];
-        got++;
-    }
-    free(p);
-    free(data);
+    c.ep = o;
+    c.out = out;
+    c.max = max;
+    got = wait_ready(epoll_check, &c, timeout_ms, true, mask);
     fd_put(o);
     return got;
 }
 
-static int g_epoll_pwait(int epfd, g_epoll_event *out, int max, int timeout_ms, const void *mask)
-{
-    (void)mask;
-    return g_epoll_wait(epfd, out, max, timeout_ms);
-}
+static int g_epoll_wait(int epfd, g_epoll_event *out, int max, int timeout_ms) { return g_epoll_pwait(epfd, out, max, timeout_ms, NULL); }
 
 static int g_eventfd(unsigned initial, int flags) { return hk_fd_eventfd(initial, flags); }
 
@@ -2171,8 +2388,8 @@ const hk_sym hk_tab_io[] = {
     IO("alphasort", g_alphasort), IO("alphasort64", g_alphasort),
     IO("pipe", g_pipe), IO("pipe2", g_pipe2), IO("eventfd", g_eventfd), IO("dup", g_dup), IO("dup2", g_dup2), IO("dup3", g_dup3),
     IO("fcntl", g_fcntl), IO("__fcntl64", g_fcntl), IO("ioctl", g_ioctl), IO("isatty", g_isatty),
-    IO("poll", g_poll), IO("__poll_chk", g_poll), IO("ppoll", g_ppoll), IO("select", g_select),
-    IO("epoll_create", g_epoll_create), IO("epoll_create1", g_epoll_create), IO("epoll_ctl", g_epoll_ctl),
+    IO("poll", g_poll), IO("__poll_chk", g_poll), IO("ppoll", g_ppoll), IO("__ppoll_chk", g_ppoll), IO("select", g_select),
+    IO("pselect", g_pselect), IO("epoll_create", g_epoll_create), IO("epoll_create1", g_epoll_create1), IO("epoll_ctl", g_epoll_ctl),
     IO("epoll_wait", g_epoll_wait), IO("epoll_pwait", g_epoll_pwait),
     HK_END
 };

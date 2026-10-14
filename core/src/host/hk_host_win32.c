@@ -5,7 +5,8 @@
  * In the app container only the app partition of the API exists, so executable
  * memory comes from VirtualAllocFromApp / VirtualProtectFromApp (the package
  * declares codeGeneration), files are opened with CreateFile2, and DLLs with
- * LoadPackagedLibrary.
+ * LoadPackagedLibrary. Sockets are Winsock 2's, which an app container may
+ * use (the package declares internetClient and internetClientServer).
  */
 #if defined(_WIN32)
 
@@ -15,8 +16,13 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+/* (Winsock 2's headers before windows.h, which would otherwise bring the first Winsock's.) */
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <windows.h>
 #include <bcrypt.h>
+#include <iphlpapi.h>
+#include <mstcpip.h>
 #define COBJMACROS
 #include <d3d11.h>
 #include <dxgi1_4.h>
@@ -1298,6 +1304,757 @@ void hk_map_close(hk_map *m)
     if (m->h2) CloseHandle((HANDLE)m->h2);
     if (m->h1) CloseHandle((HANDLE)m->h1);
     memset(m, 0, sizeof(*m));
+}
+
+/* ---------------------------------------------------------------- sockets
+ *
+ * Every socket is non-blocking and has an event Winsock sets on each of its
+ * network events (WSAEventSelect), which a wait of the thread pool watches.
+ * When it fires the events are taken (WSAEnumNetworkEvents, which resets the
+ * event), what they say that select() cannot is kept -- how a connection
+ * attempt ended, that the other side closed -- and whoever hk_sock_set_notify
+ * named is told. What holds at a given moment is select()'s answer with no
+ * wait. WSAPoll is not used: on the Windows these phones have (before 10
+ * 2004) it never reports a connection attempt that failed.
+ *
+ * Winsock's events are edges, and some are armed again only by a call that
+ * fails: room to send (FD_WRITE) is announced only after a send that found
+ * none. So a send that took part of what it was given is asked again with
+ * the rest, until it has taken all of it or found no room (hk_sock_send).
+ */
+#ifndef SIO_UDP_CONNRESET
+#define SIO_UDP_CONNRESET _WSAIOW(IOC_VENDOR, 12)
+#endif
+#ifndef TCP_KEEPIDLE
+#define TCP_KEEPIDLE 3
+#endif
+#ifndef TCP_KEEPCNT
+#define TCP_KEEPCNT 16
+#endif
+#ifndef TCP_KEEPINTVL
+#define TCP_KEEPINTVL 17
+#endif
+
+struct hk_sock {
+    SOCKET s;
+    WSAEVENT ev;
+    PTP_WAIT wait;
+    int family, type;
+    volatile LONG closing;
+    volatile LONG connecting;          /* an attempt is under way: what select() then puts among the exceptions is its failure */
+    volatile LONG connect_error;       /* how the last one ended, as FD_CONNECT said, until asked for (a WSA error) */
+    volatile LONG failed;              /* an attempt failed: the socket is closed as far as anyone polling it can tell */
+    volatile LONG error_pending;       /* ... and its error has not been asked for yet */
+    volatile LONG peer_closed;         /* FD_CLOSE: the other side sends no more */
+    volatile LONG reset;               /* ... because the connection was reset or aborted */
+    int reuseaddr;                     /* kept here, not given to Windows (hk_sock_set) */
+};
+
+static void (*volatile g_sock_notify)(void);
+void hk_sock_set_notify(void (*changed)(void)) { g_sock_notify = changed; }
+
+static bool wsa_start(void)
+{
+    static volatile LONG state;        /* 0 not yet, 1 started, -1 refused */
+    if (!state) {
+        WSADATA d;
+        int e = WSAStartup(MAKEWORD(2, 2), &d);
+        if (e) hk_err("host: Winsock did not start (error %d): there are no sockets", e);
+        InterlockedExchange(&state, e ? -1 : 1);
+    }
+    return state == 1;
+}
+
+static int net_err(int e)
+{
+    switch (e) {
+    case 0: return HK_NE_OK;
+    case WSAEWOULDBLOCK: return HK_NE_AGAIN;
+    case WSAEINPROGRESS: return HK_NE_INPROGRESS;
+    case WSAEALREADY: return HK_NE_ALREADY;
+    case WSAEISCONN: return HK_NE_ISCONN;
+    case WSAENOTCONN: return HK_NE_NOTCONN;
+    case WSAECONNREFUSED: return HK_NE_CONNREFUSED;
+    case WSAECONNRESET: return HK_NE_CONNRESET;
+    case WSAECONNABORTED: return HK_NE_CONNABORTED;
+    case WSAETIMEDOUT: return HK_NE_TIMEDOUT;
+    case WSAENETUNREACH: return HK_NE_NETUNREACH;
+    case WSAEHOSTUNREACH: case WSAEHOSTDOWN: return HK_NE_HOSTUNREACH;
+    case WSAENETDOWN: return HK_NE_NETDOWN;
+    case WSAENETRESET: return HK_NE_NETRESET;
+    case WSAEADDRINUSE: return HK_NE_ADDRINUSE;
+    case WSAEADDRNOTAVAIL: return HK_NE_ADDRNOTAVAIL;
+    case WSAEAFNOSUPPORT: case WSAEPFNOSUPPORT: return HK_NE_AFNOSUPPORT;
+    case WSAEPROTONOSUPPORT: case WSAEPROTOTYPE: return HK_NE_PROTONOSUPPORT;
+    case WSAESOCKTNOSUPPORT: return HK_NE_SOCKTNOSUPPORT;
+    case WSAEOPNOTSUPP: return HK_NE_OPNOTSUPP;
+    case WSAENOPROTOOPT: return HK_NE_NOPROTOOPT;
+    case WSAEINVAL: return HK_NE_INVAL;
+    case WSAEACCES: return HK_NE_ACCES;
+    case WSAEMSGSIZE: return HK_NE_MSGSIZE;
+    case WSAENOBUFS: case WSA_NOT_ENOUGH_MEMORY: return HK_NE_NOBUFS;
+    case WSAEMFILE: return HK_NE_MFILE;
+    case WSAESHUTDOWN: return HK_NE_SHUTDOWN;
+    case WSAEDESTADDRREQ: return HK_NE_DESTADDRREQ;
+    case WSAEFAULT: return HK_NE_FAULT;
+    default: return HK_NE_IO;
+    }
+}
+
+static int addr_to_native(const hk_sockaddr *a, SOCKADDR_STORAGE *ss)
+{
+    memset(ss, 0, sizeof(*ss));
+    if (a->family == HK_AF_INET) {
+        SOCKADDR_IN *in = (SOCKADDR_IN *)ss;
+        in->sin_family = AF_INET;
+        in->sin_port = htons(a->port);
+        memcpy(&in->sin_addr, a->addr, 4);
+        return (int)sizeof(*in);
+    }
+    if (a->family == HK_AF_INET6) {
+        SOCKADDR_IN6 *in6 = (SOCKADDR_IN6 *)ss;
+        in6->sin6_family = AF_INET6;
+        in6->sin6_port = htons(a->port);
+        in6->sin6_flowinfo = a->flowinfo;
+        memcpy(&in6->sin6_addr, a->addr, 16);
+        in6->sin6_scope_id = a->scope_id;
+        return (int)sizeof(*in6);
+    }
+    return 0;
+}
+
+static void addr_from_native(const struct sockaddr *sa, int len, hk_sockaddr *a)
+{
+    memset(a, 0, sizeof(*a));
+    if (!sa) return;
+    if (sa->sa_family == AF_INET && len >= (int)sizeof(SOCKADDR_IN)) {
+        const SOCKADDR_IN *in = (const SOCKADDR_IN *)sa;
+        a->family = HK_AF_INET;
+        a->port = ntohs(in->sin_port);
+        memcpy(a->addr, &in->sin_addr, 4);
+    } else if (sa->sa_family == AF_INET6 && len >= (int)sizeof(SOCKADDR_IN6)) {
+        const SOCKADDR_IN6 *in6 = (const SOCKADDR_IN6 *)sa;
+        a->family = HK_AF_INET6;
+        a->port = ntohs(in6->sin6_port);
+        a->flowinfo = in6->sin6_flowinfo;
+        memcpy(a->addr, &in6->sin6_addr, 16);
+        a->scope_id = in6->sin6_scope_id;
+    }
+}
+
+/* The thread pool's wait fired: the socket's network events, taken and kept as far as select() cannot say them later, and the news passed on. */
+static VOID CALLBACK sock_event(PTP_CALLBACK_INSTANCE instance, PVOID context, PTP_WAIT wait, TP_WAIT_RESULT result)
+{
+    hk_sock *k = (hk_sock *)context;
+    void (*notify)(void) = g_sock_notify;
+    WSANETWORKEVENTS ne;
+    (void)instance;
+    (void)result;
+    if (k->closing) return;
+    memset(&ne, 0, sizeof(ne));
+    if (WSAEnumNetworkEvents(k->s, k->ev, &ne) == 0) {
+        if (ne.lNetworkEvents & FD_CONNECT) {
+            int e = ne.iErrorCode[FD_CONNECT_BIT];
+            if (e) {
+                InterlockedExchange(&k->connect_error, e);
+                InterlockedExchange(&k->error_pending, 1);
+                InterlockedExchange(&k->failed, 1);
+            }
+            InterlockedExchange(&k->connecting, 0);
+        }
+        if (ne.lNetworkEvents & FD_CLOSE) {
+            if (ne.iErrorCode[FD_CLOSE_BIT]) InterlockedExchange(&k->reset, 1);
+            InterlockedExchange(&k->peer_closed, 1);
+        }
+    } else {
+        WSAResetEvent(k->ev);
+    }
+    if (notify) notify();
+    if (!k->closing) SetThreadpoolWait(wait, k->ev, NULL);
+}
+
+static hk_sock *sock_wrap(SOCKET s, int family, int type, int *err)
+{
+    hk_sock *k = (hk_sock *)hk_alloc(sizeof(*k));
+    k->s = s;
+    k->family = family;
+    k->type = type;
+    k->ev = WSACreateEvent();
+    k->wait = k->ev != WSA_INVALID_EVENT ? CreateThreadpoolWait(sock_event, k, NULL) : NULL;
+    /* (An accepted socket comes with the listening one's events, and its event: this gives it its own.) */
+    if (!k->wait || WSAEventSelect(s, k->ev, FD_READ | FD_WRITE | FD_OOB | FD_ACCEPT | FD_CONNECT | FD_CLOSE) != 0) {
+        int e = WSAGetLastError();
+        *err = e ? net_err(e) : HK_NE_NOBUFS;
+        if (k->wait) CloseThreadpoolWait(k->wait);
+        if (k->ev != WSA_INVALID_EVENT) WSACloseEvent(k->ev);
+        closesocket(s);
+        free(k);
+        return NULL;
+    }
+    SetThreadpoolWait(k->wait, k->ev, NULL);
+    return k;
+}
+
+hk_sock *hk_sock_open(int family, int type, int protocol, int *err)
+{
+    int af = family == HK_AF_INET ? AF_INET : family == HK_AF_INET6 ? AF_INET6 : 0;
+    int st = type == HK_SOCK_STREAM ? SOCK_STREAM : type == HK_SOCK_DGRAM ? SOCK_DGRAM : type == HK_SOCK_RAW ? SOCK_RAW : 0;
+    SOCKET s;
+    if (!wsa_start()) {
+        *err = HK_NE_NETDOWN;
+        return NULL;
+    }
+    if (!af || !st) {
+        *err = !af ? HK_NE_AFNOSUPPORT : HK_NE_SOCKTNOSUPPORT;
+        return NULL;
+    }
+    s = WSASocketW(af, st, protocol, NULL, 0, WSA_FLAG_OVERLAPPED | WSA_FLAG_NO_HANDLE_INHERIT);
+    if (s == INVALID_SOCKET) {
+        *err = net_err(WSAGetLastError());
+        return NULL;
+    }
+    if (af == AF_INET6) {
+        /* Linux's default, and Android counts on it: libcore makes every socket an IPv6 one and reaches IPv4 addresses through it. */
+        DWORD off = 0;
+        setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, (const char *)&off, sizeof(off));
+    }
+    if (st == SOCK_DGRAM) {
+        /* Windows would answer a later receive with WSAECONNRESET when something sent was refused by its destination (ICMP port unreachable); Linux says nothing of it on a socket with no peer. */
+        BOOL no = FALSE;
+        DWORD got = 0;
+        WSAIoctl(s, SIO_UDP_CONNRESET, &no, sizeof(no), NULL, 0, &got, NULL, NULL);
+    }
+    return sock_wrap(s, family, type, err);
+}
+
+void hk_sock_close(hk_sock *k)
+{
+    u_long blocking = 0;
+    if (!k) return;
+    InterlockedExchange(&k->closing, 1);
+    /* Twice: a callback still running when the wait was first taken away may have set it again before it saw `closing`. */
+    SetThreadpoolWait(k->wait, NULL, NULL);
+    WaitForThreadpoolWaitCallbacks(k->wait, TRUE);
+    SetThreadpoolWait(k->wait, NULL, NULL);
+    WaitForThreadpoolWaitCallbacks(k->wait, TRUE);
+    CloseThreadpoolWait(k->wait);
+    /* Blocking again for the close itself: with a linger time set, a non-blocking socket refuses to be closed (WSAEWOULDBLOCK) and stays open. */
+    WSAEventSelect(k->s, NULL, 0);
+    ioctlsocket(k->s, FIONBIO, &blocking);
+    closesocket(k->s);
+    WSACloseEvent(k->ev);
+    free(k);
+}
+
+bool hk_sock_bind(hk_sock *k, const hk_sockaddr *a, int *err)
+{
+    SOCKADDR_STORAGE ss;
+    int len = addr_to_native(a, &ss);
+    if (!len) {
+        *err = HK_NE_AFNOSUPPORT;
+        return false;
+    }
+    if (bind(k->s, (const struct sockaddr *)&ss, len) != 0) {
+        *err = net_err(WSAGetLastError());
+        return false;
+    }
+    return true;
+}
+
+bool hk_sock_listen(hk_sock *k, int backlog, int *err)
+{
+    if (backlog < 1) backlog = 1;
+    if (listen(k->s, backlog) != 0) {
+        int e = WSAGetLastError();
+        if (e == WSAEINVAL) {
+            /* Not bound: Linux binds it to a port of its choosing first, Windows refuses. */
+            hk_sockaddr any;
+            memset(&any, 0, sizeof(any));
+            any.family = k->family;
+            if (hk_sock_bind(k, &any, err) && listen(k->s, backlog) == 0) return true;
+            e = WSAGetLastError();
+        }
+        *err = net_err(e);
+        return false;
+    }
+    return true;
+}
+
+hk_sock *hk_sock_accept(hk_sock *k, hk_sockaddr *peer, int *err)
+{
+    SOCKADDR_STORAGE ss;
+    int len = (int)sizeof(ss);
+    SOCKET n = accept(k->s, (struct sockaddr *)&ss, &len);
+    if (n == INVALID_SOCKET) {
+        *err = net_err(WSAGetLastError());
+        return NULL;
+    }
+    if (peer) addr_from_native((const struct sockaddr *)&ss, len, peer);
+    return sock_wrap(n, k->family, k->type, err);
+}
+
+static bool is_loopback(const hk_sockaddr *a)
+{
+    static const u8 one[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 }, mapped[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF };
+    if (a->family == HK_AF_INET) return a->addr[0] == 127;
+    return a->family == HK_AF_INET6 && (!memcmp(a->addr, one, 16) || (!memcmp(a->addr, mapped, 12) && a->addr[12] == 127));
+}
+
+bool hk_sock_connect(hk_sock *k, const hk_sockaddr *a, int *err)
+{
+    SOCKADDR_STORAGE ss;
+    int len, e;
+    if (!a->family) {
+        /* No peer any more: Windows takes an address of zeros for that. */
+        memset(&ss, 0, sizeof(ss));
+        ss.ss_family = (ADDRESS_FAMILY)(k->family == HK_AF_INET6 ? AF_INET6 : AF_INET);
+        len = k->family == HK_AF_INET6 ? (int)sizeof(SOCKADDR_IN6) : (int)sizeof(SOCKADDR_IN);
+    } else if (!(len = addr_to_native(a, &ss))) {
+        *err = HK_NE_AFNOSUPPORT;
+        return false;
+    }
+    if (k->type == HK_SOCK_STREAM && a->family && is_loopback(a)) {
+        /*
+         * Windows answers a connection to a port of this machine that nobody
+         * listens on only after sending its opening segment twice more, a
+         * second or so later; Linux says ECONNREFUSED at once. With no
+         * retransmission of that segment the refusal comes at once here too.
+         * Only for this machine's own addresses: on a real network a lost
+         * opening segment has to be sent again.
+         */
+        TCP_INITIAL_RTO_PARAMETERS p;
+        DWORD got = 0;
+        p.Rtt = TCP_INITIAL_RTO_UNSPECIFIED_RTT;
+        p.MaxSynRetransmissions = TCP_INITIAL_RTO_NO_SYN_RETRANSMISSIONS;
+        WSAIoctl(k->s, SIO_TCP_INITIAL_RTO, &p, sizeof(p), NULL, 0, &got, NULL, NULL);
+    }
+    InterlockedExchange(&k->connect_error, 0);
+    InterlockedExchange(&k->connecting, 1);
+    if (connect(k->s, (const struct sockaddr *)&ss, len) == 0) {
+        InterlockedExchange(&k->connecting, 0);
+        return true;
+    }
+    e = WSAGetLastError();
+    if (e == WSAEWOULDBLOCK) {
+        *err = HK_NE_INPROGRESS;
+        return false;
+    }
+    InterlockedExchange(&k->connecting, 0);
+    *err = net_err(e);
+    return false;
+}
+
+static int native_flags(int flags)
+{
+    return ((flags & HK_MSG_PEEK) ? MSG_PEEK : 0) | ((flags & HK_MSG_OOB) ? MSG_OOB : 0) | ((flags & HK_MSG_DONTROUTE) ? MSG_DONTROUTE : 0);
+}
+
+i32 hk_sock_send(hk_sock *k, const void *buf, u32 n, int flags, const hk_sockaddr *to, int *err)
+{
+    SOCKADDR_STORAGE ss;
+    int len = 0, f = native_flags(flags);
+    u32 done = 0;
+    if (to && !(len = addr_to_native(to, &ss))) {
+        *err = HK_NE_AFNOSUPPORT;
+        return -1;
+    }
+    for (;;) {
+        int chunk = n - done > 0x7FFFFFFFu ? 0x7FFFFFFF : (int)(n - done), r;
+        r = to ? sendto(k->s, (const char *)buf + done, chunk, f, (const struct sockaddr *)&ss, len) : send(k->s, (const char *)buf + done, chunk, f);
+        if (r == SOCKET_ERROR) {
+            int e = WSAGetLastError();
+            if (done) return (i32)done;
+            *err = net_err(e);
+            return -1;
+        }
+        done += (u32)r;
+        /* (A datagram is never sent twice.) */
+        if (done >= n || k->type != HK_SOCK_STREAM || r == 0) return (i32)done;
+    }
+}
+
+i32 hk_sock_recv(hk_sock *k, void *buf, u32 n, int flags, hk_sockaddr *from, int *said, int *err)
+{
+    SOCKADDR_STORAGE ss;
+    int len = (int)sizeof(ss), r;
+    if (said) *said = 0;
+    memset(&ss, 0, sizeof(ss));
+    r = recvfrom(k->s, (char *)buf, n > 0x7FFFFFFFu ? 0x7FFFFFFF : (int)n, native_flags(flags), from ? (struct sockaddr *)&ss : NULL, from ? &len : NULL);
+    if (r == SOCKET_ERROR) {
+        int e = WSAGetLastError();
+        if (e != WSAEMSGSIZE) {
+            *err = net_err(e);
+            return -1;
+        }
+        /* A datagram larger than the buffer: Windows fills it and drops the rest, as Linux does, but calls that an error. */
+        r = n > 0x7FFFFFFFu ? 0x7FFFFFFF : (int)n;
+        if (said) *said = HK_MSG_TRUNCATED;
+    }
+    if (from) addr_from_native((const struct sockaddr *)&ss, len, from);
+    return r;
+}
+
+bool hk_sock_shutdown(hk_sock *k, int how, int *err)
+{
+    if (shutdown(k->s, how == 0 ? SD_RECEIVE : how == 1 ? SD_SEND : SD_BOTH) != 0) {
+        *err = net_err(WSAGetLastError());
+        return false;
+    }
+    return true;
+}
+
+bool hk_sock_name(hk_sock *k, bool peer, hk_sockaddr *a, int *err)
+{
+    SOCKADDR_STORAGE ss;
+    int len = (int)sizeof(ss), r;
+    r = peer ? getpeername(k->s, (struct sockaddr *)&ss, &len) : getsockname(k->s, (struct sockaddr *)&ss, &len);
+    if (r != 0) {
+        int e = WSAGetLastError();
+        if (!peer && e == WSAEINVAL) {
+            /* Not bound yet: Linux says its family's wildcard address and port 0, Windows refuses. */
+            memset(a, 0, sizeof(*a));
+            a->family = k->family;
+            return true;
+        }
+        *err = net_err(e);
+        return false;
+    }
+    addr_from_native((const struct sockaddr *)&ss, len, a);
+    return true;
+}
+
+int hk_sock_ready(hk_sock *k)
+{
+    fd_set r, w, x;
+    struct timeval none = { 0, 0 };
+    int out = 0;
+    FD_ZERO(&r);
+    FD_ZERO(&w);
+    FD_ZERO(&x);
+    FD_SET(k->s, &r);
+    FD_SET(k->s, &w);
+    FD_SET(k->s, &x);
+    if (select(0, &r, &w, &x, &none) > 0) {
+        if (FD_ISSET(k->s, &r)) out |= HK_SOCK_IN;
+        if (FD_ISSET(k->s, &w)) out |= HK_SOCK_OUT;
+        /* Among the exceptions while connecting: the attempt failed (otherwise it is urgent data, which nothing here waits for). */
+        if (FD_ISSET(k->s, &x) && k->connecting && !k->failed) {
+            InterlockedExchange(&k->error_pending, 1);
+            InterlockedExchange(&k->failed, 1);
+            InterlockedExchange(&k->connecting, 0);
+        }
+    }
+    /* As Linux has a socket whose attempt failed: closed both ways, the error there until asked for. */
+    if (k->failed) out |= HK_SOCK_IN | HK_SOCK_OUT | HK_SOCK_HUP | (k->error_pending ? HK_SOCK_ERR : 0);
+    if (k->peer_closed) out |= HK_SOCK_IN | HK_SOCK_RDHUP;
+    if (k->reset) out |= HK_SOCK_ERR | HK_SOCK_HUP;
+    return out;
+}
+
+int hk_sock_error(hk_sock *k)
+{
+    int e = 0, len = (int)sizeof(e);
+    LONG kept;
+    /* Windows says a failed attempt's error every time it is asked; Linux once, and 0 after. */
+    if (k->failed && !k->error_pending) return HK_NE_OK;
+    kept = InterlockedExchange(&k->connect_error, 0);
+    if (getsockopt(k->s, SOL_SOCKET, SO_ERROR, (char *)&e, &len) != 0) e = 0;
+    if (!e) e = (int)kept;
+    if (e) InterlockedExchange(&k->failed, 1);
+    InterlockedExchange(&k->error_pending, 0);
+    return net_err(e);
+}
+
+i32 hk_sock_pending(hk_sock *k)
+{
+    u_long n = 0;
+    if (ioctlsocket(k->s, FIONREAD, &n) != 0) return 0;
+    return n > 0x7FFFFFFFu ? 0x7FFFFFFF : (i32)n;
+}
+
+/* Windows says only whether urgent data is waiting, not whether the next byte is its mark: never, here. */
+bool hk_sock_at_mark(hk_sock *k) { (void)k; return false; }
+
+/* The level and name of an option as Windows has it; 0 for one it has none of. */
+static int option_of(int option, int *level)
+{
+    *level = SOL_SOCKET;
+    switch (option) {
+    case HK_SO_KEEPALIVE: return SO_KEEPALIVE;
+    case HK_SO_BROADCAST: return SO_BROADCAST;
+    case HK_SO_OOBINLINE: return SO_OOBINLINE;
+    case HK_SO_RCVBUF: return SO_RCVBUF;
+    case HK_SO_SNDBUF: return SO_SNDBUF;
+    case HK_SO_DONTROUTE: return SO_DONTROUTE;
+    case HK_SO_LINGER: return SO_LINGER;
+    }
+    *level = IPPROTO_TCP;
+    switch (option) {
+    case HK_TCP_NODELAY: return TCP_NODELAY;
+    case HK_TCP_KEEPIDLE: return TCP_KEEPIDLE;
+    case HK_TCP_KEEPINTVL: return TCP_KEEPINTVL;
+    case HK_TCP_KEEPCNT: return TCP_KEEPCNT;
+    case HK_TCP_MAXSEG: return TCP_MAXSEG;
+    }
+    *level = IPPROTO_IP;
+    switch (option) {
+    case HK_IP_TOS: return IP_TOS;
+    case HK_IP_TTL: return IP_TTL;
+    case HK_IP_MULTICAST_TTL: return IP_MULTICAST_TTL;
+    case HK_IP_MULTICAST_LOOP: return IP_MULTICAST_LOOP;
+    case HK_IP_MULTICAST_IF: return IP_MULTICAST_IF;
+    }
+    *level = IPPROTO_IPV6;
+    switch (option) {
+    case HK_IPV6_V6ONLY: return IPV6_V6ONLY;
+    case HK_IPV6_UNICAST_HOPS: return IPV6_UNICAST_HOPS;
+    case HK_IPV6_MULTICAST_HOPS: return IPV6_MULTICAST_HOPS;
+    case HK_IPV6_MULTICAST_LOOP: return IPV6_MULTICAST_LOOP;
+    case HK_IPV6_MULTICAST_IF: return IPV6_MULTICAST_IF;
+    case HK_IPV6_TCLASS: return IPV6_TCLASS;
+    }
+    return 0;
+}
+
+/* What setsockopt's refusal means: for the options of TCP's keep-alive, which Windows has only from 10 1709, that this one does not know them. */
+static int option_err(int option, int e)
+{
+    if ((option == HK_TCP_KEEPIDLE || option == HK_TCP_KEEPINTVL || option == HK_TCP_KEEPCNT) && (e == WSAEINVAL || e == WSAENOPROTOOPT)) return HK_NE_NOPROTOOPT;
+    return net_err(e);
+}
+
+bool hk_sock_set(hk_sock *k, int option, int value, int *err)
+{
+    int level, name;
+    DWORD dw = (DWORD)value;
+    struct linger lg;
+    const char *p = (const char *)&dw;
+    int len = (int)sizeof(dw);
+    if (option == HK_SO_REUSEADDR) {
+        /*
+         * Linux's SO_REUSEADDR lets a server bind a port that connections of
+         * its last run still hold in TIME_WAIT, which Windows allows without
+         * being asked. Windows' own lets a second socket take a port another
+         * one is listening on, which Linux's never does: it is kept here and
+         * not passed on.
+         */
+        k->reuseaddr = value != 0;
+        return true;
+    }
+    if (!(name = option_of(option, &level))) {
+        *err = HK_NE_NOPROTOOPT;
+        return false;
+    }
+    if (option == HK_SO_LINGER) {
+        lg.l_onoff = value >= 0;
+        lg.l_linger = (u_short)(value < 0 ? 0 : value > 65535 ? 65535 : value);
+        p = (const char *)&lg;
+        len = (int)sizeof(lg);
+    }
+    if (setsockopt(k->s, level, name, p, len) != 0) {
+        *err = option_err(option, WSAGetLastError());
+        return false;
+    }
+    return true;
+}
+
+bool hk_sock_get(hk_sock *k, int option, int *value, int *err)
+{
+    int level, name, len;
+    DWORD dw = 0;
+    struct linger lg;
+    if (option == HK_SO_REUSEADDR) {
+        *value = k->reuseaddr;
+        return true;
+    }
+    if (!(name = option_of(option, &level))) {
+        *err = HK_NE_NOPROTOOPT;
+        return false;
+    }
+    if (option == HK_SO_LINGER) {
+        memset(&lg, 0, sizeof(lg));
+        len = (int)sizeof(lg);
+        if (getsockopt(k->s, level, name, (char *)&lg, &len) != 0) {
+            *err = net_err(WSAGetLastError());
+            return false;
+        }
+        *value = lg.l_onoff ? (int)lg.l_linger : -1;
+        return true;
+    }
+    len = (int)sizeof(dw);
+    if (getsockopt(k->s, level, name, (char *)&dw, &len) != 0) {
+        *err = option_err(option, WSAGetLastError());
+        return false;
+    }
+    /* (Some come back as a single byte.) */
+    *value = len == 1 ? (int)(dw & 0xFF) : (int)dw;
+    return true;
+}
+
+bool hk_sock_multicast(hk_sock *k, bool join, const hk_sockaddr *group, const hk_sockaddr *iface, u32 index, int *err)
+{
+    int r;
+    if (group->family == HK_AF_INET) {
+        IP_MREQ m;
+        memset(&m, 0, sizeof(m));
+        memcpy(&m.imr_multiaddr, group->addr, 4);
+        if (iface && iface->family == HK_AF_INET) memcpy(&m.imr_interface, iface->addr, 4);
+        else if (index) m.imr_interface.s_addr = htonl(index);  /* Windows' way of naming an interface by its index here: 0.0.0.index */
+        r = setsockopt(k->s, IPPROTO_IP, join ? IP_ADD_MEMBERSHIP : IP_DROP_MEMBERSHIP, (const char *)&m, sizeof(m));
+    } else if (group->family == HK_AF_INET6) {
+        IPV6_MREQ m;
+        memset(&m, 0, sizeof(m));
+        memcpy(&m.ipv6mr_multiaddr, group->addr, 16);
+        m.ipv6mr_interface = index;
+        r = setsockopt(k->s, IPPROTO_IPV6, join ? IPV6_ADD_MEMBERSHIP : IPV6_DROP_MEMBERSHIP, (const char *)&m, sizeof(m));
+    } else {
+        *err = HK_NE_AFNOSUPPORT;
+        return false;
+    }
+    if (r != 0) {
+        *err = net_err(WSAGetLastError());
+        return false;
+    }
+    return true;
+}
+
+/* ---------------------------------------------------- names and interfaces */
+
+static wchar_t *wide_of(const char *s)
+{
+    int n = MultiByteToWideChar(CP_UTF8, 0, s, -1, NULL, 0);
+    wchar_t *w = (wchar_t *)hk_alloc(sizeof(wchar_t) * (size_t)(n > 0 ? n : 1));
+    if (n > 0) MultiByteToWideChar(CP_UTF8, 0, s, -1, w, n);
+    return w;
+}
+
+static int eai_of(int e)
+{
+    switch (e) {
+    case WSAHOST_NOT_FOUND: return HK_EAI_NONAME;
+    case WSATRY_AGAIN: return HK_EAI_AGAIN;
+    case WSANO_RECOVERY: return HK_EAI_FAIL;
+    case WSANO_DATA: return HK_EAI_NODATA;
+    case WSAEAFNOSUPPORT: return HK_EAI_FAMILY;
+    case WSA_NOT_ENOUGH_MEMORY: return HK_EAI_MEMORY;
+    default: return HK_EAI_FAIL;
+    }
+}
+
+int hk_net_resolve(const char *name, int family, int flags, hk_sockaddr **addrs, int *count, char **canonical)
+{
+    ADDRINFOW hints, *res = NULL, *ai;
+    hk_sockaddr *out = NULL;
+    wchar_t *w;
+    int e, got = 0, cap = 0, i;
+    *addrs = NULL;
+    *count = 0;
+    if (canonical) *canonical = NULL;
+    if (!wsa_start()) return HK_EAI_SYSTEM;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = family == HK_AF_INET ? AF_INET : family == HK_AF_INET6 ? AF_INET6 : AF_UNSPEC;
+    /* (One answer for each address: with no type every address would come once for each.) */
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = ((flags & HK_RESOLVE_CANONICAL) ? AI_CANONNAME : 0) | ((flags & HK_RESOLVE_ADDRCONFIG) ? AI_ADDRCONFIG : 0);
+    w = wide_of(name);
+    e = GetAddrInfoW(w, NULL, &hints, &res);
+    free(w);
+    if (e) return eai_of(e);
+    for (ai = res; ai; ai = ai->ai_next) {
+        hk_sockaddr a;
+        addr_from_native(ai->ai_addr, (int)ai->ai_addrlen, &a);
+        if (!a.family) continue;
+        for (i = 0; i < got && memcmp(&out[i], &a, sizeof(a)); i++) { }
+        if (i < got) continue;
+        if (got == cap) {
+            cap = cap ? cap * 2 : 8;
+            out = (hk_sockaddr *)hk_realloc(out, sizeof(*out) * (size_t)cap);
+        }
+        out[got++] = a;
+    }
+    if (canonical && res && res->ai_canonname) *canonical = utf8_of(res->ai_canonname);
+    FreeAddrInfoW(res);
+    if (!got) {
+        free(out);
+        if (canonical) {
+            free(*canonical);
+            *canonical = NULL;
+        }
+        return HK_EAI_NODATA;
+    }
+    *addrs = out;
+    *count = got;
+    return HK_EAI_OK;
+}
+
+int hk_net_name_of(const hk_sockaddr *a, char *name, size_t size)
+{
+    SOCKADDR_STORAGE ss;
+    wchar_t host[NI_MAXHOST];
+    int len = addr_to_native(a, &ss), e;
+    char *u;
+    if (!wsa_start()) return HK_EAI_SYSTEM;
+    if (!len) return HK_EAI_FAMILY;
+    e = GetNameInfoW((const SOCKADDR *)&ss, len, host, NI_MAXHOST, NULL, 0, NI_NAMEREQD);
+    if (e) return eai_of(e);
+    u = utf8_of(host);
+    hk_strlcpy(name, u, size);
+    free(u);
+    return HK_EAI_OK;
+}
+
+int hk_net_interfaces(hk_netif *out, int max)
+{
+    ULONG size = 16 * 1024, r = ERROR_BUFFER_OVERFLOW;
+    IP_ADAPTER_ADDRESSES *list = NULL, *ad;
+    int n = 0, tries;
+    for (tries = 0; tries < 4 && r == ERROR_BUFFER_OVERFLOW; tries++) {
+        list = (IP_ADAPTER_ADDRESSES *)hk_realloc(list, size);
+        r = GetAdaptersAddresses(AF_UNSPEC, GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER | GAA_FLAG_SKIP_FRIENDLY_NAME, NULL, list, &size);
+    }
+    if (r != NO_ERROR) {
+        free(list);
+        return r == ERROR_NO_DATA ? 0 : -1;
+    }
+    for (ad = list; ad; ad = ad->Next) {
+        IP_ADAPTER_UNICAST_ADDRESS *u;
+        hk_netif *f;
+        if (n >= max) {
+            n++;
+            continue;
+        }
+        f = &out[n++];
+        memset(f, 0, sizeof(*f));
+        f->index = ad->IfIndex ? ad->IfIndex : ad->Ipv6IfIndex;
+        switch (ad->IfType) {
+        case IF_TYPE_SOFTWARE_LOOPBACK: f->kind = HK_IF_LOOPBACK; break;
+        case IF_TYPE_IEEE80211: f->kind = HK_IF_WIFI; break;
+        case IF_TYPE_ETHERNET_CSMACD: f->kind = HK_IF_ETHERNET; break;
+        case IF_TYPE_WWANPP: case IF_TYPE_WWANPP2: f->kind = HK_IF_CELLULAR; break;
+        case IF_TYPE_TUNNEL: f->kind = HK_IF_TUNNEL; break;
+        default: f->kind = HK_IF_OTHER; break;
+        }
+        if (ad->OperStatus == IfOperStatusUp) f->flags |= HK_IFF_UP | HK_IFF_RUNNING;
+        if (!(ad->Flags & IP_ADAPTER_NO_MULTICAST) && f->kind != HK_IF_LOOPBACK) f->flags |= HK_IFF_MULTICAST;
+        if (f->kind == HK_IF_WIFI || f->kind == HK_IF_ETHERNET) f->flags |= HK_IFF_BROADCAST;
+        if (ad->IfType == IF_TYPE_PPP || f->kind == HK_IF_CELLULAR) f->flags |= HK_IFF_POINTOPOINT;
+        /* (The loopback says it has no limit; Linux's has 65536.) */
+        f->mtu = ad->Mtu == 0xFFFFFFFFu ? 65536 : ad->Mtu;
+        if (ad->PhysicalAddressLength > 0 && ad->PhysicalAddressLength <= sizeof(f->hw)) {
+            memcpy(f->hw, ad->PhysicalAddress, ad->PhysicalAddressLength);
+            f->hw_len = (int)ad->PhysicalAddressLength;
+        }
+        for (u = ad->FirstUnicastAddress; u && f->naddrs < HK_NETIF_ADDRS; u = u->Next) {
+            hk_sockaddr a;
+            addr_from_native(u->Address.lpSockaddr, u->Address.iSockaddrLength, &a);
+            if (!a.family) continue;
+            f->addrs[f->naddrs].addr = a;
+            f->addrs[f->naddrs].prefix = u->OnLinkPrefixLength;
+            f->naddrs++;
+        }
+    }
+    free(list);
+    return n;
 }
 
 /* ------------------------------------------------------ host shared libraries */
