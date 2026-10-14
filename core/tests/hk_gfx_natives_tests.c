@@ -14,8 +14,10 @@
 
 #include "../src/drivers/hk_java_gfx.h"
 #include "../src/dvm/hk_dvm.h"
+#include "../src/webp/hk_webp.h"
 #include "hk_gfx_standin.h"
 #include "hk_gfx_tests.h"
+#include "hk_webp_fixtures.inc"
 
 static int t_checks, t_failed;
 static hk_test_sink t_sink;
@@ -448,6 +450,121 @@ static void test_bitmaps(void)
 }
 
 /* ------------------------------------------------------------------- canvases */
+
+/* Whether each of a pixel's four parts is within `slack` of what it should be: a lossy picture's colours come back nearly. */
+static bool near_word(u32 got, u32 want, int slack)
+{
+    int k;
+    for (k = 0; k < 32; k += 8) {
+        int d = (int)((got >> k) & 0xFF) - (int)((want >> k) & 0xFF);
+        if (d < -slack || d > slack) return false;
+    }
+    return true;
+}
+
+/*
+ * WebP pictures are decoded by the core itself, before the shell is asked (webp/hk_webp.h): the stand-in here reads PNG
+ * and nothing else, as the phone's decoder reads no WebP. Five small files (tools/webp-fixtures.py), through
+ * BitmapFactory's native as an app's pictures come: 32 x 32, in quadrants of 16.
+ */
+static void test_webp(void)
+{
+    hk_jobj *wh = ints(NULL, 2), *file;
+    hk_java_gfx_bitmap info;
+    i64 bm;
+    if (!hk_webp_available()) {
+        say("drawing natives: WebP -- this build has no WebP decoder in it (build/webp/src was not there)");
+        /* The file is known for what it is all the same, and goes to the shell's decoder, which here says no. */
+        CHECK(hk_webp_is(k_webp_lossless, sizeof(k_webp_lossless)) && !hk_webp_is("RIFF....WAVE", 12));
+        CHECK(call("bmDecode", 6, L(bytes(k_webp_lossless, (int)sizeof(k_webp_lossless))), I(0), I((int)sizeof(k_webp_lossless)), I(1), L(wh), Z(false)).j == 0);
+        return;
+    }
+    say("drawing natives: WebP pictures, decoded in the core");
+    CHECK(hk_webp_is(k_webp_lossless, sizeof(k_webp_lossless)) && !hk_webp_is("RIFF....WAVE", 12) && !hk_webp_is(k_webp_lossless, 11));
+
+    /* Lossless, with alpha: every pixel exactly, premultiplied -- opaque red, nothing, opaque blue, half-transparent white. */
+    file = bytes(k_webp_lossless, (int)sizeof(k_webp_lossless));
+    CHECK(call("bmDecode", 6, L(file), I(0), I((int)sizeof(k_webp_lossless)), I(1), L(wh), Z(true)).j == 0);
+    CHECK(ints_of(wh)[0] == 32 && ints_of(wh)[1] == 32);
+    bm = call("bmDecode", 6, L(file), I(0), I((int)sizeof(k_webp_lossless)), I(1), L(wh), Z(false)).j;
+    CHECK(bm != 0 && hk_java_gfx_bitmap_info(bm, &info) && info.width == 32 && info.height == 32);
+    CHECK_HEX(word(bm, 3, 3), 0xFFFF0000u);
+    CHECK_HEX(word(bm, 15, 15), 0xFFFF0000u);
+    CHECK_HEX(word(bm, 16, 15), 0x00000000u);
+    CHECK_HEX(word(bm, 3, 28), 0xFF0000FFu);
+    CHECK_HEX(word(bm, 28, 28), 0x80808080u);
+    /* And as the app's Java reads a pixel: not premultiplied. */
+    CHECK_HEX(call("bmGetPixel", 3, J(bm), I(28), I(28)).i, 0x80FFFFFFu);
+    call("bmFree", 1, J(bm));
+    /* inSampleSize 2 and 4: the picture scaled while it is decoded, a quadrant now 8 and 4 pixels. */
+    bm = call("bmDecode", 6, L(file), I(0), I((int)sizeof(k_webp_lossless)), I(2), L(wh), Z(false)).j;
+    CHECK(bm != 0 && hk_java_gfx_bitmap_info(bm, &info) && info.width == 16 && info.height == 16 && ints_of(wh)[0] == 16);
+    CHECK_HEX(word(bm, 2, 2), 0xFFFF0000u);
+    CHECK_HEX(word(bm, 13, 2), 0x00000000u);
+    CHECK_HEX(word(bm, 2, 13), 0xFF0000FFu);
+    CHECK_HEX(word(bm, 13, 13), 0x80808080u);
+    call("bmFree", 1, J(bm));
+    bm = call("bmDecode", 6, L(file), I(0), I((int)sizeof(k_webp_lossless)), I(4), L(wh), Z(false)).j;
+    CHECK(bm != 0 && hk_java_gfx_bitmap_info(bm, &info) && info.width == 8 && info.height == 8);
+    CHECK_HEX(word(bm, 1, 1), 0xFFFF0000u);
+    CHECK_HEX(word(bm, 6, 6), 0x80808080u);
+    call("bmFree", 1, J(bm));
+
+    /* Lossy: red, green, blue, white, each nearly. */
+    file = bytes(k_webp_lossy, (int)sizeof(k_webp_lossy));
+    bm = call("bmDecode", 6, L(file), I(0), I((int)sizeof(k_webp_lossy)), I(1), L(wh), Z(false)).j;
+    CHECK(bm != 0 && ints_of(wh)[0] == 32 && ints_of(wh)[1] == 32);
+    say("  lossy: the four quadrants are %08x %08x %08x %08x", (unsigned)word(bm, 7, 7), (unsigned)word(bm, 24, 7), (unsigned)word(bm, 7, 24), (unsigned)word(bm, 24, 24));
+    CHECK(near_word(word(bm, 7, 7), 0xFFFF0000u, 12) && near_word(word(bm, 24, 7), 0xFF00FF00u, 12) && near_word(word(bm, 7, 24), 0xFF0000FFu, 12)
+          && near_word(word(bm, 24, 24), 0xFFFFFFFFu, 12));
+    CHECK((word(bm, 0, 0) >> 24) == 0xFF && (word(bm, 31, 31) >> 24) == 0xFF);
+    call("bmFree", 1, J(bm));
+
+    /* Lossy with an alpha plane: opaque and transparent exactly, the half-transparent quadrant nearly (the encoder made 129 of 128), its colours premultiplied. */
+    file = bytes(k_webp_lossy_alpha, (int)sizeof(k_webp_lossy_alpha));
+    bm = call("bmDecode", 6, L(file), I(0), I((int)sizeof(k_webp_lossy_alpha)), I(1), L(wh), Z(false)).j;
+    CHECK(bm != 0 && ints_of(wh)[0] == 32);
+    CHECK(near_word(word(bm, 7, 7), 0xFFFF0000u, 12) && near_word(word(bm, 7, 24), 0xFF0000FFu, 12));
+    CHECK_HEX(word(bm, 24, 7), 0x00000000u);
+    say("  lossy with alpha: the half-transparent white quadrant is %08x", (unsigned)word(bm, 24, 24));
+    CHECK(near_word(word(bm, 24, 24), 0x80808080u, 8));
+    call("bmFree", 1, J(bm));
+
+    /* An animation: its first frame, which is all orange; the second, teal, is not looked at. */
+    file = bytes(k_webp_anim, (int)sizeof(k_webp_anim));
+    CHECK(call("bmDecode", 6, L(file), I(0), I((int)sizeof(k_webp_anim)), I(1), L(wh), Z(true)).j == 0 && ints_of(wh)[0] == 32 && ints_of(wh)[1] == 32);
+    bm = call("bmDecode", 6, L(file), I(0), I((int)sizeof(k_webp_anim)), I(1), L(wh), Z(false)).j;
+    CHECK(bm != 0);
+    CHECK_HEX(word(bm, 0, 0), 0xFFFF8000u);
+    CHECK_HEX(word(bm, 31, 31), 0xFFFF8000u);
+    call("bmFree", 1, J(bm));
+    /* A first frame that does not fill its canvas: 16 x 16 of magenta at (8, 8), the canvas around it transparent; and the same at half the size. */
+    file = bytes(k_webp_anim_part, (int)sizeof(k_webp_anim_part));
+    bm = call("bmDecode", 6, L(file), I(0), I((int)sizeof(k_webp_anim_part)), I(1), L(wh), Z(false)).j;
+    CHECK(bm != 0 && ints_of(wh)[0] == 32 && ints_of(wh)[1] == 32);
+    CHECK_HEX(word(bm, 8, 8), 0xFFFF00FFu);
+    CHECK_HEX(word(bm, 23, 23), 0xFFFF00FFu);
+    CHECK_HEX(word(bm, 7, 8), 0x00000000u);
+    CHECK_HEX(word(bm, 24, 23), 0x00000000u);
+    CHECK_HEX(word(bm, 0, 0), 0x00000000u);
+    call("bmFree", 1, J(bm));
+    bm = call("bmDecode", 6, L(file), I(0), I((int)sizeof(k_webp_anim_part)), I(2), L(wh), Z(false)).j;
+    CHECK(bm != 0 && ints_of(wh)[0] == 16);
+    CHECK_HEX(word(bm, 4, 4), 0xFFFF00FFu);
+    CHECK_HEX(word(bm, 3, 4), 0x00000000u);
+    CHECK_HEX(word(bm, 12, 11), 0x00000000u);
+    call("bmFree", 1, J(bm));
+
+    /* What only begins like a WebP file is no picture: cut short, and with its inside overwritten. */
+    {
+        u8 broken[sizeof(k_webp_lossless)];
+        memcpy(broken, k_webp_lossless, sizeof(broken));
+        memset(broken + 20, 0xEE, sizeof(broken) - 20);
+        CHECK(call("bmDecode", 6, L(bytes(broken, (int)sizeof(broken))), I(0), I((int)sizeof(broken)), I(1), L(wh), Z(false)).j == 0);
+        CHECK(call("bmDecode", 6, L(bytes(k_webp_lossy, 40)), I(0), I(40), I(1), L(wh), Z(false)).j == 0);
+        CHECK(call("bmDecode", 6, L(bytes(k_webp_lossless, 12)), I(0), I(12), I(1), L(wh), Z(true)).j == 0);
+    }
+}
 
 static void test_canvas(void)
 {
@@ -1476,6 +1593,7 @@ int hk_gfx_natives_tests_run(hk_test_sink sink, void *user, int *checks)
     hk_java_gfx_set_host(hk_gfx_standin());
     hk_java_gfx_stats(&bytes0, &count0);
     test_bitmaps();
+    test_webp();
     test_canvas();
     test_drawing();
     test_paint();

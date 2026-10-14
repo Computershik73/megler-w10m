@@ -86,6 +86,16 @@ if [ -f "$ROOT/build/sqlite/sqlite3.c" ] && [ -f "$ROOT/build/sqlite/sqlite3.h" 
 else
   echo "(no build/sqlite/sqlite3.c: the core is built without SQLite, and the tests that need it are left out)"
 fi
+# libwebp's decoder likewise, where its sources are (build/webp/src, tools/webp-fetch.sh): core/src/webp/hk_webp_*.c each compile one
+# of its files. Without it a WebP picture goes to the shell's decoder like any other, and the tests of the core's own are left out.
+WEBP_GCC=""
+WEBP_CL=()
+if [ -f "$ROOT/build/webp/src/dec/webp_dec.c" ] && [ -f "$ROOT/build/webp/src/webp/decode.h" ]; then
+  WEBP_GCC="-DHK_HAVE_WEBP=1 -Ibuild/webp"
+  WEBP_CL=(/DHK_HAVE_WEBP=1 "/I$(cygpath -w "$ROOT/build/webp")")
+else
+  echo "(no build/webp/src: the core is built without its WebP decoder, and the tests that need it are left out)"
+fi
 AGAIN="the tests again, the Dalvik runtime on Android's libcore (build/android9/root)"
 mapfile -t SRCS < <(cd "$ROOT" && find core/src core/tests -maxdepth 3 -name '*.c' ! -path 'core/tests/guest/*' | sort)
 mapfile -t ZSRCS < <(cd "$ROOT" && find core/third_party/zlib -maxdepth 1 -name '*.c' ! -name 'gz*.c' | sort)
@@ -99,7 +109,7 @@ set -e
 OUT=\$HOME/megler-w10m-build
 mkdir -p \$OUT/obj
 cd "$WROOT"
-CFLAGS="-std=gnu11 -O1 -g -mthumb -march=armv7-a -mfpu=neon -mfloat-abi=hard -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -Wno-format-truncation -Icore/third_party/zlib -D_GNU_SOURCE $SQLITE_GCC"
+CFLAGS="-std=gnu11 -O1 -g -mthumb -march=armv7-a -mfpu=neon -mfloat-abi=hard -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -Wno-format-truncation -Icore/third_party/zlib -D_GNU_SOURCE $SQLITE_GCC $WEBP_GCC"
 compile() {
   src="\$1"; obj="\$OUT/obj/\$(echo "\$src" | tr '/' '_').o"
   if [ ! -f "\$obj" ] || [ "\$src" -nt "\$obj" ] || [ -n "\$(find core/src core/tests \( -name '*.h' -o -name '*.inc' \) -newer "\$obj" -print -quit)" ] \\
@@ -107,9 +117,9 @@ compile() {
     arm-linux-gnueabihf-gcc \$CFLAGS \$2 -c "\$src" -o "\$obj" || exit 1
   fi
 }
-# (With SQLite or without is a matter of flags, which no object file remembers: when they change, everything is compiled again.)
-[ "\$(cat \$OUT/sqlite.flags 2>/dev/null)" = "$SQLITE_GCC" ] || rm -f \$OUT/obj/*.o
-echo "$SQLITE_GCC" > \$OUT/sqlite.flags
+# (With SQLite or without, with the WebP decoder or without, is a matter of flags, which no object file remembers: when they change, everything is compiled again.)
+[ "\$(cat \$OUT/sqlite.flags 2>/dev/null)" = "$SQLITE_GCC $WEBP_GCC" ] || rm -f \$OUT/obj/*.o
+echo "$SQLITE_GCC $WEBP_GCC" > \$OUT/sqlite.flags
 export -f compile
 export OUT CFLAGS
 printf '%s\n' ${SRCS[*]} | xargs -P 8 -I{} bash -c 'compile {} ""'
@@ -179,7 +189,7 @@ elif [ "$MODE" = win ]; then
   ZALL=()
   for s in "${ZSRCS[@]}"; do ZALL+=("$(w "$ROOT/$s")"); done
   # (HK_GFX_WINDOWS: this build has the shell's drawing in it; hk_tests_main.c's --gfx-windows mode.)
-  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /O1 /MT /W3 /std:c11 /utf-8 /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DHK_GFX_WINDOWS "${SQLITE_CL[@]}" \
+  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /O1 /MT /W3 /std:c11 /utf-8 /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DHK_GFX_WINDOWS "${SQLITE_CL[@]}" "${WEBP_CL[@]}" \
     "/I$(w "$ROOT/core/third_party/zlib")" "/Fo$(w "$OUT/obj")\\" "${ALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
   "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /O1 /MT /w /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS \
     "/Fo$(w "$OUT/zobj")\\" "${ZALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true

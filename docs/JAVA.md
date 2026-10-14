@@ -50,6 +50,7 @@ where; **expected** and **not verified** mean what they say.
 | `core/src/drivers/hk_java_ndk.c` | the NDK's functions that are about the framework's objects: libjnigraphics on its `Bitmap` |
 | `core/src/drivers/hk_java_sqlite.c` | `megler.Sqlite`: an app's databases |
 | `core/src/sqlite/hk_sqlite3.c`, `hk_sqlite.c` | SQLite's amalgamation compiled in where it is there, and its files, locks and mutexes on the host layer |
+| `core/src/webp/` | WebP pictures decoded in the core: `hk_webp.c`, and libwebp's decoder compiled in where it is there, file by file |
 | `core/include/megler.h` | `megler_gfx_host`, the contract for the shell's drawing; `megler_window_host.present_pixels`; `megler_run_config.android_root` |
 | `core/framework-overlay/` | what differs here from the original's Java framework: eight files, each saying at its top what differs and why |
 | `core/src/dvm/art/*.smali`, `hk_dvm_art_dex.h` | two classes the runtime adds to libcore's: a security provider that stands in for conscrypt's |
@@ -77,19 +78,20 @@ Two commands. Each runs the whole of the core's tests twice, in two processes
 its built-in `java.lang`, and once on Android 9's libcore from
 `build/android9/root`. Under qemu-arm the second command then starts each of the
 five Java test apps through `megler_run`, a process each (one of them twice).
-These numbers are with SQLite compiled in (`build/sqlite/sqlite3.c` there);
-without it each of the first two pairs is 38 checks fewer and the app `data`
-is not run, which the script says.
+These numbers are with SQLite and the WebP decoder compiled in
+(`build/sqlite/sqlite3.c` and `build/webp/src` there); without SQLite each of
+the first two pairs is 38 checks fewer and the app `data` is not run, without
+the decoder 40 fewer, and the script says which is missing.
 
 ```
 bash tools/build-tests.sh win      (MSVC x64, run on the PC; libcore's native libraries cannot run there)
-    3453 checks, 0 failed          on the built-in java.lang
-    3467 checks, 0 failed          on libcore, its bytecode alone
+    3495 checks, 0 failed          on the built-in java.lang
+    3509 checks, 0 failed          on libcore, its bytecode alone
     (then the shell's own drawing, which is not this document's: 263, 263, 14, 9, 8 and 6 checks)
 
 bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-float, under qemu-arm)
-    3677 checks, 0 failed          on the built-in java.lang
-    3717 checks, 0 failed          on libcore with its native libraries
+    3719 checks, 0 failed          on the built-in java.lang
+    3759 checks, 0 failed          on libcore with its native libraries
       36 checks, 0 failed          the Java test app hello, through megler_run
       72 checks, 0 failed          the Java test app demos, the keyboard's 25 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
@@ -539,8 +541,9 @@ the first tab is inflated. In the order met:
 2. Resources chosen for API 34 against Android 9's platform resources: 6095
    frames of recursion. Fixed (the overlay's `Resources`).
 3. **WebP**: `cannot decode res/drawable/android17.webp`, an
-   `InflateException` nothing catches. The stand-in decodes PNG only, and
-   Windows 10 Mobile's WIC has no WebP codec either. This is where it stops.
+   `InflateException` nothing catches: the stand-in decodes PNG only, and
+   Windows 10 Mobile's WIC has no WebP codec either. Now decoded in the core
+   ("WebP pictures"); the app shows its Dashboard.
 4. `Runtime.exec("getenforce")`: `IOException: error=38` (there are no
    processes to start). The app catches it.
 5. `Class.forName("com.android.internal.os.PowerProfile")`: not there (the
@@ -555,7 +558,6 @@ survive.
 
 | What | Blocks | Size |
 |---|---|---|
-| WebP decoding in front of the shell's `image_decode` (libwebp's decoder) | Device Info now; any app of the last years, whose drawables are WebP by default | a day; the decoder is there (`build/webp`) |
 | The app's shared storage as Android lays it out, and `Environment`, `StorageManager`, runtime permissions to match | Apktool M's lists; every file manager | the layer's mounts and the framework's Java: days |
 | `PackageManager` knowing more than the app itself (installed APKs in the library) | QuickShortcutMaker's whole purpose | small in Java, a decision for the shell |
 | EGL and OpenGL ES from Java (`megler.EGLNative`, `GLES20` over ANGLE) | Device Info's GPU page; any `GLSurfaceView` | large |
@@ -1352,6 +1354,53 @@ touch asks again; Back takes the screen away and `hide` is called.
 **Not there:** composing text (a keyboard that composes sends each piece when
 it is final), the selection handles and the copy and paste bar (the
 framework's), and telling the shell where the cursor is on the screen.
+
+### WebP pictures
+
+An app's pictures are WebP as often as PNG (Android's build tools convert
+them), and the phone's picture decoder, WIC on Windows 10 Mobile, has no WebP
+in it. So a WebP file never reaches the shell's `image_size` and
+`image_decode`: `megler.Gfx.bmDecode` (`hk_java_gfx.c`) sees "RIFF....WEBP" and
+the core decodes it itself (`core/src/webp/hk_webp.c`) into the memory the
+shell would have filled, B, G, R, A premultiplied.
+
+The decoder is libwebp 1.6.0's (`build/webp/src`, fetched by
+`tools/webp-fetch.sh`; not part of the repository). It has no amalgamation and
+its files do not bear being compiled as one, so `core/src/webp/hk_webp_*.c`
+are 28 files of four lines, each compiling one of libwebp's: nine of `dec`
+(not the incremental decoder), nine of `dsp`, ten of `utils`. The build
+scripts define `HK_HAVE_WEBP=1` and add `build/webp` to the include path when
+the sources are there, as for SQLite; nothing else is needed, also for the
+phone's package.
+
+- **Plain C everywhere.** libwebp switches its NEON or SSE code on by itself
+  (for MSVC on ARM without being asked), which would need those files compiled
+  too, with options of their own for each compiler, and a question to the
+  processor at run time. `hk_webp_config.h`, included first by every wrapper,
+  reads libwebp's `src/dsp/cpu.h` and takes its `WEBP_USE_*` and `WEBP_HAVE_*`
+  switches back, and sets `WEBP_NEON_OMIT_C_CODE` to 0 so that the C code NEON
+  would have replaced is compiled. No threads (`WEBP_USE_THREAD` is not
+  defined).
+- **What is decoded:** lossy (VP8), lossless (VP8L), either with alpha; and
+  the first frame of an animated file. libwebp's decoder does not read
+  animations (that is its demux library, which is not here), but a frame is an
+  ordinary picture's chunks inside an `ANMF` chunk: they are copied out behind
+  a header of their own and decoded as a still, onto a transparent canvas when
+  the frame does not fill it.
+- **Reduced size:** `BitmapFactory`'s `inSampleSize` arrives as the size
+  wanted; libwebp scales while it decodes (`use_scaling`).
+- In a build without the decoder a WebP file goes to the shell like any other
+  picture and the log says once why it will not decode.
+
+Tested through `bmDecode` on both hosts with five files of 32 x 32 kept in the
+repository as bytes (`core/tests/hk_webp_fixtures.inc`, written by
+`tools/webp-fixtures.py` with ffmpeg's encoder), 40 checks: lossless with
+alpha exactly, also at half and a quarter of the size; lossy within 12 of each
+colour; lossy with an alpha plane; an animation's first frame; a first frame
+of 16 x 16 at (8, 8) on a 32 x 32 canvas, whole and at half size; and three
+files that only begin like WebP. The MSVC ARM build of the 29 files is clean
+at `/W3`. *Not measured:* how long a large lossy picture takes without NEON on
+the phone.
 
 ### Databases: `megler.Sqlite` and the SQLite in the core
 

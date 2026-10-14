@@ -250,6 +250,15 @@ if [ -f "$ROOT/build/sqlite/sqlite3.c" ] && [ -f "$ROOT/build/sqlite/sqlite3.h" 
 else
   echo "    WITHOUT SQLite: no build/sqlite/sqlite3.c (tools/sqlite-fetch.sh)"
 fi
+# libwebp's decoder likewise, where its sources are (build/webp/src: tools/webp-fetch.sh fetches them; core/src/webp/hk_webp_*.c
+# each compile one of its files, in plain C). The phone's own picture decoder has no WebP, so without it an app's WebP pictures
+# do not decode at all.
+if [ -f "$ROOT/build/webp/src/dec/webp_dec.c" ] && [ -f "$ROOT/build/webp/src/webp/decode.h" ]; then
+  CORE_FLAGS+=(/DHK_HAVE_WEBP=1 "/I$(w "$ROOT/build/webp")")
+  echo "    with the WebP decoder ($(cut -d, -f1 "$ROOT/build/webp/FROM" 2> /dev/null || echo "build/webp"))"
+else
+  echo "    WITHOUT the WebP decoder: no build/webp/src (tools/webp-fetch.sh)"
+fi
 # The Dalvik runtime's generated sources and its tests' DEX files, before anything is compiled.
 bash "$ROOT/tools/build-dvm-fixtures.sh"
 mapfile -t CORE_DIRS < <(find "$CORE" -type f -name '*.c' -printf '%h\n' | sort -u)

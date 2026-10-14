@@ -86,6 +86,7 @@
 
 #include "../dvm/hk_dvm.h"
 #include "../host/hk_host.h"
+#include "../webp/hk_webp.h"
 #include "hk_java_gfx.h"
 
 #define N(name) static void name(hk_jcall *c)
@@ -1428,10 +1429,24 @@ N(G_bmDecode)
     i32 sample = c->args[3].i, *wh = (i32 *)elements(c->args[4].l, 'I', 2);
     int w = 0, h = 0;
     gbitmap *b;
-    if (!data || off < 0 || n <= 0 || off + n > len || !HAS(image_size)) return;
+    bool webp;
+    if (!data || off < 0 || n <= 0 || off + n > len) return;
     if (sample < 1) sample = 1;
     data += (size_t)off;
-    if (!G.image_size(G.user, data, (size_t)n, &w, &h) || w <= 0 || h <= 0) return;
+    /*
+     * A WebP picture is the core's own to decode (webp/hk_webp.h): the phone's decoder has no WebP. In a build without
+     * the decoder it goes to the shell like any other picture, for whatever the shell can make of it.
+     */
+    webp = hk_webp_is(data, (size_t)n);
+    if (webp && !hk_webp_available()) {
+        hk_note_once("java: the app has WebP pictures, and this build of the layer has no WebP decoder in it (build/webp: tools/webp-fetch.sh): they are left to the shell's");
+        webp = false;
+    }
+    if (webp) {
+        if (!hk_webp_size(data, (size_t)n, &w, &h)) return;
+    } else if (!HAS(image_size) || !G.image_size(G.user, data, (size_t)n, &w, &h) || w <= 0 || h <= 0) {
+        return;
+    }
     w = w / sample > 0 ? w / sample : 1;
     h = h / sample > 0 ? h / sample : 1;
     if (c->args[5].z) {
@@ -1441,10 +1456,10 @@ N(G_bmDecode)
         }
         return;
     }
-    if (!HAS(image_decode)) return;
+    if (!webp && !HAS(image_decode)) return;
     b = bm_new(w, h);
     if (!b) return;
-    if (!G.image_decode(G.user, data, (size_t)n, b->px, b->w, b->h, b->stride)) {
+    if (webp ? !hk_webp_decode(data, (size_t)n, b->px, b->w, b->h, b->stride) : !G.image_decode(G.user, data, (size_t)n, b->px, b->w, b->h, b->stride)) {
         bm_free(b);
         return;
     }
