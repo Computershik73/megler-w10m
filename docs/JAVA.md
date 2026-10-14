@@ -85,13 +85,13 @@ the decoder 40 fewer, and the script says which is missing.
 
 ```
 bash tools/build-tests.sh win      (MSVC x64, run on the PC; libcore's native libraries cannot run there)
-    3940 checks, 0 failed          on the built-in java.lang
-    3954 checks, 0 failed          on libcore, its bytecode alone
-    (then the shell's own drawing and the storage on Windows' own folders, which are not this document's: 263, 263, 263, 433, 14, 9, 8 and 6 checks)
+    3948 checks, 0 failed          on the built-in java.lang
+    3962 checks, 0 failed          on libcore, its bytecode alone
+    (then the shell's own drawing and the storage on Windows' own folders, which are not this document's: 263, 263, 263, 441, 14, 9, 8 and 6 checks)
 
 bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-float, under qemu-arm)
-    4164 checks, 0 failed          on the built-in java.lang
-    4219 checks, 0 failed          on libcore with its native libraries
+    4172 checks, 0 failed          on the built-in java.lang
+    4227 checks, 0 failed          on libcore with its native libraries
       47 checks, 0 failed          the Java test app hello, through megler_run
       72 checks, 0 failed          the Java test app demos, the keyboard's 25 among them
       42 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
@@ -569,6 +569,21 @@ Java's calls arrive there.
   Ringtones -- each a directory, the root readable and writable, and the
   app's own `Android/data/<package>` under it. This list is what a file
   manager's first screen is made of (Apktool M's drawer, in "Real apps").
+
+**A shared writable file mapping is written back.** `mmap` with
+`MAP_SHARED` and `PROT_WRITE` gives the app the layer's own copy of the
+file's pages, and nothing wrote them back: MMKV and MX Player's mx-kv keep
+their stores in such a mapping, and every setting they wrote was lost at the
+next start. Now the pages the app still has are written to the file at
+`msync`, at `munmap` (of the part unmapped) and when the app ends
+(`hk_mem_write_back`, from `hk_run_ended`), through the file the mapping was
+made of, held apart from the descriptor the app closes. Not as each byte is
+written, as Linux would: another process does not exist to see it, and a
+second mapping of the same file in this one does not see the first's writes
+until one of those. Over memory already mapped (`MAP_FIXED`) it is still a
+private copy, and the log says so. The storage tests map a file shared and
+writable, close its descriptor, write into the mapping, and read the file
+back after `msync` and after `munmap`.
 
 **Names Windows refuses.** Android allows any character in a file's name but
 '/', and apps use that: MX Player's Amazon SDK names a database after an ARN,

@@ -7,6 +7,7 @@
  * says where the host's block starts, and free() needs to know nothing else.
  */
 #include "hk_bionic.h"
+#include "hk_fd.h"
 
 #include "../ld/hk_ld.h"
 
@@ -199,6 +200,14 @@ typedef struct region {
      */
     u8 *live;
     u32 live_pages;
+    /*
+     * A shared writable mapping of a file (MAP_SHARED, PROT_WRITE): the file, held, and which of its bytes the region
+     * holds from its base. The pages are the layer's own copy of them; what the app writes into them is written back to
+     * the file at msync, at munmap, and when the app ends (hk_mem_write_back) -- not as it is written, as the kernel would.
+     */
+    void *file;
+    u64 file_offset;
+    size_t file_bytes;
     struct region *next;
 } region;
 
@@ -218,6 +227,28 @@ static void region_mark(region *r, size_t offset, size_t size, bool on)
 
 static region *g_regions;
 static hk_lock g_region_lock = HK_LOCK_INIT;
+
+/* What the app wrote into [from, from + size) of a shared file mapping, back to the file: the pages it still has. Under the lock. */
+static void write_back(region *r, size_t from, size_t size)
+{
+    size_t end = from + size, page;
+    if (!r->file) return;
+    if (end > r->file_bytes) end = r->file_bytes;
+    for (page = from / HK_PAGE; page * HK_PAGE < end; page++) {
+        size_t a = page * HK_PAGE < from ? from : page * HK_PAGE, b = (page + 1) * HK_PAGE < end ? (page + 1) * HK_PAGE : end;
+        if (!(r->live[page >> 3] & (1u << (page & 7)))) continue;
+        hk_fd_held_pwrite(r->file, r->base + a, (u32)(b - a), r->file_offset + a);
+    }
+}
+
+void hk_mem_write_back(void)
+{
+    region *r;
+    /* At the app's end, which may be a fault's: a lock left taken is not waited for, and nothing is written then. */
+    if (!hk_lock_try(&g_region_lock)) return;
+    for (r = g_regions; r; r = r->next) write_back(r, 0, r->file_bytes);
+    hk_lock_release(&g_region_lock);
+}
 
 static region *region_of(const void *p)
 {
@@ -289,7 +320,21 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
             if (n <= 0) break;
             got += (size_t)n;
         }
-        if ((flags & G_MAP_SHARED) && (prot & G_PROT_WRITE)) hk_note_once("mmap: a shared writable file mapping is a private copy here; writes do not reach the file");
+        if ((flags & G_MAP_SHARED) && (prot & G_PROT_WRITE)) {
+            if (flags & G_MAP_FIXED) {
+                hk_note_once("mmap: a shared writable file mapping over memory already mapped is a private copy here; writes do not reach the file");
+            } else {
+                /* The file, to write back to (region.file). */
+                hk_lock_acquire(&g_region_lock);
+                r = region_of(p);
+                if (r && !r->file) {
+                    r->file = hk_fd_hold(fd);
+                    r->file_offset = offset;
+                    r->file_bytes = len;
+                }
+                hk_lock_release(&g_region_lock);
+            }
+        }
     }
     if ((prot & G_PROT_WRITE) && (prot & G_PROT_EXEC)) {
         hk_lock_acquire(&g_region_lock);
@@ -331,11 +376,13 @@ static int g_munmap(void *addr, size_t len)
         if ((u8 *)addr < r->base || (u8 *)addr >= r->base + r->size) continue;
         offset = (size_t)((u8 *)addr - r->base) & ~(size_t)(HK_PAGE - 1);
         if (size > r->size - offset) size = r->size - offset;
+        write_back(r, offset, size);
         region_mark(r, offset, size, false);
         if (!r->live_pages) {
             /* The last of it: the reservation goes back. */
             *link = r->next;
             hk_lock_release(&g_region_lock);
+            hk_fd_let_go(r->file);
             hk_mem_release(r->base, r->size);
             free(r->live);
             free(r);
@@ -419,7 +466,17 @@ bool hk_mmap_fix_fault(hk_addr address, bool write, bool exec)
 
 static int g_madvise(void *addr, size_t len, int advice) { (void)addr; (void)len; (void)advice; return 0; }
 static int g_mlock(const void *addr, size_t len) { (void)addr; (void)len; return 0; }
-static int g_msync(void *addr, size_t len, int flags) { (void)addr; (void)len; (void)flags; return 0; }
+/* msync: what was written into a shared file mapping goes to the file now. */
+static int g_msync(void *addr, size_t len, int flags)
+{
+    region *r;
+    (void)flags;
+    hk_lock_acquire(&g_region_lock);
+    r = region_of(addr);
+    if (r) write_back(r, (size_t)((u8 *)addr - r->base), len);
+    hk_lock_release(&g_region_lock);
+    return 0;
+}
 static int g_mincore(void *addr, size_t len, u8 *vec)
 {
     size_t i, n = HK_ALIGN_UP(len, HK_PAGE) / HK_PAGE;

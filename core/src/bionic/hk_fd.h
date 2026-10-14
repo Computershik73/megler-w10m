@@ -25,6 +25,13 @@ int hk_fd_poll(hk_pollfd *fds, int count, int timeout_ms);
 i32 hk_fd_read(int fd, void *buf, u32 n);
 i32 hk_fd_write(int fd, const void *buf, u32 n);
 i32 hk_fd_pread(int fd, void *buf, u32 n, u64 offset);
+/*
+ * A descriptor's open file, held apart from the descriptor, which the app may close meanwhile: what a shared file mapping
+ * writes back to (hk_libc_mem.c). NULL for a descriptor that is not open. Let go with hk_fd_let_go.
+ */
+void *hk_fd_hold(int fd);
+i32 hk_fd_held_pwrite(void *held, const void *buf, u32 n, u64 offset);
+void hk_fd_let_go(void *held);
 i64 hk_fd_seek(int fd, i64 offset, int whence);
 int hk_fd_close(int fd);
 /* A descriptor on a host file (HK_O_* flags), for handing the guest a file that has no guest path -- the APK itself. */

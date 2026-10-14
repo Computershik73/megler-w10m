@@ -189,6 +189,9 @@ const char *hk_fs_internal_dir(void);  /* guest paths */
 const char *hk_fs_external_dir(void);
 const char *hk_fs_package(void);
 
+/* Writes what an app wrote into shared file mappings back to their files (hk_libc_mem.c); at the app's end. */
+void hk_mem_write_back(void);
+
 /* Android system properties, for __system_property_get. */
 const char *hk_sysprop(const char *name);
 void hk_sysprop_set(const char *name, const char *value);

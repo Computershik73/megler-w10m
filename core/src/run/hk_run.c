@@ -48,6 +48,8 @@ void hk_run_count_frame(void) { hk_atomic_add(&g_frames, 1); }
 void hk_run_ended(int status, const char *reason)
 {
     if (hk_atomic_xchg(&g_ended, 1)) return;
+    /* What the app wrote into shared file mappings reaches the files (bionic/hk_libc_mem.c). */
+    hk_mem_write_back();
     hk_atomic_xchg(&g_active, 0);
     hk_info("run: the app has ended (status %d%s%s)", status, reason ? ", " : "", reason ? reason : "");
     if (g_config.on_exit) g_config.on_exit(g_config.user, status, reason);

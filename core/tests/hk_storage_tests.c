@@ -1119,6 +1119,45 @@ static void test_odd_names(void)
     }
 }
 
+/*
+ * A shared writable mapping of a file, as MMKV and MX Player's mx-kv keep their stores: what is written into the mapping
+ * reaches the file at msync, and at munmap, though the descriptor was closed right after mapping.
+ * (The pages are the layer's copy; Linux would write them back by itself.)
+ */
+static void test_shared_mapping(void)
+{
+    void *(*map)(void *, size_t, int, int, int, i32) = (void *(*)(void *, size_t, int, int, int, i32))hk_bionic_find("mmap");
+    int (*unmap)(void *, size_t) = (int (*)(void *, size_t))hk_bionic_find("munmap");
+    int (*sync)(void *, size_t, int) = (int (*)(void *, size_t, int))hk_bionic_find("msync");
+    i32 (*pread_)(int, void *, u32, i32) = (i32 (*)(int, void *, u32, i32))hk_bionic_find("pread");
+    static const char path[] = "/data/data/" PKG "/files/kv.bin";
+    static char zeros[8192];
+    char *p, back[8];
+    int fd;
+    say("a shared writable mapping of a file: msync and munmap write it back");
+    CHECK(map && unmap && sync && pread_);
+    if (!map || !unmap || !sync || !pread_) return;
+    fd = C.open(path, T_RDWR | T_CREAT | T_TRUNC, 0600);
+    CHECK(fd >= 0 && C.write(fd, zeros, sizeof(zeros)) == (i32)sizeof(zeros));
+    p = (char *)map(NULL, sizeof(zeros), 3 /* PROT_READ | PROT_WRITE */, 1 /* MAP_SHARED */, fd, 0);
+    C.close(fd);
+    CHECK(p && p != (char *)-1);
+    if (!p || p == (char *)-1) return;
+    memcpy(p + 4096, "synced", 6);
+    CHECK(sync(p + 4096, 6, 4 /* MS_SYNC */) == 0);
+    fd = C.open(path, T_RDONLY, 0);
+    memset(back, 0, sizeof(back));
+    CHECK(fd >= 0 && pread_(fd, back, 6, 4096) == 6 && !memcmp(back, "synced", 6));
+    C.close(fd);
+    memcpy(p, "unmapped", 8);
+    CHECK(unmap(p, sizeof(zeros)) == 0);
+    fd = C.open(path, T_RDONLY, 0);
+    memset(back, 0, sizeof(back));
+    CHECK(fd >= 0 && pread_(fd, back, 8, 0) == 8 && !memcmp(back, "unmapped", 8) && size_of(path) == (i64)sizeof(zeros));
+    C.close(fd);
+    CHECK(C.unlink(path) == 0);
+}
+
 static void worker_run(void *arg)
 {
     worker *w = (worker *)arg;
@@ -1487,6 +1526,7 @@ static int run_in(const char *base, hk_storage_host_maker make, hk_test_sink sin
             test_layout(data);
             test_threads();
             test_odd_names();
+            test_shared_mapping();
             test_check();
             test_no_links(data);
             /* As the tests after this one found things: no links, nobody to ask, and the current directory where it was. */

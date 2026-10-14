@@ -959,6 +959,22 @@ i32 hk_fd_pread(int fd, void *buf, u32 n, u64 offset)
     return r;
 }
 
+void *hk_fd_hold(int fd)
+{
+    /* A file of the host's only: a mapping of anything else (a pipe, a made-up file) has nothing to be written back to. */
+    gobj *o = fd_get(fd);
+    if (o && o->type != OBJ_FILE) {
+        fd_put(o);
+        o = NULL;
+    }
+    return o;
+}
+i32 hk_fd_held_pwrite(void *held, const void *buf, u32 n, u64 offset) { return held ? obj_write((gobj *)held, buf, n, true, offset) : -1; }
+void hk_fd_let_go(void *held)
+{
+    if (held) fd_put((gobj *)held);
+}
+
 static i32 g_pread(int fd, void *buf, u32 n, i32 offset) { return hk_fd_pread(fd, buf, n, (u64)(u32)offset); }
 static i32 g_pread64(int fd, void *buf, u32 n, i64 offset) { return hk_fd_pread(fd, buf, n, (u64)offset); }
 
