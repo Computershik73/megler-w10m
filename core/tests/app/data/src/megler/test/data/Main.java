@@ -293,6 +293,7 @@ public class Main extends Activity {
         pfdDup();
         themeSelfRef();
         queueNext();
+        storageStats();
         network();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
@@ -797,6 +798,16 @@ public class Main extends Activity {
             t.join(5000);
             detail = "next() gave " + got[0];
             return Integer.valueOf(42).equals(got[0]);
+        });
+    }
+
+    /** The app's own storage statistics, as Firefox times them for its telemetry: there, not null. */
+    private void storageStats() {
+        step("storage-stats", () -> {
+            android.app.usage.StorageStatsManager m = (android.app.usage.StorageStatsManager) getSystemService(STORAGE_STATS_SERVICE);
+            android.app.usage.StorageStats s = m.queryStatsForUid(android.os.storage.StorageManager.UUID_DEFAULT, android.os.Process.myUid());
+            detail = "queryStatsForUid gave " + s;
+            return s != null && s.getAppBytes() >= 0 && s.getDataBytes() >= 0;
         });
     }
 

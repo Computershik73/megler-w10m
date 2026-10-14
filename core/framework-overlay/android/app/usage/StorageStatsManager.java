@@ -1,5 +1,8 @@
 // megler-w10m overlay of Megler/src/java-framework/gen-src/android/app/usage/StorageStatsManager.java (tools/build-framework.sh).
-// It differs in getTotalBytes and getFreeBytes, which were generated signatures that answered 0.
+// It differs in getTotalBytes and getFreeBytes, which were generated signatures that answered 0. And in the queryStatsFor*
+// methods, which answered null: they answer a StorageStats with nothing counted (0 bytes of each kind), what the platform
+// gives an app that measured nothing. Firefox 152 times queryStatsForUid for its telemetry, Kotlin checks the result is not
+// null, and the NullPointerException on its worker thread ended the app.
 //
 // Why. Since Android 8 this is where an app asks how large the phone's storage is: getTotalBytes(StorageManager.UUID_DEFAULT),
 // with StatFs for the free space beside it. Device Info's storage card read "Internal Storage -2147483648%  Free: 4.0 GB,
@@ -41,11 +44,11 @@ public class StorageStatsManager {
     public java.util.Collection queryCratesForUser(java.util.UUID p0, android.os.UserHandle p1) { return new java.util.ArrayList(); }
     public android.app.usage.ExternalStorageStats queryExternalStatsForUser(java.lang.String p0, android.os.UserHandle p1) { return null; }
     public android.app.usage.ExternalStorageStats queryExternalStatsForUser(java.util.UUID p0, android.os.UserHandle p1) { return null; }
-    public android.app.usage.StorageStats queryStatsForPackage(java.lang.String p0, java.lang.String p1, android.os.UserHandle p2) { return null; }
-    public android.app.usage.StorageStats queryStatsForPackage(java.util.UUID p0, java.lang.String p1, android.os.UserHandle p2) { return null; }
-    public android.app.usage.StorageStats queryStatsForUid(java.lang.String p0, int p1) { return null; }
-    public android.app.usage.StorageStats queryStatsForUid(java.util.UUID p0, int p1) { return null; }
-    public android.app.usage.StorageStats queryStatsForUser(java.lang.String p0, android.os.UserHandle p1) { return null; }
-    public android.app.usage.StorageStats queryStatsForUser(java.util.UUID p0, android.os.UserHandle p1) { return null; }
+    public android.app.usage.StorageStats queryStatsForPackage(java.lang.String p0, java.lang.String p1, android.os.UserHandle p2) { return new android.app.usage.StorageStats(); }
+    public android.app.usage.StorageStats queryStatsForPackage(java.util.UUID p0, java.lang.String p1, android.os.UserHandle p2) { return new android.app.usage.StorageStats(); }
+    public android.app.usage.StorageStats queryStatsForUid(java.lang.String p0, int p1) { return new android.app.usage.StorageStats(); }
+    public android.app.usage.StorageStats queryStatsForUid(java.util.UUID p0, int p1) { return new android.app.usage.StorageStats(); }
+    public android.app.usage.StorageStats queryStatsForUser(java.lang.String p0, android.os.UserHandle p1) { return new android.app.usage.StorageStats(); }
+    public android.app.usage.StorageStats queryStatsForUser(java.util.UUID p0, android.os.UserHandle p1) { return new android.app.usage.StorageStats(); }
     StorageStatsManager() { this((android.content.Context) null, (android.app.usage.IStorageStatsManager) null); }
 }

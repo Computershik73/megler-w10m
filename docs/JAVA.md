@@ -3029,6 +3029,11 @@ on a looper thread of its own and takes it back with `next()`.
   Android gives it, rounded up to a size storage is sold in (1, 2, 4 ... 512
   of the next decimal unit, `FileUtils.roundStorageSize`), the free space as
   it is. The figures are the C library's `statvfs` under `java.io.File`.
+  And the `queryStatsFor*` methods, which answered null: they answer a
+  `StorageStats` with nothing counted. Firefox 152 times `queryStatsForUid` for
+  its telemetry, Kotlin checks that the result is not null, and the
+  `NullPointerException` on its worker thread ended the app. The data app's
+  step "storage-stats" asks for its own.
 - `android/os/storage/StorageManager.java`, the old way to list the storage:
   `getVolumeList`, `getVolumePaths`, `getVolumeState` and the static
   `getVolumeList(userId, flags)` were signatures answering null. They are
@@ -3391,7 +3396,7 @@ on a looper thread of its own and takes it back with `next()`.
   and a file's descriptor, closes the originals, writes through the
   duplicate, detaches it and adopts it again.
 
-The original has all thirty faults; they are its author's to take back.
+The original has all thirty-one faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in
