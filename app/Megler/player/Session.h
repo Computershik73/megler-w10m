@@ -63,6 +63,14 @@ void stop();
 void touch(int phase, int pointer, float x, float y);
 /// AKEYCODE_BACK, pressed and released.
 void backKey();
+/// The touch keyboard's half of text entry, for a Java app (megler.h's
+/// megler_text_commit and its neighbours): text the user typed, as UTF-8; an
+/// editing key (MEGLER_TEXT_*); the user put the keyboard away; how many of
+/// the surface's pixels it covers at the bottom (0: it is gone).
+void textCommit(const std::string& utf8);
+void textKey(int key);
+void keyboardClosed();
+void keyboardHeight(int pixels);
 
 // The app's place on the phone, from the application's and the window's
 // events. Android has one "paused": here it is suspended or not visible.

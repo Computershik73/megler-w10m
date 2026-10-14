@@ -3,6 +3,7 @@
 #include "player/Session.h"
 
 #include "player/GfxHost.h"
+#include "player/KeyboardHost.h"
 #include "player/MediaHost.h"
 
 #include "shell/Checks.h"
@@ -178,6 +179,7 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         // with a native engine uses neither.
         config.gfx = gfxCallbacks();
         config.android_root = nullptr;
+        config.keyboard = KeyboardHost::shared().callbacks();
         config.on_exit = &onExit;
         config.user = nullptr;
         const bool started = megler_run(&config);
@@ -221,6 +223,17 @@ void backKey() {
     megler_key(androidKeyBack, true);
     megler_key(androidKeyBack, false);
 }
+
+// (Like touch: the core takes these from any thread and ignores them when no Java app runs.)
+void textCommit(const std::string& utf8) {
+    if (!utf8.empty()) megler_text_commit(utf8.c_str());
+}
+
+void textKey(int key) { megler_text_key(key); }
+
+void keyboardClosed() { megler_keyboard_closed(); }
+
+void keyboardHeight(int pixels) { megler_keyboard_height(pixels < 0 ? 0 : pixels); }
 
 void setSuspended(bool suspended) {
     {

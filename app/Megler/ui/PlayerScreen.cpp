@@ -17,6 +17,7 @@
 #include "pch.h"
 
 #include "library/Library.h"
+#include "player/KeyboardHost.h"
 #include "player/Session.h"
 #include "player/WindowHost.h"
 #include "shell/Files.h"
@@ -76,6 +77,8 @@ public:
         if (state == session::State::running) {
             if (menuShown_)
                 showMenu(false);
+            else if (keyboardUp_)
+                putKeyboardAway(true); // while the keyboard is up, Back is the keyboard's, as on Android
             else
                 session::backKey();
             return true;
@@ -103,6 +106,28 @@ public:
         touchLayer_.Background(brush(withAlpha(rgb(0x000000), 0)));
         root.Children().Append(touchLayer_);
         wireTouches();
+
+        // What Windows gives its touch keyboard to: a text box. Nobody sees
+        // this one or can touch it; it has the focus while an Android text
+        // field is being edited (see "The keyboard" below).
+        keyboardField_ = TextBox();
+        keyboardField_.Width(1);
+        keyboardField_.Height(1);
+        keyboardField_.MinWidth(1);
+        keyboardField_.MinHeight(1);
+        keyboardField_.Opacity(0);
+        keyboardField_.IsHitTestVisible(false);
+        keyboardField_.HorizontalAlignment(HorizontalAlignment::Left);
+        keyboardField_.VerticalAlignment(VerticalAlignment::Top);
+        keyboardField_.IsSpellCheckEnabled(false);
+        keyboardField_.AcceptsReturn(false);
+        keyboardField_.TextChanged([this](auto&&, auto&&) { keyboardFieldChanged(); });
+        keyboardField_.KeyDown([this](auto&&, KeyRoutedEventArgs const& e) {
+            if (e.Key() != winrt::Windows::System::VirtualKey::Enter) return;
+            session::textKey(MEGLER_TEXT_ENTER);
+            e.Handled(true);
+        });
+        root.Children().Append(keyboardField_);
 
         // "Starting ..." until the first frame, and "Stopping ..." after Quit.
         auto busy = vstack(14);
@@ -142,6 +167,7 @@ public:
     }
 
     void appeared() override {
+        attachKeyboard();
         if (!keyToken_) {
             try {
                 keyToken_ = Window::Current().CoreWindow().KeyDown([this](auto&&, winrt::Windows::UI::Core::KeyEventArgs const& e) {
@@ -155,6 +181,7 @@ public:
 
     void disappeared() override {
         releaseAllTouches();
+        detachKeyboard();
         // A start that failed left nothing running: the next Play may try again.
         session::forget();
     }
@@ -416,6 +443,171 @@ private:
         setVisible(endOverlay_, true);
     }
 
+    // MARK: The keyboard
+    //
+    // A Java app's text field asks for the keyboard through KeyboardHost; the
+    // hidden text box takes the focus and Windows brings its keyboard up.
+    // What is typed arrives as changes to that box's text. The box always
+    // holds a short fixed beginning (so that a Backspace has something to
+    // delete even when the user has typed nothing yet) followed by what was
+    // typed since the field was touched; each change is told to the app as
+    // what it is against the text before: so many Backspaces for what is no
+    // longer there, then the new end as typed text. That way a correction
+    // the keyboard itself makes -- a word replaced by a suggestion -- comes
+    // out right, as long as the app's cursor is where the typing left it.
+    // A new touch of a field starts the box afresh.
+
+    static constexpr const wchar_t* keyboardStart = L"a ";
+    static constexpr size_t keyboardStartLength = 2;
+
+    void attachKeyboard() {
+        if (keyboardAttached_) return;
+        keyboardAttached_ = true;
+        KeyboardHost::shared().attach([this](int kind, int flags, int enter) { showKeyboard(kind, flags, enter); }, [this] { putKeyboardAway(false); });
+        try {
+            auto pane = winrt::Windows::UI::ViewManagement::InputPane::GetForCurrentView();
+            paneShowing_ = pane.Showing([this](auto&&, winrt::Windows::UI::ViewManagement::InputPaneVisibilityEventArgs const& e) {
+                // The app's own layout keeps the field in view (it is told the height); Windows is not to push the page up.
+                e.EnsuredFocusedElementInView(true);
+                keyboardUp_ = true;
+                tellKeyboardHeight(e.OccludedRect().Height);
+            });
+            paneHiding_ = pane.Hiding([this](auto&&, winrt::Windows::UI::ViewManagement::InputPaneVisibilityEventArgs const& e) {
+                e.EnsuredFocusedElementInView(true);
+                keyboardUp_ = false;
+                session::keyboardHeight(0);
+                // Put away by the user (its own key, or Back, which Windows gives the keyboard first): the app did not ask.
+                if (keyboardWanted_) {
+                    keyboardWanted_ = false;
+                    session::keyboardClosed();
+                    shellLog::write("player: the keyboard was put away by the user");
+                }
+                dropKeyboardFocus();
+            });
+        } catch (const hresult_error& e) {
+            shellLog::write("player: the keyboard's coming and going cannot be watched: " + narrow(e.message()));
+        }
+    }
+
+    void detachKeyboard() {
+        if (!keyboardAttached_) return;
+        keyboardAttached_ = false;
+        KeyboardHost::shared().detach();
+        try {
+            auto pane = winrt::Windows::UI::ViewManagement::InputPane::GetForCurrentView();
+            if (paneShowing_) pane.Showing(paneShowing_);
+            if (paneHiding_) pane.Hiding(paneHiding_);
+            if (keyboardUp_) pane.TryHide();
+        } catch (const hresult_error&) {
+        }
+        paneShowing_ = {};
+        paneHiding_ = {};
+        keyboardWanted_ = keyboardUp_ = false;
+    }
+
+    /// The app asked for the keyboard (UI thread). Asked again for the same
+    /// field, it only starts the box afresh.
+    void showKeyboard(int kind, int flags, int enter) {
+        if (!keyboardField_ || !running_ || menuShown_) return;
+        using winrt::Windows::UI::Xaml::Input::InputScopeNameValue;
+        InputScopeNameValue value = InputScopeNameValue::Default;
+        switch (kind) {
+        case MEGLER_KEYBOARD_NUMBER: value = InputScopeNameValue::Number; break;
+        case MEGLER_KEYBOARD_DATETIME: value = InputScopeNameValue::Number; break;
+        case MEGLER_KEYBOARD_PHONE: value = InputScopeNameValue::TelephoneNumber; break;
+        case MEGLER_KEYBOARD_EMAIL: value = InputScopeNameValue::EmailSmtpAddress; break;
+        case MEGLER_KEYBOARD_URL: value = InputScopeNameValue::Url; break;
+        case MEGLER_KEYBOARD_PASSWORD: value = InputScopeNameValue::Password; break;
+        case MEGLER_KEYBOARD_NUMBER_PASSWORD: value = InputScopeNameValue::NumericPin; break;
+        default: break;
+        }
+        try {
+            winrt::Windows::UI::Xaml::Input::InputScope scope;
+            winrt::Windows::UI::Xaml::Input::InputScopeName name;
+            name.NameValue(value);
+            scope.Names().Append(name);
+            keyboardField_.InputScope(scope);
+            // Suggestions only for ordinary text that did not refuse them: a password or a number has none.
+            keyboardField_.IsTextPredictionEnabled(kind == MEGLER_KEYBOARD_TEXT && !(flags & MEGLER_KEYBOARD_F_NO_SUGGESTIONS));
+        } catch (const hresult_error&) {
+        }
+        if (!keyboardWanted_)
+            shellLog::write(format("player: the app asks for the keyboard (kind %d, flags 0x%X, Enter %d)", kind, unsigned(flags), enter));
+        keyboardWanted_ = true;
+        startKeyboardText();
+        keyboardField_.Focus(FocusState::Programmatic);
+        try {
+            winrt::Windows::UI::ViewManagement::InputPane::GetForCurrentView().TryShow();
+        } catch (const hresult_error&) {
+        }
+    }
+
+    /// The app no longer wants it, or (`byUser`) Back was pressed while it was up.
+    void putKeyboardAway(bool byUser) {
+        if (!keyboardWanted_ && !keyboardUp_) return;
+        keyboardWanted_ = false;
+        if (byUser) session::keyboardClosed();
+        try {
+            winrt::Windows::UI::ViewManagement::InputPane::GetForCurrentView().TryHide();
+        } catch (const hresult_error&) {
+        }
+        dropKeyboardFocus();
+    }
+
+    /// The hidden box gives the focus up (a control that is switched off cannot keep it), and with it the keyboard.
+    void dropKeyboardFocus() {
+        if (!keyboardField_) return;
+        keyboardField_.IsEnabled(false);
+        keyboardField_.IsEnabled(true);
+    }
+
+    void startKeyboardText() {
+        keyboardText_ = keyboardStart;
+        keyboardField_.Text(keyboardText_);
+        keyboardField_.SelectionStart(int32_t(keyboardText_.size()));
+    }
+
+    /// The box's text has changed: tell the app the difference.
+    void keyboardFieldChanged() {
+        if (!keyboardField_) return;
+        std::wstring now(keyboardField_.Text());
+        if (now == keyboardText_) return; // set by startKeyboardText, not typed
+        if (!keyboardWanted_) {
+            startKeyboardText();
+            return;
+        }
+        size_t common = 0;
+        while (common < now.size() && common < keyboardText_.size() && now[common] == keyboardText_[common]) ++common;
+        // Not between the two halves of a character outside the basic plane.
+        if (common > 0 && now.size() > common && IS_HIGH_SURROGATE(now[common - 1])) --common;
+        // One Backspace for each character that is no longer there (a pair of halves is one).
+        int gone = 0;
+        for (size_t i = common; i < keyboardText_.size(); ++i)
+            if (!IS_LOW_SURROGATE(keyboardText_[i]) || i == common) ++gone;
+        for (int i = 0; i < gone; ++i) session::textKey(MEGLER_TEXT_BACKSPACE);
+        std::wstring added = now.substr(common);
+        added.erase(std::remove(added.begin(), added.end(), L'\r'), added.end());
+        if (!added.empty()) session::textCommit(narrow(added));
+        keyboardText_ = now;
+        // Deleted into the fixed beginning, or grown long: afresh. (The keyboard then knows nothing of what came before.)
+        if (common < keyboardStartLength || keyboardText_.size() > 200) startKeyboardText();
+    }
+
+    /// How much of the app's picture the keyboard covers, in the surface's pixels.
+    void tellKeyboardHeight(float occludedDips) {
+        const auto window = session::window();
+        if (!window || !touchLayer_) return;
+        const float layerWidth = float(touchLayer_.ActualWidth()), layerHeight = float(touchLayer_.ActualHeight());
+        const float surfaceWidth = float(window->surfaceWidth()), surfaceHeight = float(window->surfaceHeight());
+        const auto shown = WindowHost::letterbox(layerWidth, layerHeight, surfaceWidth, surfaceHeight);
+        if (shown.height <= 0) return;
+        const float covered = std::min(std::max((shown.y + shown.height) - (layerHeight - occludedDips), 0.0f), shown.height);
+        const int pixels = int(covered / shown.height * surfaceHeight + 0.5f);
+        shellLog::write(format("player: the keyboard is up, %.0f DIPs high: it covers %d of the app's %d pixel rows", double(occludedDips), pixels,
+                               int(surfaceHeight)));
+        session::keyboardHeight(pixels);
+    }
+
     // MARK: Touches
 
     void wireTouches() {
@@ -531,6 +723,13 @@ private:
     std::chrono::steady_clock::time_point rateAnchorTime_ = std::chrono::steady_clock::now();
     uint32_t rateAnchorFrames_ = 0;
     int framesPerSecond_ = 0;
+
+    TextBox keyboardField_{nullptr};
+    std::wstring keyboardText_;   // what the hidden box held when the app was last told
+    bool keyboardAttached_ = false;
+    bool keyboardWanted_ = false; // the app asked for the keyboard and has not been told it is gone
+    bool keyboardUp_ = false;     // Windows says it is on the screen
+    winrt::event_token paneShowing_{}, paneHiding_{};
 
     std::map<uint32_t, int> touches_;
     int cornerTaps_ = 0;
