@@ -32,16 +32,17 @@
 //     drawn outside it.
 //   - A line feed, a carriage return and the other control characters of a
 //     run take no room; a tab takes a space's.
-//   - Letter spacing is added once to each character (DirectWrite's cluster),
-//     so once for a surrogate pair, not once for each of its two code units.
+//   - A "character" for letter spacing is DirectWrite's cluster: half the
+//     spacing before it and half after, once for a surrogate pair.
 //   - Fake bold is a stroke of a twenty-fourth of the text's size round the
 //     glyphs' outlines, as the original has it; it and a paint's stroke
 //     widen text_bounds and leave the advances as they are.
 //   - text_bounds of a slanted run is the box of each glyph's own box
 //     slanted: never smaller than the ink, and wider than it by at most the
 //     slant times a glyph's height.
-//   - A shadow's radius and offset are pixels; it is laid on by the paint's
-//     transfer mode, inside the clip, at the shadow colour's own alpha.
+//   - A shadow's blur under a matrix that stretches one way grows by the
+//     matrix's mean scale both ways, and stops at the widest blur an
+//     unscaled canvas can ask for.
 //   - A bitmap's rectangle has smoothed edges when the paint asks for
 //     smoothing, whatever the sampling.
 //   - A partly covered pixel of a smoothed edge, for the transfer modes that
@@ -1286,6 +1287,10 @@ const Surface* shaderPicture(Canvas& cv, Shader& shader, const Box& box, bool fi
     return &s;
 }
 
+/// The widest blur a shadow is given: that of the largest radius taken (150)
+/// under a matrix that does not scale. A scaled-up canvas stops there.
+constexpr float maxShadowSigma = 0.57735f * 150.0f + 0.5f;
+
 /// A Gaussian blur of the alpha bytes of a picture, in place: Android's
 /// shadow radius is a standard deviation of 0.57735 * radius + 0.5.
 void blurCover(Canvas& cv, Surface& s, float sigma) {
@@ -1319,12 +1324,20 @@ void blurCover(Canvas& cv, Surface& s, float sigma) {
 }
 
 /// The paint's shadow under what a call draws: the ink's coverage, blurred,
-/// moved by the paint's offset (pixels, not through the matrix) and laid on
-/// in the shadow's colour.
+/// moved by the paint's offset and laid on in the shadow's colour. Offset
+/// and radius are the drawing's own: the offset goes through the matrix as
+/// a direction, the blur grows with the matrix's scale.
 void drawShadow(Canvas& cv, Surface& target, const Ink& ink, const megler_gfx_paint& paint) {
-    const float sigma = 0.57735f * paint.shadow_radius + 0.5f;
+    // Opaque, the shadow's colour takes the paint's alpha; otherwise it keeps its own.
+    uint32_t colour = paint.shadow_color;
+    if ((colour >> 24) == 255) colour = (colour & 0x00FFFFFFu) | (paint.color & 0xFF000000u);
+    if ((colour >> 24) == 0) return;
+    const Matrix3x2F& m = cv.matrix;
+    const float sigma = std::min((0.57735f * paint.shadow_radius + 0.5f) * meanScale(m), maxShadowSigma);
     const int reach = std::max(1, int(std::ceil(sigma * 3)));
-    const int dx = int(std::lround(paint.shadow_dx)), dy = int(std::lround(paint.shadow_dy));
+    const float movedX = paint.shadow_dx * m._11 + paint.shadow_dy * m._21, movedY = paint.shadow_dx * m._12 + paint.shadow_dy * m._22;
+    if (!(std::fabs(movedX) < 32768.0f && std::fabs(movedY) < 32768.0f)) return;
+    const int dx = int(std::lround(movedX)), dy = int(std::lround(movedY));
     // Where the shadow can fall, and what of the ink can throw one there.
     Box lands = inkCover(ink, cv.matrix);
     lands.inflate(reach);
@@ -1355,7 +1368,7 @@ void drawShadow(Canvas& cv, Surface& target, const Ink& ink, const megler_gfx_pa
         }
     }
     Source src;
-    src.solid = premultiplied(paint.shadow_color);
+    src.solid = premultiplied(colour);
     compose(target, lands, src, &moved, paint.blend);
 }
 
@@ -2471,7 +2484,8 @@ std::shared_ptr<Shaped> shape(const Typeface& face, float size, float spacing, c
     const DWRITE_TEXT_RANGE all = {0, UINT32(count)};
     layout->SetFontSize(size, all);
     if (spacing != 0) {
-        if (Ref<IDWriteTextLayout1> layout1 = layout.as<IDWriteTextLayout1>()) layout1->SetCharacterSpacing(0.0f, spacing, 0.0f, all);
+        // Half before each cluster and half after, as Android has it: a run starts half a spacing in.
+        if (Ref<IDWriteTextLayout1> layout1 = layout.as<IDWriteTextLayout1>()) layout1->SetCharacterSpacing(spacing / 2, spacing / 2, 0.0f, all);
         else note("letter-spacing", "this DirectWrite has no IDWriteTextLayout1: letter spacing is not applied (said once)");
     }
     // Each cluster's advance goes to its first code unit; a line may break after a cluster's last.
