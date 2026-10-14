@@ -107,6 +107,7 @@ public:
         uint64_t runsShaped = 0;   // text runs laid out
         uint64_t runsReused = 0;   // ... and found already laid out
         uint64_t notes = 0;        // kinds of thing said in the log as not done right
+        uint64_t partTargets = 0;  // times a canvas's render target was moved to the part its clip leaves open
         bool started = false;      // Direct2D and DirectWrite are there
         bool copying = false;      // canvases are copied in and out
     };

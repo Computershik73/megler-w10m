@@ -38,10 +38,11 @@ void hk_gfx_windows_counts(char* out, size_t size) {
     const megler::app::GfxHost::Counts c = megler::app::GfxHost::shared().counts();
     snprintf(out, size,
              "%llu canvases, %llu times Direct2D began and ended drawing, %llu drawing calls put on by Direct2D and %llu by the host's own arithmetic, %llu layers; "
-             "%llu runs of text laid out and %llu found laid out; %llu kinds of thing said to be drawn not as asked",
+             "%llu runs of text laid out and %llu found laid out; %llu kinds of thing said to be drawn not as asked; %llu times a target moved to a part",
              static_cast<unsigned long long>(c.canvases), static_cast<unsigned long long>(c.sessions), static_cast<unsigned long long>(c.direct),
              static_cast<unsigned long long>(c.composed), static_cast<unsigned long long>(c.layers), static_cast<unsigned long long>(c.runsShaped),
-             static_cast<unsigned long long>(c.runsReused), static_cast<unsigned long long>(c.notes));
+             static_cast<unsigned long long>(c.runsReused), static_cast<unsigned long long>(c.notes),
+             static_cast<unsigned long long>(c.partTargets));
 }
 
 } // extern "C"

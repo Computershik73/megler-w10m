@@ -229,7 +229,7 @@ struct State {
     AndroidFamily androidFamilies[8];
 
     std::atomic<uint64_t> clipSerial{1};
-    std::atomic<uint64_t> canvases{0}, sessions{0}, direct{0}, composed{0}, layers{0}, runsShaped{0}, runsReused{0}, notes{0};
+    std::atomic<uint64_t> canvases{0}, sessions{0}, direct{0}, composed{0}, layers{0}, runsShaped{0}, runsReused{0}, notes{0}, partTargets{0};
 };
 
 State& G() {
@@ -1015,9 +1015,25 @@ struct Level {
     int alpha = 255, blend = MEGLER_GFX_BLEND_SRC_OVER;
 };
 
+/// A render target made over one part of a canvas's memory, kept for the
+/// next time that part is drawn on (Canvas::fitBase).
+struct PartTarget {
+    Box box;
+    Ref<ID2D1RenderTarget> rt;
+    Ref<ID2D1SolidColorBrush> brush, second;
+    Ref<IWICBitmap> mirror;
+};
+
+/// How many such targets a canvas keeps: the window's few dirty rectangles
+/// that come back frame after frame (a spinner, a caret, a list's row).
+constexpr size_t partTargetsKept = 4;
+
 struct Canvas {
     uint32_t magic = canvasMagic;
-    Surface base;
+    Surface base;                  // the memory, or the part of it the clip leaves open (fitBase)
+    uint8_t* memory = nullptr;     // the canvas's memory as a whole
+    int memoryW = 0, memoryH = 0, memoryStride = 0;
+    std::vector<PartTarget> parts; // render targets made over parts of it before, newest last
     std::vector<Level> levels;     // levels.back() is the state in force; levels[0] is the canvas's own
     Matrix3x2F matrix = Matrix3x2F::Identity();
     Surface cover, source, extra;  // memory of the canvas's own that a drawing call is put together in
@@ -1031,7 +1047,68 @@ struct Canvas {
     Surface* target() {
         for (size_t i = levels.size(); i-- > 0;)
             if (levels[i].isLayer) return levels[i].layer.get();
+        fitBase();
         return &base;
+    }
+
+    /// The bitmap's render target made over the part of the memory the clip
+    /// leaves open, when that is a small part of a large bitmap. A software
+    /// render target's memory is copied in and out whole at every BeginDraw
+    /// and EndDraw, whatever little is drawn: 0.9 ms for a 720x1280 window on
+    /// the phone, a dozen milliseconds a frame for a window that redraws a
+    /// small part of itself. So base covers what the clip leaves open; a
+    /// drawing whose clip goes beyond it ends the drawing so far and moves
+    /// base, and a new drawing on a canvas starts from what its clip asks.
+    void fitBase() {
+        if (!memory) return;
+        Box full;
+        full.r = memoryW;
+        full.b = memoryH;
+        Box want = clip().box;
+        want.intersect(full);
+        if (want.empty()) return;
+        const Box now = base.bounds();
+        const bool covers = want.l >= now.l && want.t >= now.t && want.r <= now.r && want.b <= now.b;
+        // Small bitmaps, and clips that leave most of one open: the whole of it, as before.
+        Box region = want;
+        if (int64_t(memoryW) * memoryH < int64_t(256) * 256 || int64_t(region.width()) * region.height() * 2 > int64_t(memoryW) * memoryH) region = full;
+        if (covers && (base.drawing || (region.l == now.l && region.t == now.t && region.r == now.r && region.b == now.b))) return;
+        moveBase(region);
+    }
+
+    void moveBase(const Box& region) {
+        base.end();
+        // The target over the part it covered is kept; one made over the new part before is taken back.
+        if (base.rt) {
+            PartTarget kept;
+            kept.box = base.bounds();
+            kept.rt = std::move(base.rt);
+            kept.brush = std::move(base.brush);
+            kept.second = std::move(base.second);
+            kept.mirror = std::move(base.mirror);
+            parts.push_back(std::move(kept));
+        }
+        base.rt.reset();
+        base.brush.reset();
+        base.second.reset();
+        base.mirror.reset();
+        for (size_t i = parts.size(); i-- > 0;) {
+            const Box& b = parts[i].box;
+            if (b.l != region.l || b.t != region.t || b.r != region.r || b.b != region.b) continue;
+            base.rt = std::move(parts[i].rt);
+            base.brush = std::move(parts[i].brush);
+            base.second = std::move(parts[i].second);
+            base.mirror = std::move(parts[i].mirror);
+            parts.erase(parts.begin() + std::ptrdiff_t(i));
+            break;
+        }
+        while (parts.size() > partTargetsKept) parts.erase(parts.begin());
+        base.px = memory + size_t(region.t) * size_t(memoryStride) + size_t(region.l) * 4;
+        base.w = region.width();
+        base.h = region.height();
+        base.ox = region.l;
+        base.oy = region.t;
+        ++G().partTargets;
     }
 };
 
@@ -1521,7 +1598,11 @@ void* canvasNew(void*, void* pixels, int width, int height, int stride) {
     guarded("canvas_new", [&] {
         if (!started() || !pixels || width <= 0 || height <= 0 || stride < width * 4) return;
         std::unique_ptr<Canvas> made(new Canvas());
-        made->base.px = static_cast<uint8_t*>(pixels);
+        made->memory = static_cast<uint8_t*>(pixels);
+        made->memoryW = width;
+        made->memoryH = height;
+        made->memoryStride = stride;
+        made->base.px = made->memory;
         made->base.w = width;
         made->base.h = height;
         made->base.stride = stride;
@@ -3569,6 +3650,7 @@ GfxHost::Counts GfxHost::counts() {
     c.runsShaped = s.runsShaped;
     c.runsReused = s.runsReused;
     c.notes = s.notes;
+    c.partTargets = s.partTargets;
     c.started = s.started.load() > 0;
     c.copying = s.copying;
     return c;

@@ -2759,7 +2759,7 @@ static void measure_costs(void)
     u16 t[40];
     char line_of[40];
     float bounds[4] = { 100, 100, 300, 300 };
-    double made, erased, rects, rounded, flushed, first, again, drawn, copied, shared, layered, composed;
+    double made, erased, rects, rounded, flushed, flushedPart, first, again, drawn, copied, shared, layered, composed;
     u64 from;
     int i, n;
     say("  what things cost here (a phone's processor is several times slower):");
@@ -2795,6 +2795,19 @@ static void measure_costs(void)
         settle(&screen);
     }
     flushed = microseconds(from, 500);
+    /* The same in a small part of the picture, as a window that redraws a little of itself draws: the clip leaves 200 x 100
+       of the 720 x 1280 open. */
+    {
+        saved part = save(&screen);
+        clip_rect(&screen, 10, 10, 210, 110, MEGLER_GFX_CLIP_INTERSECT);
+        from = hk_time_monotonic_ns();
+        for (i = 0; i < 500; i++) {
+            rect(&screen, 10, 10, 50, 50, &opaque, NULL);
+            settle(&screen);
+        }
+        flushedPart = microseconds(from, 500);
+        restore(&screen, part);
+    }
     words.text_size = 16;
     from = hk_time_monotonic_ns();
     for (i = 0; i < 500; i++) {
@@ -2837,7 +2850,9 @@ static void measure_costs(void)
     composed = microseconds(from, 500);
     say("    a canvas made and freed %.1f us; a 720x1280 picture erased %.0f us; a 40x40 rectangle %.1f us, a smoothed half transparent rounded one %.1f us;", made, erased, rects,
         rounded);
-    say("    a rectangle and a flush %.0f us; a line of 24 letters measured for the first time %.0f us, and again %.2f us; drawn %.0f us;", flushed, first, again, drawn);
+    say("    a rectangle and a flush %.0f us, in a clip of 200x100 of the 720x1280 picture %.0f us; a line of 24 letters measured for the first time %.0f us, and again %.2f us;",
+        flushed, flushedPart, first, again);
+    say("    a line of 24 letters drawn %.0f us;", drawn);
     say("    a 64x64 bitmap %.0f us, a 512x512 one %.0f us; a 200x200 layer at half strength with a rectangle in it %.0f us; a 100x100 oval by XOR %.0f us", copied, shared,
         layered, composed);
     pic_done(&large);
