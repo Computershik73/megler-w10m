@@ -78,6 +78,60 @@ void *hk_mem_reserve(size_t size)
 
 void *hk_mem_reserve_at(void *p, size_t size) { return p ? valloc(p, size, MEM_RESERVE, PAGE_READWRITE) : NULL; }
 
+/* Sections: pagefile-backed file mappings, viewed with MapViewOfFile(FromApp), whose offsets are on the 64 KB granularity. */
+struct hk_section {
+    HANDLE handle;
+};
+
+hk_section *hk_section_create(u64 size)
+{
+    hk_section *s;
+    HANDLE h;
+    if (!size) return NULL;
+#if HK_UWP
+    h = CreateFileMappingFromApp(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, size, NULL);
+#else
+    h = CreateFileMappingW(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, (DWORD)(size >> 32), (DWORD)size, NULL);
+#endif
+    if (!h) return NULL;
+    s = (hk_section *)calloc(1, sizeof(*s));
+    if (!s) {
+        CloseHandle(h);
+        return NULL;
+    }
+    s->handle = h;
+    return s;
+}
+
+void *hk_section_map(hk_section *s, u64 offset, size_t size, bool writable, void **base)
+{
+    u64 aligned = offset & ~(u64)0xFFFF;
+    size_t delta = (size_t)(offset - aligned);
+    void *v;
+    if (!s || !size) return NULL;
+#if HK_UWP
+    v = MapViewOfFileFromApp(s->handle, writable ? FILE_MAP_WRITE : FILE_MAP_READ, aligned, size + delta);
+#else
+    v = MapViewOfFile(s->handle, writable ? FILE_MAP_WRITE : FILE_MAP_READ, (DWORD)(aligned >> 32), (DWORD)aligned, size + delta);
+#endif
+    if (!v) return NULL;
+    if (base) *base = v;
+    return (u8 *)v + delta;
+}
+
+void hk_section_unmap(void *base, size_t size)
+{
+    (void)size;
+    if (base) UnmapViewOfFile(base);
+}
+
+void hk_section_close(hk_section *s)
+{
+    if (!s) return;
+    CloseHandle(s->handle);
+    free(s);
+}
+
 bool hk_mem_commit(void *p, size_t size, int prot)
 {
     /* An executable commit is never allowed: commit writable, flip later. */

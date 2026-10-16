@@ -126,6 +126,25 @@ static void test_host(const char *scratch)
         hk_mem_release(p, 1 << 20);
     }
 
+    /* A section: two views of the same pages at addresses of their own; a view outlives the other and the section's close. */
+    {
+        hk_section *s = hk_section_create(3 * 65536);
+        void *base_a = NULL, *base_b = NULL;
+        u8 *a = s ? (u8 *)hk_section_map(s, 0, 3 * 65536, true, &base_a) : NULL;
+        u8 *b = s ? (u8 *)hk_section_map(s, 65536, 2 * 65536, false, &base_b) : NULL;
+        CHECK(s != NULL && a != NULL && b != NULL && a != b);
+        if (a && b) {
+            CHECK(a[65536 + 7] == 0);
+            a[65536 + 7] = 0x5A;
+            a[3 * 65536 - 1] = 0xA5;
+            CHECK(b[7] == 0x5A && b[2 * 65536 - 1] == 0xA5);
+            hk_section_unmap(base_a, 3 * 65536);
+            hk_section_close(s);
+            CHECK(b[7] == 0x5A);
+            hk_section_unmap(base_b, 2 * 65536 + (size_t)(b - (u8 *)base_b));
+        }
+    }
+
     t0 = hk_time_monotonic_ns();
     hk_sleep_ns(5000000ull);
     CHECK(hk_time_monotonic_ns() - t0 >= 4000000ull);
@@ -973,6 +992,7 @@ static void test_library(hk_lib *lib, const char *what, const char *scratch)
     CHECK_INT(FN(lib, int (*)(void), "t_libc_more")(), 6);
     CHECK_INT(FN(lib, int (*)(void), "t_shm")(), 9);
     CHECK_INT(FN(lib, int (*)(void), "t_ashmem")(), 10);
+    CHECK_INT(FN(lib, int (*)(void), "t_shm_views")(), 6);
     CHECK_INT(FN(lib, int (*)(void), "t_mremap")(), 5);
     CHECK_INT(FN(lib, int (*)(void), "t_mmap_hint")(), 3);
     CHECK_INT(FN(lib, int (*)(void), "t_cpuclock")(), 6);

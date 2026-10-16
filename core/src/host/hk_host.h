@@ -48,6 +48,19 @@ void hk_icache_flush(void *p, size_t size);
 /* Reserve and commit read-write in one step (anonymous mmap). */
 void *hk_mem_alloc(size_t size);
 
+/*
+ * Memory that several mappings show at once: a section (a pagefile-backed file mapping on Windows, a memfd on Linux), the
+ * host's half of shared memory as Android's ashmem and memfd give it. Created zero-filled; each view is the same pages at an
+ * address of its own, writable or read-only; a view stays valid after the section is closed, until it is unmapped. A view's
+ * offset is a multiple of a page: `base` is what hk_section_unmap takes, with the size mapped from there (the view may start
+ * below the address returned, on the host's 64 KB granularity: that much more).
+ */
+typedef struct hk_section hk_section;
+hk_section *hk_section_create(u64 size);
+void *hk_section_map(hk_section *s, u64 offset, size_t size, bool writable, void **base);
+void hk_section_unmap(void *base, size_t size);
+void hk_section_close(hk_section *s);
+
 /* What the app may use before the OS ends it, and what it uses now; 0 when unknown. */
 u64 hk_mem_limit(void);
 u64 hk_mem_usage(void);

@@ -56,6 +56,53 @@ void *hk_mem_reserve(size_t size)
     return p == MAP_FAILED ? NULL : p;
 }
 
+/* Sections: a memfd of that size, viewed with mmap(MAP_SHARED). */
+struct hk_section {
+    int fd;
+};
+
+hk_section *hk_section_create(u64 size)
+{
+    hk_section *s;
+    int fd;
+    if (!size) return NULL;
+    fd = (int)syscall(SYS_memfd_create, "megler-section", 1u /* MFD_CLOEXEC */);
+    if (fd < 0) return NULL;
+    if (ftruncate(fd, (off_t)size) != 0) {
+        close(fd);
+        return NULL;
+    }
+    s = (hk_section *)calloc(1, sizeof(*s));
+    if (!s) {
+        close(fd);
+        return NULL;
+    }
+    s->fd = fd;
+    return s;
+}
+
+void *hk_section_map(hk_section *s, u64 offset, size_t size, bool writable, void **base)
+{
+    void *v;
+    if (!s || !size) return NULL;
+    v = mmap(NULL, size, PROT_READ | (writable ? PROT_WRITE : 0), MAP_SHARED, s->fd, (off_t)offset);
+    if (v == MAP_FAILED) return NULL;
+    if (base) *base = v;
+    return v;
+}
+
+void hk_section_unmap(void *base, size_t size)
+{
+    if (base && size) munmap(base, size);
+}
+
+void hk_section_close(hk_section *s)
+{
+    if (!s) return;
+    close(s->fd);
+    free(s);
+}
+
 void *hk_mem_reserve_at(void *p, size_t size)
 {
     /* A hint, which the kernel follows when the range is free; anything else is given back. */

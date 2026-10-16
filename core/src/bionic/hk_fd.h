@@ -34,6 +34,12 @@ i32 hk_fd_held_pwrite(void *held, const void *buf, u32 n, u64 offset);
 void hk_fd_let_go(void *held);
 i64 hk_fd_seek(int fd, i64 offset, int whence);
 int hk_fd_close(int fd);
+/*
+ * mmap(MAP_SHARED) of shared memory (ashmem, memfd, ASharedMemory): a view of the same pages as every other mapping of it,
+ * at an address of its own. *writable says whether the view may be written; *base and *mapped are what
+ * hk_section_unmap takes. NULL with errno ENODEV when the descriptor is not shared memory.
+ */
+void *hk_fd_shm_map(int fd, u64 offset, size_t len, bool *writable, void **base, size_t *mapped);
 /* A descriptor on a host file (HK_O_* flags), for handing the guest a file that has no guest path -- the APK itself. */
 int hk_fd_open_host(const char *host_path, int host_flags);
 int hk_fd_eventfd(unsigned initial, int flags);

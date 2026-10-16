@@ -474,6 +474,14 @@ typedef struct gobj {
     bool shm;
     int shm_prot;
     int shm_seals;                 /* memfd's F_ADD_SEALS */
+    /*
+     * Its pages: a section of the host's (hk_section), of which `mem` is this descriptor's own view (`view_base`,
+     * `view_size`) and every mmap of it another (hk_fd_shm_map), all the same memory, as Linux's mappings of an ashmem
+     * region or a memfd are. `capacity` is what the section holds; NULL while the size is 0.
+     */
+    hk_section *section;
+    void *view_base;
+    size_t view_size, capacity;
 } gobj;
 
 #define G_O_ACCMODE 3
@@ -556,6 +564,12 @@ static void obj_destroy(gobj *o)
     if (o->file) hk_file_close(o->file);
     if (o->type == OBJ_EXT && o->ops && o->ops->close) o->ops->close(o->ext);
     if (o->type == OBJ_LOG && o->line_len) hk_log(o->log_level, "%.*s", (int)o->line_len, o->line);
+    if (o->section) {
+        /* Shared memory: this descriptor's view goes; the app's own views keep the pages until they are unmapped. */
+        hk_section_unmap(o->view_base, o->view_size);
+        hk_section_close(o->section);
+        o->mem = NULL;
+    }
     free(o->mem);
     free(o->path);
     free(o->items);
@@ -1189,25 +1203,81 @@ static i32 g_lseek(int fd, i32 offset, int whence)
 }
 static i64 g_lseek64(int fd, i64 offset, int whence) { return hk_fd_seek(fd, offset, whence); }
 
+/*
+ * Shared memory's new size: the bytes past the old end are zero. Within what its section holds that is only a number;
+ * beyond it a new section is made and what there was copied in. Views the app mapped before keep the old pages, which
+ * is where Linux too leaves a mapping of a region that grows past it (nothing here maps a region before sizing it).
+ */
+static bool shm_resize(gobj *o, size_t size)
+{
+    hk_section *s;
+    void *base = NULL;
+    u8 *view;
+    size_t capacity = HK_ALIGN_UP(size, HK_PAGE);
+    if (size <= o->capacity && o->section) {
+        if (size > o->mem_size) memset(o->mem + o->mem_size, 0, size - o->mem_size);
+        else memset(o->mem + size, 0, o->mem_size - size);
+        o->mem_size = size;
+        return true;
+    }
+    if (!size) {
+        o->mem_size = 0;
+        return true;
+    }
+    s = hk_section_create(capacity);
+    view = s ? (u8 *)hk_section_map(s, 0, capacity, true, &base) : NULL;
+    if (!view) {
+        hk_section_close(s);
+        hk_set_errno(GE_NOMEM);
+        return false;
+    }
+    if (o->mem && o->mem_size) memcpy(view, o->mem, o->mem_size < size ? o->mem_size : size);
+    if (o->section) {
+        hk_section_unmap(o->view_base, o->view_size);
+        hk_section_close(o->section);
+    } else {
+        free(o->mem);
+    }
+    o->section = s;
+    o->mem = view;
+    o->view_base = base;
+    o->view_size = capacity + (size_t)(view - (u8 *)base);
+    o->capacity = capacity;
+    o->mem_size = size;
+    return true;
+}
+
+/*
+ * A view of a descriptor's shared memory for mmap(MAP_SHARED) (bionic/hk_libc_mem.c): the same pages as every other
+ * mapping of it, writable when the region still allows writing. NULL, with errno, when the descriptor is no shared memory
+ * (ENODEV: the caller makes a private copy as before) or the range is past its end.
+ */
+void *hk_fd_shm_map(int fd, u64 offset, size_t len, bool *writable, void **base, size_t *mapped)
+{
+    void *p = NULL;
+    WITH_FD(fd, o, NULL)
+    if (o->type != OBJ_MEM || !o->shm) {
+        hk_set_errno(GE_NODEV);
+    } else if (!o->section || offset + len > HK_ALIGN_UP(o->mem_size, HK_PAGE) || (offset & (HK_PAGE - 1))) {
+        hk_set_errno(GE_INVAL);
+    } else {
+        *writable = (o->shm_prot & 2) != 0;
+        p = hk_section_map(o->section, offset, HK_ALIGN_UP(len, HK_PAGE), *writable, base);
+        if (!p) hk_set_errno(GE_NOMEM);
+        else *mapped = HK_ALIGN_UP(len, HK_PAGE) + (size_t)((u8 *)p - (u8 *)*base);
+    }
+    fd_put(o);
+    return p;
+}
+
 static int g_ftruncate64(int fd, i64 size)
 {
     int err = 0, r = -1;
     WITH_FD(fd, o, -1)
     if (o->type == OBJ_MEM && o->shm) {
         /* Shared memory: a new size, the bytes past the old end zero. */
-        if (size < 0 || size > 0x40000000) {
-            hk_set_errno(GE_INVAL);
-        } else {
-            u8 *mem = (u8 *)realloc(o->mem, (size_t)size ? (size_t)size : 1);
-            if (!mem) {
-                hk_set_errno(GE_NOMEM);
-            } else {
-                if ((size_t)size > o->mem_size) memset(mem + o->mem_size, 0, (size_t)size - o->mem_size);
-                o->mem = mem;
-                o->mem_size = (size_t)size;
-                r = 0;
-            }
-        }
+        if (size < 0 || size > 0x40000000) hk_set_errno(GE_INVAL);
+        else if (shm_resize(o, (size_t)size)) r = 0;
         fd_put(o);
         return r;
     }
@@ -1997,16 +2067,9 @@ static int g_pipe(int fds[2]) { return g_pipe2(fds, 0); }
 int hk_fd_shm_create(const char *name, u64 size)
 {
     gobj *o;
-    u8 *mem;
     int fd;
     if (size > 0x40000000u) {
         hk_set_errno(GE_INVAL);
-        return -1;
-    }
-    /* (Not hk_alloc, which ends the process when it cannot: an app asking for too much is told so.) */
-    mem = (u8 *)calloc(1, size ? (size_t)size : 1);
-    if (!mem) {
-        hk_set_errno(GE_NOMEM);
         return -1;
     }
     o = (gobj *)hk_alloc(sizeof(*o));
@@ -2014,8 +2077,11 @@ int hk_fd_shm_create(const char *name, u64 size)
     o->refs = 1;
     o->shm = true;
     o->shm_prot = 7;                                 /* PROT_READ | PROT_WRITE | PROT_EXEC */
-    o->mem = mem;
-    o->mem_size = (size_t)size;
+    /* (Its pages are a section's, made for its size: shm_resize. An app asking for too much is told so.) */
+    if (!shm_resize(o, (size_t)size)) {
+        free(o);
+        return -1;
+    }
     o->path = hk_sprintf("/dev/ashmem/%s", name ? name : "");
     o->flags = 2;                                    /* O_RDWR */
     fd = fd_new(o);
@@ -2296,17 +2362,8 @@ static int shm_ioctl(gobj *o, unsigned request, void *arg)
         return 0;
     case 0x40047703: {                             /* ASHMEM_SET_SIZE */
         size_t size = (size_t)(hk_addr)arg;
-        u8 *mem;
         if (size > 0x40000000u) break;
-        mem = (u8 *)realloc(o->mem, size ? size : 1);
-        if (!mem) {
-            hk_set_errno(GE_NOMEM);
-            return -1;
-        }
-        if (size > o->mem_size) memset(mem + o->mem_size, 0, size - o->mem_size);
-        o->mem = mem;
-        o->mem_size = size;
-        return 0;
+        return shm_resize(o, size) ? 0 : -1;
     }
     case 0x7704: return (int)o->mem_size;          /* ASHMEM_GET_SIZE */
     case 0x40047705:                               /* ASHMEM_SET_PROT_MASK */

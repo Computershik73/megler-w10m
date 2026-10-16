@@ -626,6 +626,44 @@ int t_shm(void)
 }
 
 /*
+ * Two mappings of one region of shared memory are the same memory, as Chromium's Mojo maps a data pipe's region in the
+ * writer and again in the reader: what one view writes the other reads at once, and so does read() on the descriptor;
+ * what pwrite() writes both views see; a view outlives the other's munmap and the descriptor's close. The same for a
+ * memfd sized by ftruncate. 6, or the negated step that failed.
+ */
+long pwrite(int, const void *, unsigned, long);
+long pread(int, void *, unsigned, long);
+
+int t_shm_views(void)
+{
+    int fd = ASharedMemory_create("t_shm_views", 16384), m;
+    unsigned char *a, *b;
+    char back[2] = { 0 };
+    if (fd < 0) return -1;
+    a = mmap(0, 16384, 3, 1, fd, 0);                  /* PROT_READ | PROT_WRITE, MAP_SHARED */
+    b = mmap(0, 16384, 1, 1, fd, 0);                  /* PROT_READ */
+    if (a == (unsigned char *)-1 || b == (unsigned char *)-1 || a == b) return -2;
+    a[5000] = 42;
+    if (b[5000] != 42 || pread(fd, back, 1, 5000) != 1 || back[0] != 42) return -3;
+    if (pwrite(fd, "Q", 1, 16000) != 1 || a[16000] != 'Q' || b[16000] != 'Q') return -4;
+    munmap(a, 16384);
+    close(fd);
+    if (b[5000] != 42 || b[16000] != 'Q') return -5;
+    munmap(b, 16384);
+    m = memfd_create("t_shm_views2", 1);
+    if (m < 0 || ftruncate(m, 8192) != 0) return -6;
+    a = mmap(0, 8192, 3, 1, m, 0);
+    b = mmap(0, 8192, 3, 1, m, 0);
+    if (a == (unsigned char *)-1 || b == (unsigned char *)-1) return -6;
+    b[8191] = 7;
+    if (a[8191] != 7) return -6;
+    munmap(a, 8192);
+    munmap(b, 8192);
+    close(m);
+    return 6;
+}
+
+/*
  * ashmem as libcutils drives it (Chromium has a copy): /dev/ashmem opened, named and sized by ioctl, mapped; a region is
  * ashmem's character device, with /dev/ashmem's device number, which is how that code knows one -- a region from
  * ASharedMemory_create too; its protection mask through ioctl, narrowed and then binding mmap. And memfd's seals: one

@@ -171,7 +171,11 @@ static void g_delete_sized(void *p, size_t n) { (void)n; hk_g_free(p); }
 
 /* -------------------------------------------------------------------- mmap
  *
- * Anonymous memory and private copies of files. A region asked for as
+ * Anonymous memory and private copies of files, and shared memory: a MAP_SHARED mapping of an ashmem region or a memfd is
+ * a view of the region's own pages (hk_fd_shm_map), so that every mapping of it, in any thread, is the same memory, as on
+ * Linux. Chromium moves everything between its browser and its renderer through such regions (Mojo's data pipes, which
+ * carry a page's bytes), mapping one twice: with each mapping a copy of the region, the renderer read nothing of what the
+ * network wrote, and every page the WebView loaded was empty. A region asked for as
  * writable and executable at once -- a JIT's code heap -- cannot exist on the
  * host, so it is writable until something executes in it and executable until
  * something writes to it: the fault handler flips the page (hk_mmap_fix_fault).
@@ -208,6 +212,9 @@ typedef struct region {
     void *file;
     u64 file_offset;
     size_t file_bytes;
+    /* A view of shared memory (hk_fd_shm_map): unmapped, not released, when its last page goes; its pages stay till then. */
+    void *view;
+    size_t view_size;
     struct region *next;
 } region;
 
@@ -285,6 +292,35 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
             hk_set_errno(GE_PERM);
             return G_MAP_FAILED;
         }
+    }
+    if ((flags & G_MAP_SHARED) && !(flags & (G_MAP_FIXED | G_MAP_ANONYMOUS))) {
+        /* Shared memory: a view of the region's pages (see the top). Anything else that is not shared memory goes on below. */
+        void *base = NULL;
+        size_t mapped = 0;
+        bool writable = false;
+        p = (u8 *)hk_fd_shm_map(fd, offset, len, &writable, &base, &mapped);
+        if (p) {
+            if ((prot & G_PROT_WRITE) && !writable) {
+                hk_section_unmap(base, mapped);
+                hk_set_errno(GE_ACCES);
+                return G_MAP_FAILED;
+            }
+            r = (region *)hk_alloc(sizeof(*r));
+            r->base = p;
+            r->size = size;
+            r->view = base;
+            r->view_size = mapped;
+            r->live = (u8 *)hk_alloc(size / HK_PAGE / 8 + 1);
+            region_mark(r, 0, size, true);
+            hk_lock_acquire(&g_region_lock);
+            r->next = g_regions;
+            g_regions = r;
+            hk_lock_release(&g_region_lock);
+            if (host_prot(prot) != HK_PROT_RW) hk_mem_protect(p, size, host_prot(prot));
+            hk_trace("mmap(%p, %u, prot %d, flags 0x%x, fd %d) -> %p, shared memory", addr, (unsigned)len, prot, (unsigned)flags, fd, (void *)p);
+            return p;
+        }
+        if (*hk_errno_ptr() != GE_NODEV) return G_MAP_FAILED;
     }
     if (flags & G_MAP_FIXED) {
         /* Only over memory this layer already owns: a fresh address cannot be demanded of the host. */
@@ -409,7 +445,8 @@ static int g_munmap(void *addr, size_t len)
             *link = r->next;
             hk_lock_release(&g_region_lock);
             hk_fd_let_go(r->file);
-            hk_mem_release(r->base, r->size);
+            if (r->view) hk_section_unmap(r->view, r->view_size);
+            else hk_mem_release(r->base, r->size);
             free(r->live);
             free(r);
             return 0;
@@ -420,7 +457,7 @@ static int g_munmap(void *addr, size_t len)
          * too. (Under the lock: once it is let go another thread may unmap
          * the rest, and the addresses may be someone else's the moment after.)
          */
-        hk_mem_decommit(r->base + offset, size);
+        if (!r->view) hk_mem_decommit(r->base + offset, size);
         hk_lock_release(&g_region_lock);
         return 0;
     }
