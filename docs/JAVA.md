@@ -2956,7 +2956,7 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: forty files** in the overlay,
+**What differs from the original's framework: forty-one files** in the overlay,
 most of them a statement or a few methods each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and nine files of members added** to classes of the original's.
@@ -3455,7 +3455,18 @@ on a looper thread of its own and takes it back with `next()`.
   and a file's descriptor, closes the originals, writes through the
   duplicate, detaches it and adopts it again.
 
-The original has all thirty-two faults; they are its author's to take back.
+- `android/os/UserHandle.java`, the arithmetic of a uid, which is Android's:
+  a uid is a user's id times `PER_USER_RANGE` plus an app's id, so
+  `getAppId(uid)` is the remainder, `getUid(user, appId)` the sum, and
+  `isSameApp`, `isSameUser`, `getCallingAppId`, `getCallingUserId`, `isSystem`
+  and `isOwner` follow. The original's were generated signatures answering 0
+  or false, and an app id of 0 is root's: AOSP's `WebViewFactory` refuses a
+  WebView to a process whose app id is root's, the system's or the phone's,
+  and refused every app ("For security reasons, WebView is not allowed in
+  privileged processes"). The app's uid here is 10100, an app's. The data
+  app's step "user-handle" asks its own app id by reflection.
+
+The original has all thirty-three faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in

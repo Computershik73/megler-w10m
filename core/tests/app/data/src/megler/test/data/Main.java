@@ -284,6 +284,7 @@ public class Main extends Activity {
         tls();
         keystore(run);
         codecs();
+        userHandle();
         xml();
         assetFd();
         tasks();
@@ -998,6 +999,19 @@ public class Main extends Activity {
     /** A receiver the manifest disables, with Relay's filter: it hears nothing. */
     public static final class Off extends android.content.BroadcastReceiver {
         @Override public void onReceive(Context c, android.content.Intent i) { offHeard++; }
+    }
+
+    /**
+     * The app's id within its user: its uid modulo the users' range, as UserHandle.getAppId (hidden: by reflection) gives it.
+     * The WebView refuses itself to a process whose app id is root's or the system's; the framework answered 0, root's.
+     */
+    private void userHandle() {
+        step("user-handle", () -> {
+            int uid = android.os.Process.myUid();
+            int appId = (Integer) Class.forName("android.os.UserHandle").getMethod("getAppId", int.class).invoke(null, uid);
+            Log.i("DataTest", "user-handle uid=" + uid + " appId=" + appId);
+            return uid >= 10000 && appId == uid % 100000;
+        });
     }
 
     /**
