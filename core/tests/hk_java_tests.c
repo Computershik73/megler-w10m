@@ -1437,9 +1437,10 @@ static int run_data(void)
                                             ActivityManager describes it. And registerReceiver's other forms through a ContextWrapper. And a
                                             ViewGroup made without its constructor calling an overridable setWillNotDraw. And an EditText's
                                             cursor and selection handles. And ParcelFileDescriptor's dup, detachFd and adoptFd. And a theme
-                                            attribute that names itself. And MessageQueue.next(), and the app's storage statistics. */
+                                            attribute that names itself. And MessageQueue.next(), and the app's storage statistics. And a
+                                            broadcast that names its receiver, which reaches that receiver alone. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup",
-                                         "theme-selfref", "queue-next", "storage-stats",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit",
                                          /* And the network from Java, on loopback: names, an HTTP server of the app's own and HttpURLConnection, UDP, a server
                                             socket closed under the thread waiting in accept, a java.nio selector, the interfaces, ConnectivityManager. */
                                          "net-localhost", "net-http", "net-udp", "net-close", "net-nio", "net-interfaces", "net-connectivity" };
@@ -1469,6 +1470,8 @@ static int run_data(void)
     expect_line("I/DataTest: permission-result ok after done=true", &at, 30);
     /* So does the battery's sticky broadcast to a receiver registered for it, once. */
     expect_line("I/DataTest: battery-received ok", &at, 30);
+    /* The broadcasts of the step "broadcast-explicit", once delivered: the relayed one, which names Target, reached Target alone. */
+    CHECK(wait_line("I/DataTest: broadcast-relay ok relay=1 target=1 off=0 registered=1", 0, 30) >= 0);
     /* The window's insets, when its views are first laid out, say the frame they are relative to: the screen, which the window fills. */
     {
         int frame = wait_line("I/DataTest: insets-frame ", 0, 30), fw = 0, fh = 0;

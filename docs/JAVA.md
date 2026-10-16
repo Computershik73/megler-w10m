@@ -3112,6 +3112,27 @@ on a looper thread of its own and takes it back with `next()`.
   has become another, sends `ACTION_BATTERY_CHANGED` again and the charger's
   coming or going ("The battery", above).
   (Counted as one fault of the original's: the battery nobody could set.)
+  And `Broadcasts.send`, who hears a broadcast. An intent that names a
+  component goes to that component alone, as on Android; the original gave
+  it as well to every receiver registered for its action and to every
+  receiver of the manifest whose filter lists it. Spotify's
+  `WidgetUpdateCoordinator` receives its own `ACTION_USER_LOGIN`,
+  `ACTION_USER_LOGOUT` and `ACTION_END_SESSION` and passes each to its
+  widget providers by an intent with the same action that names the
+  provider. That intent came back to the coordinator, which passed it on
+  again, without end. Spotify's main thread spent its time on the
+  deliveries and on its queue's lock, which the delivering thread held
+  thousands of times a second: on the phone one window of 63 seconds drew
+  one frame, 38 seconds of it waiting to enter monitors. An implicit intent
+  now goes to the manifest's receivers whose filters take it as Android
+  matches a filter (`megler.Manifest.match`, the original's own, which
+  services already used). A receiver the manifest disables, or that the app
+  disabled with `setComponentEnabledSetting`, receives nothing; Spotify
+  disables two of its widget providers. The data app's step
+  "broadcast-explicit" has a manifest receiver that relays to another by
+  name, as Spotify's does, and a disabled one: each is heard once, the
+  disabled one never. With the original's delivery the relay ran until the
+  step's bound of 50. (Counted as one fault of the original's.)
 - `android/widget/Switch.java`, `onMeasure` and the first branch of `onDraw`:
   a switch with a thumb and a track drawable is as wide as two thumbs and the
   track's padding, and as high as the taller of the two, and the thumb moves
@@ -3434,7 +3455,7 @@ on a looper thread of its own and takes it back with `next()`.
   and a file's descriptor, closes the originals, writes through the
   duplicate, detaches it and adopts it again.
 
-The original has all thirty-one faults; they are its author's to take back.
+The original has all thirty-two faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in

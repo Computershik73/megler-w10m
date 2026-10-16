@@ -294,6 +294,7 @@ public class Main extends Activity {
         themeSelfRef();
         queueNext();
         storageStats();
+        broadcastExplicit();
         network();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
@@ -976,6 +977,48 @@ public class Main extends Activity {
             android.app.usage.StorageStats s = m.queryStatsForUid(android.os.storage.StorageManager.UUID_DEFAULT, android.os.Process.myUid());
             detail = "queryStatsForUid gave " + s;
             return s != null && s.getAppBytes() >= 0 && s.getDataBytes() >= 0;
+        });
+    }
+
+    static int relayHeard, targetHeard, offHeard;
+
+    /** A receiver of the manifest for megler.test.RELAY, which passes what it hears to Target by an intent that names Target. */
+    public static final class Relay extends android.content.BroadcastReceiver {
+        @Override public void onReceive(Context c, android.content.Intent i) {
+            /* Bounded, so that a framework that brings the relayed intent back here does not keep the main thread at it. */
+            if (++relayHeard < 50) c.sendBroadcast(new android.content.Intent(i.getAction()).setComponent(new android.content.ComponentName(c, "megler.test.data.Main$Target")));
+        }
+    }
+
+    /** A receiver of the manifest without a filter: it hears what names it. */
+    public static final class Target extends android.content.BroadcastReceiver {
+        @Override public void onReceive(Context c, android.content.Intent i) { targetHeard++; }
+    }
+
+    /** A receiver the manifest disables, with Relay's filter: it hears nothing. */
+    public static final class Off extends android.content.BroadcastReceiver {
+        @Override public void onReceive(Context c, android.content.Intent i) { offHeard++; }
+    }
+
+    /**
+     * Who hears a broadcast. An implicit one reaches the manifest's receivers whose filters take it and the receivers registered
+     * for it; one that names a component reaches that component alone: Relay's relay reaches Target, not Relay again, not the
+     * receiver registered for the same action. A disabled receiver hears neither. Counted once the deliveries are through.
+     */
+    private void broadcastExplicit() {
+        step("broadcast-explicit", () -> {
+            final int[] registered = new int[1];
+            final android.content.BroadcastReceiver r = new android.content.BroadcastReceiver() {
+                @Override public void onReceive(Context c, android.content.Intent i) { registered[0]++; }
+            };
+            registerReceiver(r, new android.content.IntentFilter("megler.test.RELAY"));
+            sendBroadcast(new android.content.Intent("megler.test.RELAY"));
+            new android.os.Handler().postDelayed(() -> {
+                unregisterReceiver(r);
+                boolean held = relayHeard == 1 && targetHeard == 1 && offHeard == 0 && registered[0] == 1;
+                Log.i("DataTest", "broadcast-relay " + (held ? "ok" : "FAILED") + " relay=" + relayHeard + " target=" + targetHeard + " off=" + offHeard + " registered=" + registered[0]);
+            }, 1500);
+            return true;
         });
     }
 

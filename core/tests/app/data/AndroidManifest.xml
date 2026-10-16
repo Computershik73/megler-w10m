@@ -10,5 +10,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- Broadcasts that name their receiver (Main's step "broadcast-explicit"): Relay passes what it hears to Target by an intent
+             that names Target, as Spotify's WidgetUpdateCoordinator passes its broadcasts to its widget providers. Off is disabled. -->
+        <receiver android:name=".Main$Relay" android:exported="false">
+            <intent-filter>
+                <action android:name="megler.test.RELAY" />
+            </intent-filter>
+        </receiver>
+        <receiver android:name=".Main$Target" android:exported="false" />
+        <receiver android:name=".Main$Off" android:enabled="false" android:exported="false">
+            <intent-filter>
+                <action android:name="megler.test.RELAY" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

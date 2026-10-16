@@ -13,10 +13,20 @@
 // another -- the shell says so to the core (megler_set_battery), and the Java driver, from the main loop, calls batteryChanged
 // here -- registered receivers hear ACTION_BATTERY_CHANGED again, and ACTION_POWER_CONNECTED or ACTION_POWER_DISCONNECTED
 // is sent when the phone went on or off a charger: the original had a battery that never changed and sent neither.
+//
+// And it differs in who receives a broadcast (send). An intent that names a component goes to that component alone, as on
+// Android: not to the receivers registered at run time, not to the manifest's receivers whose filters list its action.
+// The original gave it to all of them. Spotify's WidgetUpdateCoordinator is a manifest receiver for its own ACTION_USER_LOGIN,
+// ACTION_USER_LOGOUT and ACTION_END_SESSION, and passes each to its widget providers by an intent with the same action that names
+// the provider: that intent came back to the coordinator, which passed it on again, without end, and the main thread spent
+// its time on the deliveries and on the lock of its queue (one window of 63 s drew one frame). An implicit intent goes to
+// the manifest's receivers whose filters take it as Android matches a filter (Manifest.match). And a receiver the manifest
+// disables, or the app disabled with setComponentEnabledSetting, receives nothing, as on Android; Spotify has two.
 // Everything else is the original's, unchanged.
 package megler;
 
 import android.content.*;
+import android.content.pm.PackageManager;
 import android.os.Handler;
 import android.os.Looper;
 import java.util.ArrayList;
@@ -67,14 +77,20 @@ public final class Broadcasts {
     public static void send(Context from, Intent i) {
         final Context ctx = AppRunner.application() != null ? AppRunner.application() : from;
         ArrayList<BroadcastReceiver> targets = new ArrayList<>();
-        synchronized (sReceivers) { for (Object[] e : sReceivers) if (((IntentFilter) e[1]).hasAction(i.getAction())) targets.add((BroadcastReceiver) e[0]); }
-        for (Manifest.Component c : Manifest.receivers) {
-            boolean match = i.getComponent() != null && c.name.equals(i.getComponent().getClassName());
-            for (Manifest.Filter f : c.filters) if (f.actions.contains(i.getAction())) match = true;
-            if (!match) continue;
+        /* Receivers registered at run time hear implicit intents only: one that names a component is for that component. */
+        if (i.getComponent() == null)
+            synchronized (sReceivers) { for (Object[] e : sReceivers) if (e[1] != null && ((IntentFilter) e[1]).hasAction(i.getAction())) targets.add((BroadcastReceiver) e[0]); }
+        for (Manifest.Component c : Manifest.match(Manifest.receivers, i)) {
+            if (!enabled(ctx, c)) continue;
             try { targets.add((BroadcastReceiver) Class.forName(c.name).newInstance()); } catch (Throwable t) { android.util.Log.w("Megler", "receiver " + c.name + ": " + t); }
         }
         Handler h = new Handler(Looper.getMainLooper());
         for (BroadcastReceiver r : targets) h.post(() -> r.onReceive(ctx, i));
+    }
+    /** Whether a receiver of the manifest is enabled: as the app last set it (PackageManager), or else as the manifest says. */
+    private static boolean enabled(Context ctx, Manifest.Component c) {
+        int state = PackageManager.COMPONENT_ENABLED_STATE_DEFAULT;
+        try { state = ctx.getPackageManager().getComponentEnabledSetting(new ComponentName(ctx.getPackageName(), c.name)); } catch (Throwable t) { }
+        return state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED || state == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT && c.enabled;
     }
 }
