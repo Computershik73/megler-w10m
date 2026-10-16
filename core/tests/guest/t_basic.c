@@ -690,6 +690,27 @@ int t_mremap(void)
 }
 
 /*
+ * mmap's address without MAP_FIXED, a hint: followed when the range is free, as Linux follows it, and not when it is taken
+ * (another address is given, not a failure). The range asked for is a 2 MB one inside 4 MB this test reserved and gave
+ * back, as PartitionAlloc picks its super pages. 3, or the negated step that failed.
+ */
+int t_mmap_hint(void)
+{
+    unsigned char *p = mmap(0, 4 << 20, 0, 0x22, -1, 0), *want, *q, *r;
+    if (p == (unsigned char *)-1) return -1;
+    want = (unsigned char *)(((unsigned long)p + (2 << 20) - 1) & ~((2ul << 20) - 1));
+    if (munmap(p, 4 << 20) != 0) return -1;
+    q = mmap(want, 2 << 20, 0, 0x22, -1, 0);
+    if (q != want) return -2;
+    r = mmap(want, 4096, 3, 0x22, -1, 0);
+    if (r == (unsigned char *)-1 || r == want) return -3;
+    r[0] = 1;
+    munmap(r, 4096);
+    munmap(q, 2 << 20);
+    return 3;
+}
+
+/*
  * Clocks of processor time, as Gecko's profiler and Chromium's tracing read them: pthread_getcpuclockid's clock for this
  * thread, which advances while the thread computes; CLOCK_THREAD_CPUTIME_ID; the process's through clock_getcpuclockid;
  * clock_getres for each; and the clock of a thread id nobody has, which is refused. 6, or the negated step that failed.

@@ -305,7 +305,14 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
         }
         memset(p, 0, size);
     } else {
-        p = (u8 *)hk_mem_reserve(reserve);
+        /*
+         * An address asked for without MAP_FIXED is a hint, which Linux follows when the range is free: so it is here, where
+         * the host can reserve that range (an address on the host's 64 KB granularity); anywhere else otherwise. Chromium's
+         * PartitionAlloc reserves its 2 MB super pages at addresses it picks, at random and then one after another, until one
+         * suits its pool, and gave up with an out-of-memory crash when every answer was the same place, which it had banned.
+         */
+        p = addr && !((hk_addr)addr & 0xFFFF) ? (u8 *)hk_mem_reserve_at(addr, reserve) : NULL;
+        if (!p) p = (u8 *)hk_mem_reserve(reserve);
         if (!p || !hk_mem_commit(p, size, HK_PROT_RW)) {
             if (p) hk_mem_release(p, reserve);
             hk_set_errno(GE_NOMEM);
