@@ -761,6 +761,55 @@ static u32 g_font_zero(const g_font *f) { (void)f; return 0; }
 static u32 g_font_axis_tag(const g_font *f, u32 i) { (void)f; (void)i; return 0; }
 static u32 g_font_axis_value(const g_font *f, u32 i) { (void)f; (void)i; return hk_fb(0.0f); }
 
+/*
+ * Surface control (Android 10's ASurfaceControl and ASurfaceTransaction): the system compositor's layers, which an app can
+ * give buffers to directly. Here no layer can be made: there is no system compositor to give one to, and a window's
+ * pictures reach the shell through the layer's own views (drivers/hk_java.c). So every ASurfaceControl_create* answers
+ * NULL, and a transaction, which can be made, carries nothing and has nothing to apply; its buffers' fences are closed, as
+ * a transaction that took them would close them once done. The functions are there because code asks whether they are, by
+ * dlsym, as soon as the platform says it is Android 10 or later: Chromium's gfx::SurfaceControl::IsSupported() CHECKs that
+ * every one is (ui/gfx/android/android_surface_control_compat.cc), and the WebView's start ended on that CHECK. It then
+ * never makes a layer: its WebView draws in software here (drivers/hk_java_webview.c).
+ */
+typedef struct g_stransaction {
+    u32 magic;
+} g_stransaction;
+
+static void *g_sc_none(void *parent, const char *name)
+{
+    (void)parent;
+    hk_note_once("ASurfaceControl_create: \"%s\" -- no system compositor here to make a layer of; NULL", name ? name : "");
+    return NULL;
+}
+static void g_sc_nothing(void *sc) { (void)sc; }
+static void *g_st_create(void)
+{
+    g_stransaction *t = (g_stransaction *)hk_alloc(sizeof(*t));
+    t->magic = 0x53544e58u;
+    return t;
+}
+static void g_st_delete(void *t) { free(t); }
+static void g_st_nothing1(void *t) { (void)t; }
+static void g_st_nothing3(void *t, void *a, void *b) { (void)t; (void)a; (void)b; }
+static void g_st_nothing4(void *t, void *a, void *b, void *c) { (void)t; (void)a; (void)b; (void)c; }
+static void g_st_set_buffer(void *t, void *sc, void *buffer, int fence)
+{
+    (void)t;
+    (void)sc;
+    (void)buffer;
+    if (fence >= 0) hk_fd_close(fence);
+}
+static void g_st_geometry(void *t, void *sc, const void *src, const void *dst, i32 transform) { (void)t; (void)sc; (void)src; (void)dst; (void)transform; }
+static int g_stats_fence(void *stats) { (void)stats; return -1; }
+static int g_stats_release_fence(void *stats, void *sc) { (void)stats; (void)sc; return -1; }
+static i64 g_stats_latch(void *stats) { (void)stats; return 0; }
+static void g_stats_controls(void *stats, void ***out, u32 *count)
+{
+    (void)stats;
+    if (out) *out = NULL;
+    if (count) *count = 0;
+}
+
 /* Tracing: off. */
 static int g_trace_enabled(void) { return 0; }
 static void g_trace_begin(const char *name) { (void)name; }
@@ -776,6 +825,20 @@ const hk_sym hk_tab_ndk[] = {
     N("AFont_getAxisValue", g_font_axis_value),
     N("ASharedMemory_create", g_ashmem_create), N("ASharedMemory_getSize", g_ashmem_size), N("ASharedMemory_setProt", g_ashmem_set_prot),
     N("ASharedMemory_dupFromJava", g_ashmem_from_java),
+    N("ASurfaceControl_createFromWindow", g_sc_none), N("ASurfaceControl_create", g_sc_none), N("ASurfaceControl_acquire", g_sc_nothing),
+    N("ASurfaceControl_release", g_sc_nothing), N("ASurfaceTransaction_create", g_st_create), N("ASurfaceTransaction_delete", g_st_delete),
+    N("ASurfaceTransaction_apply", g_st_nothing1), N("ASurfaceTransaction_setOnComplete", g_st_nothing3),
+    N("ASurfaceTransaction_setOnCommit", g_st_nothing3), N("ASurfaceTransaction_reparent", g_st_nothing3),
+    N("ASurfaceTransaction_setVisibility", g_st_nothing3), N("ASurfaceTransaction_setZOrder", g_st_nothing3),
+    N("ASurfaceTransaction_setBuffer", g_st_set_buffer), N("ASurfaceTransaction_setGeometry", g_st_geometry),
+    N("ASurfaceTransaction_setBufferTransparency", g_st_nothing3), N("ASurfaceTransaction_setDamageRegion", g_st_nothing4),
+    N("ASurfaceTransaction_setBufferDataSpace", g_st_nothing3), N("ASurfaceTransaction_setHdrMetadata_cta861_3", g_st_nothing3),
+    N("ASurfaceTransaction_setHdrMetadata_smpte2086", g_st_nothing3), N("ASurfaceTransaction_setFrameRate", g_st_nothing4),
+    N("ASurfaceTransaction_setEnableBackPressure", g_st_nothing3),
+    N("ASurfaceTransactionStats_getPresentFenceFd", g_stats_fence), N("ASurfaceTransactionStats_getLatchTime", g_stats_latch),
+    N("ASurfaceTransactionStats_getASurfaceControls", g_stats_controls),
+    N("ASurfaceTransactionStats_releaseASurfaceControls", g_sc_nothing),
+    N("ASurfaceTransactionStats_getPreviousReleaseFenceFd", g_stats_release_fence),
     N("ANativeWindow_acquire", hk_nwindow_acquire), N("ANativeWindow_release", hk_nwindow_release),
     N("ANativeWindow_fromSurface", g_nw_from_surface),
     N("ANativeWindow_getWidth", g_nw_width), N("ANativeWindow_getHeight", g_nw_height), N("ANativeWindow_getFormat", g_nw_format),

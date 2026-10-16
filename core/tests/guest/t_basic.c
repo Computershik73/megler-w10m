@@ -707,6 +707,45 @@ int t_ashmem(void)
 }
 
 /*
+ * Surface control (Android 10's ASurfaceControl, libandroid), as Chromium asks for it: by dlsym, every function there; no
+ * layer can be made (no system compositor), a transaction can, and a buffer's fence given to it is closed, as a
+ * transaction that took it would close it. 4, or the negated step that failed.
+ */
+int t_surface_control(void)
+{
+    static const char *const names[] = {
+        "ASurfaceControl_createFromWindow", "ASurfaceControl_create", "ASurfaceControl_release", "ASurfaceTransaction_create",
+        "ASurfaceTransaction_delete", "ASurfaceTransaction_apply", "ASurfaceTransaction_setOnComplete", "ASurfaceTransaction_reparent",
+        "ASurfaceTransaction_setVisibility", "ASurfaceTransaction_setZOrder", "ASurfaceTransaction_setBuffer",
+        "ASurfaceTransaction_setGeometry", "ASurfaceTransaction_setBufferTransparency", "ASurfaceTransaction_setDamageRegion",
+        "ASurfaceTransaction_setBufferDataSpace", "ASurfaceTransaction_setHdrMetadata_cta861_3",
+        "ASurfaceTransaction_setHdrMetadata_smpte2086", "ASurfaceTransactionStats_getPresentFenceFd",
+        "ASurfaceTransactionStats_getLatchTime", "ASurfaceTransactionStats_getASurfaceControls",
+        "ASurfaceTransactionStats_releaseASurfaceControls", "ASurfaceTransactionStats_getPreviousReleaseFenceFd",
+    };
+    void *android = dlopen("libandroid.so", 0), *t;
+    void *(*from_window)(void *, const char *), *(*create)(void);
+    void (*set_buffer)(void *, void *, void *, int), (*del)(void *);
+    int fds[2];
+    unsigned i;
+    if (!android) return -1;
+    for (i = 0; i < sizeof(names) / sizeof(names[0]); i++)
+        if (!dlsym(android, names[i])) return -1;
+    from_window = (void *(*)(void *, const char *))dlsym(android, "ASurfaceControl_createFromWindow");
+    if (from_window(0, "t") != 0) return -2;
+    create = (void *(*)(void))dlsym(android, "ASurfaceTransaction_create");
+    set_buffer = (void (*)(void *, void *, void *, int))dlsym(android, "ASurfaceTransaction_setBuffer");
+    del = (void (*)(void *))dlsym(android, "ASurfaceTransaction_delete");
+    t = create();
+    if (!t || pipe(fds) != 0) return -3;
+    set_buffer(t, 0, 0, fds[0]);
+    if (close(fds[0]) != -1) return -4;
+    close(fds[1]);
+    del(t);
+    return 4;
+}
+
+/*
  * mremap, as an allocator grows and shrinks a block it mapped: grown with MREMAP_MAYMOVE, the bytes are there and the
  * new pages zero; shrunk, it stays where it is; grown without leave to move, ENOMEM. 5, or the negated step that failed.
  */
