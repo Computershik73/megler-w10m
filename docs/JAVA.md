@@ -2956,7 +2956,7 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: forty-one files** in the overlay,
+**What differs from the original's framework: forty-two files** in the overlay,
 most of them a statement or a few methods each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and nine files of members added** to classes of the original's.
@@ -3466,7 +3466,19 @@ on a looper thread of its own and takes it back with `next()`.
   privileged processes"). The app's uid here is 10100, an app's. The data
   app's step "user-handle" asks its own app id by reflection.
 
-The original has all thirty-three faults; they are its author's to take back.
+- `android/security/NetworkSecurityPolicy.java`, whether cleartext HTTP is
+  permitted, which the original's generated signature never permitted, to any
+  host. Now as Android decides it: with `android:networkSecurityConfig`, that
+  XML's `<base-config>` and, for a host, the most specific `<domain-config>`
+  that names it; without one, `android:usesCleartextTraffic`; without either,
+  permitted for an app written for Android 8.1 or earlier and not for a later
+  one. Android's WebView asks this for every http:// request
+  (`net::ERR_CLEARTEXT_NOT_PERMITTED` when it says no), so no http page loaded
+  in any app. The data app, written for Android 9 and saying nothing in its
+  manifest, is refused it (its step "cleartext"); the WebView test app says
+  `usesCleartextTraffic="true"` and loads its pages over http.
+
+The original has all thirty-four faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in

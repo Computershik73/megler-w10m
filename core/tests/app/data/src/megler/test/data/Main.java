@@ -285,6 +285,7 @@ public class Main extends Activity {
         keystore(run);
         codecs();
         userHandle();
+        cleartext();
         xml();
         assetFd();
         tasks();
@@ -1011,6 +1012,18 @@ public class Main extends Activity {
             int appId = (Integer) Class.forName("android.os.UserHandle").getMethod("getAppId", int.class).invoke(null, uid);
             Log.i("DataTest", "user-handle uid=" + uid + " appId=" + appId);
             return uid >= 10000 && appId == uid % 100000;
+        });
+    }
+
+    /**
+     * Cleartext HTTP, as Android's network security policy decides it for this app: written for Android 9 and saying nothing in
+     * its manifest (no usesCleartextTraffic, no network security configuration), it is refused, for any host. The WebView
+     * asks this of every http:// request; the framework refused it to every app.
+     */
+    private void cleartext() {
+        step("cleartext", () -> {
+            android.security.NetworkSecurityPolicy p = android.security.NetworkSecurityPolicy.getInstance();
+            return !p.isCleartextTrafficPermitted() && !p.isCleartextTrafficPermitted("example.com") && p == android.security.NetworkSecurityPolicy.getInstance();
         });
     }
 

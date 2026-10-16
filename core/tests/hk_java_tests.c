@@ -1437,6 +1437,7 @@ static int run_data(void)
                                             permitted (NetworkSecurityPolicy), a compatibility change's state for the app's target
                                             (CompatChanges), and the WebView APK added to the app's resources as a shared library. */
                                          "user-handle",
+                                         "cleartext",
                                          /* And XML through android.util.Xml: a serializer and a pull parser, kXML's. And a stored file of
                                             the APK as a descriptor whose number is taken from its ParcelFileDescriptor. And the app's task as
                                             ActivityManager describes it. And registerReceiver's other forms through a ContextWrapper. And a
