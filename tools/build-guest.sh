@@ -52,6 +52,7 @@ SYS=("-L$(w "$STUBS")" -lc -lm -ldl -llog)
   -Wl,-soname,libt_dep.so -o "$(w "$OUT/libt_dep.so")" "$(w "$SRC/t_dep.c")" "-L$(w "$OUT")" -lt_basic "${SYS[@]}"
 # Native methods for the Dalvik runtime's tests: softfp, as an app's library is.
 "$CLANG" "${COMMON[@]}" -mthumb -Wl,--hash-style=both   -Wl,-soname,libt_jni.so -o "$(w "$OUT/libt_jni.so")" "$(w "$SRC/t_jni.c")" "${SYS[@]}"
+"$CLANG" "${COMMON[@]}" -mthumb -Wl,--hash-style=both   -Wl,-soname,libt_svc.so -o "$(w "$OUT/libt_svc.so")" "$(w "$SRC/t_svc.c")" "${SYS[@]}"
 
 # One file name twice: the app's, and the one that stands for a library of the Android root's.
 mkdir -p "$OUT/runtime"

@@ -136,6 +136,12 @@ hk_lib *hk_ld_load_file(const char *host_path);
 
 /* Imports that nothing provided, bound to a stub that logs when called. */
 size_t hk_ld_unresolved_count(void);
+/*
+ * Direct system calls (`svc 0` after a number goes into r7) in libraries loaded from now on are made undefined instructions
+ * and said in the log, so that reaching one is a fault (arm/hk_patch.c). For diagnosis: the flag trap-svc turns it on for a
+ * run; the tests turn it on and off.
+ */
+void hk_patch_set_trap_svc(bool on);
 /* 0 quiet, 1 one line per library, 2 every unresolved import as well. */
 void hk_ld_set_verbosity(int v);
 

@@ -1105,6 +1105,31 @@ static void test_guest(const char *libdir, const char *scratch)
     CHECK(hk_ld_find_lib("libt_basic.so") == basic && hk_ld_lib_of(SYM(basic, "t_add")) == basic);
     CHECK(hk_ld_load("libc.so") == NULL && hk_ld_load("libnothere.so") == NULL);
     test_guest_kinds(libdir);
+
+    /*
+     * A direct system call made a fault by the trap the flag trap-svc turns on (arm/hk_patch.c): loaded with it on, the
+     * library's `svc 0` is an undefined instruction, `udf #165`, and is still counted. Nothing of it is run.
+     */
+    {
+        hk_lib *svc;
+        const u8 *fn;
+        bool trapped = false, left = false;
+        int k;
+        hk_patch_set_trap_svc(true);
+        svc = hk_ld_load("libt_svc.so");
+        hk_patch_set_trap_svc(false);
+        CHECK(svc != NULL);
+        if (svc) {
+            hk_ld_get_stats(svc, &st);
+            CHECK_INT(st.svc_sites, 1);
+            fn = (const u8 *)((hk_addr)SYM(svc, "t_svc_getpid") & ~(hk_addr)1);
+            for (k = 0; k < 16; k += 2) {
+                trapped |= hk_rd16(fn + k) == 0xDEA5;
+                left |= hk_rd16(fn + k) == 0xDF00;
+            }
+            CHECK(trapped && !left);
+        }
+    }
 }
 
 /*

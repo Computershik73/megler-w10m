@@ -34,6 +34,7 @@
  * ARM-mode function bodies are not rewritten here; docs/ARCHITECTURE.md, "ARM
  * mode", says what happens to them.
  */
+#include "../hk_core.h"
 #include "../host/hk_host.h"
 #include "../ld/hk_ld_internal.h"
 
@@ -226,20 +227,49 @@ static void patch_plt(hk_lib *lib, u8 *seg, size_t size)
 
 /* ---------------------------------------------------------- system calls */
 
-/* Counted, not handled: `svc 0` right after a system call number goes into r7. */
-static void count_svc(hk_lib *lib, const u8 *seg, size_t size)
+/*
+ * Counted, not handled: `svc 0` right after a system call number goes into r7.
+ *
+ * With the flag trap-svc (a file of that name in the data folder's flags; for diagnosis, never on by itself) each such site
+ * is also said in the log with its number and made an undefined instruction, `udf #165` in Thumb and in ARM (not clang's
+ * `udf #254`, which is __builtin_trap's), so that
+ * reaching it is a fault the crash report names by library and offset, on a phone as under qemu-arm -- where a direct system
+ * call would otherwise go to Linux unseen and seem to work. Nothing is done in its place: the code faults there. This says
+ * whether an app's code makes direct system calls at all, and where, which the count alone cannot.
+ */
+static volatile i32 g_trap_svc = -1;
+
+void hk_patch_set_trap_svc(bool on) { g_trap_svc = on ? 1 : 0; }
+
+static void count_svc(hk_lib *lib, u8 *seg, size_t size)
 {
     size_t i;
+    bool trap;
+    if (g_trap_svc < 0) g_trap_svc = hk_flag("trap-svc") ? 1 : 0;
+    trap = g_trap_svc > 0;
     for (i = 4; i + 2 <= size; i += 2) {
         u16 a, b;
         if (hk_rd16(seg + i) != 0xDF00) continue;
         a = hk_rd16(seg + i - 2);
         b = hk_rd16(seg + i - 4);
         /* movs r7, #n  |  mov.w r7, #n / movw r7, #n */
-        if ((a & 0xFF00) == 0x2700 || (((b & 0xFBF0) == 0xF040 || (b & 0xFBF0) == 0xF240) && (a & 0x8F00) == 0x0700)) lib->stats.svc_sites++;
+        if ((a & 0xFF00) == 0x2700 || (((b & 0xFBF0) == 0xF040 || (b & 0xFBF0) == 0xF240) && (a & 0x8F00) == 0x0700)) {
+            lib->stats.svc_sites++;
+            if (trap) {
+                hk_warn("ld: %s: a direct system call (Thumb, r7 set by %04x %04x) at +0x%x is made a fault (flag trap-svc)", lib->name, b, a,
+                        (unsigned)((hk_addr)(seg + i) - (hk_addr)lib->base));
+                hk_wr16(seg + i, 0xDEA5);
+            }
+        }
     }
     for (i = (size_t)(HK_ALIGN_UP((hk_addr)seg, 4) - (hk_addr)seg); i + 4 <= size; i += 4)
-        if (hk_rd32(seg + i) == 0xEF000000u) lib->stats.svc_sites++;
+        if (hk_rd32(seg + i) == 0xEF000000u) {
+            lib->stats.svc_sites++;
+            if (trap) {
+                hk_warn("ld: %s: a direct system call (ARM) at +0x%x is made a fault (flag trap-svc)", lib->name, (unsigned)((hk_addr)(seg + i) - (hk_addr)lib->base));
+                hk_wr32(seg + i, 0xE7F00AF5u);
+            }
+        }
 }
 
 void hk_patch_segment(hk_lib *lib, u8 *seg, size_t size)

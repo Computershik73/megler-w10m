@@ -177,6 +177,12 @@ makes system calls inline. The loader counts the sites (`svc 0` after a number g
 into `r7`); they are not handled. `__clear_cache` in compiler-rt is one: a JIT inside
 an app will reach it.
 
+Under qemu-arm a direct system call goes to Linux and works, unseen. To find out
+whether an app's code makes one, the flag `trap-svc` has the loader say each site in
+the log, with the instruction that set `r7`, and make it an undefined instruction
+(`udf #165`), so that reaching it is a fault the crash report names by library and
+offset -- under qemu as on a phone. Nothing is done in its place.
+
 ### Everything else that differs
 
 | | Android (bionic, 32-bit) | Here |
