@@ -765,6 +765,21 @@ int t_hardware_buffer(void)
 }
 
 /*
+ * AAudio (libaaudio), as Chromium and Oboe start a stream: a builder first. None is given here (sound goes through OpenSL
+ * ES): AAUDIO_ERROR_UNAVAILABLE and no builder. 2, or the negated step that failed.
+ */
+int t_aaudio(void)
+{
+    void *aaudio = dlopen("libaaudio.so", 0), *builder = (void *)1;
+    int (*create)(void **);
+    if (!aaudio) return -1;
+    create = (int (*)(void **))dlsym(aaudio, "AAudio_createStreamBuilder");
+    if (!create) return -1;
+    if (create(&builder) != -889 || builder) return -2;
+    return 2;
+}
+
+/*
  * mremap, as an allocator grows and shrinks a block it mapped: grown with MREMAP_MAYMOVE, the bytes are there and the
  * new pages zero; shrunk, it stays where it is; grown without leave to move, ENOMEM. 5, or the negated step that failed.
  */

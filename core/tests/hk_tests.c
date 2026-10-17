@@ -997,6 +997,7 @@ static void test_library(hk_lib *lib, const char *what, const char *scratch)
     CHECK_INT(FN(lib, int (*)(void), "t_mmap_hint")(), 3);
     CHECK_INT(FN(lib, int (*)(void), "t_surface_control")(), 4);
     CHECK_INT(FN(lib, int (*)(void), "t_hardware_buffer")(), 3);
+    CHECK_INT(FN(lib, int (*)(void), "t_aaudio")(), 2);
     CHECK_INT(FN(lib, int (*)(void), "t_cpuclock")(), 6);
     CHECK_INT(FN(lib, int (*)(const char *), "t_ffcalls")(buf), 7);
     CHECK_INT(FN(lib, int (*)(void), "t_ifunc")(), 205);

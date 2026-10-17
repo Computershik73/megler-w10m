@@ -829,6 +829,20 @@ static int g_ahb_allocate(const void *desc, void **out)
 }
 static int g_ahb_is_supported(const void *desc) { (void)desc; return 0; }
 
+/*
+ * AAudio (libaaudio, Android 8.1): no stream of it can be made here; the sound an app makes goes through OpenSL ES. So the
+ * first call, which makes the builder every stream starts from, answers AAUDIO_ERROR_UNAVAILABLE and gives no builder.
+ * Without it the call reached a stub that answered 0, AAUDIO_OK, and Chromium went on to set up a builder it had not been
+ * given, through the functions it binds weakly and nothing provides: a call through nothing, from a page with sound. Told
+ * so, Chromium's output stream does not open, and a page's sound goes nowhere while its clock runs on.
+ */
+static int g_aaudio_create_builder(void **builder)
+{
+    hk_note_once("AAudio_createStreamBuilder: no AAudio here (OpenSL ES has the sound); AAUDIO_ERROR_UNAVAILABLE");
+    if (builder) *builder = NULL;
+    return -889;
+}
+
 /* Tracing: off. */
 static int g_trace_enabled(void) { return 0; }
 static void g_trace_begin(const char *name) { (void)name; }
@@ -859,6 +873,7 @@ const hk_sym hk_tab_ndk[] = {
     N("ASurfaceTransactionStats_releaseASurfaceControls", g_sc_nothing),
     N("ASurfaceTransactionStats_getPreviousReleaseFenceFd", g_stats_release_fence),
     N("AHardwareBuffer_allocate", g_ahb_allocate), N("AHardwareBuffer_isSupported", g_ahb_is_supported),
+    N("AAudio_createStreamBuilder", g_aaudio_create_builder),
     N("ANativeWindow_acquire", hk_nwindow_acquire), N("ANativeWindow_release", hk_nwindow_release),
     N("ANativeWindow_fromSurface", g_nw_from_surface),
     N("ANativeWindow_getWidth", g_nw_width), N("ANativeWindow_getHeight", g_nw_height), N("ANativeWindow_getFormat", g_nw_format),
