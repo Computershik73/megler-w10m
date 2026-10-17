@@ -103,7 +103,7 @@ bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-f
       49 checks, 0 failed          the Java test app gl: a GLSurfaceView, EGL14 on a pbuffer, EGL10 on a SurfaceView, on a stand-in for OpenGL ES that draws
       65 checks, 0 failed          the Java test app data: a database, the storage, the battery, the time zone, TLS (conscrypt's, on loopback), key pairs, codecs and the network, the first run
       66 checks, 0 failed          data again, on what the first run left, with another battery and a time zone that is none
-      27 checks, 0 failed          the Java test app webview: Android's System WebView from the Android root, on pages of the app's own server
+      28 checks, 0 failed          the Java test app webview: Android's System WebView from the Android root, on pages of the app's own server
       49 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
     (then each app once more, its drawing recorded for the PC's run to draw again)
 ```

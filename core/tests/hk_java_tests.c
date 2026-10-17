@@ -1836,6 +1836,8 @@ static int run_webview(void)
     CHECK(wait_line("I/WebViewTest: input ok value=hello", 0, 120) >= 0);
     settle();
     write_picture("webview-2");
+    /* A second WebView, a banner, drawn through a RenderNode, dismissed and destroyed between its draws: the app goes on. */
+    CHECK(wait_line("I/WebViewTest: dismiss ok", 0, 300) >= 0);
     expect_line("I/WebViewTest: done", &at, 120);
     for (i = 0; i < g_nlines; i++)
         if (strstr(g_lines[i], "/WebViewTest: ") && strstr(g_lines[i], " FAILED")) say("  %s", g_lines[i]);

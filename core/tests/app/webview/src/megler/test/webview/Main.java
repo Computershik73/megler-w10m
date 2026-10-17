@@ -247,7 +247,7 @@ public class Main extends Activity {
             String text = v.substring(v.indexOf(':') + 1);
             if (text.equals("hello")) {
                 Log.i(T, "input ok value=" + text);
-                Log.i(T, "done");
+                dismiss();
                 return;
             }
             if (tries > 200) {
@@ -257,6 +257,45 @@ public class Main extends Activity {
             }
             main.postDelayed(() -> watchInput(tries + 1, focused || now), 300);
         });
+    }
+
+    /**
+     * A second WebView over the first, its size, in the same layout, as an app shows a banner: its page loaded, drawn
+     * through a RenderNode its size (as Compose draws it) three times, then taken out of the layout and destroyed, and drawn
+     * once more after that, as a draw that was under way when the banner was dismissed. The app goes on.
+     */
+    private void dismiss() {
+        final WebView banner = new WebView(this);
+        final android.view.ViewGroup root = (android.view.ViewGroup) web.getParent();
+        root.addView(banner, new android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+        banner.setWebViewClient(new WebViewClient() {
+            boolean once;
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                if (once) return;
+                once = true;
+                main.postDelayed(() -> {
+                    int w = banner.getWidth(), h = banner.getHeight();
+                    for (int i = 0; i < 3; i++) drawThroughNode(banner, w, h);
+                    root.removeView(banner);
+                    banner.destroy();
+                    drawThroughNode(banner, w, h);
+                    Log.i(T, "dismiss ok size=" + w + "x" + h);
+                    Log.i(T, "done");
+                }, 500);
+            }
+        });
+        banner.loadUrl(base + "/page");
+    }
+
+    private static void drawThroughNode(WebView view, int w, int h) {
+        android.graphics.RenderNode node = new android.graphics.RenderNode("banner");
+        node.setPosition(0, 0, Math.max(1, w), Math.max(1, h));
+        android.graphics.RecordingCanvas rc = node.beginRecording(Math.max(1, w), Math.max(1, h));
+        view.draw(rc);
+        node.endRecording();
     }
 
     private static boolean near(int a, int b) {
