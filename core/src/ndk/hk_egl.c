@@ -112,6 +112,8 @@ typedef void (*fn_gl_void)(void);
 static EGLDisplay g_display;
 static bool g_initialized, g_device_attached;
 static EGLint g_major, g_minor;
+static EGLint g_told_minor;            /* the version the guest is told is 1.<this>: see tell_version */
+static char g_told_version[96];        /* and its EGL_VERSION string, where that is not ANGLE's own */
 static int g_d3d_level;                /* 0x9300, 0xA000, 0xB100...; 0 when unknown */
 static void *g_d3d_device;
 static char g_how[48];                 /* which attempt made the display */
@@ -263,6 +265,24 @@ static void shell_release_target(void)
 
 static void make_display_job(void *p) { *(EGLDisplay *)p = make_display(); }
 
+/*
+ * The version the guest is told. EGL 1.5 makes fence syncs part of EGL itself, and what is built on EGL takes 1.5 to
+ * mean them: the ANGLE inside Chromium's WebView does, and then calls eglCreateSyncKHR, which it has loaded only where
+ * EGL_KHR_fence_sync is named -- a call through nothing. ANGLE over Direct3D 11 says 1.5 without having fence syncs:
+ * the guest is told 1.4 then, as most Android devices say.
+ */
+static void tell_version(const char *extensions, const char *version)
+{
+    const char *rest = version ? strchr(version, ' ') : NULL;
+    g_told_minor = g_minor;
+    g_told_version[0] = 0;
+    if (g_major == 1 && g_minor >= 5 && !(extensions && strstr(extensions, "EGL_KHR_fence_sync"))) {
+        g_told_minor = 4;
+        snprintf(g_told_version, sizeof(g_told_version), "1.4%s", rest ? rest : "");
+        hk_info("egl: told as EGL 1.4: this EGL %d.%d has no fence syncs (EGL_KHR_fence_sync)", g_major, g_minor);
+    }
+}
+
 /* The display, initialised; NULL when ANGLE cannot make one. */
 static EGLDisplay display(void)
 {
@@ -289,6 +309,7 @@ static EGLDisplay display(void)
                     hk_info("egl extensions: %.*s", (int)take, ext + at);
                     at += take;
                 }
+                tell_version(ext, qs ? qs(g_display, EGL_VERSION) : NULL);
             }
         } else {
             hk_err("egl: ANGLE could not make a display");
@@ -341,8 +362,15 @@ static EGLBoolean g_eglInitialize(EGLDisplay d, EGLint *major, EGLint *minor)
         return 0;
     }
     if (major) *major = g_major;
-    if (minor) *minor = g_minor;
+    if (minor) *minor = g_told_minor;
     return 1;
+}
+
+static const char *g_eglQueryString(EGLDisplay d, EGLint name)
+{
+    fn_query_string real = A(fn_query_string, "eglQueryString");
+    if (name == EGL_VERSION && d && d == display() && g_told_version[0]) return g_told_version;
+    return real ? real(d, name) : NULL;
 }
 
 /* The display outlives any one user of it: the app's terminate is its own business. */
@@ -634,6 +662,7 @@ static const hk_sym g_egl_overrides[] = {
     HK_WRAP("eglGetError", g_eglGetError),
     HK_WRAP("eglGetDisplay", g_eglGetDisplay),
     HK_WRAP("eglInitialize", g_eglInitialize),
+    HK_WRAP("eglQueryString", g_eglQueryString),
     HK_WRAP("eglTerminate", g_eglTerminate),
     HK_WRAP("eglChooseConfig", g_eglChooseConfig),
     HK_WRAP("eglGetConfigAttrib", g_eglGetConfigAttrib),

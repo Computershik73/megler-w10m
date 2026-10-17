@@ -249,6 +249,29 @@ static void test_bound(void)
     CHECK(generated + by_hand == declared);
 }
 
+/*
+ * The EGL version an app is told: the tests' stand-ins for ANGLE say EGL 1.5 and name no fence syncs (EGL_KHR_fence_sync),
+ * as ANGLE over Direct3D 11 does on the phone; EGL 1.5 has them, so the app is told 1.4 (hk_egl.c, tell_version).
+ */
+static void test_version(void)
+{
+    void *(*get_display)(void *) = (void *(*)(void *))hk_egl_resolve("eglGetDisplay");
+    unsigned (*init)(void *, int *, int *) = (unsigned (*)(void *, int *, int *))hk_egl_resolve("eglInitialize");
+    const char *(*query)(void *, int) = (const char *(*)(void *, int))hk_egl_resolve("eglQueryString");
+    void *d;
+    int major = 0, minor = 0;
+    const char *version;
+    say("EGL: the version an app is told, of an EGL 1.5 without fence syncs");
+    CHECK(get_display && init && query);
+    if (!get_display || !init || !query) return;
+    d = get_display(NULL);
+    CHECK(d && init(d, &major, &minor));
+    version = query(d, 0x3054);
+    say("  EGL %d.%d, \"%s\"", major, minor, version ? version : "(none)");
+    CHECK(major == 1 && minor == 4);
+    CHECK(version && !strncmp(version, "1.4", 3));
+}
+
 static void test_calls(void)
 {
     hk_jobj *a, *s;
@@ -744,6 +767,7 @@ int hk_gl_natives_tests_run(hk_test_sink sink, void *user, int *checks)
     hk_egl_set_provider(hk_gl_standin);
     hk_gl_standin_reset(true, false);
     hk_java_gl_reset();
+    test_version();
     test_calls();
     test_buffers();
     hk_gl_standin_reset(true, false);
