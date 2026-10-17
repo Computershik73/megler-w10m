@@ -1027,13 +1027,16 @@ static void test_paint(void)
     call("cvDrawRect", 7, J(cv), F(0), F(0), F(1), F(1), L(p), J(0));
     CHECK_HEX(g_seen.color, 0x80445566u);
     CHECK_INT(g_seen.filter_mode, -1);
-    /* With a shader it is the shell's: the paint is as the app set it, and the shader's handle is the shell's own. */
+    /*
+     * With a shader it is the shell's: the paint is as the app set it, and the shell is handed its own shader, which the
+     * Java's handle holds (the core keeps it in an object of its own, for the display lists that draw with it).
+     */
     sh = call("shLinear", 7, F(0), F(0), F(8), F(0), L(NULL), L(NULL), I(0)).j;
     call("cvDrawRect", 7, J(cv), F(0), F(0), F(1), F(1), L(p), J(sh));
     CHECK_HEX(g_seen.color, 0x80123456u);
     CHECK_INT(g_seen.filter_mode, MEGLER_GFX_BLEND_SRC_IN);
     CHECK_HEX(g_seen.filter_color, 0xFF445566u);
-    CHECK(g_seen_shader != NULL && g_seen_shader == (void *)(hk_addr)sh);
+    CHECK(g_seen_shader != NULL && g_seen_shader != (void *)(hk_addr)sh);
     call("shFree", 1, J(sh));
     /* What makes no sense is put right before the shell sees it. */
     a[P_STYLE] = 7;
@@ -1573,6 +1576,446 @@ static void test_protocol(void)
     CHECK(thrown()[0] == 0);
 }
 
+/* -------------------------------------------------------------- display lists */
+
+/* gnode's flags as android.graphics.RenderNode packs them for rnSet (hk_java_gfx.c). */
+enum { RN_IDENTITY = 1, RN_CLIP_BOUNDS = 2, RN_CLIP_RECT = 4, RN_CLIP_OUTLINE = 8, RN_LAYER = 16, RN_LAYER_PAINT = 32 };
+
+/* How many pixels differ between two bitmaps of one size. */
+static int differ(i64 a, i64 b)
+{
+    static const i32 none[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    return call("bmDiffer", 3, J(a), J(b), L(ints(none, 8))).i;
+}
+
+/* One of nearly everything a canvas draws, through the natives as the Java calls them, on whatever canvas it is given. */
+static void scene(i64 cv, i64 pic)
+{
+    static const float move[6] = { 1, 0, 3, 0, 1, 2 }, slant[6] = { 1, 0.25f, 0, 0, 1, 0 }, place[6] = { 2, 0, 34, 0, 2, 32 };
+    static const float tri[10] = { 0, 2, 20, 1, 12, 20, 1, 2, 30, 4 }, clip[6] = { 6, 30, 30, 48, 44, 0 };
+    static const float lines[8] = { 30, 2, 46, 2, 30, 4, 46, 8 }, points[6] = { 33, 12, 36, 12, 39, 13 };
+    hk_jobj *red = paint(0xFFFF0000u), *blue = paint(0xFF0000FFu), *green = paint(0x8000FF00u), *under = paint(0xFFFFFF00u);
+    ints_of(under)[P_FLAGS] = 8;
+    call("cvDrawColor", 3, J(cv), I((i32)0xFF202020u), I(3));
+    call("cvDrawRect", 7, J(cv), F(1), F(1), F(9), F(5), L(red), J(0));
+    call("cvSave", 1, J(cv));
+    call("cvMatrix", 3, J(cv), L(floats(move, 6)), Z(false));
+    call("cvClipRect", 6, J(cv), F(0), F(0), F(24), F(14), I(1));
+    call("cvDrawOval", 7, J(cv), F(10), F(0), F(30), F(10), L(blue), J(0));
+    call("cvDrawRRect", 9, J(cv), F(0), F(6), F(10), F(14), F(2), F(2), L(red), J(0));
+    call("cvRestore", 1, J(cv));
+    call("cvSaveLayer", 6, J(cv), F(14), F(14), F(30), F(30), I(128));
+    call("cvDrawRect", 7, J(cv), F(16), F(16), F(26), F(24), L(blue), J(0));
+    call("cvRestore", 1, J(cv));
+    call("cvDrawPath", 6, J(cv), L(floats(tri, 10)), I(10), I(0), L(green), J(0));
+    call("cvDrawLines", 7, J(cv), L(floats(lines, 8)), I(0), I(8), L(red), J(0), Z(false));
+    call("cvDrawLines", 7, J(cv), L(floats(points, 6)), I(0), I(6), L(blue), J(0), Z(true));
+    call("cvDrawArc", 10, J(cv), F(30), F(16), F(46), F(28), F(0), F(135), Z(true), L(red), J(0));
+    call("cvDrawText", 9, J(cv), L(hk_dvm_new_string("Hi!")), I(0), I(3), F(2), F(44), L(under), J(0), J(0));
+    call("cvDrawBitmap", 11, J(cv), J(pic), F(0), F(0), F(4), F(4), F(14), F(32), F(22), F(40), L(NULL));
+    call("cvSave", 1, J(cv));
+    call("cvClipPath", 5, J(cv), L(floats(clip, 6)), I(6), I(0), I(1));
+    call("cvMatrix", 3, J(cv), L(floats(slant, 6)), Z(false));
+    call("cvDrawBitmapM", 4, J(cv), J(pic), L(floats(place, 6)), L(red));
+    call("cvRestoreTo", 2, J(cv), I(1));
+}
+
+/* A node's properties as RenderNode hands them over: its place, a matrix (none: the identity), alpha, flags, a layer's alpha, a clip rectangle, an outline. */
+static void node_set(i64 node, float l, float t, float r, float b, const float *matrix, float alpha, i32 flags, i32 layer_alpha, const float *clip,
+                     i32 outline_kind, const float *outline, float radius)
+{
+    float f[20];
+    i32 k[5] = { 0, 0, 0, 0, 0 };
+    memset(f, 0, sizeof(f));
+    f[0] = l;
+    f[1] = t;
+    f[2] = r;
+    f[3] = b;
+    memcpy(f + 4, matrix ? matrix : k_identity, sizeof(float) * 6);
+    f[10] = alpha;
+    if (clip) memcpy(f + 11, clip, sizeof(float) * 4);
+    if (outline) memcpy(f + 15, outline, sizeof(float) * 4);
+    f[19] = radius;
+    k[0] = flags | (matrix ? 0 : RN_IDENTITY);
+    k[1] = outline_kind;
+    k[2] = layer_alpha;
+    call("rnSet", 5, J(node), L(floats(f, 20)), L(ints(k, 5)), L(NULL), L(NULL));
+}
+
+static void node_place(i64 node, float l, float t, float r, float b, i32 flags) { node_set(node, l, t, r, b, NULL, 1, flags, 255, NULL, 0, NULL, 0); }
+
+/* A node's list made of one rectangle in its own coordinates. */
+static void node_rect(i64 node, int w, int h, float l, float t, float r, float b, u32 color)
+{
+    i64 rc = call("cvRecord", 2, I(w), I(h)).j;
+    call("cvDrawRect", 7, J(rc), F(l), F(t), F(r), F(b), L(paint(color)), J(0));
+    call("rnEnd", 2, J(node), J(rc));
+    call("cvFree", 1, J(rc));
+}
+
+/* A node's list made of a drawing of other nodes. */
+static void node_of(i64 node, i64 child, i64 other)
+{
+    i64 rc = call("cvRecord", 2, I(64), I(64)).j;
+    call("cvDrawNode", 2, J(rc), J(child));
+    if (other) call("cvDrawNode", 2, J(rc), J(other));
+    call("rnEnd", 2, J(node), J(rc));
+    call("cvFree", 1, J(rc));
+}
+
+static int g_shader_matrices, g_shader_frees;
+static bool g_shader_had_matrix;
+static void spy_shader_matrix(void *user, void *shader, const float *matrix)
+{
+    g_shader_matrices++;
+    g_shader_had_matrix = matrix != NULL;
+    hk_gfx_standin()->shader_matrix(user, shader, matrix);
+}
+static void spy_shader_free(void *user, void *shader)
+{
+    g_shader_frees++;
+    hk_gfx_standin()->shader_free(user, shader);
+}
+
+static void test_lists(void)
+{
+    static const float move[6] = { 1, 0, 5, 0, 1, 7 }, twice[6] = { 2, 0, 0, 0, 2, 0 }, by2[6] = { 1, 0, 2, 0, 1, 2 };
+    static const float tri[10] = { 0, 2, 2, 1, 10, 2, 1, 2, 10, 4 };
+    uint64_t bytes0, bytes1, lbytes;
+    uint32_t count0, count1, lists0, lists, nodes0, nodes;
+    hk_jobj *m = floats(NULL, 6), *box = ints(NULL, 4);
+    i64 a = call("bmNew", 2, I(64), I(64)).j, b = call("bmNew", 2, I(64), I(64)).j, pic = call("bmNew", 2, I(4), I(4)).j;
+    i64 ca = call("cvNew", 1, J(a)).j, cb = call("cvNew", 1, J(b)).j, rc, list;
+    int i;
+    say("  display lists: a recording canvas, its list drawn again, what it keeps, nodes drawn with what they have when drawn");
+    hk_java_gfx_list_stats(NULL, &lists0, &nodes0);
+    call("bmErase", 2, J(pic), I((i32)0xFF00FFFFu));
+    call("bmSetPixel", 4, J(pic), I(0), I(0), I((i32)0xFFFF00FFu));
+    call("bmSetPixel", 4, J(pic), I(3), I(2), I((i32)0x80FFFFFFu));
+
+    /* A recording canvas: a canvas's bookkeeping from (0, 0, width, height), and nothing drawn anywhere, no bitmap made. */
+    rc = call("cvRecord", 2, I(48), I(40)).j;
+    CHECK(rc != 0);
+    CHECK_INT(call("cvSaveCount", 1, J(rc)).i, 1);
+    CHECK(call("cvClipBounds", 2, J(rc), L(box)).z);
+    CHECK(ints_of(box)[0] == 0 && ints_of(box)[1] == 0 && ints_of(box)[2] == 48 && ints_of(box)[3] == 40);
+    hk_java_gfx_stats(&bytes0, &count0);
+    scene(rc, pic);
+    hk_java_gfx_stats(&bytes1, &count1);
+    CHECK_INT(count1, count0);
+    CHECK_INT(bytes1, bytes0);
+    CHECK_INT(call("cvSaveCount", 1, J(rc)).i, 1);
+    CHECK_INT(covered(b), 0);
+    list = call("cvEndRecord", 1, J(rc)).j;
+    CHECK(list != 0);
+    /* Ended, it records no more and draws nothing. */
+    CHECK(call("cvEndRecord", 1, J(rc)).j == 0);
+    call("cvDrawRect", 7, J(rc), F(0), F(0), F(8), F(8), L(paint(0xFFFF0000u)), J(0));
+    call("cvFree", 1, J(rc));
+    hk_java_gfx_list_stats(&lbytes, &lists, NULL);
+    CHECK_INT(lists, lists0 + 1);
+    CHECK(lbytes > 0 && lbytes < 8192);
+    /* Drawn again on a canvas moved by (5, 7), it is what the same calls draw there, pixel for pixel. */
+    call("cvMatrix", 3, J(ca), L(floats(move, 6)), Z(false));
+    scene(ca, pic);
+    call("cvMatrix", 3, J(cb), L(floats(move, 6)), Z(false));
+    call("cvDrawList", 2, J(cb), J(list));
+    CHECK_INT(covered(a), 64 * 64);
+    CHECK_INT(differ(a, b), 0);
+    /* The canvas is left as it was found: one save, its own matrix. */
+    CHECK_INT(call("cvSaveCount", 1, J(cb)).i, 1);
+    call("cvGetMatrix", 2, J(cb), L(m));
+    CHECK(memcmp(floats_of(m), move, sizeof(move)) == 0);
+    /* A list is drawn as often as it is asked to be. */
+    erase(b);
+    call("cvDrawList", 2, J(cb), J(list));
+    CHECK_INT(differ(a, b), 0);
+    /* A list recorded into another is the list as it was then, whatever its Picture does afterwards. */
+    rc = call("cvRecord", 2, I(64), I(64)).j;
+    call("cvDrawList", 2, J(rc), J(list));
+    call("dlFree", 1, J(list));
+    list = call("cvEndRecord", 1, J(rc)).j;
+    call("cvFree", 1, J(rc));
+    erase(b);
+    call("cvDrawList", 2, J(cb), J(list));
+    CHECK_INT(differ(a, b), 0);
+    call("dlFree", 1, J(list));
+    call("cvFree", 1, J(ca));
+    call("cvFree", 1, J(cb));
+    ca = call("cvNew", 1, J(a)).j;
+    cb = call("cvNew", 1, J(b)).j;
+
+    /* What a call was given is what the list keeps: the paint, the path and the matrix as they were then, whatever is done to the arrays afterwards. */
+    {
+        hk_jobj *p = paint(0xFFFF0000u), *path = floats(tri, 10), *mx = floats(by2, 6);
+        rc = call("cvRecord", 2, I(16), I(16)).j;
+        call("cvMatrix", 3, J(rc), L(mx), Z(false));
+        call("cvDrawPath", 6, J(rc), L(path), I(10), I(0), L(p), J(0));
+        list = call("cvEndRecord", 1, J(rc)).j;
+        call("cvFree", 1, J(rc));
+        ints_of(p)[P_COLOR] = (i32)0xFF0000FFu;
+        floats_of(path)[1] = 40;
+        floats_of(mx)[2] = 30;
+        erase(a);
+        call("cvDrawList", 2, J(ca), J(list));
+        CHECK_HEX(word(a, 4, 4), 0xFFFF0000u);
+        CHECK_HEX(word(a, 5, 9), 0xFFFF0000u);
+        CHECK_HEX(word(a, 3, 3), 0u);
+        CHECK_HEX(word(a, 20, 5), 0u);
+        CHECK_HEX(word(a, 34, 5), 0u);
+        call("dlFree", 1, J(list));
+    }
+
+    /* A bitmap is drawn as it is when the list is drawn, as Android draws it; it stays while a list draws it, whatever the Java does. */
+    {
+        i64 src = call("bmNew", 2, I(2), I(2)).j;
+        call("bmErase", 2, J(src), I((i32)0xFFFF0000u));
+        rc = call("cvRecord", 2, I(8), I(8)).j;
+        call("cvDrawBitmap", 11, J(rc), J(src), F(0), F(0), F(2), F(2), F(0), F(0), F(4), F(4), L(NULL));
+        list = call("cvEndRecord", 1, J(rc)).j;
+        call("cvFree", 1, J(rc));
+        call("bmErase", 2, J(src), I((i32)0xFF0000FFu));
+        erase(a);
+        call("cvDrawList", 2, J(ca), J(list));
+        CHECK_HEX(word(a, 1, 1), 0xFF0000FFu);
+        CHECK(exactly(a, 0, 0, 4, 4));
+        hk_java_gfx_stats(&bytes0, &count0);
+        call("bmFree", 1, J(src));
+        hk_java_gfx_stats(&bytes1, &count1);
+        CHECK_INT(count1, count0);
+        erase(a);
+        call("cvDrawList", 2, J(ca), J(list));
+        CHECK_HEX(word(a, 3, 3), 0xFF0000FFu);
+        call("dlFree", 1, J(list));
+        hk_java_gfx_stats(&bytes1, &count1);
+        CHECK_INT(count1, count0 - 1);
+        CHECK_INT(bytes1, bytes0 - 16);
+    }
+
+    /* A shader: drawn with the local matrix it had when recorded, its own given back afterwards; freed when the Java and the last list are done with it. */
+    {
+        static const i32 two[2] = { (i32)0xFF00FF00u, (i32)0xFF0000FFu };
+        megler_gfx_host spy = *hk_gfx_standin();
+        i64 sh;
+        spy.shader_matrix = spy_shader_matrix;
+        spy.shader_free = spy_shader_free;
+        hk_java_gfx_set_host(&spy);
+        sh = call("shLinear", 7, F(0), F(0), F(8), F(0), L(ints(two, 2)), L(NULL), I(0)).j;
+        rc = call("cvRecord", 2, I(8), I(8)).j;
+        call("cvDrawRect", 7, J(rc), F(0), F(0), F(4), F(4), L(paint(0xFF000000u)), J(sh));
+        list = call("cvEndRecord", 1, J(rc)).j;
+        call("cvFree", 1, J(rc));
+        call("shMatrix", 2, J(sh), L(floats(twice, 6)));
+        g_shader_matrices = g_shader_frees = 0;
+        erase(a);
+        call("cvDrawList", 2, J(ca), J(list));
+        CHECK_HEX(word(a, 1, 1), 0xFF00FF00u);
+        CHECK_INT(g_shader_matrices, 2);
+        CHECK(g_shader_had_matrix);
+        /* Drawn with the matrix it has, nothing is changed round the call. */
+        call("shMatrix", 2, J(sh), L(NULL));
+        g_shader_matrices = 0;
+        call("cvDrawList", 2, J(ca), J(list));
+        CHECK_INT(g_shader_matrices, 0);
+        call("shFree", 1, J(sh));
+        CHECK_INT(g_shader_frees, 0);
+        call("dlFree", 1, J(list));
+        CHECK_INT(g_shader_frees, 1);
+        hk_java_gfx_set_host(hk_gfx_standin());
+    }
+
+    /* Nodes. A node's list is drawn where the node is, clipped to its bounds when it clips to them. */
+    {
+        static const float clip[4] = { 2, 2, 6, 6 }, outline[4] = { 0, 0, 5, 5 };
+        i64 child = call("rnNew", 0).j, parent = call("rnNew", 0).j, grand = call("rnNew", 0).j, middle = call("rnNew", 0).j, top = call("rnNew", 0).j;
+        i64 e = call("bmNew", 2, I(10), I(10)).j, ce = call("cvNew", 1, J(e)).j;
+        hk_java_gfx_list_stats(NULL, NULL, &nodes);
+        CHECK_INT(nodes, nodes0 + 5);
+        /* Red in its bounds, blue just outside them. */
+        rc = call("cvRecord", 2, I(10), I(10)).j;
+        call("cvDrawRect", 7, J(rc), F(0), F(0), F(10), F(10), L(paint(0xFFFF0000u)), J(0));
+        call("cvDrawRect", 7, J(rc), F(10), F(0), F(14), F(10), L(paint(0xFF0000FFu)), J(0));
+        call("rnEnd", 2, J(child), J(rc));
+        call("cvFree", 1, J(rc));
+        node_place(child, 4, 4, 14, 14, RN_CLIP_BOUNDS);
+        node_of(parent, child, 0);
+        node_place(parent, 0, 0, 64, 64, RN_CLIP_BOUNDS);
+        erase(a);
+        call("cvDrawNode", 2, J(ca), J(parent));
+        CHECK(exactly(a, 4, 4, 14, 14));
+        CHECK_HEX(word(a, 13, 13), 0xFFFF0000u);
+        /* Its properties changed and the parent not recorded again: the parent draws it as it is now, here not clipping to its bounds. */
+        node_place(child, 16, 2, 26, 12, 0);
+        erase(a);
+        call("cvDrawNode", 2, J(ca), J(parent));
+        CHECK(exactly(a, 16, 2, 30, 12));
+        CHECK_HEX(word(a, 27, 5), 0xFF0000FFu);
+        /* A matrix of its own: twice the size. */
+        node_set(child, 0, 0, 10, 10, twice, 1, RN_CLIP_BOUNDS, 255, NULL, 0, NULL, 0);
+        erase(a);
+        call("cvDrawNode", 2, J(ca), J(parent));
+        CHECK(exactly(a, 0, 0, 20, 20));
+        /* Translucent: a layer of its bounds put on at its alpha, which is what its bitmap drawn at that alpha gave, pixel for pixel. */
+        node_set(child, 4, 4, 14, 14, NULL, 0.5f, RN_CLIP_BOUNDS | RN_LAYER, 128, NULL, 0, NULL, 0);
+        erase(a);
+        call("cvDrawNode", 2, J(ca), J(parent));
+        erase(b);
+        call("cvDrawRect", 7, J(ce), F(0), F(0), F(10), F(10), L(paint(0xFFFF0000u)), J(0));
+        call("cvDrawBitmap", 11, J(cb), J(e), F(0), F(0), F(10), F(10), F(4), F(4), F(14), F(14), L(paint(0x80000000u)));
+        CHECK_INT(differ(a, b), 0);
+        CHECK_HEX(word(a, 5, 5), 0x80800000u);
+        CHECK(exactly(a, 4, 4, 14, 14));
+        /* A colour filter on the layer's paint: drawn through a bitmap of the node with that paint, as before, and the bitmap gone afterwards. */
+        {
+            hk_jobj *lp = paint(0xFF000000u), *f = floats(NULL, 20), *k = ints(NULL, 5);
+            ints_of(lp)[P_CFCOLOR] = (i32)0xFF00FF00u;
+            ints_of(lp)[P_CFMODE] = 5;
+            floats_of(f)[0] = floats_of(f)[1] = 4;
+            floats_of(f)[2] = floats_of(f)[3] = 14;
+            floats_of(f)[10] = 1;
+            ints_of(k)[0] = RN_IDENTITY | RN_CLIP_BOUNDS | RN_LAYER | RN_LAYER_PAINT;
+            ints_of(k)[2] = 200;
+            call("rnSet", 5, J(child), L(f), L(k), L(NULL), L(lp));
+            hk_java_gfx_stats(&bytes0, &count0);
+            erase(a);
+            call("cvDrawNode", 2, J(ca), J(parent));
+            hk_java_gfx_stats(&bytes1, &count1);
+            CHECK_INT(count1, count0);
+            ints_of(lp)[P_COLOR] = (i32)0xC8000000u;
+            erase(b);
+            call("cvDrawBitmap", 11, J(cb), J(e), F(0), F(0), F(10), F(10), F(4), F(4), F(14), F(14), L(lp));
+            CHECK_INT(differ(a, b), 0);
+            CHECK(exactly(a, 4, 4, 14, 14));
+            CHECK((word(a, 5, 5) & 0x00FFFF00u) != 0 && (word(a, 5, 5) & 0x00FF0000u) == 0);
+        }
+        /* Its clip rectangle, and then its outline. */
+        node_set(child, 4, 4, 14, 14, NULL, 1, RN_CLIP_BOUNDS | RN_CLIP_RECT, 255, clip, 0, NULL, 0);
+        erase(a);
+        call("cvDrawNode", 2, J(ca), J(parent));
+        CHECK(exactly(a, 6, 6, 10, 10));
+        node_set(child, 4, 4, 14, 14, NULL, 1, RN_CLIP_OUTLINE, 255, NULL, 1, outline, 0);
+        erase(a);
+        call("cvDrawNode", 2, J(ca), J(parent));
+        CHECK(exactly(a, 4, 4, 9, 9));
+        /* With round corners it is a path, which the stand-in clips to as its box. */
+        node_set(child, 4, 4, 14, 14, NULL, 1, RN_CLIP_OUTLINE, 255, NULL, 1, outline, 2);
+        erase(a);
+        call("cvDrawNode", 2, J(ca), J(parent));
+        CHECK(exactly(a, 4, 4, 9, 9));
+        /* An outline to clip to that is empty, or no alpha: nothing at all, as on Android. */
+        node_set(child, 4, 4, 14, 14, NULL, 1, RN_CLIP_OUTLINE, 255, NULL, 0, NULL, 0);
+        erase(a);
+        call("cvDrawNode", 2, J(ca), J(parent));
+        CHECK_INT(covered(a), 0);
+        node_set(child, 4, 4, 14, 14, NULL, 0, 0, 255, NULL, 0, NULL, 0);
+        call("cvDrawNode", 2, J(ca), J(parent));
+        CHECK_INT(covered(a), 0);
+
+        /* Nested: a node in a node in a node, each moved by its own place; the innermost moved, nothing recorded again. */
+        node_rect(grand, 2, 2, 0, 0, 2, 2, 0xFF00FF00u);
+        node_place(grand, 1, 1, 3, 3, RN_CLIP_BOUNDS);
+        node_of(middle, grand, 0);
+        node_place(middle, 10, 10, 20, 20, RN_CLIP_BOUNDS);
+        node_of(top, middle, 0);
+        node_place(top, 0, 0, 64, 64, RN_CLIP_BOUNDS);
+        erase(a);
+        call("cvDrawNode", 2, J(ca), J(top));
+        CHECK(exactly(a, 11, 11, 13, 13));
+        node_place(grand, 5, 5, 7, 7, RN_CLIP_BOUNDS);
+        erase(a);
+        call("cvDrawNode", 2, J(ca), J(top));
+        CHECK(exactly(a, 15, 15, 17, 17));
+        /* Discarded: drawn as nothing. Recorded again with something else: the outer lists draw the new list. */
+        call("rnDiscard", 1, J(grand));
+        erase(a);
+        call("cvDrawNode", 2, J(ca), J(top));
+        CHECK_INT(covered(a), 0);
+        node_rect(grand, 2, 2, 0, 0, 2, 2, 0xFF0000FFu);
+        call("cvDrawNode", 2, J(ca), J(top));
+        CHECK(exactly(a, 15, 15, 17, 17));
+        CHECK_HEX(word(a, 16, 16), 0xFF0000FFu);
+        /* A node drawn on a recording canvas is drawn by the list it went into, not where it was recorded. */
+        rc = call("cvRecord", 2, I(64), I(64)).j;
+        call("cvDrawNode", 2, J(rc), J(top));
+        CHECK_INT(covered(a), 4);
+        call("cvFree", 1, J(rc));
+        /* The Java's nodes gone, the lists that draw them keep them; the last list gone, the nodes go. */
+        call("rnFree", 1, J(grand));
+        call("rnFree", 1, J(middle));
+        erase(a);
+        call("cvDrawNode", 2, J(ca), J(top));
+        CHECK(exactly(a, 15, 15, 17, 17));
+        hk_java_gfx_list_stats(NULL, NULL, &nodes);
+        CHECK_INT(nodes, nodes0 + 5);
+        call("rnFree", 1, J(top));
+        hk_java_gfx_list_stats(NULL, NULL, &nodes);
+        CHECK_INT(nodes, nodes0 + 2);
+        call("rnFree", 1, J(parent));
+        call("rnFree", 1, J(child));
+        call("cvFree", 1, J(ce));
+        call("bmFree", 1, J(e));
+    }
+
+    /* A node whose list draws the node itself is drawn so deep and no deeper: nothing hangs, nothing overflows. */
+    {
+        i64 self = call("rnNew", 0).j;
+        rc = call("cvRecord", 2, I(8), I(8)).j;
+        call("cvDrawRect", 7, J(rc), F(0), F(0), F(2), F(2), L(paint(0xFFFF0000u)), J(0));
+        call("cvDrawNode", 2, J(rc), J(self));
+        call("rnEnd", 2, J(self), J(rc));
+        call("cvFree", 1, J(rc));
+        node_place(self, 1, 0, 9, 8, 0);
+        erase(a);
+        call("cvDrawNode", 2, J(ca), J(self));
+        CHECK(word(a, 1, 1) == 0xFFFF0000u && word(a, 63, 1) == 0xFFFF0000u);
+        call("rnDiscard", 1, J(self));
+        call("rnFree", 1, J(self));
+    }
+
+    /* Two hundred nodes the size of a phone's screen, recorded and drawn, as a Compose screen has them: no bitmap for any of them. */
+    {
+        i64 nodes200[200], all = call("rnNew", 0).j;
+        hk_java_gfx_stats(&bytes0, &count0);
+        for (i = 0; i < 200; i++) {
+            nodes200[i] = call("rnNew", 0).j;
+            rc = call("cvRecord", 2, I(1440), I(2560)).j;
+            call("cvDrawColor", 3, J(rc), I((i32)0x10FFFFFFu), I(3));
+            call("cvDrawRect", 7, J(rc), F((float)i), F(0), F((float)i + 1), F(2560), L(paint(0xFF000000u | (u32)i)), J(0));
+            call("rnEnd", 2, J(nodes200[i]), J(rc));
+            call("cvFree", 1, J(rc));
+            node_place(nodes200[i], 0, 0, 1440, 2560, RN_CLIP_BOUNDS);
+        }
+        rc = call("cvRecord", 2, I(1440), I(2560)).j;
+        for (i = 0; i < 200; i++) call("cvDrawNode", 2, J(rc), J(nodes200[i]));
+        call("rnEnd", 2, J(all), J(rc));
+        call("cvFree", 1, J(rc));
+        node_place(all, 0, 0, 1440, 2560, RN_CLIP_BOUNDS);
+        erase(a);
+        call("cvDrawNode", 2, J(ca), J(all));
+        CHECK_INT(covered(a), 64 * 64);
+        hk_java_gfx_stats(&bytes1, &count1);
+        hk_java_gfx_list_stats(&lbytes, &lists, &nodes);
+        CHECK_INT(count1, count0);
+        CHECK_INT(bytes1, bytes0);
+        CHECK_INT(nodes, nodes0 + 201);
+        CHECK(lbytes < 200 * 512);
+        say("    200 nodes of 1440 x 2560 recorded and drawn: %u bytes of lists, no bitmap (a bitmap each was %u MB in all)", (unsigned)lbytes,
+            (unsigned)(200ull * 1440 * 2560 * 4 >> 20));
+        CHECK_INT(call("rnBytes", 1, J(nodes200[7])).j > 0, 1);
+        for (i = 0; i < 200; i++) call("rnFree", 1, J(nodes200[i]));
+        call("rnFree", 1, J(all));
+    }
+    hk_java_gfx_list_stats(&lbytes, &lists, &nodes);
+    CHECK_INT(lists, lists0);
+    CHECK_INT(nodes, nodes0);
+    call("cvFree", 1, J(ca));
+    call("cvFree", 1, J(cb));
+    call("bmFree", 1, J(a));
+    call("bmFree", 1, J(b));
+    call("bmFree", 1, J(pic));
+    CHECK(thrown()[0] == 0);
+}
+
 int hk_gfx_natives_tests_run(hk_test_sink sink, void *user, int *checks)
 {
     uint64_t bytes0 = 0, bytes1 = 1;
@@ -1589,7 +2032,7 @@ int hk_gfx_natives_tests_run(hk_test_sink sink, void *user, int *checks)
     say("megler.Gfx's native methods, over the stand-in");
     /* One entry for each native method megler/Gfx.java declares. */
     for (e = hk_java_gfx_natives(); e->cls; e++) n += strcmp(e->cls, "megler/Gfx") == 0 && e->sig && e->fn;
-    CHECK_INT(n, 54);
+    CHECK_INT(n, 65);
     hk_java_gfx_set_host(hk_gfx_standin());
     hk_java_gfx_stats(&bytes0, &count0);
     test_bitmaps();
@@ -1600,6 +2043,7 @@ int hk_gfx_natives_tests_run(hk_test_sink sink, void *user, int *checks)
     test_text();
     test_shaders();
     test_paths();
+    test_lists();
     test_protocol();
     /* Every bitmap the tests made is freed again. */
     hk_java_gfx_stats(&bytes1, &count1);
