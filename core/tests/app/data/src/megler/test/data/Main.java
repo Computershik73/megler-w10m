@@ -1321,7 +1321,10 @@ public class Main extends Activity {
      *   "codec-avc-async-done" says what came, and the test runner looks for it;
      * - "codec-aac": csd-0 the AudioSpecificConfig, a block of PCM for each packet, 44100 Hz in two channels;
      * - "codec-aac-adts": no csd, each packet with an ADTS header, as an app that says "is-adts" feeds them;
-     * - "codec-mp3": a block for each frame.
+     * - "codec-mp3": a block for each frame;
+     * - "codec-avc-full": units queued with no output taken until dequeueInputBuffer says to try again, which it must say
+     *   before all 24 are in, with eight pictures or more waiting (a decoder fills, as Android's do, and players pace
+     *   themselves by that); with the waiting ones released it takes input again, and every picture comes out in order.
      */
     private void mediaCodec() {
         step("codec-avc", () -> {
@@ -1443,6 +1446,44 @@ public class Main extends Activity {
             codec.release();
             detail = out + " packets=" + s.samples.size();
             return out.ended && out.blocks == s.samples.size() && out.pcm == s.samples.size() * 1024L * 2 * 2;
+        });
+        step("codec-avc-full", () -> {
+            Stream s = Stream.read(getAssets(), "avc.hkau");
+            android.media.MediaCodec codec = android.media.MediaCodec.createDecoderByType("video/avc");
+            codec.configure(s.format(true), null, null, 0);
+            codec.start();
+            int queued = 0;
+            for (int i; queued < s.samples.size() && (i = codec.dequeueInputBuffer(0)) >= 0; queued++) {
+                byte[] data = s.samples.get(queued);
+                codec.getInputBuffer(i).put(data);
+                codec.queueInputBuffer(i, 0, data.length, s.times.get(queued), 0);
+            }
+            if (queued == s.samples.size()) {
+                codec.release();
+                detail = "all " + queued + " units were taken with no picture taken out: the decoder never filled";
+                return false;
+            }
+            boolean full = codec.dequeueInputBuffer(0) < 0;
+            Decoded out = new Decoded();
+            java.util.List<Integer> waiting = new java.util.ArrayList<>();
+            android.media.MediaCodec.BufferInfo info = new android.media.MediaCodec.BufferInfo();
+            for (int i; (i = codec.dequeueOutputBuffer(info, 0)) != android.media.MediaCodec.INFO_TRY_AGAIN_LATER;) {
+                if (i < 0) continue;
+                waiting.add(i);
+                out.pictures.add((int) ((info.presentationTimeUs * 30 + 500000) / 1000000));
+            }
+            for (int i : waiting) codec.releaseOutputBuffer(i, false);
+            int back = codec.dequeueInputBuffer(0);
+            if (back >= 0) {
+                byte[] data = s.samples.get(queued);
+                codec.getInputBuffer(back).put(data);
+                codec.queueInputBuffer(back, 0, data.length, s.times.get(queued), queued == s.samples.size() - 1 ? android.media.MediaCodec.BUFFER_FLAG_END_OF_STREAM : 0);
+                take(codec, out, false, false);
+                feed(codec, s, queued + 1, s.samples.size(), true, out, false);
+            }
+            codec.release();
+            detail = "queued " + queued + " before it was full, " + waiting.size() + " pictures waiting, input again=" + (back >= 0) + "; " + out;
+            return full && waiting.size() >= 8 && back >= 0 && out.inOrder(0, s.samples.size()) && out.ended;
         });
         step("codec-mp3", () -> {
             Stream s = Stream.read(getAssets(), "mp3.hkau");

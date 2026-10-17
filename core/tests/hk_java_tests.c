@@ -1455,8 +1455,9 @@ static int run_data(void)
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
-                                            AudioSpecificConfig and with ADTS headers, MP3. */
-                                         "codec-avc", "codec-avc-flush", "codec-avc-inband", "codec-avc-async", "codec-aac", "codec-aac-adts", "codec-mp3",
+                                            AudioSpecificConfig and with ADTS headers, a decoder that fills while its pictures wait, MP3. */
+                                         "codec-avc", "codec-avc-flush", "codec-avc-inband", "codec-avc-async", "codec-aac", "codec-aac-adts", "codec-avc-full",
+                                         "codec-mp3",
                                          /* And the network from Java, on loopback: names, an HTTP server of the app's own and HttpURLConnection, UDP, a server
                                             socket closed under the thread waiting in accept, a java.nio selector, the interfaces, ConnectivityManager. */
                                          "net-localhost", "net-http", "net-udp", "net-close", "net-nio", "net-interfaces", "net-connectivity" };

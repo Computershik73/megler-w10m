@@ -2952,7 +2952,7 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: forty-three files** in the overlay,
+**What differs from the original's framework: forty-four files** in the overlay,
 most of them a statement or a few methods each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and nine files of members added** to classes of the original's.
@@ -3333,6 +3333,17 @@ on a looper thread of its own and takes it back with `next()`.
   `createDecoderByType` throws `IOException`. The original
   `MediaCodec.createDecoderByType` still says in that message that Megler
   decodes H.264, HEVC, AAC and MP3.
+- `android/media/MediaCodec.java`, one rule, and the original's fault: an
+  input buffer goes back to the app (`dequeueInputBuffer`, or the
+  `Callback`) only while fewer outputs wait to be released than a phone's
+  decoder has buffers for (eight pictures, sixteen blocks of sound); else it
+  is held until `releaseOutputBuffer` brings them below that. The original
+  handed every buffer back as soon as it was decoded, so the decoder never
+  filled, and ExoPlayer, which feeds a renderer for as long as it is given
+  buffers and has samples (up to fifty seconds of them), would have decoded
+  everything it had loaded in one turn of its loop and kept every picture
+  until its time. The NDK's decoder here (`ndk/hk_media.c`) had learnt the
+  same from Unity.
 
 - `android/preference/PreferenceActivity.java`, the largest: the activity's
   content and preference headers. Android's `onCreate` sets a layout in which
@@ -3627,7 +3638,11 @@ The tests:
   - "codec-avc-async": the callbacks on a `HandlerThread`, the 24 pictures in
     order on its thread ("codec-avc-async-done", which the runner waits for);
   - "codec-aac", "codec-aac-adts", "codec-mp3": a block of PCM for each
-    packet, 44100 Hz in two channels.
+    packet, 44100 Hz in two channels;
+  - "codec-avc-full": units queued and no output taken: the decoder is
+    full (`dequeueInputBuffer` says try again) with eight pictures or more
+    waiting, before all 24 are in; once the waiting ones are released it
+    takes input again, and all 24 come out in order.
 - the shell's own decoders on a PC (`tools/build-tests.sh win`, as
   `hk_tests --codec-windows`: `core/tests/hk_codec_tests.c` over
   `player/CodecHost.cpp`, built into the test program with
