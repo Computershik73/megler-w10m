@@ -39,6 +39,11 @@ int hk_fd_close(int fd);
  * at an address of its own. *writable says whether the view may be written; *base and *mapped are what
  * hk_section_unmap takes. NULL with errno ENODEV when the descriptor is not shared memory.
  */
+/*
+ * A read-only view of [offset, offset + len) of a regular file opened read-only, backed by the file (hk_file_map), as
+ * hk_fd_shm_map gives: NULL with GE_NODEV for anything else, or where the range is past the file's end.
+ */
+void *hk_fd_file_map(int fd, u64 offset, size_t len, void **base, size_t *mapped);
 void *hk_fd_shm_map(int fd, u64 offset, size_t len, bool *writable, void **base, size_t *mapped);
 /* A descriptor on a host file (HK_O_* flags), for handing the guest a file that has no guest path -- the APK itself. */
 int hk_fd_open_host(const char *host_path, int host_flags);

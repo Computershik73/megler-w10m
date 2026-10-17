@@ -146,8 +146,8 @@ bool hk_mem_protect(void *p, size_t size, int prot)
 
 bool hk_mem_decommit(void *p, size_t size) { return VirtualFree(p, size, MEM_DECOMMIT) != 0; }
 
-/* Each run of pages of one state in [p, p + size), in turn: `fn` with the run and whether it is committed. */
-static bool mem_runs(const void *p, size_t size, bool (*fn)(u8 *at, size_t n, bool committed, void *user), void *user)
+/* Each run of pages of one state in [p, p + size), in turn: `fn` with the run, whether it is committed, and whether it is the process's own (not a view of a file or a section). */
+static bool mem_runs(const void *p, size_t size, bool (*fn)(u8 *at, size_t n, bool committed, bool own, void *user), void *user)
 {
     const u8 *at = (const u8 *)p, *end = at + size;
     bool ok = true;
@@ -158,16 +158,20 @@ static bool mem_runs(const void *p, size_t size, bool (*fn)(u8 *at, size_t n, bo
         if (VirtualQuery((LPCVOID)at, &info, sizeof(info)) != sizeof(info) || !info.RegionSize) return false;
         next = (const u8 *)info.BaseAddress + info.RegionSize;
         n = (size_t)((next < end ? next : end) - at);
-        if (!fn((u8 *)at, n, info.State == MEM_COMMIT, user)) ok = false;
+        if (!fn((u8 *)at, n, info.State == MEM_COMMIT, info.Type == MEM_PRIVATE, user)) ok = false;
         at += n;
     }
     return ok;
 }
-static bool protect_run(u8 *at, size_t n, bool committed, void *user) { return !committed || vprotect(at, n, *(DWORD *)user) != 0; }
-static bool count_run(u8 *at, size_t n, bool committed, void *user)
+static bool protect_run(u8 *at, size_t n, bool committed, bool own, void *user)
+{
+    (void)own;
+    return !committed || vprotect(at, n, *(DWORD *)user) != 0;
+}
+static bool count_run(u8 *at, size_t n, bool committed, bool own, void *user)
 {
     (void)at;
-    if (committed) *(i64 *)user += (i64)n;
+    if (committed && own) *(i64 *)user += (i64)n;
     return true;
 }
 bool hk_mem_protect_committed(void *p, size_t size, int prot)
@@ -994,6 +998,31 @@ struct hk_file {
     HANDLE h;
     bool append;
 };
+
+void *hk_file_map(hk_file *f, u64 offset, size_t size, void **base, size_t *mapped)
+{
+    u64 aligned = offset & ~(u64)0xFFFF;
+    size_t delta = (size_t)(offset - aligned);
+    HANDLE m;
+    void *v;
+    if (!f || !size) return NULL;
+#if HK_UWP
+    m = CreateFileMappingFromApp(f->h, NULL, PAGE_READONLY, 0, NULL);
+#else
+    m = CreateFileMappingW(f->h, NULL, PAGE_READONLY, 0, 0, NULL);
+#endif
+    if (!m) return NULL;
+#if HK_UWP
+    v = MapViewOfFileFromApp(m, FILE_MAP_READ, aligned, size + delta);
+#else
+    v = MapViewOfFile(m, FILE_MAP_READ, (DWORD)(aligned >> 32), (DWORD)aligned, size + delta);
+#endif
+    CloseHandle(m);                    /* the view keeps the mapping */
+    if (!v) return NULL;
+    *base = v;
+    *mapped = size + delta;
+    return (u8 *)v + delta;
+}
 
 static int err_of(DWORD e)
 {

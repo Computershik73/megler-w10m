@@ -1252,6 +1252,21 @@ static bool shm_resize(gobj *o, size_t size)
  * mapping of it, writable when the region still allows writing. NULL, with errno, when the descriptor is no shared memory
  * (ENODEV: the caller makes a private copy as before) or the range is past its end.
  */
+void *hk_fd_file_map(int fd, u64 offset, size_t len, void **base, size_t *mapped)
+{
+    void *p = NULL;
+    hk_stat st;
+    WITH_FD(fd, o, NULL)
+    if (o->type != OBJ_FILE || (o->flags & G_O_ACCMODE) != 0 || !hk_file_stat(o->file, &st) || offset + len > st.size) {
+        hk_set_errno(GE_NODEV);
+    } else {
+        p = hk_file_map(o->file, offset, len, base, mapped);
+        if (!p) hk_set_errno(GE_NODEV);
+    }
+    fd_put(o);
+    return p;
+}
+
 void *hk_fd_shm_map(int fd, u64 offset, size_t len, bool *writable, void **base, size_t *mapped)
 {
     void *p = NULL;

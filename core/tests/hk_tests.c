@@ -662,6 +662,58 @@ static void test_mmap_commit(void)
     }
 }
 
+/*
+ * A file mapped read-only and shared is a view of the file (bionic/hk_libc_mem.c, hk_fd_file_map): its bytes from a
+ * page's offset, none of it memory of the process's own (on Windows, where that is said); a mapping that reaches past the
+ * file's end is a copy, zero past it, as before; unmapped like any other.
+ */
+static void test_mmap_file(const char *scratch)
+{
+    typedef void *(*mmap_fn)(void *, size_t, int, int, int, i32);
+    typedef int (*munmap_fn)(void *, size_t);
+    typedef int (*close_fn)(int);
+    enum { READ = 1, SHARED = 0x01, CHUNK = 65536, LEN = 3 * 65536 + 100 };
+    mmap_fn mmap_ = (mmap_fn)hk_bionic_find("mmap");
+    munmap_fn munmap_ = (munmap_fn)hk_bionic_find("munmap");
+    close_fn close_ = (close_fn)hk_bionic_find("close");
+    char *path = hk_sprintf("%s/mapped.bin", scratch);
+    u8 *data = (u8 *)hk_alloc(LEN), *p, *q;
+    hk_file *f;
+    int err = 0, fd, i;
+    bool same = true;
+    i64 c;
+    say("mmap: a file read-only and shared is a view of the file");
+    for (i = 0; i < LEN; i++) data[i] = (u8)(i * 7 + (i >> 8));
+    f = hk_file_open(path, HK_O_WRITE | HK_O_CREATE | HK_O_TRUNC, &err);
+    CHECK(f && hk_file_write(f, data, LEN, &err) == LEN);
+    if (f) hk_file_close(f);
+    fd = hk_fd_open_host(path, HK_O_READ);
+    CHECK(mmap_ && munmap_ && close_ && fd >= 0);
+    if (mmap_ && munmap_ && close_ && fd >= 0) {
+        p = (u8 *)mmap_(NULL, 2 * CHUNK, READ, SHARED, fd, 4096);
+        CHECK(p && p != (u8 *)(hk_addr)-1);
+        if (p && p != (u8 *)(hk_addr)-1) {
+            for (i = 0; i < 2 * CHUNK; i++)
+                if (p[i] != data[4096 + i]) same = false;
+            CHECK(same);
+            c = hk_mem_committed(p, 2 * CHUNK);
+            CHECK(c == -1 || c == 0);
+            say("  128 KB of it from 4 KB on: %s; %lld bytes of the process's own (-1: the host does not say)", same ? "its bytes" : "NOT its bytes",
+                (long long)c);
+            CHECK(munmap_(p, 2 * CHUNK) == 0);
+        }
+        q = (u8 *)mmap_(NULL, CHUNK, READ, SHARED, fd, 3 * CHUNK);
+        CHECK(q && q != (u8 *)(hk_addr)-1);
+        if (q && q != (u8 *)(hk_addr)-1) {
+            CHECK(q[0] == data[3 * CHUNK] && q[99] == data[3 * CHUNK + 99] && q[100] == 0 && q[CHUNK - 1] == 0);
+            CHECK(munmap_(q, CHUNK) == 0);
+        }
+        close_(fd);
+    }
+    free(data);
+    free(path);
+}
+
 static void test_libc_odds(void)
 {
     const u32 *size = (const u32 *)hk_bionic_find("__page_size"), *shift = (const u32 *)hk_bionic_find("__page_shift");
@@ -1853,6 +1905,7 @@ int hk_tests_run(const char *libdir, const char *scratch, hk_test_sink sink, voi
     test_battery();
     test_libc_odds();
     test_mmap_commit();
+    test_mmap_file(scratch);
     test_input();
     {
         /* The stand-in for the shell's drawing under a Java app: it is what the Java driver's tests see pictures through. */

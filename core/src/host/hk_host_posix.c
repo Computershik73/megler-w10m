@@ -595,6 +595,19 @@ i32 hk_time_utc_offset(i64 unix_seconds, bool *dst)
 
 struct hk_file { int fd; };
 
+void *hk_file_map(hk_file *f, u64 offset, size_t size, void **base, size_t *mapped)
+{
+    u64 aligned = offset & ~(u64)(sysconf(_SC_PAGESIZE) - 1);
+    size_t delta = (size_t)(offset - aligned);
+    void *v;
+    if (!f || !size) return NULL;
+    v = mmap(NULL, size + delta, PROT_READ, MAP_SHARED, f->fd, (off_t)aligned);
+    if (v == MAP_FAILED) return NULL;
+    *base = v;
+    *mapped = size + delta;
+    return (u8 *)v + delta;
+}
+
 static int err_of(int e)
 {
     switch (e) {

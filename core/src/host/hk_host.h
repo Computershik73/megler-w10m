@@ -44,7 +44,7 @@ bool hk_mem_protect(void *p, size_t size, int prot);
 bool hk_mem_decommit(void *p, size_t size);
 /* hk_mem_protect for the committed pages of [p, p + size) alone, the others left reserved (Windows); hk_mem_protect elsewhere. */
 bool hk_mem_protect_committed(void *p, size_t size, int prot);
-/* How many bytes of [p, p + size) are committed: Windows says; -1 where the host does not (POSIX, which commits as pages are touched). */
+/* How many bytes of [p, p + size) are the process's own memory committed (not views of files or sections): Windows says; -1 where the host does not (POSIX, which commits as pages are touched). */
 i64 hk_mem_committed(const void *p, size_t size);
 void hk_mem_release(void *p, size_t size);
 /* After writing code and before running it. */
@@ -281,6 +281,12 @@ i64 hk_file_seek(hk_file *f, i64 offset, int whence, int *err);   /* whence: 0 s
 bool hk_file_truncate(hk_file *f, u64 size, int *err);
 bool hk_file_sync(hk_file *f);
 bool hk_file_stat(hk_file *f, hk_stat *st);
+/*
+ * A view of [offset, offset + size) of a file, read-only, backed by the file (not memory of the process's): NULL when the
+ * host cannot make one. `base` is what hk_section_unmap takes, with the size mapped from it (the view begins at the host's
+ * granularity below `offset`).
+ */
+void *hk_file_map(hk_file *f, u64 offset, size_t size, void **base, size_t *mapped);
 
 bool hk_path_stat(const char *path, hk_stat *st, int *err);
 bool hk_path_mkdir(const char *path, int *err);

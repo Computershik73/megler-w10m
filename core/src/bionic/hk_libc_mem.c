@@ -187,6 +187,10 @@ static void g_delete_sized(void *p, size_t n) { (void)n; hk_g_free(p); }
  * 130 MB its library goes into. Each was committed whole before, and Windows counts committed memory against the app's
  * limit whether it is touched or not: a WebView in Spotify ended out of memory with 1586 MB committed and 307 MB of
  * address space free.
+ *
+ * A file mapped read-only and shared (MAP_SHARED, PROT_READ, the descriptor opened read-only) is a view of the file
+ * itself (hk_fd_file_map), which costs the app no memory of its own: the WebView maps its ICU data and its .pak files so,
+ * 55 MB of them, each read into memory of the app's before. Any other mapping of a file is a copy of what it holds.
  */
 #define G_PROT_READ 1
 #define G_PROT_WRITE 2
@@ -329,6 +333,25 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
             return p;
         }
         if (*hk_errno_ptr() != GE_NODEV) return G_MAP_FAILED;
+        if ((prot & 7) == G_PROT_READ) {
+            /* A file read-only: a view of the file (see the top), where it is a regular file opened read-only. */
+            p = (u8 *)hk_fd_file_map(fd, offset, len, &base, &mapped);
+            if (p) {
+                r = (region *)hk_alloc(sizeof(*r));
+                r->base = p;
+                r->size = size;
+                r->view = base;
+                r->view_size = mapped;
+                r->live = (u8 *)hk_alloc(size / HK_PAGE / 8 + 1);
+                region_mark(r, 0, size, true);
+                hk_lock_acquire(&g_region_lock);
+                r->next = g_regions;
+                g_regions = r;
+                hk_lock_release(&g_region_lock);
+                hk_trace("mmap(%p, %u, prot %d, flags 0x%x, fd %d) -> %p, a view of the file", addr, (unsigned)len, prot, (unsigned)flags, fd, (void *)p);
+                return p;
+            }
+        }
     }
     if (flags & G_MAP_FIXED) {
         bool view;
