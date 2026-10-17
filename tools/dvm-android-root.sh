@@ -82,6 +82,8 @@ put() { # source, destination folder
   if [ -f "$1" ]; then cp -u "$1" "$2/"; else echo "  (not there: ${1#$ROOT/})"; fi
 }
 for name in core-oj core-libart conscrypt okhttp bouncycastle apache-xml; do put "$A9/boot/$name.dex" "$OUT/framework"; done
+bash "$ROOT/tools/build-libcore-overlay.sh"
+put "$ROOT/build/libcore-overlay/megler-libcore.dex" "$OUT/framework"
 for name in core-oj core-libart; do put "$A9/system/framework/$name.jar" "$OUT/framework"; done
 RES_SRC="$A9/system/framework/framework-res.apk"
 RES_SAID="no platform resources"

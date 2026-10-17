@@ -651,7 +651,55 @@ static int boot_jars(char out[][64], int cap)
  * is no TLS, and asking for it says so (NoSuchAlgorithmException) instead of
  * dying in a class that cannot start.
  */
-static const char *g_providers_name, *g_timezone_name, *g_vmruntime_name;
+static const char *g_providers_name, *g_timezone_name, *g_vmruntime_name, *g_conscrypt_platform_name;
+
+/* Android 9 already negotiates ALPN, but its Platform bridge predates the
+ * public SSLParameters API. Keep every original transfer (SNI, cipher order,
+ * endpoint identification, etc.) and also transfer application protocols.
+ * The additional public methods live in megler-libcore.dex. */
+static hk_dvm_method g_ssl_parameters_original[4];
+
+static void ssl_parameters_bridge(hk_jcall *c, int index)
+{
+    hk_jvalue protocols;
+    hk_jobj *from, *to;
+    if (!hk_dvm_invoke(&g_ssl_parameters_original[index], NULL, c->args, &c->ret)) return;
+    from = c->args[(index & 1) ? 1 : 0].l;
+    to = c->args[(index & 1) ? 0 : 1].l;
+    protocols.j = 0;
+    if (hk_dvm_call_virtual(from, "getApplicationProtocols", "()[Ljava/lang/String;", NULL, &protocols))
+        hk_dvm_call_virtual(to, "setApplicationProtocols", "([Ljava/lang/String;)V", &protocols, NULL);
+}
+
+N(Platform_setSocketParameters) { ssl_parameters_bridge(c, 0); }
+N(Platform_getSocketParameters) { ssl_parameters_bridge(c, 1); }
+N(Platform_setEngineParameters) { ssl_parameters_bridge(c, 2); }
+N(Platform_getEngineParameters) { ssl_parameters_bridge(c, 3); }
+
+static void extend_ssl_parameters(hk_dvm_class *cls)
+{
+    static const hk_jhle_fn functions[] = {
+        Platform_setSocketParameters, Platform_getSocketParameters,
+        Platform_setEngineParameters, Platform_getEngineParameters
+    };
+    static const char *const signatures[] = {
+        "(Ljavax/net/ssl/SSLParameters;Lcom/android/org/conscrypt/SSLParametersImpl;Lcom/android/org/conscrypt/AbstractConscryptSocket;)V",
+        "(Ljavax/net/ssl/SSLParameters;Lcom/android/org/conscrypt/SSLParametersImpl;Lcom/android/org/conscrypt/ConscryptEngine;)V"
+    };
+    int i;
+    hk_dvm_class *params = hk_dvm_find_class("javax/net/ssl/SSLParameters");
+    if (!params || !hk_dvm_find_method(params, "getApplicationProtocols", "()[Ljava/lang/String;", false)) return;
+    for (i = 0; i < 4; ++i) {
+        hk_dvm_method *m = hk_dvm_find_method(cls, (i & 1) ? "getSSLParameters" : "setSSLParameters", signatures[i / 2], true);
+        if (!m || !m->insns) continue;
+        g_ssl_parameters_original[i] = *m;
+        m->insns = NULL;
+        m->ninsns = 0;
+        m->flags |= DVM_ACC_NATIVE;
+        m->native = functions[i];
+        m->bound = true;
+    }
+}
 
 static void set_security(hk_jobj *props, const char *key, const char *value)
 {
@@ -692,6 +740,10 @@ static void own_run_finalization(hk_dvm_class *c)
 static void before_init(hk_dvm_class *c)
 {
     hk_jvalue props;
+    if (c->name == g_conscrypt_platform_name) {
+        extend_ssl_parameters(c);
+        return;
+    }
     if (c->name == g_timezone_name) {
         give_timezone_getter();
         return;
@@ -1408,6 +1460,7 @@ bool hk_dvm_art_start(void)
     g_providers_name = hk_dvm_intern("sun/security/jca/Providers");
     g_timezone_name = hk_dvm_intern("java/util/TimeZone");
     g_vmruntime_name = hk_dvm_intern("dalvik/system/VMRuntime");
+    g_conscrypt_platform_name = hk_dvm_intern("com/android/org/conscrypt/Platform");
     g_dvm.before_init = before_init;
     hk_dvm_register(k_art_nothing);
     hk_dvm_register(k_art);

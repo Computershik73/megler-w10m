@@ -1450,7 +1450,7 @@ static int run_data(void)
                                             attribute that names itself. And MessageQueue.next(), and the app's storage statistics. And a
                                             broadcast that names its receiver, which reaches that receiver alone. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "package-installer",
                                          /* And the network from Java, on loopback: names, an HTTP server of the app's own and HttpURLConnection, UDP, a server
                                             socket closed under the thread waiting in accept, a java.nio selector, the interfaces, ConnectivityManager. */
                                          "net-localhost", "net-http", "net-udp", "net-close", "net-nio", "net-interfaces", "net-connectivity" };

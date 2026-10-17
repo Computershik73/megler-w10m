@@ -1,0 +1,17 @@
+    // Android 10's public ALPN API. Conscrypt's Platform bridge transfers
+    // these values to/from SSLParametersImpl (hk_dvm_art.c).
+    private String[] applicationProtocols = new String[0];
+
+    public String[] getApplicationProtocols() {
+        return applicationProtocols.clone();
+    }
+
+    public void setApplicationProtocols(String[] protocols) {
+        if (protocols == null) throw new IllegalArgumentException("protocols == null");
+        String[] copy = protocols.clone();
+        for (String protocol : copy) {
+            if (protocol == null || protocol.isEmpty())
+                throw new IllegalArgumentException("empty application protocol");
+        }
+        applicationProtocols = copy;
+    }

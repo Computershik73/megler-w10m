@@ -300,6 +300,11 @@ public class Main extends Activity {
         queueNext();
         storageStats();
         broadcastExplicit();
+        step("package-installer", () -> {
+            android.content.pm.PackageInstaller installer = getPackageManager().getPackageInstaller();
+            return installer != null && installer == getPackageManager().getPackageInstaller()
+                    && installer.getMySessions() != null && installer.getMySessions().isEmpty();
+        });
         network();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;

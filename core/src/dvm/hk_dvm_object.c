@@ -524,6 +524,182 @@ typedef struct monitor {
     u32 notified;                      /* counts notify and notifyAll, under mu: how a waiter tells being woken from waking by itself */
 } monitor;
 
+static bool g_monitor_trace;
+static u32 g_monitor_trace_main;
+
+typedef struct monitor_total {
+    u32 object, owner, count;
+    const char *cls;
+    hk_dvm_method *method;
+    u64 ns, max_ns;
+} monitor_total;
+static monitor_total g_monitor_totals[64];
+static int g_monitor_total_count;
+
+/* Written only by the watched main thread, copied while it is suspended.
+ * Metadata and numeric addresses only: no retained application objects. */
+static void monitor_count_wait(hk_jobj *o, u32 owner, u64 ns, hk_dvm_thread *self)
+{
+    const char *cls = o->kind == HK_J_CLASS && o->native ? ((hk_dvm_class *)o->native)->name : hk_dvm_class_of(o)->name;
+    monitor_total *s;
+    int i;
+    for (i = 0; i < g_monitor_total_count; ++i)
+        if (g_monitor_totals[i].object == (u32)(hk_addr)o && g_monitor_totals[i].cls == cls) break;
+    if (i == 64) return;
+    if (i == g_monitor_total_count) ++g_monitor_total_count;
+    s = &g_monitor_totals[i];
+    s->object = (u32)(hk_addr)o;
+    s->cls = cls;
+    s->owner = owner;
+    s->method = self->top ? self->top->m : NULL;
+    ++s->count;
+    s->ns += ns;
+    if (ns > s->max_ns) s->max_ns = ns;
+}
+
+typedef struct monitor_sample {
+    u32 thread, owner, object;
+    u64 waiting_ns;
+    const char *object_class;
+    char name[80];
+    hk_dvm_method *methods[32];
+    u32 pcs[32];
+    int frames;
+} monitor_sample;
+
+/* Copy only while stopped: no allocation, logging or Java calls until every
+ * thread has resumed. The VM lock excludes GC and thread-stack destruction. */
+static void monitor_sample_copy(hk_dvm_thread *t, monitor_sample *s)
+{
+    hk_dvm_frame *f;
+    hk_dvm_class *cls;
+    hk_jobj *o = t->waiting_monitor;
+    s->thread = t->id;
+    if (o) {
+        monitor *m = (monitor *)HK_DVM_OBJ(o)->monitor;
+        s->object = (u32)(hk_addr)o;
+        s->object_class = o->kind == HK_J_CLASS && o->native ? ((hk_dvm_class *)o->native)->name : hk_dvm_class_of(o)->name;
+        s->owner = m ? m->owner : 0;
+        s->waiting_ns = hk_time_monotonic_ns() - t->monitor_wait_ns;
+    }
+    for (cls = t->peer ? hk_dvm_class_of(t->peer) : NULL; cls; cls = cls->super) {
+        int i;
+        for (i = 0; i < cls->nifields; ++i) {
+            hk_dvm_field *field = &cls->ifields[i];
+            if (!strcmp(field->name, "name") && !strcmp(field->type, "Ljava/lang/String;")) {
+                hk_jobj *name = hk_dvm_slots(t->peer)[field->slot].l;
+                if (name && name->kind == HK_J_STRING) {
+                    int j, n = name->u.str.len16;
+                    if (n >= (int)sizeof(s->name)) n = (int)sizeof(s->name) - 1;
+                    for (j = 0; j < n; ++j) s->name[j] = name->u.str.u16[j] < 128 ? (char)name->u.str.u16[j] : '?';
+                }
+                break;
+            }
+        }
+    }
+    for (f = t->top; f && s->frames < 32; f = f->prev) {
+        if ((hk_addr)f < (hk_addr)t->stack || (hk_addr)f + sizeof(*f) > (hk_addr)(t->stack + DVM_STACK_WORDS) || !f->m) break;
+        s->methods[s->frames] = f->m;
+        s->pcs[s->frames++] = f->pc;
+    }
+}
+
+static void monitor_observer(void *unused)
+{
+    u64 last = 0, last_totals = 0;
+    (void)unused;
+    while (g_dvm.running) {
+        monitor_sample samples[4];
+        monitor_total totals[64];
+        hk_dvm_thread *stopped[4], *t;
+        hk_thread_regs regs;
+        u32 wanted = g_monitor_trace_main;
+        int count = 0, ntotals = 0, i, j;
+        u64 now;
+        hk_sleep_ns(100000000ull);
+        now = hk_time_monotonic_ns();
+        if (now - last < 2000000000ull) continue;
+        memset(samples, 0, sizeof(samples));
+        hk_dvm_lock();
+        for (t = g_threads; t && t->id != wanted; t = t->next) {}
+        if (t && (t->waiting_monitor || now - last_totals >= 5000000000ull) && t->host && hk_thread_suspend(t->host, &regs)) {
+            stopped[count++] = t;
+            if (now - last_totals >= 5000000000ull) {
+                ntotals = g_monitor_total_count;
+                memcpy(totals, g_monitor_totals, sizeof(totals));
+                last_totals = now;
+            }
+            if (t->waiting_monitor && now >= t->monitor_wait_ns && now - t->monitor_wait_ns >= 1000000ull) {
+                monitor_sample_copy(t, &samples[0]);
+                wanted = samples[0].owner;
+                while (wanted && count < 4) {
+                    bool repeated = false;
+                    for (i = 0; i < count; ++i) if (stopped[i]->id == wanted) repeated = true;
+                    if (repeated) break;
+                    for (t = g_threads; t && t->id != wanted; t = t->next) {}
+                    if (!t || !t->host || !hk_thread_suspend(t->host, &regs)) break;
+                    /* Ownership can change between observing its id and
+                     * stopping that thread. Do not mislabel a former owner. */
+                    {
+                        hk_jobj *lock = stopped[count - 1]->waiting_monitor;
+                        monitor *held = lock ? (monitor *)HK_DVM_OBJ(lock)->monitor : NULL;
+                        if (!held || held->owner != t->id) {
+                            samples[count - 1].owner = held ? held->owner : 0;
+                            hk_thread_resume(t->host);
+                            break;
+                        }
+                    }
+                    stopped[count] = t;
+                    monitor_sample_copy(t, &samples[count]);
+                    wanted = samples[count++].owner;
+                }
+            }
+            for (i = count - 1; i >= 0; --i) hk_thread_resume(stopped[i]->host);
+        }
+        hk_dvm_unlock();
+        for (i = 0; i < 4 && i < ntotals; ++i) {
+            int best = i;
+            monitor_total tmp, *s;
+            for (j = i + 1; j < ntotals; ++j) if (totals[j].ns > totals[best].ns) best = j;
+            tmp = totals[i]; totals[i] = totals[best]; totals[best] = tmp;
+            s = &totals[i];
+            if (s->ns < 10000000ull) continue;
+            hk_warn("monitor-total: main=%u object=%08x class=%s waits=%u total=%.1f ms max=%.1f ms last-owner=%u site=%s.%s",
+                    g_monitor_trace_main, s->object, s->cls, s->count, (double)s->ns / 1e6, (double)s->max_ns / 1e6, s->owner,
+                    s->method ? s->method->cls->name : "?", s->method ? s->method->name : "?");
+        }
+        if (!samples[0].object) continue;
+        last = now;
+        for (i = 0; i < count; ++i) {
+            monitor_sample *s = &samples[i];
+            hk_warn("monitor-trace: %s tid=%u name=%s waiting=%.1f ms object=%08x class=%s owner=%u",
+                    i ? "owner" : "MAIN", s->thread, s->name, (double)s->waiting_ns / 1e6,
+                    s->object, s->object_class ? s->object_class : "(not entering a monitor)", s->owner);
+            for (j = 0; j < s->frames; ++j) {
+                hk_dvm_method *m = s->methods[j];
+                hk_warn("monitor-trace: tid=%u #%d %s.%s%s pc=%u line=%d", s->thread, j,
+                        m->cls->name, m->name, m->sig, s->pcs[j], hk_dvm_dex_line(m, s->pcs[j]));
+            }
+        }
+    }
+}
+
+void hk_dvm_monitor_trace_start(void)
+{
+    hk_thread *observer;
+    if (g_monitor_trace) return;
+    g_monitor_trace_main = hk_dvm_self()->id;
+    g_monitor_trace = true;
+    observer = hk_thread_start(monitor_observer, NULL, 128u * 1024u, "monitor-observer");
+    if (observer) {
+        hk_thread_detach(observer);
+        hk_info("monitor-trace: watching Java main tid=%u; waits >=1 ms, at most one sample per 2 s; object totals every 5 s", g_monitor_trace_main);
+    } else {
+        g_monitor_trace = false;
+        hk_warn("monitor-trace: observer could not start");
+    }
+}
+
 void hk_dvm_object_dying(void *p)
 {
     hk_dvm_obj *o = (hk_dvm_obj *)p;
@@ -560,7 +736,15 @@ void hk_dvm_monitor_enter(hk_jobj *o)
         /* Another thread has it: the wait, counted for bytecode's own monitor-enter (inside a native method it is the method's). */
         hk_dvm_thread *self = hk_dvm_self();
         u64 started = self->native_depth ? 0 : hk_time_ticks();
+        u32 observed_owner = m->owner;
+        if (g_monitor_trace) {
+            self->monitor_wait_ns = hk_time_monotonic_ns();
+            self->waiting_monitor = o;
+        }
         hk_lock_acquire(&m->mu);
+        self->waiting_monitor = NULL;
+        if (g_monitor_trace && me == g_monitor_trace_main)
+            monitor_count_wait(o, observed_owner, hk_time_monotonic_ns() - self->monitor_wait_ns, self);
         if (started) self->blocked_ticks += hk_time_ticks() - started;
     }
     m->owner = me;

@@ -30,6 +30,7 @@
 #include "../bionic/hk_fd.h"
 #include "../dvm/hk_dvm_internal.h"
 #include "../host/hk_host.h"
+#include "../hk_core.h"
 #include "../ld/hk_ld.h"
 #include "../ndk/hk_ndk.h"
 #include "../run/hk_run.h"
@@ -1073,6 +1074,7 @@ static void main_thread(void *arg)
     else if (hk_dvm_app_follows(), hk_dvm_add_apk(J.config->apk_path) < 1) snprintf(why, sizeof(why), "the APK has no classes.dex that can be read");
     if (!why[0]) {
         hk_jvalue sdk;
+        if (hk_flag("trace-monitors")) hk_dvm_monitor_trace_start();
         /*
          * One process, one answer to "which Android is this": what the framework's Build.VERSION.SDK_INT tells the app's Java
          * is what its native code is told too (the property, android_get_device_api_level, AConfiguration_getSdkVersion).

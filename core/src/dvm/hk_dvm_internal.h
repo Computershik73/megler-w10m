@@ -252,6 +252,10 @@ struct hk_dvm_thread {
      */
     int native_depth;
     volatile u64 native_ticks, natives, alloc_ticks, allocs, blocked_ticks;
+    /* Opt-in monitor diagnosis. Published only while entering a contended
+     * monitor; sampled with this thread suspended and the VM lock held. */
+    hk_jobj *volatile waiting_monitor;
+    volatile u64 monitor_wait_ns;
     /*
      * What it has made (hk_dvm_get_stats sums every thread's), and the bytes not yet counted toward the next collection:
      * counted by the thread alone, and handed to the collector a few kilobytes at a time (alloc_raw), so that an
@@ -420,6 +424,7 @@ const char *hk_dvm_defined_name(u32 i, hk_dvm_dex **dex);
 /* -------------------------------------------------------- hk_dvm_object.c */
 
 hk_dvm_thread *hk_dvm_self(void);
+void hk_dvm_monitor_trace_start(void);
 /* For the collector, with the runtime's lock held: every thread there is, and every interned string. */
 void hk_dvm_threads_each(void (*fn)(hk_dvm_thread *t, void *user), void *user);
 void hk_dvm_interned_each(void (*fn)(hk_jobj *s, void *user), void *user);

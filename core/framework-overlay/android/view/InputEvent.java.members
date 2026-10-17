@@ -1,0 +1,4 @@
+    // Android source constants are bit masks (Spotify tests pointer sources).
+    public boolean isFromSource(int source) {
+        return (getSource() & source) == source;
+    }

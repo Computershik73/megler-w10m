@@ -35,8 +35,8 @@ has to answer.
   Java run on a phone with it -- views, lists, dialogs, a second Activity,
   preferences, background tasks, databases, a native library of their own --
   and the first real apps start there (docs/STATUS.md says how far each
-  gets), their text in Android's own fonts; what they still wait for is
-  garbage collection, sound and TLS (https).
+  gets), their text in Android's own fonts. HTTPS through Android's HTTP
+  client and Conscrypt has also been checked on the HP Elite x3.
 - OpenGL ES 2.0 on any phone; 3.0 where the GPU's driver gives Direct3D feature
   level 10 or more. No Vulkan.
 - Sound through OpenSL ES buffer queues (what FMOD, OpenAL Soft and SDL sit on).
@@ -44,8 +44,10 @@ has to answer.
   decodes (MP4 with H.264 and AAC).
 - The network over the phone's own Winsock: TCP and UDP, servers included, names,
   the interfaces, from native code and from Java (`HttpURLConnection` over
-  http, `java.net`, NIO). Tested on a PC and under qemu, not yet on a phone. No
-  TLS yet: https fails.
+  http, `java.net`, NIO). Tested on a PC, under qemu and on the HP Elite x3.
+  TLS uses Android 9's Conscrypt and BoringSSL: the phone passes the loopback
+  TLS tests and reads external HTTPS responses with normal certificate and
+  hostname verification. Individual apps can still require unsupported APIs.
 
 The app's library page tells, for each APK, what it is and why it can or cannot run.
 

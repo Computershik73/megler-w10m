@@ -1,0 +1,9 @@
+    // Conscrypt's existing socket subclasses implement these methods. The
+    // declarations also let invoke-virtual through the public API resolve.
+    public String getApplicationProtocol() {
+        throw new UnsupportedOperationException();
+    }
+
+    public String getHandshakeApplicationProtocol() {
+        throw new UnsupportedOperationException();
+    }

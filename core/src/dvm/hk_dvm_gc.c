@@ -227,6 +227,7 @@ static void exact_thread_roots(hk_dvm_thread *t, void *user)
     (void)user;
     reach_ref(t->pending, NULL);
     reach_ref(t->peer, NULL);
+    reach_ref(t->waiting_monitor, NULL);
     reach_word((hk_addr)t->scratch.l);
 }
 

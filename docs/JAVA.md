@@ -3028,13 +3028,15 @@ native code is.
   have.
 - Images other than what the shell decodes; the stand-in reads PNG alone, and
   Windows 10 Mobile has no WebP decoder, which apps' resources use heavily.
-- **The network is not tried on a phone**: sockets and names are the phone's
+- **The network passes on the HP Elite x3** (2026-10-16): sockets and names are the phone's
   own Winsock's (`bionic/hk_net.c`, `hk_netdb.c`; docs/ARCHITECTURE.md, "The
   network"), and `java.net`, `HttpURLConnection` over http and `java.nio`
-  work on them under qemu.
+  work on them under qemu and on the phone. The phone also reads external
+  HTTP and HTTPS responses; see [PHONE-NETWORK.md](PHONE-NETWORK.md).
 - **TLS is conscrypt's** where `libjavacrypto.so` is in the root ("The
-  security providers"): seen under qemu, on loopback; not yet on a phone, and
-  not yet against a server on the Internet. Where it is not in the root,
+  security providers"): tested under qemu and on the phone, on loopback and
+  against Internet servers. Android 10's SSLSockets and public ALPN APIs
+  bridge to that same provider. Where it is not in the root,
   digests, random numbers, MACs and ciphers are had without it, and TLS and
   whatever asks conscrypt's provider by name for more than a digest are not.
   conscrypt's `SSLEngine` (what Netty and gRPC use) has not been tried.
