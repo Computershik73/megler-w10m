@@ -20,6 +20,13 @@
 # lines to add three would hide what was added; this way the overlay holds only
 # that. The file begins with comment lines that say what is added and why.
 #
+# A third kind takes a file of the original's away: X.java.removed, whose
+# lines are comments that say why, means the original's X.java (under src or
+# gen-src) is not compiled at all. It is for a class of the original's that
+# has no place beside what the overlay brings in its stead: the WebView's own
+# glue classes, which the WebView's APK carries, and the original's helpers of
+# a WebView over WKWebView, which the overlay's android.webkit does not use.
+#
 # javac, then d8, as the original's build.sh does it with the tools of its
 # author's machine; here with what this PC has. The original's first step,
 # gen/gles20.py, is left out: it rewrites files inside the other repository,
@@ -65,13 +72,20 @@ m() { cygpath -m "$1"; }
 
 # The overlay's files, and the original's but for those the overlay replaces.
 (cd "$OVERLAY" && find . -name '*.java' | sed 's|^\./||' | sort) > "$OUT/overlay.txt"
+(cd "$OVERLAY" && find . -name '*.java.removed' | sed 's|^\./||; s|\.removed$||' | sort) > "$OUT/removed.txt"
 : > "$OUT/sources.txt"
 REPLACED=0
+REMOVED=0
 for tree in src gen-src; do
   while IFS= read -r rel; do
-    if grep -q -x -F "$rel" "$OUT/overlay.txt"; then REPLACED=$((REPLACED + 1)); else echo "$FW/$tree/$rel" >> "$OUT/sources.txt"; fi
+    if grep -q -x -F "$rel" "$OUT/overlay.txt"; then REPLACED=$((REPLACED + 1))
+    elif grep -q -x -F "$rel" "$OUT/removed.txt"; then REMOVED=$((REMOVED + 1))
+    else echo "$FW/$tree/$rel" >> "$OUT/sources.txt"; fi
   done < <(cd "$FW/$tree" && find . -name '*.java' | sed 's|^\./||' | sort)
 done
+while IFS= read -r rel; do
+  [ -f "$FW/src/$rel" ] || [ -f "$FW/gen-src/$rel" ] || { echo "core/framework-overlay/$rel.removed takes away $rel, which the original does not have" >&2; exit 1; }
+done < "$OUT/removed.txt"
 ORIGINALS=$(wc -l < "$OUT/sources.txt")
 sed "s|^|$OVERLAY/|" "$OUT/overlay.txt" >> "$OUT/sources.txt"
 # The classes that are given more members: each compiled from a copy with the members in it, in place of the file it was made from.
@@ -99,7 +113,7 @@ EOF
 done < <(cd "$OVERLAY" && find . -name '*.java.members' | sed 's|^\./||' | sort)
 win < "$OUT/sources.txt" > "$OUT/sources.arg"
 find "$FW/stubs" -name '*.java' | sort | win > "$OUT/stubs.arg"
-echo "framework: $ORIGINALS files of the original's, $(wc -l < "$OUT/overlay.txt") of the overlay ($REPLACED of them in place of an original), $ADDED classes given more members"
+echo "framework: $ORIGINALS files of the original's, $(wc -l < "$OUT/overlay.txt") of the overlay ($REPLACED of them in place of an original), $ADDED classes given more members, $REMOVED of the original's taken away"
 
 "$JDK/bin/javac" -nowarn -source 8 -target 8 -encoding UTF-8 -d "$(m "$OUT/stubs")" "@$(m "$OUT/stubs.arg")" 2> "$OUT/javac-stubs.log" \
   || { grep -v '^Note:\|^warning:' "$OUT/javac-stubs.log" | head -40 >&2; echo "javac failed on the stubs" >&2; exit 1; }

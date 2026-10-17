@@ -76,6 +76,8 @@ static struct {
 
 static HK_THREAD_LOCAL sb_context *t_ctx;
 static HK_THREAD_LOCAL sb_surface *t_surf;
+static bool g_complete;
+static bool complete_integer(u32 name, i32 *v);
 
 /* ------------------------------------------------------------------- EGL */
 
@@ -123,8 +125,17 @@ static unsigned e_GetConfigAttrib(void *d, void *c, int attrib, int *value)
     case 0x3025: *value = 24; break;                                          /* depth */
     case 0x3026: *value = 8; break;                                           /* stencil */
     case 0x3033: *value = 5; break;                                           /* window and pbuffer */
-    case 0x3040: *value = 0x45; break;                                        /* OpenGL ES 1, 2, 3 */
+    case 0x3040: case 0x3042: *value = 0x45; break;                           /* renderable and conformant: OpenGL ES 1, 2, 3 */
     case 0x302E: *value = 1; break;
+    /* And the rest of what a config says, as a driver's one config of 8888 with depth and stencil would. */
+    case 0x3020: *value = 32; break;                                          /* buffer size */
+    case 0x303F: *value = 0x308E; break;                                      /* colour buffer type: RGB */
+    case 0x3027: case 0x3034: *value = 0x3038; break;                         /* caveat, transparency: none */
+    case 0x3028: *value = 1; break;                                           /* config id */
+    case 0x3039: case 0x303A: *value = 1; break;                              /* binds to RGB and RGBA textures */
+    case 0x303C: *value = 1; break;                                           /* max swap interval */
+    case 0x302C: case 0x302A: *value = 4096; break;                           /* max pbuffer width, height */
+    case 0x302B: *value = 4096 * 4096; break;                                 /* max pbuffer pixels */
     default: *value = 0;
     }
     return 1;
@@ -139,6 +150,11 @@ static void *e_CreateContext(void *d, void *c, void *share, const int *attribs)
     hk_lock_acquire(&g_lock);
     if (version == 1 && !S.es1) {
         S.stats.refused_es1++;
+        hk_lock_release(&g_lock);
+        return NULL;
+    }
+    /* The complete mode is a driver of OpenGL ES 2.0 alone (see there). */
+    if (version >= 3 && g_complete) {
         hk_lock_release(&g_lock);
         return NULL;
     }
@@ -827,7 +843,8 @@ static void g_GetIntegerv(u32 name, i32 *v)
     case GL_CURRENT_PROGRAM: *v = (i32)t_ctx->program; break;
     case GL_ARRAY_BUFFER_BINDING: *v = (i32)t_ctx->array_buffer; break;
     case GL_TEXTURE_BINDING_2D: *v = (i32)t_ctx->texture; break;
-    default: *v = 0;
+    default:
+        if (!(g_complete && complete_integer(name, v))) *v = 0;
     }
 }
 
@@ -836,6 +853,109 @@ static void g_GetFloatv(u32 name, float *v)
     if (t_ctx && name == 0x0C22) memcpy(v, t_ctx->clear, sizeof(t_ctx->clear));   /* GL_COLOR_CLEAR_VALUE */
     else if (v) v[0] = 0;
 }
+
+/* ---------------------------------------------------------- complete mode
+ *
+ * For an app that brings a GL stack of its own and builds it on the system's EGL and OpenGL ES: the WebView's Chromium,
+ * whose ANGLE runs its OpenGL ES back end over libEGL.so and libGLESv2.so, loads every entry point of EGL 1.4 and OpenGL ES
+ * 2.0 by name, creates its context and queries what the driver can do, all before a page is shown -- and its pages are
+ * drawn in software here, so nothing of that GL draws. In this mode (hk_gl_standin_set_complete) the stand-in is a driver
+ * of OpenGL ES 2.0 only with every function there: the ones above as they are, the rest doing nothing, names made by the
+ * glGen* calls, an OpenGL ES 2.0 device's limits answered, framebuffers complete, shader precision highp. The EGL
+ * functions that were missing are there in either mode: they are EGL 1.4's.
+ */
+static volatile i32 g_next_name = 1000;
+
+static unsigned e_GetConfigs(void *d, void **configs, int size, int *num)
+{
+    (void)d;
+    if (configs && size > 0) configs[0] = (void *)(hk_addr)0xC0F;
+    if (num) *num = 1;
+    return 1;
+}
+static void *e_GetCurrentSurface(int which) { (void)which; return t_surf; }
+static void *e_GetCurrentDisplay(void) { return t_ctx ? (void *)(hk_addr)0xD15 : NULL; }
+/* A window surface is a surface of the window's size where the window says one, 1 x 1 otherwise: nothing shows it. */
+static void *e_CreateWindowSurface(void *d, void *c, void *window, const int *attribs)
+{
+    (void)window;
+    return e_CreatePbuffer(d, c, attribs);
+}
+static unsigned e_SurfaceThing(void *d, void *s, int a) { (void)d; (void)s; (void)a; return 1; }
+static unsigned e_SurfaceAttrib(void *d, void *s, int a, int v) { (void)d; (void)s; (void)a; (void)v; return 1; }
+static unsigned e_QueryContext(void *d, void *ctx, int attrib, int *value)
+{
+    (void)d;
+    if (!ctx || !value) return 0;
+    *value = attrib == 0x3098 ? ((sb_context *)ctx)->version : attrib == 0x3028 ? 0xC0F : attrib == 0x3086 ? 0x3084 : 0;
+    return 1;
+}
+static unsigned e_QueryAPI(void) { return 0x30A0; }   /* EGL_OPENGL_ES_API */
+static unsigned e_WaitNative(int engine) { (void)engine; return 1; }
+
+static u32 g_Inert(void) { return 0; }
+static void g_Gen(i32 n, u32 *out)
+{
+    i32 i;
+    for (i = 0; out && i < n; i++) out[i] = (u32)hk_atomic_add(&g_next_name, 1);
+}
+static u32 g_CheckFramebufferStatus(u32 target) { (void)target; return 0x8CD5; }   /* GL_FRAMEBUFFER_COMPLETE */
+static void g_GetBooleanv(u32 name, u8 *v) { (void)name; if (v) v[0] = 0; }
+static void g_GetParamiv3(u32 a, u32 b, i32 *v) { (void)a; (void)b; if (v) v[0] = 0; }
+static void g_GetParamiv4(u32 a, u32 b, u32 c, i32 *v) { (void)a; (void)b; (void)c; if (v) v[0] = 0; }
+static void g_GetShaderPrecisionFormat(u32 shader, u32 precision, i32 *range, i32 *bits)
+{
+    (void)shader;
+    /* The low, medium and high float and int precisions of a device that has highp everywhere. */
+    if (range) range[0] = range[1] = precision >= 0x8DF3 ? 31 : 127;
+    if (bits) *bits = precision >= 0x8DF3 ? 0 : 23;
+}
+static u32 g_IsSomething(u32 name) { return name != 0; }
+
+/* The complete mode's answers to glGetIntegerv beyond the drawing stand-in's own. */
+static bool complete_integer(u32 name, i32 *v)
+{
+    switch (name) {
+    case 0x851C: case 0x84E8: *v = 4096; return true;           /* MAX_CUBE_MAP_TEXTURE_SIZE, MAX_RENDERBUFFER_SIZE */
+    case 0x0D3A: v[0] = v[1] = 4096; return true;               /* MAX_VIEWPORT_DIMS */
+    case 0x8872: case 0x8B4C: *v = 16; return true;             /* MAX_TEXTURE_IMAGE_UNITS, MAX_VERTEX_TEXTURE_IMAGE_UNITS */
+    case 0x8B4D: *v = 32; return true;                          /* MAX_COMBINED_TEXTURE_IMAGE_UNITS */
+    case 0x8DFB: *v = 256; return true;                         /* MAX_VERTEX_UNIFORM_VECTORS */
+    case 0x8DFD: *v = 224; return true;                         /* MAX_FRAGMENT_UNIFORM_VECTORS */
+    case 0x8DFC: *v = 15; return true;                          /* MAX_VARYING_VECTORS */
+    case 0x0D50: *v = 4; return true;                           /* SUBPIXEL_BITS */
+    case 0x0D52: case 0x0D53: case 0x0D54: case 0x0D55: case 0x0D57: *v = 8; return true;   /* RED..ALPHA_BITS, STENCIL_BITS */
+    case 0x0D56: *v = 24; return true;                          /* DEPTH_BITS */
+    case 0x8B9B: *v = GL_RGBA; return true;                     /* IMPLEMENTATION_COLOR_READ_FORMAT */
+    case 0x8B9A: *v = 0x1401; return true;                      /* IMPLEMENTATION_COLOR_READ_TYPE: UNSIGNED_BYTE */
+    case 0x846D: case 0x846E: v[0] = v[1] = 1; return true;     /* ALIASED_POINT_SIZE_RANGE, ALIASED_LINE_WIDTH_RANGE */
+    default: return false;
+    }
+}
+
+static void *complete_fn(const char *name)
+{
+    static const struct { const char *name; void *fn; } k[] = {
+        { "glGenFramebuffers", (void *)g_Gen }, { "glGenRenderbuffers", (void *)g_Gen }, { "glGenVertexArrays", (void *)g_Gen },
+        { "glGenVertexArraysOES", (void *)g_Gen }, { "glGenQueries", (void *)g_Gen }, { "glGenQueriesEXT", (void *)g_Gen },
+        { "glGenSamplers", (void *)g_Gen }, { "glGenTransformFeedbacks", (void *)g_Gen },
+        { "glCheckFramebufferStatus", (void *)g_CheckFramebufferStatus }, { "glGetBooleanv", (void *)g_GetBooleanv },
+        { "glGetShaderPrecisionFormat", (void *)g_GetShaderPrecisionFormat },
+        { "glGetRenderbufferParameteriv", (void *)g_GetParamiv3 }, { "glGetTexParameteriv", (void *)g_GetParamiv3 },
+        { "glGetTexParameterfv", (void *)g_GetParamiv3 }, { "glGetBufferParameteriv", (void *)g_GetParamiv3 },
+        { "glGetVertexAttribiv", (void *)g_GetParamiv3 }, { "glGetVertexAttribfv", (void *)g_GetParamiv3 },
+        { "glGetFramebufferAttachmentParameteriv", (void *)g_GetParamiv4 },
+        { "glIsBuffer", (void *)g_IsSomething }, { "glIsFramebuffer", (void *)g_IsSomething }, { "glIsRenderbuffer", (void *)g_IsSomething },
+        { "glIsProgram", (void *)g_IsSomething }, { "glIsShader", (void *)g_IsSomething },
+    };
+    size_t i;
+    for (i = 0; i < HK_COUNT(k); i++)
+        if (!strcmp(k[i].name, name)) return k[i].fn;
+    /* Everything else of OpenGL ES 2.0 and its extensions: done, and nothing comes of it. */
+    return name[0] == 'g' && name[1] == 'l' ? (void *)g_Inert : NULL;
+}
+
+void hk_gl_standin_set_complete(bool on) { g_complete = on; }
 
 /* ------------------------------------------------------------- the table */
 
@@ -850,6 +970,11 @@ void *hk_gl_standin(const char *name)
         { "eglSwapBuffers", (void *)e_SwapBuffers }, { "eglSwapInterval", (void *)e_SwapInterval }, { "eglQuerySurface", (void *)e_QuerySurface },
         { "eglQuerySurfacePointerANGLE", (void *)e_QuerySurfacePointer },
         { "eglBindAPI", (void *)e_BindAPI }, { "eglReleaseThread", (void *)e_True }, { "eglWaitClient", (void *)e_True },
+        { "eglGetConfigs", (void *)e_GetConfigs }, { "eglGetCurrentSurface", (void *)e_GetCurrentSurface },
+        { "eglGetCurrentDisplay", (void *)e_GetCurrentDisplay }, { "eglCreateWindowSurface", (void *)e_CreateWindowSurface },
+        { "eglBindTexImage", (void *)e_SurfaceThing }, { "eglReleaseTexImage", (void *)e_SurfaceThing },
+        { "eglSurfaceAttrib", (void *)e_SurfaceAttrib }, { "eglQueryContext", (void *)e_QueryContext }, { "eglQueryAPI", (void *)e_QueryAPI },
+        { "eglWaitGL", (void *)e_True }, { "eglWaitNative", (void *)e_WaitNative },
         { "glCreateShader", (void *)g_CreateShader }, { "glShaderSource", (void *)g_ShaderSource }, { "glCompileShader", (void *)g_CompileShader },
         { "glDeleteShader", (void *)g_DeleteShader }, { "glGetShaderiv", (void *)g_GetShaderiv }, { "glGetShaderInfoLog", (void *)g_GetShaderInfoLog },
         { "glGetShaderSource", (void *)g_GetShaderSource }, { "glCreateProgram", (void *)g_CreateProgram }, { "glAttachShader", (void *)g_AttachShader },
@@ -876,7 +1001,7 @@ void *hk_gl_standin(const char *name)
     size_t i;
     for (i = 0; i < HK_COUNT(k); i++)
         if (!strcmp(k[i].name, name)) return k[i].fn;
-    return NULL;
+    return g_complete ? complete_fn(name) : NULL;
 }
 
 void hk_gl_standin_stats_get(hk_gl_standin_stats *out)

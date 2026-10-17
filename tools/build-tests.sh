@@ -48,7 +48,9 @@
 # shell that composes the window from the frames the core hands it, and with one
 # that refuses them, the core composing. And `data`, a database through
 # the framework's android.database.sqlite, twice, the second run on what the
-# first left, where the core has SQLite in it (build/sqlite). Their
+# first left, where the core has SQLite in it (build/sqlite). And `webview`,
+# Android's System WebView on pages of the app's own server, where the
+# Android root carries the WebView (tools/webview-fetch.sh). Their
 # pictures are written to build/java-pictures as BMP files. Each is then run
 # once more with its calls of the shell's drawing recorded
 # (build/gfx-records/<app>.rec), for the Windows build to draw again.
@@ -173,6 +175,14 @@ EOF
         done
       else
         echo "(the Java test app data is not run: the core was built without SQLite)"
+      fi
+      # The WebView app: Android's System WebView, Chromium, from the Android root (tools/webview-fetch.sh brings it), on pages
+      # of the app's own server on loopback. Only where the root carries it.
+      if [ -f "$ROOT/build/guest/java/webview.apk" ] && [ -f "$ROOT/build/android9/root/app/webview/webview.apk" ]; then
+        echo "the Java test app webview (build/guest/java/webview.apk), through megler_run: Android's System WebView from the Android root"
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/webview.apk' $WB/webview.apk && rm -rf $WB/java-data-webview && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --java webview $WB/webview.apk $WB/java-data-webview $WB/android-root '$WROOT/build/java-pictures' 0 480x800@160 2>&1" || STATUS=1
+      else
+        echo "(the Java test app webview is not run: no WebView in the Android root -- tools/webview-fetch.sh fetches it)"
       fi
       # The GL app again with a shell that does not compose the window (gl_frame says no): the core reads the frames back and
       # composes the window itself, the way taken where EGL shares no textures; the same checks of the picture.

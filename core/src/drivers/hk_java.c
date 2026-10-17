@@ -1095,6 +1095,7 @@ static void main_thread(void *arg)
         hk_dvm_register(k_native);
         hk_dvm_register(k_absent);
         hk_dvm_register(hk_java_sqlite_natives());
+        hk_dvm_register(hk_java_webview_natives());
         hk_java_gfx_set_host(&J.config->gfx);
         hk_java_gfx_set_present(present, NULL);
         hk_java_gfx_set_present_canvas(present_canvas, NULL);

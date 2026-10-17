@@ -19,6 +19,9 @@
 // And in keyFocus(), which the original does not have: the focused view of the window keys go to, which the overlay's
 // megler.InputMethods names in the log when typed text arrives.
 //
+// And it no longer tells android.webkit.WebView that windows came and went (meglerWindowsChanged, which the original's
+// WebView over WKWebView used to place its host's view): a WebView is Android's here, Chromium, drawn as a view.
+//
 // And in what the keyboard does to a window, which is now Android's: the window's softInputMode decides (adjustMode).
 //  - adjustResize: an activity's window gets the keyboard in its insets, so the decor keeps the content above it, as before;
 //    a dialog is measured to fit the screen above the keyboard and placed in that by its gravity (centred, usually), and
@@ -105,7 +108,6 @@ public final class ViewRoot implements ViewParent {
         if (v.getLayoutParams() == null) v.setLayoutParams(r.mLp);
         sFullRedraw = true;
         r.attach();
-        android.webkit.WebView.meglerWindowsChanged();
         if (r.mHasFocus) for (ViewRoot o : sRoots) if (o != r && o.mHasFocus && r.focusable()) { o.mHasFocus = false; o.mView.dispatchWindowFocusChanged(false); o.mObserver.meglerWindowFocus(false); }
         scheduleFrame();
         return r;
@@ -184,7 +186,6 @@ public final class ViewRoot implements ViewParent {
         sRoots.remove(this);
         if (sTouchTarget == this) sTouchTarget = null;
         mView.meglerDetach();
-        android.webkit.WebView.meglerWindowsChanged();
         mObserver.meglerAttached(false);
         if (hadFocus) {
             for (int i = sRoots.size() - 1; i >= 0; i--) {

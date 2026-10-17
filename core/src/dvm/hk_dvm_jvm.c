@@ -165,9 +165,44 @@ static const hk_sym k_jvm[] = {
 };
 
 /*
+ * The libraries whose JNI_OnLoad has run for Java, as ART keeps the libraries a
+ * class loader has loaded. A library can be in the process before Java loads
+ * it -- dlopen from native code, or android.webkit.WebViewLibraryLoader, which
+ * loads the WebView's library with its constructors run and no JNI_OnLoad, as
+ * Android's android_dlopen_ext does -- and its JNI_OnLoad then runs at the first
+ * System.loadLibrary of it, as ART's does.
+ */
+static hk_lib *g_java_loaded[64];
+static int g_njava_loaded;
+static hk_lock g_java_loaded_lock = HK_LOCK_INIT;
+
+static bool java_loaded(const hk_lib *lib)
+{
+    int i;
+    bool there = false;
+    hk_lock_acquire(&g_java_loaded_lock);
+    for (i = 0; i < g_njava_loaded && !there; i++) there = g_java_loaded[i] == lib;
+    hk_lock_release(&g_java_loaded_lock);
+    return there;
+}
+
+static void set_java_loaded(hk_lib *lib)
+{
+    hk_lock_acquire(&g_java_loaded_lock);
+    if (g_njava_loaded < (int)HK_COUNT(g_java_loaded)) g_java_loaded[g_njava_loaded++] = lib;
+    hk_lock_release(&g_java_loaded_lock);
+}
+
+/*
  * One library, of the runtime's or of the app's, loaded once: a second call
  * for it answers true and does nothing, as ART does for a library its class
  * loader has loaded (the library's JNI_OnLoad is not run again).
+ *
+ * A system library -- one the layer itself answers for, as libjnigraphics.so or
+ * libwebviewchromium_plat_support.so, which the WebView loads by name -- is
+ * there already and has no JNI_OnLoad: the answer is true. A path inside an APK,
+ * "<apk>!/lib/<abi>/<name>" (an APK whose libraries are used from it, as the
+ * WebView's are), is the library of that name, as a file of its own is.
  *
  * An app's library is the APK's of that file name. Only a path that is not in
  * the APK and names a file with something in it -- a library the app unpacked
@@ -190,8 +225,11 @@ static bool load_native(const char *name_or_path, bool runtime, char *why, size_
     void *onload;
     i32 version;
     why[0] = 0;
-    if (lib) return true;
-    if (runtime) {
+    if (!runtime && hk_bionic_is_system_lib(base)) return true;
+    if (lib && java_loaded(lib)) return true;
+    if (lib) {
+        /* in the process already, not yet by Java: its JNI_OnLoad is run now, once (see above) */
+    } else if (runtime) {
         lib = hk_ld_load_runtime(base);
     } else if (hk_ld_has_lib(base)) {
         lib = hk_ld_load(base);
@@ -211,6 +249,7 @@ static bool load_native(const char *name_or_path, bool runtime, char *why, size_
         snprintf(why, why_size, "dlopen failed: \"%s\" could not be loaded (the layer's log says what its linker made of it)", name_or_path);
         return false;
     }
+    set_java_loaded(lib);
     onload = hk_ld_sym(lib, "JNI_OnLoad");
     if (!onload || hk_ld_lib_of(onload) != lib) return true;    /* a library need not have one */
     was_frame = t->onload_frame;

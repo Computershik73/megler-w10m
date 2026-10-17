@@ -33,6 +33,12 @@ typedef struct hk_gl_standin_stats {
 void hk_gl_standin_stats_get(hk_gl_standin_stats *out);
 /* Back to nothing made and nothing counted; whether GL_EXT_read_format_bgra is listed, and whether version 1 is made. */
 void hk_gl_standin_reset(bool bgra, bool es1);
+/*
+ * The complete mode: a driver of OpenGL ES 2.0 alone in which every function of EGL 1.4 and OpenGL ES 2.0 is there, those it
+ * does not draw with doing nothing (hk_gl_standin.c, "complete mode"), for an app with a GL stack of its own over the
+ * system's: the WebView's Chromium. Off unless asked for, and left as it is by hk_gl_standin_reset.
+ */
+void hk_gl_standin_set_complete(bool on);
 /* The colour of a pixel of the calling thread's current surface as 0xRRGGBBAA, (0, 0) its bottom left; 0 with none. */
 u32 hk_gl_standin_pixel(int x, int y);
 /*

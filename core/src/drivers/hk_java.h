@@ -41,6 +41,9 @@ void hk_java_keyboard_height(int pixels);
 /* hk_java_sqlite.c: megler.Sqlite's native methods, on the SQLite compiled into the core -- or, in a build without it, their refusal. */
 const hk_jhle *hk_java_sqlite_natives(void);
 
+/* hk_java_webview.c: what Android's platform gives the WebView besides Java (its library loader, its platform support). */
+const hk_jhle *hk_java_webview_natives(void);
+
 #ifdef __cplusplus
 }
 #endif

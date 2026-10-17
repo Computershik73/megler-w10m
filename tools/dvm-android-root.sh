@@ -44,6 +44,9 @@
 #                           app's text is then as wide and as tall as its
 #                           layout was made for. Without them the phone's own
 #                           fonts stand in.
+#   etc/fonts.xml           Android's list of those families and their
+#                           files, which native code that draws its own text
+#                           reads (Chromium's Skia, in the WebView)
 #   usr/icu/icudt60l.dat    ICU's data
 #   usr/share/zoneinfo/*    the time zones
 #   app/webview/webview.apk Android's System WebView, AOSP's prebuilt of
@@ -53,6 +56,10 @@
 #                           tools/webview-fetch.sh has fetched it
 #                           (build/webview/webview.apk); without it a WebView
 #                           cannot be made, as on a phone without one
+#   lib/libwebviewchromium_plat_support.so
+#                           the name of the platform's WebView support, which
+#                           the WebView loads by name: a file that says so, as
+#                           its natives are the core's (hk_java_webview.c)
 #
 # Files are copied only when they are missing or older than their source, and
 # the script says what the folder holds and how large it is.
@@ -133,16 +140,23 @@ for f in "$A9/system/fonts/"*.ttf; do
   FONTS=$((FONTS + 1))
 done
 [ "$FONTS" -gt 0 ] || echo "  (no fonts in build/android9/system/fonts: tools/android9-unpack.sh fonts takes them out of the image)"
+# The list of the families and their files, which native code reads as Android's own is read: Chromium's Skia (the WebView)
+# has no fonts at all without it, and ends on its first text.
+if [ -f "$A9/system/etc/fonts.xml" ]; then
+  mkdir -p "$OUT/etc"
+  cp -u "$A9/system/etc/fonts.xml" "$OUT/etc/"
+fi
 size() { du -sk "$1" | cut -f1; }
-# Android's System WebView, where tools/webview-fetch.sh has put it.
+# Android's System WebView, where tools/webview-fetch.sh has put it, and the name of its platform support library.
 WEBVIEW="no WebView"
 if [ -f "$ROOT/build/webview/webview.apk" ]; then
   mkdir -p "$OUT/app/webview"
   cmp -s "$ROOT/build/webview/webview.apk" "$OUT/app/webview/webview.apk" || cp "$ROOT/build/webview/webview.apk" "$OUT/app/webview/webview.apk"
+  echo "The platform support of the WebView: its natives are answered by the core (core/src/drivers/hk_java_webview.c)." > "$OUT/lib/libwebviewchromium_plat_support.so"
   WEBVIEW="the WebView $(size "$OUT/app/webview") KB"
 else
   echo "  (not there: build/webview/webview.apk: tools/webview-fetch.sh fetches Android's System WebView)"
-  rm -rf "$OUT/app/webview"
+  rm -rf "$OUT/app/webview" "$OUT/lib/libwebviewchromium_plat_support.so"
 fi
 # The Java framework an app with an Activity runs on, where it has been built (tools/build-framework.sh).
 FW="no Java framework"

@@ -49,6 +49,8 @@ bool hk_bionic_is_system_lib(const char *soname)
         "libc.so", "libm.so", "libdl.so", "liblog.so", "libandroid.so", "libEGL.so", "libGLESv1_CM.so", "libGLESv2.so", "libGLESv3.so",
         "libOpenSLES.so", "libz.so", "libjnigraphics.so", "libstdc++.so", "libOpenMAXAL.so", "libmediandk.so", "libaaudio.so",
         "libnativewindow.so", "libcamera2ndk.so", "libvulkan.so", "libamidi.so", "libbinder_ndk.so", "libsync.so", "libneuralnetworks.so",
+        /* The WebView's platform support, whose natives drivers/hk_java_webview.c answers: the WebView loads it by name. */
+        "libwebviewchromium_plat_support.so",
         /* Part of Android's runtime, which libcore's libopenjdk.so imports from: answered by dvm/hk_dvm_jvm.c. */
         "libopenjdkjvm.so",
     };

@@ -181,7 +181,8 @@ Under qemu-arm a direct system call goes to Linux and works, unseen. To find out
 whether an app's code makes one, the flag `trap-svc` has the loader say each site in
 the log, with the instruction that set `r7`, and make it an undefined instruction
 (`udf #165`), so that reaching it is a fault the crash report names by library and
-offset -- under qemu as on a phone. Nothing is done in its place.
+offset -- under qemu as on a phone. Nothing is done in its place. The WebView's
+library has five such sites, none reached (docs/JAVA.md, "The WebView").
 
 ### Everything else that differs
 

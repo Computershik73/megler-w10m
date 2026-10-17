@@ -452,8 +452,21 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   back at each swap (the table above; docs/JAVA.md, "OpenGL ES from Java").
   Under qemu AIDA64 lists the stand-in's vendor, renderer and version on its
   Display page and Device Info on its CPU tab. Not tried on a phone.
+  **WebView** (2026-10-16; docs/JAVA.md, "The WebView"): `android.webkit`
+  is AOSP's (Android 15's), and a `WebView` is Android's System WebView,
+  Chromium 128.0.6613.88 for 32-bit ARM from AOSP's prebuilts, which the
+  Android root carries where Android's image does and which runs in the
+  app's process: its renderer on threads of the app's (single process), its
+  network stack and TLS its own, its pages drawn in software into the view.
+  Under qemu (the test app `webview`): a page from a server of the app's own
+  on loopback is loaded and shown in the window, its script calls an object
+  the app gave it, `evaluateJavascript` answers, cookies are kept and sent,
+  a redirect to a callback URL of the app's scheme reaches
+  `shouldOverrideUrlLoading`, as an OAuth login ends, and a tap on a field of
+  the page brings the keyboard, whose text arrives in the field. Not yet on a
+  phone.
   Not there: garbage collection (an app that animates lasts minutes); sound
-  and WebView from Java; a `SurfaceView` drawn by native code; method
+  from Java; a `SurfaceView` drawn by native code; method
   handles; other apps (the
   package manager knows only the one running); Kotlin has run only as part of
   Device Info.

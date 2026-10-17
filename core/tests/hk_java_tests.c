@@ -1764,6 +1764,65 @@ static int run_app(void)
     return g_failed;
 }
 
+/* ---------------------------------------------------------------- webview */
+
+/*
+ * `webview`: Android's System WebView (core/tests/app/webview), which is Chromium, from the WebView APK in the Android root,
+ * running in the app's process (docs/JAVA.md, "The WebView"), on pages of an HTTP server of the app's own on 127.0.0.1. The
+ * app logs each step; the test waits for each, looks at the picture the window shows -- the page's yellow bar and blue
+ * body, drawn through the views like any other view -- and then plays the user: a tap on the page's text field, which must
+ * ask for the keyboard, and text typed with it, which must arrive in the field. Chromium's start under qemu takes minutes
+ * of class linking and its first page seconds: the waits are long.
+ */
+static int run_webview(void)
+{
+    static const char *const steps[] = { "provider", "load", "bridge", "draw", "js", "cookies-manager", "cookies", "redirect" };
+    char text[120];
+    int at = -1, i, line, x = -1, y = -1, bar[4], body[4];
+    i32 shown;
+    expect_line("I/WebViewTest: onCreate", &at, 120);
+    /* Each in its turn; the bridge's call comes from the page's script while it loads, so is looked for from the start. */
+    for (i = 0; i < (int)HK_COUNT(steps); i++) {
+        snprintf(text, sizeof(text), "I/WebViewTest: %s ok", steps[i]);
+        line = wait_line(text, 0, 600);
+        CHECK(line >= 0);
+        if (line < 0) say("  no \"%s\"", text);
+    }
+    line = find_line("I/WebViewTest: provider ok", 0);
+    if (line >= 0) say("  %s", strstr(line_at(line), "provider ok"));
+    /* The WebView's own word on how it runs: in this process, its renderer not in one of its own. */
+    CHECK(find_line("multiprocess=false", 0) >= 0);
+    /* The text field: where it is, as the page says, once the page with it is loaded again after the redirect. */
+    line = wait_line("I/WebViewTest: input-at ", 0, 300);
+    CHECK(line >= 0 && sscanf(strstr(line_at(line), "input-at ") + 9, "%d,%d", &x, &y) == 2);
+    if (line < 0) return g_failed;
+    /* The window shows the page: the yellow bar along the top of the WebView, under the action bar, and the blue body. */
+    settle();
+    write_picture("webview-1");
+    bar[0] = 0; bar[1] = 60; bar[2] = g_screen_w; bar[3] = 30;
+    body[0] = 0; body[1] = 300; body[2] = g_screen_w; body[3] = 200;
+    say("  the window: %d of %d pixels of the bar yellow, %d of %d of the body blue", count_colour(bar, 0xFFD200), bar[2] * bar[3],
+        count_colour(body, 0x1E78C8), body[2] * body[3]);
+    CHECK(count_colour(bar, 0xFFD200) == bar[2] * bar[3]);
+    CHECK(count_colour(body, 0x1E78C8) == body[2] * body[3]);
+    /* A tap on the field gives it the focus and asks for the keyboard. */
+    shown = K.shown;
+    tap(x, y);
+    CHECK(wait_line("I/WebViewTest: input-focused ok", 0, 120) >= 0);
+    CHECK(shown_times(shown + 1));
+    say("  the keyboard was asked for: kind %d, flags %d, enter %d", (int)K.kind, (int)K.flags, (int)K.enter);
+    megler_text_commit("hello");
+    CHECK(wait_line("I/WebViewTest: input ok value=hello", 0, 120) >= 0);
+    settle();
+    write_picture("webview-2");
+    expect_line("I/WebViewTest: done", &at, 120);
+    for (i = 0; i < g_nlines; i++)
+        if (strstr(g_lines[i], "/WebViewTest: ") && strstr(g_lines[i], " FAILED")) say("  %s", g_lines[i]);
+    back_and_end("I/WebViewTest: onDestroy", &at);
+    say_app_lines("/WebViewTest: ");
+    return g_failed;
+}
+
 int hk_tests_java_run(const char *which, const char *apk, const char *android_root, const char *picture_dir, int verbose)
 {
     g_verbose = verbose;
@@ -1800,6 +1859,12 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
      */
     hk_egl_set_provider(hk_gl_standin);
     hk_gl_standin_reset(true, false);
+    /*
+     * An app that brings a GL stack of its own -- the WebView's Chromium, whose ANGLE loads every function of EGL and OpenGL ES
+     * and makes its context before the first page -- gets every function there (the stand-in's complete mode). A test app
+     * of OpenGL from Java gets the stand-in as it is, which says "no such function" for what it does not have.
+     */
+    hk_gl_standin_set_complete(g_any_app || !strcmp(which, "webview"));
     if (start(apk, android_root)) {
         if (!strcmp(which, "demos")) run_demos();
         else if (!strcmp(which, "natives")) run_natives();
@@ -1807,6 +1872,7 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
         else if (!strcmp(which, "data")) run_data();
         else if (!strcmp(which, "gc")) run_gc();
         else if (!strcmp(which, "gl")) run_gl();
+        else if (!strcmp(which, "webview")) run_webview();
         else if (g_any_app) run_app();
         else run_hello();
         if (running()) {
