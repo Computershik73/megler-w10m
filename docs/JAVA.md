@@ -3098,7 +3098,7 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: ninety-eight files** in the overlay,
+**What differs from the original's framework: ninety-nine files** in the overlay,
 most of them a statement or a few methods each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and nine files of members added** to classes of the original's, **and four files of the original's taken
@@ -3680,6 +3680,22 @@ on a looper thread of its own and takes it back with `next()`.
   through a Parcel and reads one from a Bundle alone, as the compat class
   writes it.
 
+- `android/media/session/PlaybackState.java`, in place of the generated stub,
+  which dropped what `setState` and `addCustomAction` were given (the state,
+  the position and the speed read back as 0), had a null `CREATOR`, and an
+  empty abstract `CustomAction` without its `Builder`. AndroidX's
+  `PlaybackStateCompat.getPlaybackState()` makes the platform's object with
+  `PlaybackState.Builder` and `PlaybackState.CustomAction.Builder`, for every
+  `setPlaybackState` of `MediaSessionCompat`: Spotify's "MediaSession worker"
+  thread ended on `NoClassDefFoundError:
+  android/media/session/PlaybackState$CustomAction$Builder` (package 249).
+  Now Android's class: the state, the position at its update time and the
+  speed, the buffered position, the actions, the custom actions, the active
+  queue item, the error and the extras; its Builder, Parcel form and
+  `CREATOR`; `CustomAction` with its own. The data app's step
+  "playback-state" makes one with a custom action and sends it through a
+  Parcel.
+
 - `android/webkit/`, forty-nine files: AOSP's `android.webkit` at
   android-15.0.0_r36 (`tools/webview-fetch.sh` fetches the sources to compare)
   in the place of the original's WebView over WKWebView and its generated
@@ -3715,7 +3731,7 @@ on a looper thread of its own and takes it back with `next()`.
   crash handling lists the WebView's APK and library folders at the
   browser's start, and ended the start on the null it got.
 
-The original has all thirty-seven faults; they are its author's to take back.
+The original has all thirty-eight faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in

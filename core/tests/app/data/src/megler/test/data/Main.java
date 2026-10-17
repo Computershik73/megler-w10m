@@ -306,6 +306,7 @@ public class Main extends Activity {
                     && installer.getMySessions() != null && installer.getMySessions().isEmpty();
         });
         mediaMetadata();
+        playbackState();
         sound();
         mediaCodec();
         network();
@@ -1561,6 +1562,32 @@ public class Main extends Activity {
             codec.release();
             detail = out + " frames=" + s.samples.size();
             return out.ended && out.blocks == s.samples.size() && out.pcm == s.samples.size() * 1152L * 2 * 2;
+        });
+    }
+
+    /**
+     * The platform's PlaybackState as PlaybackStateCompat makes it: through its Builder and, for an action of the app's own,
+     * CustomAction.Builder; what was set is there, and through a Parcel it comes back by CREATOR.
+     */
+    private void playbackState() {
+        step("playback-state", () -> {
+            android.media.session.PlaybackState.CustomAction like = new android.media.session.PlaybackState.CustomAction.Builder("like", "Like",
+                    android.R.drawable.star_on).build();
+            android.media.session.PlaybackState s = new android.media.session.PlaybackState.Builder()
+                    .setState(android.media.session.PlaybackState.STATE_PLAYING, 42000, 1.0f, 1234)
+                    .setActions(android.media.session.PlaybackState.ACTION_PLAY_PAUSE | android.media.session.PlaybackState.ACTION_SEEK_TO)
+                    .setBufferedPosition(60000).addCustomAction(like).build();
+            android.os.Parcel p = android.os.Parcel.obtain();
+            s.writeToParcel(p, 0);
+            p.setDataPosition(0);
+            android.media.session.PlaybackState back = android.media.session.PlaybackState.CREATOR.createFromParcel(p);
+            p.recycle();
+            detail = "back " + back;
+            return back.getState() == android.media.session.PlaybackState.STATE_PLAYING && back.getPosition() == 42000
+                    && back.getLastPositionUpdateTime() == 1234 && back.getPlaybackSpeed() == 1.0f && back.getBufferedPosition() == 60000
+                    && back.getActions() == (android.media.session.PlaybackState.ACTION_PLAY_PAUSE | android.media.session.PlaybackState.ACTION_SEEK_TO)
+                    && back.getCustomActions().size() == 1 && "like".equals(back.getCustomActions().get(0).getAction())
+                    && "Like".contentEquals(back.getCustomActions().get(0).getName());
         });
     }
 

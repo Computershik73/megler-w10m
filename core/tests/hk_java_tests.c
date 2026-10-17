@@ -1452,10 +1452,11 @@ static int run_data(void)
                                             cursor and selection handles. And ParcelFileDescriptor's dup, detachFd and adoptFd. And a theme
                                             attribute that names itself. And MessageQueue.next(), and the app's storage statistics. And a
                                             broadcast that names its receiver, which reaches that receiver alone. And the platform's
-                                            MediaMetadata through a Parcel, as MediaMetadataCompat makes it. And sound from Java: an
+                                            MediaMetadata through a Parcel, as MediaMetadataCompat makes it, and PlaybackState with a
+                                            custom action, as PlaybackStateCompat makes it. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "package-installer", "media-metadata",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "package-installer", "media-metadata", "playback-state",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
