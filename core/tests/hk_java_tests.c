@@ -1797,7 +1797,7 @@ static int run_app(void)
  */
 static int run_webview(void)
 {
-    static const char *const steps[] = { "provider", "load", "bridge", "draw", "draw-node", "js", "cookies-manager", "cookies", "redirect" };
+    static const char *const steps[] = { "provider", "load", "bridge", "draw", "draw-node", "canvas", "js", "cookies-manager", "cookies", "redirect" };
     char text[120];
     int at = -1, i, line, x = -1, y = -1, bar[4], body[4];
     i32 shown;

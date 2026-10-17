@@ -155,7 +155,26 @@ public class Main extends Activity {
         boolean ok = near(bar, 0xFFD200) && near(body, 0x1E78C8);
         Log.i(T, "draw " + (ok ? "ok" : "FAILED") + " size=" + w + "x" + h + " bar=" + hex(bar) + " body=" + hex(body) + " ms=" + ms);
         drawNode(w, h);
-        js();
+        canvas();
+    }
+
+    /**
+     * A canvas of the page's, 300x150 (the size Chromium asks the platform's hardware buffers for), filled by its script and
+     * read back with getImageData; and whether the page has WebGL, and if so a pixel it cleared and read back. The 2D canvas
+     * is the step; WebGL is said (a phone's ANGLE has it, the tests' stand-in does not).
+     */
+    private void canvas() {
+        web.evaluateJavascript("(function(){ var c = document.createElement('canvas'); c.width = 300; c.height = 150;"
+                + " document.body.appendChild(c); var x = c.getContext('2d'); x.fillStyle = 'rgb(200,30,90)'; x.fillRect(0, 0, 300, 150);"
+                + " var p = x.getImageData(150, 75, 1, 1).data; var g = document.createElement('canvas').getContext('webgl'), w = 'no';"
+                + " if (g) { g.clearColor(0, 1, 0, 1); g.clear(g.COLOR_BUFFER_BIT); var q = new Uint8Array(4);"
+                + " g.readPixels(0, 0, 1, 1, g.RGBA, g.UNSIGNED_BYTE, q); w = 'yes:' + q.join('.'); }"
+                + " c.remove(); return p[0] + '.' + p[1] + '.' + p[2] + '.' + p[3] + ' webgl=' + w; })()", value -> {
+            String v = value == null ? "" : value.replace("\"", "");
+            boolean ok = v.startsWith("200.30.90.255 ");
+            Log.i(T, "canvas " + (ok ? "ok" : "FAILED") + " rgba=" + v);
+            js();
+        });
     }
 
     /**

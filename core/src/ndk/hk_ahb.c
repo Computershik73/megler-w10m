@@ -191,6 +191,8 @@ static int g_allocate(const g_desc *d, void **out)
     b->id = ++g_next_id;
     g_list[g_count++] = b;
     hk_lock_release(&g_list_lock);
+    hk_note_once("AHardwareBuffer_allocate: the first buffer: %ux%u, format %u, usage 0x%llx", d->width, d->height, d->format,
+                 (unsigned long long)d->usage);
     *out = b;
     return 0;
 }
