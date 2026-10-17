@@ -548,6 +548,86 @@ static void test_together(const char *dir)
     CHECK(video.good == 5 && sound.good == 5);
 }
 
+/* ---------------------------------------------------------------------------------------------------------- speed */
+
+static void speed_of(const char *dir, const char *file)
+{
+    stream s;
+    hk_mcodec *c;
+    u8 *bgra;
+    i64 info[3], last = -1;
+    u64 start, render_ns = 0, total_ns;
+    int i, pictures = 0, first_after = 0;
+    bool ordered = true;
+    i32 w = 0, h = 0;
+    char *path = hk_sprintf("%s/%s", dir, file);
+    hk_stat st;
+    bool there = hk_path_stat(path, &st, NULL);
+    free(path);
+    if (!there) {
+        say("%s: not there (tools/media-test-streams.py --speed makes it)", file);
+        return;
+    }
+    if (!stream_read(&s, dir, file)) {
+        g_checks++;
+        g_failed++;
+        say("  FAIL: %s/%s cannot be read", dir, file);
+        return;
+    }
+    if (!hk_mcodec_supported(s.mime)) {
+        say("%s: no decoder here (%s)", file, s.mime);
+        stream_free(&s);
+        return;
+    }
+    c = open_pictures(&s, CSD);
+    CHECK(c != NULL);
+    bgra = (u8 *)hk_alloc((size_t)s.width * (size_t)s.height * 4);
+    start = hk_time_monotonic_ns();
+    for (i = 0; c && i < s.nsamples; i++) {
+        hk_mframe *f;
+        hk_mcodec_decode(c, s.samples[i].data, s.samples[i].size, s.samples[i].time_us, i == s.nsamples - 1 ? 4 : 0);
+        while ((f = hk_mcodec_next_frame(c, info)) != NULL) {
+            const megler_codec_picture *p = hk_mcodec_frame_picture(f);
+            u64 t = hk_time_monotonic_ns();
+            if (p->width <= s.width && p->height <= s.height) hk_mcodec_render(p, bgra, p->width, p->height, p->width * 4);
+            render_ns += hk_time_monotonic_ns() - t;
+            if (info[0] <= last) ordered = false;
+            last = info[0];
+            w = p->width;
+            h = p->height;
+            if (!pictures++) first_after = i + 1;
+            hk_mcodec_free_frame(f);
+        }
+    }
+    total_ns = hk_time_monotonic_ns() - start;
+    if (pictures) {
+        double decode_ms = (double)(total_ns - render_ns) / 1e6 / pictures, render_ms = (double)render_ns / 1e6 / pictures;
+        say("%s: %d pictures of %dx%d (the first after %d units): %.2f ms a picture to decode, %.2f ms to turn into a bitmap; %.0f pictures a second in all",
+            file, pictures, w, h, first_after, decode_ms, render_ms, pictures / ((double)total_ns / 1e9));
+    } else {
+        say("%s: no picture came out", file);
+    }
+    CHECK(pictures == s.nsamples && ordered && w == s.width && h == s.height);
+    free(bgra);
+    hk_mcodec_destroy(c);
+    stream_free(&s);
+}
+
+int hk_codec_speed_run(const char *streams, const struct megler_codec_host *host, hk_test_sink sink, void *user, int *checks)
+{
+    g_checks = g_failed = 0;
+    g_sink = sink;
+    g_sink_user = user;
+    hk_java_media_set_host(host);
+    say("how fast the decoders behind MediaCodec are (the streams in %s)", streams);
+    speed_of(streams, "speed-avc-720p.hkau");
+    speed_of(streams, "speed-avc-1080p.hkau");
+    speed_of(streams, "speed-hevc-1080p.hkau");
+    hk_java_media_set_host(NULL);
+    *checks += g_checks;
+    return g_failed;
+}
+
 int hk_codec_tests_run(const char *streams, const struct megler_codec_host *host, hk_test_sink sink, void *user, int *checks)
 {
     g_checks = g_failed = 0;

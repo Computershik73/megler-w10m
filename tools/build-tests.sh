@@ -30,7 +30,9 @@
 #       (app/Megler/player/CodecHost.cpp: Media Foundation's decoder
 #       transforms), built in likewise and run as --codec-windows: the core's
 #       codec over this PC's own decoders, fed the data app's streams
-#       (core/tests/app/data/assets) and checked against what they hold.
+#       (core/tests/app/data/assets) and checked against what they hold,
+#       and timed on 720p and 1080p streams it makes into build/media-speed
+#       (tools/media-test-streams.py --speed, where Python and ffmpeg are).
 #
 # The tests are run twice where Android 9's boot class path has been unpacked
 # (build/android9/boot): once with the Dalvik runtime on its built-in
@@ -313,9 +315,17 @@ elif [ "$MODE" = win ]; then
     rm -rf "$OUT/scratch-storage"
     "$OUT/hk_tests.exe" --storage-windows "$(w "$OUT/scratch-storage")" || STATUS=1
     # The shell's decoders: the core's codec for MediaCodec over Media Foundation's own decoder transforms, fed the data
-    # app's streams (H.264 and H.265 with B-pictures, AAC, MP3) and checked against what they hold.
+    # app's streams (H.264 and H.265 with B-pictures, AAC, MP3) and checked against what they hold; and timed on longer
+    # streams of 720p and 1080p, made once into build/media-speed where Python and ffmpeg are (they are not kept in the
+    # repository).
     rm -rf "$OUT/scratch-codec"
-    "$OUT/hk_tests.exe" --codec-windows "$(w "$ROOT/core/tests/app/data/assets")" "$(w "$OUT/scratch-codec")" || STATUS=1
+    SPEED=()
+    if [ -f "$ROOT/build/media-speed/speed-avc-1080p.hkau" ] || python "$(w "$ROOT/tools/media-test-streams.py")" --speed "$(w "$ROOT/build/media-speed")" > /dev/null 2>&1; then
+      SPEED=("$(w "$ROOT/build/media-speed")")
+    else
+      echo "(the streams to time the decoders by could not be made: tools/media-test-streams.py --speed needs Python and ffmpeg)"
+    fi
+    "$OUT/hk_tests.exe" --codec-windows "$(w "$ROOT/core/tests/app/data/assets")" "$(w "$OUT/scratch-codec")" ${SPEED[@]+"${SPEED[@]}"} || STATUS=1
     # The Java test apps' own drawing, as `tools/build-tests.sh arm` recorded it under qemu: drawn again by the stand-in,
     # which must give the recorded pictures back pixel for pixel, and then by the shell's drawing, into
     # build/gfx-pictures/app-<app>-N.png -- the app's views as a phone's Direct2D and DirectWrite would draw them, laid

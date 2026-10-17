@@ -551,7 +551,9 @@ display order where a decoder does not, and turns NV12 into the `Bitmap`
 MediaCodec draws into the app's `Surface`. The shell's side is
 `player/CodecHost.cpp`: Media Foundation's synchronous decoder transforms
 (`MFTEnumEx`, `ProcessInput`, `ProcessOutput`), a thread for each decoder.
-docs/JAVA.md, "Decoders for MediaCodec", has the details and the tests.
+docs/JAVA.md, "Decoders for MediaCodec", has the details and the tests. What
+a phone's decoders are and how fast they go is what a package built with
+`tools/build-appx.sh arm --auto codec` finds out, into `megler-auto.log`.
 
 ## Files and the shared storage
 

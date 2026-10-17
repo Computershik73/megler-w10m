@@ -6,6 +6,7 @@ apart from them. Made with ffmpeg (libx264, libx265, its own AAC encoder, libmp3
 nothing here runs during a build.
 
     python tools/media-test-streams.py [output folder]     (core/tests/app/data/assets unless told)
+    python tools/media-test-streams.py --speed <folder>
 
   avc.hkau    H.264 Main, 168 x 94 (coded 176 x 96, so the decoder has a picture to crop), 30 pictures a second,
               24 pictures, two B-pictures between references (so decode order is not display order), an IDR every
@@ -20,6 +21,14 @@ nothing here runs during a build.
               each channel once ffmpeg makes it stereo: 8192 RMS): raw access units (the ADTS headers taken off) and the
               AudioSpecificConfig as csd-0.
   mp3.hkau    the same tone as MPEG-1 Layer III at 128 kbit/s, one frame a packet, no ID3 or Xing header.
+
+With --speed, what a decoder's speed is measured on instead, two seconds of ffmpeg's moving test picture (testsrc2),
+as a phone plays films; these are made where they are needed (tools/build-appx.sh --auto codec, tools/build-tests.sh
+win) and not kept in the repository:
+
+  speed-avc-720p.hkau     H.264 High, 1280 x 720, 60 pictures, three B-pictures between references, an IDR a second
+  speed-avc-1080p.hkau    the same at 1920 x 1080
+  speed-hevc-1080p.hkau   H.265 Main at 1920 x 1080
 
 The file: "HKMEDIA1", the MIME type in 32 bytes (zero-padded), then little-endian u32 width, height, sample rate,
 channels and the number of records; then each record: u32 flags (MediaCodec's: 1 key frame, 2 codec-specific
@@ -85,11 +94,11 @@ def nal_units(data):
     return units
 
 
-def video(name, mime, encoder, params, nal_type, config_types, drop_types, width=168, height=94, count=24):
+def video(name, mime, encoder, params, nal_type, config_types, drop_types, width=168, height=94, count=24, source=None):
     with tempfile.TemporaryDirectory() as tmp:
         ts = os.path.join(tmp, "v.ts")
-        run("ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "nullsrc=s=%dx%d:r=30,format=yuv420p,geq=lum='16+8*N':cb=128:cr=128" % (width, height),
-            "-frames:v", str(count), "-c:v", encoder, *params, "-f", "mpegts", ts)
+        source = source or "nullsrc=s=%dx%d:r=30,format=yuv420p,geq=lum='16+8*N':cb=128:cr=128" % (width, height)
+        run("ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", source, "-frames:v", str(count), "-c:v", encoder, *params, "-f", "mpegts", ts)
         pk = packets(ts)
     first = min(p[0] for p in pk)
     config, records = [], []
@@ -137,7 +146,23 @@ def mp3_frames(data):
         i += length
 
 
+def speed(folder):
+    global OUT
+    OUT = folder
+    os.makedirs(OUT, exist_ok=True)
+    avc = lambda u: u[0] & 0x1F
+    x264 = ["-preset", "fast", "-profile:v", "high", "-crf", "23", "-x264-params", "bframes=3:keyint=30:min-keyint=30:scenecut=0"]
+    for w, h in ((1280, 720), (1920, 1080)):
+        video("speed-avc-%dp.hkau" % h, "video/avc", "libx264", x264, avc, (7, 8), (6, 9), w, h, 60, "testsrc2=s=%dx%d:r=30" % (w, h))
+    video("speed-hevc-1080p.hkau", "video/hevc", "libx265",
+          ["-preset", "fast", "-crf", "28", "-x265-params", "log-level=error:bframes=3:keyint=30:min-keyint=30:scenecut=0"],
+          lambda u: (u[0] >> 1) & 0x3F, (32, 33, 34), (35, 39, 40), 1920, 1080, 60, "testsrc2=s=1920x1080:r=30")
+
+
 def main():
+    if len(sys.argv) > 2 and sys.argv[1] == "--speed":
+        speed(sys.argv[2])
+        return
     os.makedirs(OUT, exist_ok=True)
     x264 = ["-preset", "medium", "-profile:v", "main", "-x264-params", "bframes=2:b-adapt=0:b-pyramid=none:keyint=12:min-keyint=12:scenecut=0:open-gop=0"]
     video("avc.hkau", "video/avc", "libx264", x264, lambda u: u[0] & 0x1F, (7, 8), (6, 9))

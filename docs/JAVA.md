@@ -3667,6 +3667,18 @@ The tests:
     frames hold (the decoder's own delay), 440.0 Hz at 7782 RMS;
   - H.264 and AAC decoded at once on two threads, five times each, every run
     whole.
+  And timed (`hk_codec_speed_run`) on two seconds of ffmpeg's moving test
+  picture at 720p and 1080p, made into `build/media-speed` by
+  `tools/media-test-streams.py --speed` (not kept in the repository): on
+  this PC (the test program's `/O1`), H.264 at 720p 3.2 ms a picture to
+  decode and 4.3 ms for `renderFrame` to turn it into a bitmap, at 1080p
+  5.7 and 9.8 ms, H.265 at 1080p 3.9 and 10.6 ms; the first picture after 3
+  units (three B-pictures between references; H.265 after 4).
+- the same on a phone: `tools/build-appx.sh arm --auto codec` packs the
+  streams and makes the timed ones into the package's folder `codec`, and
+  the auto run goes through both with the phone's own decoders, a line each
+  into `megler-auto.log` (`tools/phone.py auto` fetches it), starting with
+  which decoder the phone has for each kind.
 
 ### 3. Apps that are not the test apps
 
