@@ -613,6 +613,55 @@ static void test_media(const char *scratch)
  * as data (__page_size, __page_shift), for code built by NDKs that read PAGE_SIZE from it; a crash reporter built so read
  * address 0 for it here. And setpgrp, and ptrace, which an app is refused.
  */
+/*
+ * Anonymous memory mapped with no access is address space alone (bionic/hk_libc_mem.c): 64 MB of it commits nothing;
+ * mprotect commits what it gives access to, and only that; a range with committed and uncommitted pages can be made
+ * no-access, and what was written survives that and the access given back; mapped again over itself with no access
+ * (MAP_FIXED) it is given back, and zero when given access again; memory mapped with access is committed at once. Where
+ * the host does not say what is committed (POSIX), the behaviour alone is checked.
+ */
+static void test_mmap_commit(void)
+{
+    typedef void *(*mmap_fn)(void *, size_t, int, int, int, i32);
+    typedef int (*mprotect_fn)(void *, size_t, int);
+    typedef int (*munmap_fn)(void *, size_t);
+    enum { NONE = 0, RW = 3, PRIVATE = 0x02, ANONYMOUS = 0x20, FIXED = 0x10, MB = 1 << 20 };
+    mmap_fn mmap_ = (mmap_fn)hk_bionic_find("mmap");
+    mprotect_fn mprotect_ = (mprotect_fn)hk_bionic_find("mprotect");
+    munmap_fn munmap_ = (munmap_fn)hk_bionic_find("munmap");
+    u8 *p, *q;
+    i64 c, c0;
+    say("mmap: no access is address space alone, committed when given access");
+    CHECK(mmap_ && mprotect_ && munmap_);
+    if (!mmap_ || !mprotect_ || !munmap_) return;
+    p = (u8 *)mmap_(NULL, 64 * MB, NONE, PRIVATE | ANONYMOUS, -1, 0);
+    CHECK(p && p != (u8 *)(hk_addr)-1);
+    if (!p || p == (u8 *)(hk_addr)-1) return;
+    c0 = hk_mem_committed(p, 64 * MB);
+    CHECK(c0 == -1 || c0 == 0);
+    CHECK(mprotect_(p + MB, MB, RW) == 0);
+    c = hk_mem_committed(p, 64 * MB);
+    CHECK(c == -1 || c == MB);
+    say("  64 MB with no access: %lld bytes committed (-1: the host does not say); 1 MB of it given access: %lld", (long long)c0, (long long)c);
+    p[MB] = 7;
+    p[2 * MB - 1] = 9;
+    CHECK(mprotect_(p, 64 * MB, NONE) == 0);
+    CHECK(mprotect_(p + MB, MB, RW) == 0 && p[MB] == 7 && p[2 * MB - 1] == 9);
+    CHECK(mmap_(p + MB, MB, NONE, PRIVATE | ANONYMOUS | FIXED, -1, 0) == p + MB);
+    c = hk_mem_committed(p, 64 * MB);
+    CHECK(c == -1 || c == 0);
+    CHECK(mprotect_(p + MB, MB, RW) == 0 && p[MB] == 0 && p[2 * MB - 1] == 0);
+    CHECK(munmap_(p, 64 * MB) == 0);
+    q = (u8 *)mmap_(NULL, MB, RW, PRIVATE | ANONYMOUS, -1, 0);
+    CHECK(q && q != (u8 *)(hk_addr)-1);
+    if (q && q != (u8 *)(hk_addr)-1) {
+        c = hk_mem_committed(q, MB);
+        CHECK(c == -1 || c == MB);
+        CHECK(q[0] == 0 && q[MB - 1] == 0);
+        munmap_(q, MB);
+    }
+}
+
 static void test_libc_odds(void)
 {
     const u32 *size = (const u32 *)hk_bionic_find("__page_size"), *shift = (const u32 *)hk_bionic_find("__page_shift");
@@ -1803,6 +1852,7 @@ int hk_tests_run(const char *libdir, const char *scratch, hk_test_sink sink, voi
     test_codecs();
     test_battery();
     test_libc_odds();
+    test_mmap_commit();
     test_input();
     {
         /* The stand-in for the shell's drawing under a Java app: it is what the Java driver's tests see pictures through. */

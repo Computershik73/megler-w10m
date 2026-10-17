@@ -131,6 +131,14 @@ bool hk_mem_decommit(void *p, size_t size)
     return q != MAP_FAILED;
 }
 
+bool hk_mem_protect_committed(void *p, size_t size, int prot) { return hk_mem_protect(p, size, prot); }
+i64 hk_mem_committed(const void *p, size_t size)
+{
+    (void)p;
+    (void)size;
+    return -1;
+}
+
 void hk_mem_release(void *p, size_t size) { munmap(p, size); }
 
 void hk_icache_flush(void *p, size_t size)

@@ -145,6 +145,41 @@ bool hk_mem_protect(void *p, size_t size, int prot)
 }
 
 bool hk_mem_decommit(void *p, size_t size) { return VirtualFree(p, size, MEM_DECOMMIT) != 0; }
+
+/* Each run of pages of one state in [p, p + size), in turn: `fn` with the run and whether it is committed. */
+static bool mem_runs(const void *p, size_t size, bool (*fn)(u8 *at, size_t n, bool committed, void *user), void *user)
+{
+    const u8 *at = (const u8 *)p, *end = at + size;
+    bool ok = true;
+    while (at < end) {
+        MEMORY_BASIC_INFORMATION info;
+        const u8 *next;
+        size_t n;
+        if (VirtualQuery((LPCVOID)at, &info, sizeof(info)) != sizeof(info) || !info.RegionSize) return false;
+        next = (const u8 *)info.BaseAddress + info.RegionSize;
+        n = (size_t)((next < end ? next : end) - at);
+        if (!fn((u8 *)at, n, info.State == MEM_COMMIT, user)) ok = false;
+        at += n;
+    }
+    return ok;
+}
+static bool protect_run(u8 *at, size_t n, bool committed, void *user) { return !committed || vprotect(at, n, *(DWORD *)user) != 0; }
+static bool count_run(u8 *at, size_t n, bool committed, void *user)
+{
+    (void)at;
+    if (committed) *(i64 *)user += (i64)n;
+    return true;
+}
+bool hk_mem_protect_committed(void *p, size_t size, int prot)
+{
+    DWORD native = prot_of(prot);
+    return mem_runs(p, size, protect_run, &native);
+}
+i64 hk_mem_committed(const void *p, size_t size)
+{
+    i64 n = 0;
+    return mem_runs(p, size, count_run, &n) ? n : -1;
+}
 void hk_mem_release(void *p, size_t size) { (void)size; VirtualFree(p, 0, MEM_RELEASE); }
 void hk_icache_flush(void *p, size_t size) { FlushInstructionCache(GetCurrentProcess(), p, size); }
 void *hk_mem_alloc(size_t size) { return valloc(NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE); }

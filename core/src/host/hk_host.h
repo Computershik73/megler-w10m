@@ -42,6 +42,10 @@ void *hk_mem_reserve_at(void *p, size_t size);
 bool hk_mem_commit(void *p, size_t size, int prot);
 bool hk_mem_protect(void *p, size_t size, int prot);
 bool hk_mem_decommit(void *p, size_t size);
+/* hk_mem_protect for the committed pages of [p, p + size) alone, the others left reserved (Windows); hk_mem_protect elsewhere. */
+bool hk_mem_protect_committed(void *p, size_t size, int prot);
+/* How many bytes of [p, p + size) are committed: Windows says; -1 where the host does not (POSIX, which commits as pages are touched). */
+i64 hk_mem_committed(const void *p, size_t size);
 void hk_mem_release(void *p, size_t size);
 /* After writing code and before running it. */
 void hk_icache_flush(void *p, size_t size);

@@ -179,6 +179,14 @@ static void g_delete_sized(void *p, size_t n) { (void)n; hk_g_free(p); }
  * writable and executable at once -- a JIT's code heap -- cannot exist on the
  * host, so it is writable until something executes in it and executable until
  * something writes to it: the fault handler flips the page (hk_mmap_fix_fault).
+ *
+ * Anonymous memory mapped with no access (PROT_NONE) is address space and nothing more, as on Linux: reserved, not
+ * committed, until mprotect gives some of it access (committed then, zeroed the first time); mapped again over itself
+ * with no access (MAP_FIXED, PROT_NONE), what was there is given back, as Linux gives zeroed pages for it. Allocators
+ * reserve that way and commit what they use: Chromium's PartitionAlloc its 2 MB super pages, the WebView's loader the
+ * 130 MB its library goes into. Each was committed whole before, and Windows counts committed memory against the app's
+ * limit whether it is touched or not: a WebView in Spotify ended out of memory with 1586 MB committed and 307 MB of
+ * address space free.
  */
 #define G_PROT_READ 1
 #define G_PROT_WRITE 2
@@ -323,6 +331,7 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
         if (*hk_errno_ptr() != GE_NODEV) return G_MAP_FAILED;
     }
     if (flags & G_MAP_FIXED) {
+        bool view;
         /* Only over memory this layer already owns: a fresh address cannot be demanded of the host. */
         hk_lock_acquire(&g_region_lock);
         r = region_of(addr);
@@ -333,8 +342,15 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
             return G_MAP_FAILED;
         }
         region_mark(r, (size_t)((u8 *)addr - r->base), size, true);
+        view = r->view != NULL;
         hk_lock_release(&g_region_lock);
         p = (u8 *)addr;
+        if (!(prot & 7) && (flags & G_MAP_ANONYMOUS) && !view) {
+            /* No access: given back, to be committed (zeroed) when mprotect gives it some. */
+            hk_mem_decommit(p, size);
+            hk_trace("mmap(%p, %u, prot %d, flags 0x%x, fd %d) -> %p, decommitted", addr, (unsigned)len, prot, (unsigned)flags, fd, (void *)p);
+            return p;
+        }
         if (!hk_mem_commit(p, size, HK_PROT_RW) || !hk_mem_protect(p, size, HK_PROT_RW)) {
             hk_set_errno(GE_NOMEM);
             return G_MAP_FAILED;
@@ -349,7 +365,8 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
          */
         p = addr && !((hk_addr)addr & 0xFFFF) ? (u8 *)hk_mem_reserve_at(addr, reserve) : NULL;
         if (!p) p = (u8 *)hk_mem_reserve(reserve);
-        if (!p || !hk_mem_commit(p, size, HK_PROT_RW)) {
+        /* (Anonymous and with no access, reserved alone: see the top.) */
+        if (!p || (((prot & 7) || !(flags & G_MAP_ANONYMOUS)) && !hk_mem_commit(p, size, HK_PROT_RW))) {
             if (p) hk_mem_release(p, reserve);
             hk_set_errno(GE_NOMEM);
             return G_MAP_FAILED;
@@ -392,7 +409,7 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
         r = region_of(p);
         if (r) r->wx = true;
         hk_lock_release(&g_region_lock);
-    } else if (host_prot(prot) != HK_PROT_RW) {
+    } else if (host_prot(prot) != HK_PROT_RW && ((prot & 7) || !(flags & G_MAP_ANONYMOUS))) {
         hk_mem_protect(p, size, host_prot(prot));
         if (prot & G_PROT_EXEC) hk_icache_flush(p, size);
     }
@@ -518,6 +535,23 @@ static int g_mprotect(void *addr, size_t len, int prot)
         if (hk_atomic_add(&said, 1) <= 6)
             hk_warn("mprotect(%p, %u, prot %d): not memory this layer gave the app; left as it is", addr, (unsigned)len, prot);
         return 0;
+    }
+    {
+        /* Memory of a region of the app's that may have been reserved alone (PROT_NONE, see mmap) is committed to be given access. */
+        region *r;
+        bool view;
+        hk_lock_acquire(&g_region_lock);
+        r = region_of(p);
+        view = r && r->view;
+        hk_lock_release(&g_region_lock);
+        if (r && !view && (prot & 7) && !hk_mem_commit(p, size, HK_PROT_RW)) {
+            hk_set_errno(GE_NOMEM);
+            return -1;
+        }
+        if (r && !view && !(prot & 7)) {
+            /* No access: for what is committed; what is not is no-access already. */
+            return hk_mem_protect_committed(p, size, HK_PROT_NONE) ? 0 : (hk_set_errno(GE_ACCES), -1);
+        }
     }
     if ((prot & G_PROT_WRITE) && (prot & G_PROT_EXEC)) {
         region *r;
