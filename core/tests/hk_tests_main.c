@@ -656,6 +656,47 @@ const megler_codec_host *hk_codec_windows_host(void);
 void hk_codec_windows_summary(char *out, size_t size);
 void hk_codec_windows_ten_bits(int prefer);
 int hk_codec_windows_call_limit(void);
+const megler_media_host *hk_media_windows_host(void);
+
+/*
+ * A file of sound alone through the shell's reader of whole files (MediaHost), as drivers/hk_java_audio.c hands it what
+ * MediaPlayer and SoundPool are given that is not Ogg or WAV: tone.mp3 and tone.m4a, half a second of 440 Hz at 44100 Hz
+ * in one channel. Opened with no picture (width 0), the rate, the channels and the length said, and about half a second
+ * of sound read, not silent.
+ */
+static void media_sound_check(const char *dir, const char *file, int *checks, int *failed)
+{
+    const megler_media_host *h = hk_media_windows_host();
+    char path[1024];
+    megler_media_info info;
+    int16_t buf[4096];
+    int64_t when = 0, frames = 0, loud = 0;
+    void *media;
+    int n, i;
+    bool held;
+    memset(&info, 0, sizeof(info));
+    snprintf(path, sizeof(path), "%s\\%s", dir, file);
+    media = h->open(h->user, path, &info);
+    if (media) {
+        while ((n = h->read_audio(h->user, media, buf, (int)(sizeof(buf) / sizeof(buf[0])) / (info.channels > 0 ? info.channels : 1), &when)) > 0) {
+            for (i = 0; i < n * info.channels; i++)
+                if (buf[i] > 2000 || buf[i] < -2000) loud++;
+            frames += n;
+        }
+        h->close(h->user, media);
+    }
+    held = media && info.width == 0 && info.height == 0 && info.sample_rate == 44100 && info.channels == 1 && info.duration_us > 400000 &&
+           info.duration_us < 700000 && frames > 44100 * 4 / 10 && frames < 44100 * 7 / 10 && loud > frames / 4;
+    (*checks)++;
+    if (held) {
+        printf("  %s: sound alone, %d Hz in %d channels, %lld ms said, %lld frames read\n", file, info.sample_rate, info.channels,
+               (long long)(info.duration_us / 1000), (long long)frames);
+    } else {
+        (*failed)++;
+        printf("  FAIL %s: %s, %dx%d, %d Hz in %d channels, %lld ms said, %lld frames read, %lld loud samples\n", file, media ? "opened" : "not opened",
+               info.width, info.height, info.sample_rate, info.channels, (long long)(info.duration_us / 1000), (long long)frames, (long long)loud);
+    }
+}
 #endif
 
 static int codec_windows_mode(int argc, char **argv)
@@ -678,6 +719,9 @@ static int codec_windows_mode(int argc, char **argv)
     if (argc >= 5) failed += hk_codec_speed_run(argv[4], hk_codec_windows_host(), NULL, NULL, &checks);
     /* A decoder that does not come back from a call (the phone's HEVCVideoExtension did not, from its first sample): the
        call is given up on after its limit, and the next one answers at once, so that the app's thread is not held. */
+    /* Files of sound alone, which the reader of films refused ("no picture in the file") until it took them for their sound. */
+    media_sound_check(argv[2], "tone.mp3", &checks, &failed);
+    media_sound_check(argv[2], "tone.m4a", &checks, &failed);
     checks++;
     if (hk_codec_windows_call_limit()) {
         printf("  a call that does not return in time is given up on, and so is the next, at once\n");

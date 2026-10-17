@@ -270,16 +270,18 @@ elif [ "$MODE" = win ]; then
   # header here; the projection's headers are the SDK's own. Compiled as for an app container (WINAPI_FAMILY_APP), which
   # is what the phone's package is compiled as: the headers then show what an app may call and nothing else.
   # And the shell's decoders for a Java app's MediaCodec (app/Megler/player/CodecHost.cpp: Media Foundation's decoder
-  # transforms), likewise, with the lines that hand them to the tests (core/tests/hk_codec_windows.cpp); the shell's log
-  # they write to is hk_storage_windows.cpp's.
+  # transforms), likewise, with the lines that hand them to the tests (core/tests/hk_codec_windows.cpp), and its reader of
+  # whole files (player/MediaHost.cpp), for the files of sound alone a Java app's MediaPlayer and SoundPool hand it; the
+  # shell's log they write to is hk_storage_windows.cpp's.
   STORAGE_SRC=("$(w "$ROOT/app/Megler/player/StorageHost.cpp")" "$(w "$ROOT/app/Megler/shell/Strings.cpp")" "$(w "$ROOT/core/tests/hk_storage_windows.cpp")"
-               "$(w "$ROOT/app/Megler/player/CodecHost.cpp")" "$(w "$ROOT/core/tests/hk_codec_windows.cpp")")
+               "$(w "$ROOT/app/Megler/player/CodecHost.cpp")" "$(w "$ROOT/core/tests/hk_codec_windows.cpp")"
+               "$(w "$ROOT/app/Megler/player/MediaHost.cpp")")
   mkdir -p "$OUT/storageobj"
   rm -f "$OUT/storageobj/"*.obj
   INCLUDE="$INCLUDE;$(w "$SDK/Include/$SDKV/winrt");$(w "$SDK/Include/$SDKV/cppwinrt")" \
     "$VC/bin/Hostx64/x64/cl.exe" "${GFX_FLAGS[@]}" /Zc:__cplusplus /bigobj /DWINAPI_FAMILY=WINAPI_FAMILY_APP /O1 /MP "/Fo$(w "$OUT/storageobj")\\" "${STORAGE_SRC[@]}" \
     | grep -v -E '^[A-Za-z0-9_]+\.cpp$' || true
-  for obj in StorageHost Strings hk_storage_windows CodecHost hk_codec_windows; do
+  for obj in StorageHost Strings hk_storage_windows CodecHost hk_codec_windows MediaHost; do
     [ -f "$OUT/storageobj/$obj.obj" ] || { echo "compile failed: $obj.cpp" >&2; exit 1; }
   done
   # (MEGLER_TESTS_MAP=1: a linker map beside it, hk_tests.map, which tools/dvm-bench.sh profile reads.)
@@ -290,7 +292,7 @@ elif [ "$MODE" = win ]; then
   # `hk_dvm_interpret` first, so that what it measures is the change and not where the loop fell.)
   [ -n "${MEGLER_TESTS_ORDER:-}" ] && MAPOPT+=("/ORDER:@$(w "$MEGLER_TESTS_ORDER")")
   "$VC/bin/Hostx64/x64/link.exe" /nologo ${MAPOPT[@]+"${MAPOPT[@]}"} "/OUT:$(w "$OUT/hk_tests.exe")" "$(w "$OUT/obj")\\*.obj" "$(w "$OUT/zobj")\\*.obj" "$(w "$OUT/gfxobj")\\*.obj" \
-    "$(w "$OUT/storageobj")\\*.obj" bcrypt.lib synchronization.lib d2d1.lib d3d11.lib dwrite.lib ole32.lib oleaut32.lib ws2_32.lib iphlpapi.lib mfplat.lib mfuuid.lib
+    "$(w "$OUT/storageobj")\\*.obj" bcrypt.lib synchronization.lib d2d1.lib d3d11.lib dwrite.lib ole32.lib oleaut32.lib ws2_32.lib iphlpapi.lib mfplat.lib mfreadwrite.lib mfuuid.lib
   echo "built $OUT/hk_tests.exe"
   if [ "$RUN" = 1 ]; then
     rm -rf "$OUT/scratch"

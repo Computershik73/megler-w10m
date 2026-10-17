@@ -3759,7 +3759,14 @@ test apps are that file's layouts, styles and nine-patches.
   - anything else (MP3, AAC and M4A, FLAC, WMA) through the shell's decoder
     (`megler_media_host`). It wants a file, so the bytes are written to one
     under `media/` in the data folder, named for what they are, and deleted
-    with the decoder.
+    with the decoder. The shell's reader (`player/MediaHost.cpp`) was made
+    for films and refused a file with no picture ("no picture in the file");
+    on the phone Spotify's SoundPool sounds, MP3s, were all refused so. A file
+    with no picture at all is opened for its sound now (width and height 0,
+    as `megler_media_host` allows); a picture that is there and cannot be
+    decoded still makes the film one that cannot be played. The PC test
+    (`--codec-windows`, which builds MediaHost.cpp in) reads the data app's
+    `tone.mp3` and `tone.m4a`: half a second of 440 Hz each, as sound alone.
   A decoder gives 16-bit samples, at most two channels.
 
 The mixer gained per-channel volumes and a rate that can change

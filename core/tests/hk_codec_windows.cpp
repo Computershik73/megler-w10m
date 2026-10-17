@@ -16,6 +16,7 @@
 #include "pch.h"
 
 #include "player/CodecHost.h"
+#include "player/MediaHost.h"
 
 #include <cstdio>
 
@@ -33,6 +34,13 @@ void hk_codec_windows_ten_bits(int prefer) { megler::app::CodecHost::shared().pr
 
 /// A decoder's call that does not return in time is given up on (CodecHost::checkCallLimit): 1 when it is.
 int hk_codec_windows_call_limit(void) { return megler::app::CodecHost::checkCallLimit() ? 1 : 0; }
+
+/// The shell's reader of whole files (MediaHost), which a Java app's MediaPlayer and SoundPool hand MP3 and M4A files to.
+const megler_media_host* hk_media_windows_host(void) {
+    static megler_media_host host;
+    host = megler::app::MediaHost::shared().callbacks();
+    return &host;
+}
 
 /// Which decoder Windows has for each kind, in a line.
 void hk_codec_windows_summary(char* out, size_t size) { snprintf(out, size, "%s", megler::app::CodecHost::shared().summary().c_str()); }

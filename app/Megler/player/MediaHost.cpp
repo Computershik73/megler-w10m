@@ -82,8 +82,9 @@ struct MediaHost::Film {
     uint64_t pictures = 0;
 
     /// A reader on the file with one stream selected; null and `why` when
-    /// there is no such stream or it cannot be decoded.
-    static winrt::com_ptr<IMFSourceReader> makeReader(const std::wstring& url, bool video, bool hardware, std::string& why) {
+    /// there is no such stream or it cannot be decoded, and `absent` set when
+    /// the file has no stream of that kind at all.
+    static winrt::com_ptr<IMFSourceReader> makeReader(const std::wstring& url, bool video, bool hardware, std::string& why, bool* absent = nullptr) {
         winrt::com_ptr<IMFAttributes> attributes;
         winrt::com_ptr<IMFSourceReader> reader;
         HRESULT hr = MFCreateAttributes(attributes.put(), 2);
@@ -105,6 +106,7 @@ struct MediaHost::Film {
         hr = reader->SetStreamSelection(video ? videoStream : audioStream, TRUE);
         if (FAILED(hr)) {
             why = format("no %s in the file (0x%08X)", video ? "picture" : "sound", unsigned(hr));
+            if (absent && hr == MF_E_INVALIDSTREAMNUMBER) *absent = true;
             return nullptr;
         }
         return reader;
@@ -151,15 +153,21 @@ struct MediaHost::Film {
         return true;
     }
 
-    /// Null, and why, when Windows cannot play the file.
+    /// Null, and why, when Windows cannot play the file. A file with no
+    /// picture at all (an MP3, an M4A: what a Java app's MediaPlayer and
+    /// SoundPool hand over, drivers/hk_java_audio.c) is opened for its sound
+    /// alone, width and height 0, as megler_media_host allows; a picture that is
+    /// there and cannot be decoded is still a film that cannot be played.
     static Film* open(const std::wstring& url, std::string& why) {
         auto film = std::make_unique<Film>();
         film->url = url;
+        bool noPicture = false;
         // The software decoder first: these are small pictures, and a phone's
         // hardware decoder is at its best with a Direct3D device this has none of.
-        for (int attempt = 0; attempt < 2 && !film->video; attempt++) {
+        for (int attempt = 0; attempt < 2 && !film->video && !noPicture; attempt++) {
             std::string whyNot;
-            auto reader = makeReader(url, true, attempt == 1, whyNot);
+            auto reader = makeReader(url, true, attempt == 1, whyNot, &noPicture);
+            if (noPicture) break;
             HRESULT hr = E_FAIL;
             if (reader) {
                 hr = setOutput(reader.get(), videoStream, MFMediaType_Video, MFVideoFormat_RGB32);
@@ -183,11 +191,11 @@ struct MediaHost::Film {
                 why = whyNot;
             }
         }
-        if (!film->video) return nullptr;
+        if (!film->video && !noPicture) return nullptr;
 
         winrt::com_ptr<IMFMediaType> native;
         UINT32 num = 0, den = 0;
-        if (SUCCEEDED(film->video->GetNativeMediaType(videoStream, 0, native.put())) &&
+        if (film->video && SUCCEEDED(film->video->GetNativeMediaType(videoStream, 0, native.put())) &&
             SUCCEEDED(MFGetAttributeRatio(native.get(), MF_MT_FRAME_RATE, &num, &den)) && num && den && num / den <= 240) {
             film->frameUs = int64_t(1000000) * den / num;
         } else {
@@ -216,6 +224,10 @@ struct MediaHost::Film {
         }
         if (!film->audio) {
             film->rate = film->channels = 0;
+            if (noPicture) {
+                why = "neither a picture nor sound that can be decoded: " + noSound;
+                return nullptr;
+            }
             shellLog::write("media: the film plays without sound: " + noSound);
         }
         return film.release();
@@ -225,7 +237,8 @@ struct MediaHost::Film {
         PROPVARIANT value;
         PropVariantInit(&value);
         int64_t us = 0;
-        if (SUCCEEDED(video->GetPresentationAttribute(DWORD(MF_SOURCE_READER_MEDIASOURCE), MF_PD_DURATION, &value)) && value.vt == VT_UI8)
+        IMFSourceReader* reader = video ? video.get() : audio.get();
+        if (reader && SUCCEEDED(reader->GetPresentationAttribute(DWORD(MF_SOURCE_READER_MEDIASOURCE), MF_PD_DURATION, &value)) && value.vt == VT_UI8)
             us = int64_t(value.uhVal.QuadPart / 10);
         PropVariantClear(&value);
         return us;
@@ -268,6 +281,7 @@ struct MediaHost::Film {
 
     /// 1 and the next picture, 0 at the end, -1 when the decoder fails.
     int readVideo(uint8_t* rgba, int64_t* timeUs) {
+        if (!video) return 0; // sound alone
         for (int tries = 0; tries < 2000; tries++) {
             DWORD flags = 0;
             LONGLONG time = 0;
@@ -389,8 +403,11 @@ struct MediaHost::Film {
         PropVariantInit(&position);
         position.vt = VT_I8;
         position.hVal.QuadPart = timeUs * 10;
-        const HRESULT hr = video->SetCurrentPosition(noTimeFormat, position);
-        if (audio) audio->SetCurrentPosition(noTimeFormat, position);
+        HRESULT hr = video ? video->SetCurrentPosition(noTimeFormat, position) : S_OK;
+        if (audio) {
+            const HRESULT sound = audio->SetCurrentPosition(noTimeFormat, position);
+            if (!video) hr = sound;
+        }
         pending.clear();
         pendingAt = 0;
         audioEnded = false;
@@ -487,9 +504,12 @@ void* MediaHost::openThunk(void* user, const char* path, megler_media_info* info
         info->sample_rate = film->rate;
         info->channels = film->channels;
         info->duration_us = film->durationUs();
-        shellLog::write(format("media: opened a film of %dx%d (decoded as %dx%d %s by the %s decoder), %d/%d frames a second, sound %d Hz in %d channels",
-                               film->width, film->height, film->frameWidth, film->frameHeight, film->nv12 ? "NV12" : "RGB32",
-                               film->hardware ? "hardware" : "software", film->rateNum, film->rateDen, film->rate, film->channels));
+        if (!film->video)
+            shellLog::write(format("media: opened a file of sound alone, %d Hz in %d channels", film->rate, film->channels));
+        else
+            shellLog::write(format("media: opened a film of %dx%d (decoded as %dx%d %s by the %s decoder), %d/%d frames a second, sound %d Hz in %d channels",
+                                   film->width, film->height, film->frameWidth, film->frameHeight, film->nv12 ? "NV12" : "RGB32",
+                                   film->hardware ? "hardware" : "software", film->rateNum, film->rateDen, film->rate, film->channels));
     });
     return film;
 }
