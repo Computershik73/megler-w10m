@@ -35,9 +35,12 @@ void write(const std::string& line) {
 }
 } // namespace shellLog
 
-// The flags folder of LocalState, which a test program has none of: no flag is on.
+// LocalState, which a test program has none of: no flag is on, and the codec host's list of decoders that hung
+// (codec-hung.txt) is not there and is not written.
 namespace files {
 bool exists(const std::wstring&) { return false; }
+bool read(const std::wstring&, std::string&) { return false; }
+bool append(const std::wstring&, std::string_view) { return false; }
 } // namespace files
 
 namespace platform {

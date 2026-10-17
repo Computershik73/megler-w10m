@@ -52,6 +52,9 @@ public:
     /// For the tests: P010 rather than NV12 from a decoder that offers both, for decoders opened after this, so that the
     /// way taken for one that offers P010 alone is gone through on a PC whose decoders offer NV12 too.
     void preferTenBits(bool prefer);
+    /// For the tests: a decoder's call that does not return in time. Work that returns in time answers true; work that
+    /// does not answers false after the limit, and so does the next run, at once. Whether all of that held.
+    static bool checkCallLimit();
 
     struct Codec;
     struct Picture;

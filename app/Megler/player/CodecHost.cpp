@@ -11,6 +11,8 @@
 #include <mferror.h>
 #include <mftransform.h>
 
+#include <algorithm>
+#include <chrono>
 #include <condition_variable>
 #include <cstring>
 #include <deque>
@@ -113,7 +115,15 @@ Found decodersFor(int kind) {
     return found;
 }
 
-/// A thread in COM's multithreaded apartment that runs one piece of work at a time for whoever waits for it.
+/// How long a decoder's call may take before it is given up on: a decoder that does not return from a call of Media
+/// Foundation's (the phone's HEVCVideoExtension did not, from its first sample) would otherwise hold the app's thread
+/// for ever. Far longer than any call takes that returns.
+constexpr std::chrono::milliseconds callLimit{8000};
+
+/// A thread in COM's multithreaded apartment that runs one piece of work at a time for whoever waits for it. A piece of
+/// work that has not returned within its limit is left to the thread, which is given up on: that run and every later
+/// one answer false at once, and the worker is never destroyed (its thread may yet come back to it). So what a piece of
+/// work uses must outlive the caller's wait: captured by value, or shared.
 class Worker {
 public:
     Worker() : thread_([this] { loop(); }) {}
@@ -128,31 +138,48 @@ public:
     Worker(const Worker&) = delete;
     Worker& operator=(const Worker&) = delete;
 
-    /// Runs `work` on the thread and returns when it has run.
-    void run(const std::function<void()>& work) {
+    /// Runs `work` on the thread and returns true when it has run; false when it had not after `limit`, or when an
+    /// earlier run had not.
+    bool run(std::function<void()> work, std::chrono::milliseconds limit = callLimit) {
+        auto job = std::make_shared<Job>();
+        job->work = std::move(work);
         std::unique_lock<std::mutex> lock(mutex_);
-        idle_.wait(lock, [this] { return !work_; });
-        bool finished = false;
-        work_ = &work;
-        finished_ = &finished;
+        if (stuck_) return false;
+        idle_.wait(lock, [this] { return !job_ || stuck_; });
+        if (stuck_) return false;
+        job_ = job;
         wake_.notify_all();
-        done_.wait(lock, [&finished] { return finished; });
+        if (!done_.wait_for(lock, limit, [&job] { return job->finished; })) {
+            stuck_ = true;
+            idle_.notify_all();
+            return false;
+        }
+        return true;
+    }
+
+    bool stuck() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return stuck_;
     }
 
 private:
+    struct Job {
+        std::function<void()> work;
+        bool finished = false;
+    };
+
     void loop() {
         const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
         std::unique_lock<std::mutex> lock(mutex_);
         for (;;) {
-            wake_.wait(lock, [this] { return quit_ || work_; });
-            if (quit_ && !work_) break;
-            const std::function<void()>* work = work_;
+            wake_.wait(lock, [this] { return quit_ || job_; });
+            if (quit_ && !job_) break;
+            std::shared_ptr<Job> job = job_;
             lock.unlock();
-            (*work)();
+            job->work();
             lock.lock();
-            work_ = nullptr;
-            *finished_ = true;
-            finished_ = nullptr;
+            job->finished = true;
+            job_ = nullptr;
             done_.notify_all();
             idle_.notify_one();
         }
@@ -162,11 +189,42 @@ private:
 
     std::mutex mutex_;
     std::condition_variable wake_, done_, idle_;
-    const std::function<void()>* work_ = nullptr;
-    bool* finished_ = nullptr;
-    bool quit_ = false;
+    std::shared_ptr<Job> job_;
+    bool quit_ = false, stuck_ = false;
     std::thread thread_;
 };
+
+/// Decoders (by name) that did not return from a call: not taken again, in this run or a later one. They are kept, a
+/// name a line, in LocalState\codec-hung.txt: on the phone HEVCVideoExtension never came back from its first
+/// ProcessOutput, and without the file every app would wait for it again, once a run. Deleting the file tries them again.
+std::mutex gHungMutex;
+std::vector<std::string> gHung;
+bool gHungRead = false;
+
+std::wstring hungFile() { return platform::localStateDirectory() + L"\\codec-hung.txt"; }
+
+/// With gHungMutex held.
+void readHung() {
+    if (gHungRead) return;
+    gHungRead = true;
+    std::string text;
+    if (!files::read(hungFile(), text)) return;
+    size_t at = 0;
+    while (at < text.size()) {
+        size_t end = text.find('\n', at);
+        if (end == std::string::npos) end = text.size();
+        std::string line = text.substr(at, end - at);
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (!line.empty()) gHung.push_back(line);
+        at = end + 1;
+    }
+}
+
+bool hung(const std::string& name) {
+    std::lock_guard<std::mutex> lock(gHungMutex);
+    readHung();
+    return std::find(gHung.begin(), gHung.end(), name) != gHung.end();
+}
 
 /// The worker for supports(), which no decoder's thread is there for yet.
 Worker& serviceWorker() {
@@ -232,6 +290,7 @@ struct CodecHost::Codec {
     int64_t lastInputUs = 0;
 
     uint64_t pushed = 0, pictures = 0, blocks = 0, failures = 0;
+    std::atomic<const char*> step{"nothing"}; // the call of Media Foundation's being made, for when one does not return
 
     std::mutex mutex;
     std::deque<Picture*> ready;
@@ -251,6 +310,18 @@ struct CodecHost::Codec {
         if (++failures <= 3) shellLog::write(format("codec: %s (%s): %s", kindName(kind), name.c_str(), what.c_str()));
     }
 
+    /// Its worker did not come back from a call: said, with the call, and the decoder is not taken again.
+    void gaveUp(const char* doing) {
+        shellLog::write(format("codec: %s (%s): %s has not returned from %s after %lld s; given up on, and not taken again (LocalState\\codec-hung.txt)",
+                               kindName(kind), name.c_str(), doing, step.load(), (long long)(callLimit.count() / 1000)));
+        std::lock_guard<std::mutex> lock(gHungMutex);
+        readHung();
+        if (!name.empty() && std::find(gHung.begin(), gHung.end(), name) == gHung.end()) {
+            gHung.push_back(name);
+            files::append(hungFile(), name + "\r\n");
+        }
+    }
+
     /// The first output type of this subtype the decoder offers, or null.
     winrt::com_ptr<IMFMediaType> offeredOutput(const GUID& wanted) {
         for (DWORD i = 0;; i++) {
@@ -265,11 +336,13 @@ struct CodecHost::Codec {
     /// The picture's output type: NV12 (or, from a decoder of ten-bit streams that offers nothing else, P010), the size,
     /// the visible part, the rows.
     bool chooseVideoOutput() {
+        step = "GetOutputAvailableType";
         winrt::com_ptr<IMFMediaType> type = tenBitsFirst ? offeredOutput(MFVideoFormat_P010) : nullptr;
         p010 = type != nullptr;
         if (!type) type = offeredOutput(MFVideoFormat_NV12);
         if (!type) p010 = (type = offeredOutput(MFVideoFormat_P010)) != nullptr;
         if (type) {
+            step = "SetOutputType";
             const HRESULT hr = transform->SetOutputType(out, type.get(), 0);
             if (FAILED(hr)) {
                 fail(format("%s output refused (0x%08X)", p010 ? "P010" : "NV12", unsigned(hr)));
@@ -416,12 +489,14 @@ struct CodecHost::Codec {
                 type->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_MP3);
             }
         }
+        step = "SetInputType";
         HRESULT hr = transform->SetInputType(in, type.get(), 0);
         if (FAILED(hr)) {
             fail(format("the input type was refused (0x%08X)", unsigned(hr)));
             return false;
         }
         if (isVideo(kind) ? !chooseVideoOutput() : !chooseAudioOutput(f.channels > 2 ? 2 : f.channels)) return false;
+        step = "ProcessMessage(BEGIN_STREAMING)";
         transform->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0);
         transform->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0);
         return true;
@@ -564,6 +639,7 @@ struct CodecHost::Codec {
             buffer.dwStreamID = out;
             buffer.pSample = ours.get();
             DWORD status = 0;
+            step = "ProcessOutput";
             const HRESULT hr = transform->ProcessOutput(0, 1, &buffer, &status);
             if (buffer.pEvents) buffer.pEvents->Release();
             winrt::com_ptr<IMFSample> theirs;
@@ -610,10 +686,12 @@ struct CodecHost::Codec {
         sample->SetSampleTime(timeUs * 10);
         lastInputUs = timeUs;
         pushed++;
+        step = "ProcessInput";
         HRESULT hr = transform->ProcessInput(in, sample.get(), 0);
         if (hr == MF_E_NOTACCEPTING) {
             // Output first, then the sample again.
             if (!takeOutputs()) return false;
+            step = "ProcessInput";
             hr = transform->ProcessInput(in, sample.get(), 0);
         }
         if (FAILED(hr)) {
@@ -624,11 +702,13 @@ struct CodecHost::Codec {
     }
 
     void drain() {
+        step = "ProcessMessage(COMMAND_DRAIN)";
         transform->ProcessMessage(MFT_MESSAGE_COMMAND_DRAIN, 0);
         takeOutputs();
     }
 
     void flush() {
+        step = "ProcessMessage(COMMAND_FLUSH)";
         transform->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, 0);
         std::lock_guard<std::mutex> lock(mutex);
         for (Picture* p : ready) delete p;
@@ -665,15 +745,26 @@ std::atomic<bool> gTenBitsFirst{false};
 
 void CodecHost::preferTenBits(bool prefer) { gTenBitsFirst = prefer; }
 
+bool CodecHost::checkCallLimit() {
+    // Left as a stuck decoder's worker is: never destroyed.
+    auto* worker = new Worker();
+    const bool quick = worker->run([] {}, std::chrono::milliseconds(2000));
+    const bool slow = worker->run([] { Sleep(400); }, std::chrono::milliseconds(50));
+    const auto from = std::chrono::steady_clock::now();
+    const bool after = worker->run([] {}, std::chrono::milliseconds(2000));
+    const bool atOnce = std::chrono::steady_clock::now() - from < std::chrono::milliseconds(100);
+    return quick && !slow && !after && atOnce && worker->stuck();
+}
+
 std::string CodecHost::summary() {
-    std::string line;
-    serviceWorker().run([&] {
+    auto line = std::make_shared<std::string>();
+    serviceWorker().run([line] {
         for (int kind = MEGLER_CODEC_H264; kind <= MEGLER_CODEC_MP3; kind++) {
             const Found found = decodersFor(kind);
-            line += format("%s%s: %s", line.empty() ? "" : "; ", kindName(kind), found.names.empty() ? "none" : found.names[0].c_str());
+            *line += format("%s%s: %s", line->empty() ? "" : "; ", kindName(kind), found.names.empty() ? "none" : found.names[0].c_str());
         }
     });
-    return line;
+    return *line;
 }
 
 bool CodecHost::supportsThunk(void*, int kind) {
@@ -685,17 +776,17 @@ bool CodecHost::supportsThunk(void*, int kind) {
         std::lock_guard<std::mutex> lock(mutex);
         if (known[kind]) return known[kind] > 0;
     }
-    bool there = false;
-    serviceWorker().run([&] {
+    auto there = std::make_shared<bool>(false);
+    serviceWorker().run([kind, there] {
         const Found found = decodersFor(kind);
-        there = !found.activates.empty();
+        *there = !found.activates.empty();
         std::string names;
         for (const std::string& n : found.names) names += (names.empty() ? "" : ", ") + n;
-        shellLog::write(format("codec: %s decoders: %s", kindName(kind), there ? names.c_str() : "none"));
+        shellLog::write(format("codec: %s decoders: %s", kindName(kind), *there ? names.c_str() : "none"));
     });
     std::lock_guard<std::mutex> lock(mutex);
-    known[kind] = there ? 1 : -1;
-    return there;
+    known[kind] = *there ? 1 : -1;
+    return *there;
 }
 
 void* CodecHost::openThunk(void*, int kind, const megler_codec_format* asked) {
@@ -703,50 +794,70 @@ void* CodecHost::openThunk(void*, int kind, const megler_codec_format* asked) {
     codec->kind = kind;
     codec->tenBitsFirst = gTenBitsFirst;
     codec->worker = std::make_unique<Worker>();
-    bool ok = false;
+    auto ok = std::make_shared<bool>(false);
     Codec* c = codec.get();
-    c->worker->run([&] {
+    // The format, and the configuration bytes it points at, the work's own: it may outlive this call.
+    megler_codec_format wanted = *asked;
+    auto config = std::make_shared<std::vector<uint8_t>>(asked->config, asked->config + (asked->config ? asked->config_size : 0));
+    const bool ran = c->worker->run([c, kind, wanted, config, ok]() mutable {
+        wanted.config = config->empty() ? nullptr : config->data();
         const Found found = decodersFor(kind);
-        for (size_t i = 0; i < found.activates.size() && !ok; i++) {
+        for (size_t i = 0; i < found.activates.size() && !*ok; i++) {
+            if (hung(found.names[i])) {
+                shellLog::write(format("codec: %s (%s) passed over: it did not return from a call before (LocalState\\codec-hung.txt)", kindName(kind),
+                                       found.names[i].c_str()));
+                continue;
+            }
             winrt::com_ptr<IMFTransform> transform;
-            const HRESULT hr = found.activates[i]->ActivateObject(__uuidof(IMFTransform), transform.put_void());
             c->name = found.names[i];
+            c->step = "ActivateObject";
+            const HRESULT hr = found.activates[i]->ActivateObject(__uuidof(IMFTransform), transform.put_void());
             if (FAILED(hr)) {
                 c->fail(format("not made (0x%08X)", unsigned(hr)));
                 continue;
             }
             c->transform = transform;
             c->failures = 0;
-            ok = c->configure(*asked);
-            if (!ok) {
+            *ok = c->configure(wanted);
+            if (!*ok) {
                 c->transform = nullptr;
                 found.activates[i]->ShutdownObject();
             }
         }
-        if (ok) {
+        if (*ok) {
             if (isVideo(kind))
-                shellLog::write(format("codec: an %s decoder, %s, for %dx%d%s", kindName(kind), c->name.c_str(), asked->width, asked->height,
+                shellLog::write(format("codec: an %s decoder, %s, for %dx%d%s", kindName(kind), c->name.c_str(), wanted.width, wanted.height,
                                        c->lowLatency ? ", low latency" : lowLatencyWanted() ? ", low latency refused" : ", low latency not asked for (flag)"));
             else
-                shellLog::write(format("codec: an %s decoder, %s, for %d Hz in %d channels (gives %d Hz in %d)", kindName(kind), c->name.c_str(), asked->sample_rate,
-                                       asked->channels, c->rate, c->outChannels));
+                shellLog::write(format("codec: an %s decoder, %s, for %d Hz in %d channels (gives %d Hz in %d)", kindName(kind), c->name.c_str(), wanted.sample_rate,
+                                       wanted.channels, c->rate, c->outChannels));
         } else {
             shellLog::write(format("codec: no %s decoder could be made (%zu found)", kindName(kind), found.activates.size()));
         }
     });
-    return ok ? codec.release() : nullptr;
+    if (!ran) {
+        c->gaveUp("opening it");
+        codec.release(); // left to its worker's thread, which may yet come back to it
+        return nullptr;
+    }
+    return *ok ? codec.release() : nullptr;
 }
 
 bool CodecHost::pushThunk(void*, void* codec, const uint8_t* data, size_t size, int64_t timeUs) {
     auto* c = static_cast<Codec*>(codec);
-    bool ok = false;
-    c->worker->run([&] { ok = c->push(data, size, timeUs); });
-    return ok;
+    if (c->worker->stuck()) return false;
+    auto ok = std::make_shared<bool>(false);
+    auto unit = std::make_shared<std::vector<uint8_t>>(data, data + size);
+    if (!c->worker->run([c, unit, timeUs, ok] { *ok = c->push(unit->data(), unit->size(), timeUs); })) {
+        c->gaveUp("a sample");
+        return false;
+    }
+    return *ok;
 }
 
 void CodecHost::drainThunk(void*, void* codec) {
     auto* c = static_cast<Codec*>(codec);
-    c->worker->run([c] { c->drain(); });
+    if (!c->worker->stuck() && !c->worker->run([c] { c->drain(); })) c->gaveUp("the end of the stream");
 }
 
 void* CodecHost::pullPictureThunk(void*, void* codec, megler_codec_picture* picture) {
@@ -777,12 +888,17 @@ bool CodecHost::pullSoundThunk(void*, void* codec, megler_codec_sound* sound) {
 
 void CodecHost::flushThunk(void*, void* codec) {
     auto* c = static_cast<Codec*>(codec);
-    c->worker->run([c] { c->flush(); });
+    if (!c->worker->stuck() && !c->worker->run([c] { c->flush(); })) c->gaveUp("a flush");
 }
 
 void CodecHost::closeThunk(void*, void* codec) {
     auto* c = static_cast<Codec*>(codec);
-    c->worker->run([c] {
+    if (c->worker->stuck()) {
+        // Its worker's thread is still in the decoder: it and the decoder are left to it, not freed under it.
+        shellLog::write(format("codec: an %s decoder (%s) closed while a call of its had not returned: left as it is", kindName(c->kind), c->name.c_str()));
+        return;
+    }
+    const bool ran = c->worker->run([c] {
         if (c->transform) {
             c->transform->ProcessMessage(MFT_MESSAGE_NOTIFY_END_OF_STREAM, 0);
             c->transform->ProcessMessage(MFT_MESSAGE_NOTIFY_END_STREAMING, 0);
@@ -793,6 +909,10 @@ void CodecHost::closeThunk(void*, void* codec) {
         c->spare = nullptr;
         c->transform = nullptr;
     });
+    if (!ran) {
+        c->gaveUp("closing it");
+        return;
+    }
     // The worker's thread is joined here, its work done; the transform was let go where it was made.
     delete c;
 }

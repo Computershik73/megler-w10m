@@ -655,6 +655,7 @@ static int storage_windows_mode(char **argv)
 const megler_codec_host *hk_codec_windows_host(void);
 void hk_codec_windows_summary(char *out, size_t size);
 void hk_codec_windows_ten_bits(int prefer);
+int hk_codec_windows_call_limit(void);
 #endif
 
 static int codec_windows_mode(int argc, char **argv)
@@ -675,6 +676,15 @@ static int codec_windows_mode(int argc, char **argv)
     failed += hk_codec_tests_h265_run(argv[2], hk_codec_windows_host(), "P010 taken where the decoder offers it", NULL, NULL, &checks);
     hk_codec_windows_ten_bits(0);
     if (argc >= 5) failed += hk_codec_speed_run(argv[4], hk_codec_windows_host(), NULL, NULL, &checks);
+    /* A decoder that does not come back from a call (the phone's HEVCVideoExtension did not, from its first sample): the
+       call is given up on after its limit, and the next one answers at once, so that the app's thread is not held. */
+    checks++;
+    if (hk_codec_windows_call_limit()) {
+        printf("  a call that does not return in time is given up on, and so is the next, at once\n");
+    } else {
+        failed++;
+        printf("  FAIL: a call that does not return in time was not given up on as it should be\n");
+    }
     printf("%d checks, %d failed\n", checks, failed);
     return failed ? 1 : 0;
 #else

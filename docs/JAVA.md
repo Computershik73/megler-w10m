@@ -3915,6 +3915,43 @@ The tests:
   into `megler-auto.log` (`tools/phone.py auto` fetches it), starting with
   which decoder the phone has for each kind.
 
+**On the phone** (HP Elite x3, 2026-10-18, packages 245 to 248):
+- **The decoders.** For H.264, Microsoft H264 Video Decoder MFT. For H.265,
+  HEVCVideoExtension, then Microsoft H265 Video Decoder MFT. For AAC,
+  Microsoft AAC Audio Decoder MFT. For MP3, MP3 Decoder MFT. All are
+  synchronous.
+- **HEVCVideoExtension never returned from its first `ProcessOutput`.** The
+  first run of the speed and order checks stood still there; nothing else
+  moved. So every call of a decoder's is limited now (`callLimit`, 8 s, in
+  `CodecHost.cpp`). A call that has not returned by then is given up on: the
+  core is told the call failed, the decoder and its worker's thread are left
+  to it, and a later call answers at once. The decoder's name is said in the
+  log with the call it was in, and written to `LocalState\codec-hung.txt`, so
+  that no later open, in this run or the next, takes it; the next decoder for
+  the kind is taken instead. On the phone that is Microsoft's own H.265
+  decoder: the second run went past HEVCVideoExtension at once. The PC test
+  checks the limit itself (`CodecHost::checkCallLimit`).
+- **What passes:** H.264 in every form of parameter sets, a flush, a change of
+  size, all in display order with the right pixels; H.265 and H.265 Main 10
+  through Microsoft's decoder; AAC raw and with ADTS; MP3; two decoders at once.
+- **What does not:** after a flush, Microsoft's H.265 decoder gives the first
+  picture (12, the stream's IDR) black, and one picture or three short at the
+  end. Telling it of a discontinuity and a new start of the stream changed
+  nothing (tried, not kept), nor did low latency off. The test stream is
+  x265's, whose GOPs may be open: whether a stream of a phone's camera or a
+  service does the same is not known.
+- **Speed**, a picture each:
+
+  | Stream | Decode | NV12 to a bitmap | Pictures a second |
+  |---|---|---|---|
+  | H.264 720p | 21 to 29 ms | 5.0 ms | 29 to 39 |
+  | H.264 1080p | 47 to 55 ms | 11.8 ms | 15 to 17 |
+  | H.265 1080p | 11 to 17 ms | 14.2 ms | 31 to 40 |
+
+  `renderFrame` alone takes 9.6 to 10.6 ms for 1080p. Microsoft's H.264
+  decoder works in software here; it would use the graphics processor if it
+  were given a Direct3D device manager, which it is not yet.
+
 ### 3. Apps that are not the test apps
 
 What stands between this and an app from a shop, as far as reading tells
