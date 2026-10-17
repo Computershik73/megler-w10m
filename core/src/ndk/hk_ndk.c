@@ -810,6 +810,25 @@ static void g_stats_controls(void *stats, void ***out, u32 *count)
     if (count) *count = 0;
 }
 
+/*
+ * Hardware buffers (AHardwareBuffer, Android 8): memory gralloc allocates for the graphics processor and the display to
+ * share. There is no gralloc here, and nothing to import such a buffer into ANGLE with (EGL_ANDROID_image_native_buffer),
+ * so none can be made: AHardwareBuffer_allocate answers as Android does when gralloc cannot allocate (NO_MEMORY, no
+ * buffer), and AHardwareBuffer_isSupported says no to every description. Chromium's GPU service allocates through it the
+ * memory of a page's canvases (a 300x150 one: format 1, R8G8B8A8, used as the graphics processor's image and framebuffer)
+ * once the platform says Android 8 or later (base::AndroidHardwareBufferCompat, by dlsym); finding no such function it
+ * called through nothing, and a page of VK's in the WebView ended the app. Refused, it loses that canvas's GPU context:
+ * a 2D canvas goes on in software, and WebGL is not offered.
+ */
+static int g_ahb_allocate(const void *desc, void **out)
+{
+    (void)desc;
+    hk_note_once("AHardwareBuffer_allocate: no gralloc here to allocate a hardware buffer from; NO_MEMORY");
+    if (out) *out = NULL;
+    return -12;
+}
+static int g_ahb_is_supported(const void *desc) { (void)desc; return 0; }
+
 /* Tracing: off. */
 static int g_trace_enabled(void) { return 0; }
 static void g_trace_begin(const char *name) { (void)name; }
@@ -839,6 +858,7 @@ const hk_sym hk_tab_ndk[] = {
     N("ASurfaceTransactionStats_getASurfaceControls", g_stats_controls),
     N("ASurfaceTransactionStats_releaseASurfaceControls", g_sc_nothing),
     N("ASurfaceTransactionStats_getPreviousReleaseFenceFd", g_stats_release_fence),
+    N("AHardwareBuffer_allocate", g_ahb_allocate), N("AHardwareBuffer_isSupported", g_ahb_is_supported),
     N("ANativeWindow_acquire", hk_nwindow_acquire), N("ANativeWindow_release", hk_nwindow_release),
     N("ANativeWindow_fromSurface", g_nw_from_surface),
     N("ANativeWindow_getWidth", g_nw_width), N("ANativeWindow_getHeight", g_nw_height), N("ANativeWindow_getFormat", g_nw_format),

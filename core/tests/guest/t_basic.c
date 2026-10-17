@@ -746,6 +746,25 @@ int t_surface_control(void)
 }
 
 /*
+ * Hardware buffers (AHardwareBuffer, libandroid), as Chromium asks for them: by dlsym. None can be made here (no gralloc):
+ * allocate answers NO_MEMORY with no buffer, isSupported says no. 3, or the negated step that failed.
+ */
+int t_hardware_buffer(void)
+{
+    struct { unsigned width, height, layers, format; unsigned long long usage; unsigned stride, rfu0; unsigned long long rfu1; } desc = {
+        64, 64, 1, 1, 0x300, 0, 0, 0 };   /* 64x64 R8G8B8A8_UNORM, read and written by the graphics processor */
+    void *android = dlopen("libandroid.so", 0), *buffer = (void *)1;
+    int (*allocate)(const void *, void **), (*supported)(const void *);
+    if (!android) return -1;
+    allocate = (int (*)(const void *, void **))dlsym(android, "AHardwareBuffer_allocate");
+    supported = (int (*)(const void *))dlsym(android, "AHardwareBuffer_isSupported");
+    if (!allocate || !supported) return -1;
+    if (allocate(&desc, &buffer) != -12 || buffer) return -2;
+    if (supported(&desc) != 0) return -3;
+    return 3;
+}
+
+/*
  * mremap, as an allocator grows and shrinks a block it mapped: grown with MREMAP_MAYMOVE, the bytes are there and the
  * new pages zero; shrunk, it stays where it is; grown without leave to move, ENOMEM. 5, or the negated step that failed.
  */
