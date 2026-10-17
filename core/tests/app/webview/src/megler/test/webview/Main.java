@@ -154,7 +154,27 @@ public class Main extends Activity {
         int body = b.getPixel(w / 2, h - 10) & 0xFFFFFF;
         boolean ok = near(bar, 0xFFD200) && near(body, 0x1E78C8);
         Log.i(T, "draw " + (ok ? "ok" : "FAILED") + " size=" + w + "x" + h + " bar=" + hex(bar) + " body=" + hex(body) + " ms=" + ms);
+        drawNode(w, h);
         js();
+    }
+
+    /**
+     * The WebView drawn through a RenderNode, whose canvas says it is hardware-accelerated, as Compose draws an AndroidView:
+     * the node drawn into a bitmap of the app's has the same bar and body.
+     */
+    private void drawNode(int w, int h) {
+        android.graphics.RenderNode node = new android.graphics.RenderNode("webview");
+        node.setPosition(0, 0, w, h);
+        android.graphics.RecordingCanvas rc = node.beginRecording(w, h);
+        boolean hardware = rc.isHardwareAccelerated();
+        web.draw(rc);
+        node.endRecording();
+        Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        new Canvas(b).drawRenderNode(node);
+        int bar = b.getPixel(w / 2, Math.max(1, (int) (20 * getResources().getDisplayMetrics().density))) & 0xFFFFFF;
+        int body = b.getPixel(w / 2, h - 10) & 0xFFFFFF;
+        boolean ok = hardware && near(bar, 0xFFD200) && near(body, 0x1E78C8);
+        Log.i(T, "draw-node " + (ok ? "ok" : "FAILED") + " hardware=" + hardware + " bar=" + hex(bar) + " body=" + hex(body));
     }
 
     private void js() {

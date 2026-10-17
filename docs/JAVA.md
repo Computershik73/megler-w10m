@@ -103,7 +103,7 @@ bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-f
       49 checks, 0 failed          the Java test app gl: a GLSurfaceView, EGL14 on a pbuffer, EGL10 on a SurfaceView, on a stand-in for OpenGL ES that draws
       65 checks, 0 failed          the Java test app data: a database, the storage, the battery, the time zone, TLS (conscrypt's, on loopback), key pairs, codecs and the network, the first run
       66 checks, 0 failed          data again, on what the first run left, with another battery and a time zone that is none
-      25 checks, 0 failed          the Java test app webview: Android's System WebView from the Android root, on pages of the app's own server
+      26 checks, 0 failed          the Java test app webview: Android's System WebView from the Android root, on pages of the app's own server
       49 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
     (then each app once more, its drawing recorded for the PC's run to draw again)
 ```
@@ -2547,7 +2547,12 @@ by its own where the app's come first. No app tried has done that yet.
 
 **Drawing.** No canvas is hardware-accelerated here, so the WebView draws in
 software, as it does on Android into a `Bitmap`'s canvas:
-`AwContents.onDraw` with `isHardwareAccelerated()` false. The tables of
+`AwContents.onDraw` with `isHardwareAccelerated()` false. A `RenderNode`'s
+canvas says it is (Compose draws an `AndroidView` into one), and Chromium
+draws such a canvas through the platform's draw functor, whose function table
+is null here: the overlay's `WebView.onDraw` gives it the WebView's software
+drawing through a bitmap of the view's size instead (Spotify's WebView ended
+the app making its functor). The tables of
 functions the platform's `libwebviewchromium_plat_support.so` gives a WebView
 (`GraphicsUtils.nativeGetDrawSWFunctionTable`, the GL functor's) are null
 (`hk_java_webview.c`; the library is a system library's name to the linker,

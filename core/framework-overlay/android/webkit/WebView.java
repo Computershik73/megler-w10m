@@ -2834,7 +2834,37 @@ public class WebView extends AbsoluteLayout
 
     @Override
     protected void onDraw(Canvas canvas) {
+        // megler-w10m: a canvas that says it is hardware-accelerated -- a RenderNode's, which Compose draws an AndroidView
+        // into -- is given what the WebView draws in software, through a bitmap of the view's size. Chromium draws a
+        // hardware-accelerated canvas through the platform's draw functor (AwDrawFn), and this platform has none: its
+        // function table is null (drivers/hk_java_webview.c), and Spotify's WebView ended the app making its functor.
+        // Every canvas here draws bitmaps, and a RenderNode's is a bitmap of the node's.
+        if (canvas.isHardwareAccelerated()) {
+            meglerDrawThroughBitmap(canvas);
+            return;
+        }
         mProvider.getViewDelegate().onDraw(canvas);
+    }
+
+    private Bitmap mMeglerBitmap;
+    private Canvas mMeglerCanvas;
+
+    private void meglerDrawThroughBitmap(Canvas canvas) {
+        int w = getWidth(), h = getHeight();
+        if (w <= 0 || h <= 0) return;
+        if (mMeglerBitmap == null || mMeglerBitmap.getWidth() != w || mMeglerBitmap.getHeight() != h) {
+            mMeglerBitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+            mMeglerCanvas = new Canvas(mMeglerBitmap);
+        } else {
+            mMeglerCanvas.drawColor(0, android.graphics.PorterDuff.Mode.CLEAR);
+        }
+        // What View.draw did to the canvas it was given: the view's content scrolled by its scroll position.
+        int sx = getScrollX(), sy = getScrollY();
+        int save = mMeglerCanvas.save();
+        mMeglerCanvas.translate(-sx, -sy);
+        mProvider.getViewDelegate().onDraw(mMeglerCanvas);
+        mMeglerCanvas.restoreToCount(save);
+        canvas.drawBitmap(mMeglerBitmap, sx, sy, null);
     }
 
     @Override
