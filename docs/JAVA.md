@@ -2956,7 +2956,7 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: forty-two files** in the overlay,
+**What differs from the original's framework: forty-three files** in the overlay,
 most of them a statement or a few methods each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and nine files of members added** to classes of the original's.
@@ -3478,7 +3478,21 @@ on a looper thread of its own and takes it back with `next()`.
   manifest, is refused it (its step "cleartext"); the WebView test app says
   `usesCleartextTraffic="true"` and loads its pages over http.
 
-The original has all thirty-four faults; they are its author's to take back.
+- `android/media/MediaMetadata.java`, in place of the generated stub, whose
+  getters answered null and 0, whose `writeToParcel` wrote nothing and whose
+  `CREATOR` was null. AndroidX's `MediaMetadataCompat.getMediaMetadata()`
+  makes the platform's object by writing itself (its Bundle) into a Parcel and
+  reading it back with `MediaMetadata.CREATOR`; `MediaSessionCompat` does that
+  for every `setMetadata`. Spotify's "MediaSession worker" thread threw a
+  NullPointerException there for each track, dozens of times a minute. Now
+  Android's class: a Bundle of the keys, the Builder that fills it, the Parcel
+  form (the Bundle, then the bitmap size limit, which a parcel holding the
+  Bundle alone leaves at its default), and `getDescription` made of the display keys or
+  the title, artist and album. The data app's step "media-metadata" sends one
+  through a Parcel and reads one from a Bundle alone, as the compat class
+  writes it.
+
+The original has all thirty-five faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in

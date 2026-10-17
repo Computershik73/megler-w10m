@@ -297,6 +297,7 @@ public class Main extends Activity {
         queueNext();
         storageStats();
         broadcastExplicit();
+        mediaMetadata();
         network();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
@@ -1046,6 +1047,37 @@ public class Main extends Activity {
                 Log.i("DataTest", "broadcast-relay " + (held ? "ok" : "FAILED") + " relay=" + relayHeard + " target=" + targetHeard + " off=" + offHeard + " registered=" + registered[0]);
             }, 1500);
             return true;
+        });
+    }
+
+    /**
+     * The platform's MediaMetadata: what its Builder puts in is there, and through a Parcel it comes back by CREATOR -- also from a
+     * parcel holding the Bundle alone, which is what MediaMetadataCompat writes when it makes the platform's object.
+     */
+    private void mediaMetadata() {
+        step("media-metadata", () -> {
+            android.media.MediaMetadata m = new android.media.MediaMetadata.Builder()
+                    .putString(android.media.MediaMetadata.METADATA_KEY_TITLE, "A song")
+                    .putString(android.media.MediaMetadata.METADATA_KEY_ARTIST, "Someone")
+                    .putLong(android.media.MediaMetadata.METADATA_KEY_DURATION, 215000).build();
+            android.os.Parcel p = android.os.Parcel.obtain();
+            m.writeToParcel(p, 0);
+            p.setDataPosition(0);
+            android.media.MediaMetadata back = android.media.MediaMetadata.CREATOR.createFromParcel(p);
+            p.recycle();
+            android.os.Bundle compat = new android.os.Bundle();
+            compat.putCharSequence(android.media.MediaMetadata.METADATA_KEY_TITLE, "From compat");
+            android.os.Parcel q = android.os.Parcel.obtain();
+            q.writeBundle(compat);
+            q.setDataPosition(0);
+            android.media.MediaMetadata fromCompat = android.media.MediaMetadata.CREATOR.createFromParcel(q);
+            q.recycle();
+            detail = "back " + back.getString(android.media.MediaMetadata.METADATA_KEY_TITLE) + "/" + back.getLong(android.media.MediaMetadata.METADATA_KEY_DURATION)
+                    + ", compat " + fromCompat.getString(android.media.MediaMetadata.METADATA_KEY_TITLE);
+            return m.size() == 3 && "A song".equals(back.getString(android.media.MediaMetadata.METADATA_KEY_TITLE))
+                    && back.getLong(android.media.MediaMetadata.METADATA_KEY_DURATION) == 215000 && back.equals(m)
+                    && "Someone".contentEquals(back.getDescription().getSubtitle())
+                    && "From compat".equals(fromCompat.getString(android.media.MediaMetadata.METADATA_KEY_TITLE));
         });
     }
 
