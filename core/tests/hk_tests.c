@@ -11,6 +11,7 @@
  * A guest function with floating-point parameters is called here through a
  * pointer typed with u32/u64 -- the softfp convention, spelled out.
  */
+#include "hk_codec_standin.h"
 #include "hk_gfx_tests.h"
 #include "hk_net_tests.h"
 #include "hk_storage_tests.h"
@@ -22,6 +23,7 @@
 #include "../src/arm/hk_stubs.h"
 #include "../src/bionic/hk_bionic.h"
 #include "../src/bionic/hk_fd.h"
+#include "../src/drivers/hk_java.h"
 #include "../src/hk_core.h"
 #include "../src/host/hk_host.h"
 #include "../include/megler.h"
@@ -617,6 +619,301 @@ static void test_libc_odds(void)
     say("libc's page size as data, setpgrp, ptrace");
     CHECK(size && *size == 4096 && shift && *shift == 12);
     CHECK(hk_bionic_find("setpgrp") != NULL && hk_bionic_find("ptrace") != NULL);
+}
+
+/* ------------------------------------------------------------------ the decoders behind a Java app's MediaCodec */
+
+/* A NAL unit of H.264 after a start code: its header byte, then a few bytes nobody reads. */
+static void put_avc_nal(u8 *out, size_t *n, u8 header, bool length_prefixed)
+{
+    static const u8 body[5] = { 0x42, 0x00, 0x1e, 0x9a, 0x11 };
+    if (length_prefixed) {
+        out[(*n)++] = 0, out[(*n)++] = 0, out[(*n)++] = 0, out[(*n)++] = 6;
+    } else {
+        out[(*n)++] = 0, out[(*n)++] = 0, out[(*n)++] = 0, out[(*n)++] = 1;
+    }
+    out[(*n)++] = header;
+    memcpy(out + *n, body, sizeof(body));
+    *n += sizeof(body);
+}
+
+/* Frames of a decoder, as MediaCodec takes them from it: their times in thirtieths of a second, and whether each picture was its time's grey. */
+static int drain_frames(hk_mcodec *c, int *times, int max, bool *grey)
+{
+    int n = 0;
+    i64 info[3];
+    hk_mframe *f;
+    while ((f = hk_mcodec_next_frame(c, info)) != NULL) {
+        const megler_codec_picture *p = hk_mcodec_frame_picture(f);
+        u8 bgra[64 * 4];
+        int want = (298 * (hk_codec_standin_luma(info[0]) - 16) + 128) >> 8;
+        if (want > 255) want = 255;
+        if (!hk_mcodec_render(p, bgra, 64, 1, 64 * 4) || p->data[0] != hk_codec_standin_luma(info[0]) || bgra[0] != want || bgra[1] != want || bgra[2] != want ||
+            bgra[3] != 255 || info[1] != p->width || info[2] != p->height)
+            *grey = false;
+        if (n < max) times[n] = (int)((info[0] * 30 + 500000) / 1000000);
+        n++;
+        hk_mcodec_free_frame(f);
+    }
+    return n;
+}
+
+/* Decode order of a stream with two B-pictures between references, as the test streams have it: 0 3 1 2 6 4 5 9 7 8. */
+static const int k_decode_order[10] = { 0, 3, 1, 2, 6, 4, 5, 9, 7, 8 };
+
+/*
+ * Pictures through the codec (hk_java_media.c) and the stand-in for the shell's decoders (hk_codec_standin.c), which takes
+ * units only as a decoder must have them, and hands pictures out in decode order: the codec gives them in display order,
+ * with the parameter sets in front of the first unit after a start or a flush, whichever form the app had them in.
+ */
+static void test_codec_pictures(void)
+{
+    static const u8 avcc[] = { 1, 0x42, 0x00, 0x1e, 0xff, 0xe1, 0, 6, 0x67, 0x42, 0x00, 0x1e, 0x9a, 0x11, 1, 0, 6, 0x68, 0x42, 0x00, 0x1e, 0x9a, 0x11 };
+    int pass, i, n, times[16];
+    for (pass = 0; pass < 4; pass++) {
+        /* 0: csd-0 and csd-1 in Annex-B; 1: the units length-prefixed, csd-0 the avcC record; 2: the parameter sets in the first unit; 3: in a codec-config buffer */
+        hk_mcodec *c = hk_mcodec_create("video/avc");
+        u8 sps[16], pps[16], unit[64];
+        size_t ns = 0, np = 0, nu, size[3] = { 0, 0, 0 };
+        const u8 *csd[3] = { NULL, NULL, NULL };
+        hk_codec_standin_counts before, after;
+        bool grey = true, ordered = true;
+        hk_codec_standin_counts_get(&before);
+        put_avc_nal(sps, &ns, 0x67, false);
+        put_avc_nal(pps, &np, 0x68, false);
+        if (pass == 0) csd[0] = sps, size[0] = ns, csd[1] = pps, size[1] = np;
+        if (pass == 1) csd[0] = avcc, size[0] = sizeof(avcc);
+        CHECK(c && hk_mcodec_configure(c, 168, 94, 0, 0, csd, size));
+        if (!c) continue;
+        CHECK(hk_mcodec_size(c) == (168 << 16 | 94));
+        if (pass == 3) {
+            u8 config[32];
+            memcpy(config, sps, ns);
+            memcpy(config + ns, pps, np);
+            hk_mcodec_decode(c, config, ns + np, 0, 2);
+        }
+        n = 0;
+        for (i = 0; i < 10; i++) {
+            nu = 0;
+            if (pass == 2 && i == 0) {
+                memcpy(unit, sps, ns);
+                memcpy(unit + ns, pps, np);
+                nu = ns + np;
+            }
+            put_avc_nal(unit, &nu, k_decode_order[i] % 3 == 0 && !i ? 0x65 : 0x41, pass == 1);
+            hk_mcodec_decode(c, unit, nu, (i64)k_decode_order[i] * 1000000 / 30, i == 9 ? 4 : 0);
+            n += drain_frames(c, times + n, 16 - n, &grey);
+        }
+        for (i = 0; i < 10 && i < n; i++)
+            if (times[i] != i) ordered = false;
+        hk_codec_standin_counts_get(&after);
+        CHECK_INT(n, 10);
+        CHECK(ordered && grey);
+        CHECK_INT(after.refused - before.refused, 0);
+        CHECK(hk_mcodec_size(c) == (168 << 16 | 94));
+        hk_mcodec_destroy(c);
+        hk_codec_standin_counts_get(&after);
+        CHECK_INT(after.pictures_released - before.pictures_released, 10);
+        CHECK_INT(after.closed - before.closed, 1);
+    }
+    {
+        /*
+         * A flush: four units in, none out yet (the stand-in's four are held to be put in order), then a flush, which drops them
+         * here and in the decoder, and a key frame and three more after it: those four alone come out, the parameter sets in front
+         * of the key frame again.
+         */
+        hk_mcodec *c = hk_mcodec_create("video/avc");
+        u8 sps[16], pps[16], unit[64];
+        size_t ns = 0, np = 0, nu, size[3] = { 0, 0, 0 };
+        const u8 *csd[3] = { NULL, NULL, NULL };
+        static const int after_flush[4] = { 12, 15, 13, 14 };
+        hk_codec_standin_counts before, after;
+        bool grey = true;
+        put_avc_nal(sps, &ns, 0x67, false);
+        put_avc_nal(pps, &np, 0x68, false);
+        csd[0] = sps, size[0] = ns, csd[1] = pps, size[1] = np;
+        hk_codec_standin_counts_get(&before);
+        CHECK(hk_mcodec_configure(c, 0, 0, 0, 0, csd, size));
+        n = 0;
+        for (i = 0; i < 4; i++) {
+            nu = 0;
+            put_avc_nal(unit, &nu, i ? 0x41 : 0x65, false);
+            hk_mcodec_decode(c, unit, nu, (i64)k_decode_order[i] * 1000000 / 30, 0);
+            n += drain_frames(c, times + n, 16 - n, &grey);
+        }
+        CHECK_INT(n, 0);
+        hk_mcodec_flush(c);
+        hk_codec_standin_counts_get(&after);
+        CHECK_INT(after.pictures_released - before.pictures_released, 4);
+        CHECK_INT(after.flushed - before.flushed, 1);
+        for (i = 0; i < 4; i++) {
+            nu = 0;
+            put_avc_nal(unit, &nu, i ? 0x41 : 0x65, false);
+            hk_mcodec_decode(c, unit, nu, (i64)after_flush[i] * 1000000 / 30, i == 3 ? 4 : 0);
+            n += drain_frames(c, times + n, 16 - n, &grey);
+        }
+        hk_codec_standin_counts_get(&after);
+        CHECK(n == 4 && times[0] == 12 && times[1] == 13 && times[2] == 14 && times[3] == 15 && grey);
+        CHECK_INT(after.refused - before.refused, 0);
+        /* (The stand-in was opened without a size: 64 x 48 is what its pictures are, and what the codec says now.) */
+        CHECK(hk_mcodec_size(c) == (64 << 16 | 48));
+        hk_mcodec_destroy(c);
+    }
+    {
+        /* No parameter sets anywhere: nothing to put in front, and the decoder refuses the unit, as a real one finds nothing to decode. */
+        hk_mcodec *c = hk_mcodec_create("video/avc");
+        u8 unit[32];
+        size_t nu = 0, size[3] = { 0, 0, 0 };
+        const u8 *csd[3] = { NULL, NULL, NULL };
+        hk_codec_standin_counts before, after;
+        bool grey = true;
+        hk_codec_standin_counts_get(&before);
+        CHECK(hk_mcodec_configure(c, 32, 32, 0, 0, csd, size));
+        put_avc_nal(unit, &nu, 0x65, false);
+        hk_mcodec_decode(c, unit, nu, 0, 4);
+        hk_codec_standin_counts_get(&after);
+        CHECK(drain_frames(c, times, 16, &grey) == 0 && after.refused - before.refused == 1);
+        hk_mcodec_destroy(c);
+    }
+}
+
+/* Sound blocks of a decoder: how many, and the frames in all; the rate and channels of the last. */
+static int drain_pcm(hk_mcodec *c, int *frames, i64 *rate, i64 *channels)
+{
+    int blocks = 0;
+    i64 info[3];
+    size_t bytes;
+    u8 *pcm;
+    while ((pcm = hk_mcodec_next_pcm(c, info, &bytes)) != NULL) {
+        blocks++;
+        *rate = info[1];
+        *channels = info[2];
+        if (info[2] > 0) *frames += (int)(bytes / 2 / (size_t)info[2]);
+        free(pcm);
+    }
+    return blocks;
+}
+
+/* An ADTS header of AAC LC at 44100 Hz in two channels before a frame of `n` bytes. */
+static size_t put_adts(u8 *out, size_t n)
+{
+    size_t len = n + 7;
+    out[0] = 0xFF;
+    out[1] = 0xF1;
+    out[2] = (u8)(1 << 6 | 4 << 2);
+    out[3] = (u8)(2 << 6 | (len >> 11));
+    out[4] = (u8)(len >> 3);
+    out[5] = (u8)((len & 7) << 5 | 0x1F);
+    out[6] = 0xFC;
+    memset(out + 7, 0x21, n);
+    return len;
+}
+
+/* Sound through the codec and the stand-in: AAC raw or with ADTS headers, with an AudioSpecificConfig or without, and MP3. */
+static void test_codec_sound(void)
+{
+    static const u8 lc_44100_stereo[2] = { 0x12, 0x10 }, lc_48000_mono[2] = { 0x11, 0x88 };
+    u8 packet[300];
+    size_t size[3] = { 0, 0, 0 };
+    const u8 *csd[3] = { NULL, NULL, NULL };
+    hk_codec_standin_counts before, after;
+    hk_mcodec *c;
+    int frames, i;
+    i64 rate, channels;
+    hk_codec_standin_counts_get(&before);
+    /* Raw packets and csd-0, one block of 1024 frames for each. */
+    c = hk_mcodec_create("audio/mp4a-latm");
+    csd[0] = lc_44100_stereo, size[0] = 2;
+    CHECK(hk_mcodec_configure(c, 0, 0, 44100, 2, csd, size));
+    memset(packet, 0x21, sizeof(packet));
+    for (i = 0; i < 3; i++) hk_mcodec_decode(c, packet, 200, (i64)i * 23220, i == 2 ? 4 : 0);
+    frames = 0, rate = channels = 0;
+    CHECK(drain_pcm(c, &frames, &rate, &channels) == 3 && frames == 3 * 1024 && rate == 44100 && channels == 2);
+    hk_mcodec_destroy(c);
+    /* The configuration is what the decoder is opened with, over what the format says: 48 kHz in one channel. */
+    c = hk_mcodec_create("audio/mp4a-latm");
+    csd[0] = lc_48000_mono;
+    CHECK(hk_mcodec_configure(c, 0, 0, 44100, 2, csd, size));
+    hk_mcodec_decode(c, packet, 200, 0, 0);
+    frames = 0, rate = channels = 0;
+    CHECK(drain_pcm(c, &frames, &rate, &channels) == 1 && frames == 1024 && rate == 48000 && channels == 1);
+    /* A codec-config buffer with another configuration: a decoder for that one. */
+    hk_mcodec_decode(c, lc_44100_stereo, 2, 0, 2);
+    hk_mcodec_decode(c, packet, 200, 0, 0);
+    frames = 0, rate = channels = 0;
+    CHECK(drain_pcm(c, &frames, &rate, &channels) == 1 && frames == 1024 && rate == 44100 && channels == 2);
+    hk_mcodec_destroy(c);
+    /* ADTS and no configuration: the header says it, and comes off; a buffer with two frames is two packets. */
+    c = hk_mcodec_create("audio/mp4a-latm");
+    csd[0] = NULL, size[0] = 0;
+    CHECK(hk_mcodec_configure(c, 0, 0, 22050, 1, csd, size));
+    hk_mcodec_decode(c, packet, put_adts(packet, 100), 0, 0);
+    {
+        size_t first = put_adts(packet, 90);
+        hk_mcodec_decode(c, packet, first + put_adts(packet + first, 80), 23220, 4);
+    }
+    frames = 0, rate = channels = 0;
+    CHECK(drain_pcm(c, &frames, &rate, &channels) == 3 && frames == 3 * 1024 && rate == 44100 && channels == 2);
+    hk_mcodec_destroy(c);
+    /* MP3 with no rate said: the first frame's header says 22050 Hz in one channel (MPEG-2 Layer III, mono). */
+    c = hk_mcodec_create("audio/mpeg");
+    CHECK(hk_mcodec_configure(c, 0, 0, 0, 0, csd, size));
+    memset(packet, 0, sizeof(packet));
+    packet[0] = 0xFF, packet[1] = 0xF3, packet[2] = 0x80, packet[3] = 0xC4;
+    hk_mcodec_decode(c, packet, 144, 0, 0);
+    hk_mcodec_decode(c, packet, 144, 52245, 4);
+    frames = 0, rate = channels = 0;
+    CHECK(drain_pcm(c, &frames, &rate, &channels) == 2 && frames == 2 * 1152 && rate == 22050 && channels == 1);
+    hk_mcodec_destroy(c);
+    hk_codec_standin_counts_get(&after);
+    CHECK_INT(after.refused - before.refused, 0);
+    CHECK_INT(after.opened - before.opened, after.closed - before.closed);
+}
+
+/* NV12 to the bitmaps' colours: red in BT.601 and BT.709 at video range, and at full range; and RGBA as it is. */
+static void test_codec_colours(void)
+{
+    u8 y[2], uv[2], rgba[4] = { 10, 20, 30, 40 }, out[8];
+    megler_codec_picture p;
+    memset(&p, 0, sizeof(p));
+    p.format = MEGLER_CODEC_NV12;
+    p.width = 2;
+    p.height = 1;
+    p.data = y;
+    p.chroma = uv;
+    p.stride = p.chroma_stride = 2;
+    y[0] = y[1] = 81, uv[0] = 90, uv[1] = 240;
+    p.matrix = MEGLER_CODEC_BT601;
+    CHECK(hk_mcodec_render(&p, out, 2, 1, 8) && out[2] >= 253 && out[1] <= 2 && out[0] <= 2 && out[3] == 255 && out[6] == out[2]);
+    y[0] = y[1] = 63, uv[0] = 102, uv[1] = 240;
+    p.matrix = MEGLER_CODEC_BT709;
+    CHECK(hk_mcodec_render(&p, out, 2, 1, 8) && out[2] >= 253 && out[1] <= 2 && out[0] <= 2);
+    /* Not said, a small picture: BT.601, under which BT.709's red is a darker one. */
+    p.matrix = 0;
+    CHECK(hk_mcodec_render(&p, out, 2, 1, 8) && out[2] >= 225 && out[2] <= 240);
+    y[0] = y[1] = 76, uv[0] = 85, uv[1] = 255;
+    p.matrix = MEGLER_CODEC_BT601;
+    p.full_range = true;
+    CHECK(hk_mcodec_render(&p, out, 2, 1, 8) && out[2] >= 253 && out[1] <= 2 && out[0] <= 2);
+    p.format = MEGLER_CODEC_RGBA;
+    p.width = 1;
+    p.data = rgba;
+    p.stride = 4;
+    CHECK(hk_mcodec_render(&p, out, 1, 1, 4) && out[0] == 30 && out[1] == 20 && out[2] == 10 && out[3] == 255);
+}
+
+static void test_codecs(void)
+{
+    say("the decoders behind a Java app's MediaCodec, over a stand-in for the shell's");
+    hk_java_media_set_host(NULL);
+    CHECK(!hk_mcodec_supported("video/avc") && !hk_mcodec_create("video/avc"));
+    hk_java_media_set_host(hk_codec_standin());
+    CHECK(hk_mcodec_supported("video/avc") && hk_mcodec_supported("VIDEO/AVC") && hk_mcodec_supported("audio/mp4a-latm") && hk_mcodec_supported("audio/mpeg"));
+    CHECK(!hk_mcodec_supported("video/hevc") && !hk_mcodec_supported("video/x-vnd.on2.vp8") && !hk_mcodec_supported(NULL));
+    test_codec_pictures();
+    test_codec_sound();
+    test_codec_colours();
+    hk_java_media_set_host(NULL);
 }
 
 /* The battery the core answers for (run/hk_run.h): a full one on mains until one is set, then the one set, made safe to divide by and to read as text. */
@@ -1462,6 +1759,7 @@ int hk_tests_run(const char *libdir, const char *scratch, hk_test_sink sink, voi
     test_sqlite(scratch);
     test_textures();
     test_media(scratch);
+    test_codecs();
     test_battery();
     test_libc_odds();
     test_input();

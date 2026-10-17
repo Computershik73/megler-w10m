@@ -299,6 +299,7 @@ public class Main extends Activity {
         broadcastExplicit();
         mediaMetadata();
         sound();
+        mediaCodec();
         network();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
@@ -776,25 +777,33 @@ public class Main extends Activity {
     }
 
     /**
-     * The decoders an app can have, which is none yet (the shell decodes whole files, not an app's samples): the list is empty
-     * every way it is asked for, nothing is found for a film's format, and asking for a decoder by type is the IOException
-     * Android throws when there is none -- nothing that ends an app.
+     * The decoders an app can have: those the shell has, which under the test runner is its stand-in's H.264, AAC and MP3
+     * and not H.265 (core/tests/hk_codec_standin.c). They are listed every way the list is asked for, one is found for a
+     * film's format, one is made by its type, and asking for H.265 is the IOException Android throws when there is none.
      */
     private void codecs() {
         step("codecs", () -> {
             int count = android.media.MediaCodecList.getCodecCount();
             android.media.MediaCodecList list = new android.media.MediaCodecList(android.media.MediaCodecList.ALL_CODECS);
-            int all = list.getCodecInfos().length;
+            StringBuilder names = new StringBuilder();
+            for (android.media.MediaCodecInfo i : list.getCodecInfos()) names.append(i.getName()).append(' ');
             String found = list.findDecoderForFormat(android.media.MediaFormat.createVideoFormat("video/avc", 640, 360));
-            String made;
+            String made, hevc;
             try {
                 android.media.MediaCodec.createDecoderByType("video/avc").release();
                 made = "made";
             } catch (java.io.IOException e) {
                 made = "IOException";
             }
-            detail = "count=" + count + " all=" + all + " avc=" + found + " create=" + made;
-            return count == 0 && all == 0 && found == null && "IOException".equals(made);
+            try {
+                android.media.MediaCodec.createDecoderByType("video/hevc").release();
+                hevc = "made";
+            } catch (java.io.IOException e) {
+                hevc = "IOException";
+            }
+            detail = "count=" + count + " " + names + "avc=" + found + " create=" + made + " hevc=" + hevc;
+            return count == 3 && "c2.megler.avc.decoder c2.megler.aac.decoder c2.megler.mp3.decoder ".equals(names.toString()) && "c2.megler.avc.decoder".equals(found)
+                    && "made".equals(made) && "IOException".equals(hevc);
         });
     }
 
@@ -1169,6 +1178,282 @@ public class Main extends Activity {
             int id = pool.load(getAssets().openFd("tone.ogg"), 1);
             detail = "load gave " + id;
             return id > 0;
+        });
+    }
+
+    /**
+     * A compressed stream as an extractor hands it to MediaCodec: tools/media-test-streams.py wrote it (the file's form is
+     * said there). The records flagged as codec-specific data are `csd`; the rest are samples in decode order.
+     */
+    private static final class Stream {
+        String mime;
+        int width, height, rate, channels;
+        final java.util.List<byte[]> csd = new java.util.ArrayList<>(), samples = new java.util.ArrayList<>();
+        final java.util.List<Long> times = new java.util.ArrayList<>();
+
+        static Stream read(android.content.res.AssetManager assets, String name) throws java.io.IOException {
+            java.io.ByteArrayOutputStream all = new java.io.ByteArrayOutputStream();
+            try (java.io.InputStream in = assets.open(name)) {
+                byte[] b = new byte[8192];
+                for (int n; (n = in.read(b)) > 0;) all.write(b, 0, n);
+            }
+            java.nio.ByteBuffer b = java.nio.ByteBuffer.wrap(all.toByteArray()).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            byte[] magic = new byte[8], mime = new byte[32];
+            b.get(magic);
+            b.get(mime);
+            Stream s = new Stream();
+            int end = 0;
+            while (end < 32 && mime[end] != 0) end++;
+            s.mime = new String(mime, 0, end, "US-ASCII");
+            s.width = b.getInt();
+            s.height = b.getInt();
+            s.rate = b.getInt();
+            s.channels = b.getInt();
+            for (int i = 0, count = b.getInt(); i < count; i++) {
+                int flags = b.getInt(), size = b.getInt();
+                long time = b.getLong();
+                byte[] data = new byte[size];
+                b.get(data);
+                if ((flags & android.media.MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) s.csd.add(data);
+                else {
+                    s.samples.add(data);
+                    s.times.add(time);
+                }
+            }
+            return s;
+        }
+
+        android.media.MediaFormat format(boolean withCsd) {
+            android.media.MediaFormat f = mime.startsWith("video/") ? android.media.MediaFormat.createVideoFormat(mime, width, height)
+                    : android.media.MediaFormat.createAudioFormat(mime, rate, channels);
+            for (int i = 0; withCsd && i < csd.size(); i++) f.setByteBuffer("csd-" + i, java.nio.ByteBuffer.wrap(csd.get(i)));
+            return f;
+        }
+    }
+
+    /** What came out of a decoder: the pictures' times in thirtieths of a second, the sound's bytes and blocks, the formats said, the end. */
+    private static final class Decoded {
+        final java.util.List<Integer> pictures = new java.util.ArrayList<>();
+        long pcm;
+        int blocks, formats;
+        boolean ended;
+        android.media.MediaFormat format;
+
+        boolean inOrder(int first, int count) {
+            if (pictures.size() != count) return false;
+            for (int i = 0; i < count; i++) if (pictures.get(i) != first + i) return false;
+            return true;
+        }
+
+        @Override public String toString() {
+            return "pictures=" + pictures + " pcm=" + pcm + " blocks=" + blocks + " formats=" + formats + " ended=" + ended + " format=" + format;
+        }
+    }
+
+    /** Whatever the decoder has ready, taken as an app takes it (pictures shown when `render`); until the end when `untilEnd`. */
+    private static void take(android.media.MediaCodec codec, Decoded out, boolean render, boolean untilEnd) {
+        android.media.MediaCodec.BufferInfo info = new android.media.MediaCodec.BufferInfo();
+        long give = System.nanoTime() + 2000000000L;
+        while (!out.ended && System.nanoTime() < give) {
+            int i = codec.dequeueOutputBuffer(info, untilEnd ? 10000 : 0);
+            if (i == android.media.MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                out.formats++;
+                out.format = codec.getOutputFormat();
+            } else if (i >= 0) {
+                if ((info.flags & android.media.MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) out.ended = true;
+                if (info.size > 0) {
+                    java.nio.ByteBuffer b = codec.getOutputBuffer(i);
+                    if (b != null) {
+                        out.pcm += b.remaining();
+                        out.blocks++;
+                    } else {
+                        out.pictures.add((int) ((info.presentationTimeUs * 30 + 500000) / 1000000));
+                    }
+                }
+                codec.releaseOutputBuffer(i, render);
+            } else if (!untilEnd) {
+                return;
+            }
+        }
+    }
+
+    /** The stream's samples from..to (in decode order) through a started decoder, the last with the end of the stream when `end`. */
+    private static void feed(android.media.MediaCodec codec, Stream s, int from, int to, boolean end, Decoded out, boolean render) {
+        for (int k = from; k < to; k++) {
+            int i;
+            while ((i = codec.dequeueInputBuffer(10000)) < 0) take(codec, out, render, false);
+            java.nio.ByteBuffer b = codec.getInputBuffer(i);
+            byte[] data = s.samples.get(k);
+            b.put(data);
+            codec.queueInputBuffer(i, 0, data.length, s.times.get(k), end && k == to - 1 ? android.media.MediaCodec.BUFFER_FLAG_END_OF_STREAM : 0);
+            take(codec, out, render, false);
+        }
+        if (end) take(codec, out, render, true);
+    }
+
+    /** The frame after an ADTS header that says AAC LC at 44100 Hz in two channels. */
+    private static byte[] adts(byte[] frame) {
+        int len = frame.length + 7;
+        byte[] out = new byte[len];
+        out[0] = (byte) 0xFF;
+        out[1] = (byte) 0xF1;
+        out[2] = (byte) (1 << 6 | 4 << 2);
+        out[3] = (byte) (2 << 6 | len >> 11);
+        out[4] = (byte) (len >> 3);
+        out[5] = (byte) ((len & 7) << 5 | 0x1F);
+        out[6] = (byte) 0xFC;
+        System.arraycopy(frame, 0, out, 7, frame.length);
+        return out;
+    }
+
+    /**
+     * MediaCodec as apps use it, over the shell's decoders (under the test runner, its stand-in, which hands pictures out in
+     * decode order: the layer puts them in display order). The streams are the assets avc.hkau (24 pictures with two
+     * B-pictures between references, an IDR at 0 and 12), aac.hkau (23 packets) and mp3.hkau (21 frames):
+     * - "codec-avc": the parameter sets as csd-0 and csd-1, every picture shown on a Surface over a SurfaceTexture: the
+     *   output format first, then all 24 pictures in display order, then the end of the stream; the last one shown is in
+     *   the SurfaceTexture, in the grey the stand-in made for its time;
+     * - "codec-avc-flush": seven units, a flush, then from the IDR at 12 to the end: pictures 12 to 23 come out, none from
+     *   before the flush;
+     * - "codec-avc-inband": no csd; the parameter sets in a buffer flagged as codec-specific data first, as some apps send
+     *   them;
+     * - "codec-avc-async": the callbacks of the asynchronous mode, which ExoPlayer uses, on a thread of their own; the line
+     *   "codec-avc-async-done" says what came, and the test runner looks for it;
+     * - "codec-aac": csd-0 the AudioSpecificConfig, a block of PCM for each packet, 44100 Hz in two channels;
+     * - "codec-aac-adts": no csd, each packet with an ADTS header, as an app that says "is-adts" feeds them;
+     * - "codec-mp3": a block for each frame.
+     */
+    private void mediaCodec() {
+        step("codec-avc", () -> {
+            Stream s = Stream.read(getAssets(), "avc.hkau");
+            android.graphics.SurfaceTexture texture = new android.graphics.SurfaceTexture(false);
+            texture.setDefaultBufferSize(s.width, s.height);
+            android.view.Surface surface = new android.view.Surface(texture);
+            android.media.MediaCodec codec = android.media.MediaCodec.createDecoderByType("video/avc");
+            codec.configure(s.format(true), surface, null, 0);
+            codec.start();
+            Decoded out = new Decoded();
+            feed(codec, s, 0, s.samples.size(), true, out, true);
+            codec.stop();
+            codec.release();
+            android.graphics.Bitmap shown = (android.graphics.Bitmap) texture.getClass().getMethod("meglerFront").invoke(texture);
+            int pixel = shown == null ? 0 : shown.getPixel(s.width / 2, s.height / 2);
+            int grey = Math.min(255, (298 * (16 + 8 * 23 - 16) + 128) >> 8);
+            surface.release();
+            texture.release();
+            detail = out + " shown=" + Integer.toHexString(pixel) + " grey=" + grey;
+            return out.inOrder(0, 24) && out.ended && out.formats == 1 && out.format.getInteger(android.media.MediaFormat.KEY_WIDTH) == s.width
+                    && out.format.getInteger(android.media.MediaFormat.KEY_HEIGHT) == s.height && pixel == (0xFF000000 | grey << 16 | grey << 8 | grey);
+        });
+        step("codec-avc-flush", () -> {
+            Stream s = Stream.read(getAssets(), "avc.hkau");
+            android.media.MediaCodec codec = android.media.MediaCodec.createDecoderByType("video/avc");
+            codec.configure(s.format(true), null, null, 0);
+            codec.start();
+            Decoded before = new Decoded(), after = new Decoded();
+            feed(codec, s, 0, 7, false, before, false);
+            codec.flush();
+            int idr = -1;
+            for (int k = 0; k < s.times.size(); k++) if ((s.times.get(k) * 30 + 500000) / 1000000 == 12) idr = k;
+            feed(codec, s, idr, s.samples.size(), true, after, false);
+            codec.release();
+            detail = "before: " + before.pictures + " after: " + after + " idr at " + idr;
+            return idr > 7 && after.inOrder(12, 12) && after.ended;
+        });
+        step("codec-avc-inband", () -> {
+            Stream s = Stream.read(getAssets(), "avc.hkau");
+            android.media.MediaCodec codec = android.media.MediaCodec.createDecoderByType("video/avc");
+            codec.configure(s.format(false), null, null, 0);
+            codec.start();
+            int i = codec.dequeueInputBuffer(10000);
+            java.nio.ByteBuffer b = codec.getInputBuffer(i);
+            for (byte[] c : s.csd) b.put(c);
+            codec.queueInputBuffer(i, 0, b.position(), 0, android.media.MediaCodec.BUFFER_FLAG_CODEC_CONFIG);
+            Decoded out = new Decoded();
+            feed(codec, s, 0, s.samples.size(), true, out, false);
+            codec.release();
+            detail = out.toString();
+            return out.inOrder(0, 24) && out.ended;
+        });
+        step("codec-avc-async", () -> {
+            final Stream s = Stream.read(getAssets(), "avc.hkau");
+            final android.os.HandlerThread thread = new android.os.HandlerThread("codec-callbacks");
+            thread.start();
+            final android.os.Handler handler = new android.os.Handler(thread.getLooper());
+            final android.media.MediaCodec codec = android.media.MediaCodec.createDecoderByType("video/avc");
+            final Decoded out = new Decoded();
+            codec.setCallback(new android.media.MediaCodec.Callback() {
+                int next;
+
+                @Override public void onInputBufferAvailable(android.media.MediaCodec c, int index) {
+                    if (next >= s.samples.size()) return;
+                    byte[] data = s.samples.get(next);
+                    c.getInputBuffer(index).put(data);
+                    c.queueInputBuffer(index, 0, data.length, s.times.get(next), next == s.samples.size() - 1 ? android.media.MediaCodec.BUFFER_FLAG_END_OF_STREAM : 0);
+                    next++;
+                }
+
+                @Override public void onOutputBufferAvailable(android.media.MediaCodec c, int index, android.media.MediaCodec.BufferInfo info) {
+                    if (info.size > 0) out.pictures.add((int) ((info.presentationTimeUs * 30 + 500000) / 1000000));
+                    c.releaseOutputBuffer(index, false);
+                    if ((info.flags & android.media.MediaCodec.BUFFER_FLAG_END_OF_STREAM) == 0) return;
+                    out.ended = true;
+                    boolean onThread = android.os.Looper.myLooper() == thread.getLooper();
+                    Log.i("DataTest", "codec-avc-async-done " + (out.inOrder(0, 24) && out.formats == 1 && onThread ? "ok" : "FAILED") + " " + out + " on its thread=" + onThread);
+                    handler.post(() -> {
+                        c.release();
+                        thread.quitSafely();
+                    });
+                }
+
+                @Override public void onError(android.media.MediaCodec c, android.media.MediaCodec.CodecException e) {
+                    Log.i("DataTest", "codec-avc-async-done FAILED: " + e);
+                }
+
+                @Override public void onOutputFormatChanged(android.media.MediaCodec c, android.media.MediaFormat format) {
+                    out.formats++;
+                }
+            }, handler);
+            codec.configure(s.format(true), null, null, 0);
+            codec.start();
+            return true;
+        });
+        step("codec-aac", () -> {
+            Stream s = Stream.read(getAssets(), "aac.hkau");
+            android.media.MediaCodec codec = android.media.MediaCodec.createDecoderByType(s.mime);
+            codec.configure(s.format(true), null, null, 0);
+            codec.start();
+            Decoded out = new Decoded();
+            feed(codec, s, 0, s.samples.size(), true, out, false);
+            codec.release();
+            detail = out + " packets=" + s.samples.size();
+            return out.ended && out.blocks == s.samples.size() && out.pcm == s.samples.size() * 1024L * 2 * 2 && out.formats == 1
+                    && out.format.getInteger(android.media.MediaFormat.KEY_SAMPLE_RATE) == 44100 && out.format.getInteger(android.media.MediaFormat.KEY_CHANNEL_COUNT) == 2;
+        });
+        step("codec-aac-adts", () -> {
+            Stream s = Stream.read(getAssets(), "aac.hkau");
+            for (int k = 0; k < s.samples.size(); k++) s.samples.set(k, adts(s.samples.get(k)));
+            android.media.MediaFormat f = s.format(false);
+            f.setInteger(android.media.MediaFormat.KEY_IS_ADTS, 1);
+            android.media.MediaCodec codec = android.media.MediaCodec.createDecoderByType(s.mime);
+            codec.configure(f, null, null, 0);
+            codec.start();
+            Decoded out = new Decoded();
+            feed(codec, s, 0, s.samples.size(), true, out, false);
+            codec.release();
+            detail = out + " packets=" + s.samples.size();
+            return out.ended && out.blocks == s.samples.size() && out.pcm == s.samples.size() * 1024L * 2 * 2;
+        });
+        step("codec-mp3", () -> {
+            Stream s = Stream.read(getAssets(), "mp3.hkau");
+            android.media.MediaCodec codec = android.media.MediaCodec.createDecoderByType(s.mime);
+            codec.configure(s.format(false), null, null, 0);
+            codec.start();
+            Decoded out = new Decoded();
+            feed(codec, s, 0, s.samples.size(), true, out, false);
+            codec.release();
+            detail = out + " frames=" + s.samples.size();
+            return out.ended && out.blocks == s.samples.size() && out.pcm == s.samples.size() * 1152L * 2 * 2;
         });
     }
 

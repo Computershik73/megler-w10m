@@ -57,6 +57,7 @@
 #include "../src/host/hk_host.h"
 #include "../src/ndk/hk_egl.h"
 #include "../src/run/hk_run.h"
+#include "hk_codec_standin.h"
 #include "hk_gfx_standin.h"
 #include "hk_gl_standin.h"
 #include "hk_tests.h"
@@ -538,6 +539,8 @@ static bool start(const char *apk, const char *android_root)
     cfg.gfx.gl_place = gl_place;
     cfg.keyboard.show = keyboard_show;
     cfg.keyboard.hide = keyboard_hide;
+    /* Decoders for MediaCodec that decode nothing but take samples only as a real one must have them (hk_codec_standin.c). */
+    cfg.codec = *hk_codec_standin();
     /* The framework says which window each touch went to when it finds this in the environment: asked for with verbose 2. */
     if (g_verbose >= 2 && hk_bionic_find("setenv")) ((int (*)(const char *, const char *, int))hk_bionic_find("setenv"))("TL_TOUCH_LOG", "1", 1);
     /* And every window's views with their frames, every three seconds while it lays out: verbose 3. */
@@ -1429,8 +1432,8 @@ static int run_data(void)
                                          "environment", "own-folders", "volumes", "space", "permissions", "download", "list-root",
                                          /* And the battery, the time zone, TLS (conscrypt's: a TLS server and client of the app's own on loopback,
                                             and an https URL through Android's HTTP client; or, where its library is not in the Android root, the
-                                            stand-in that fails politely), Android's key store's key pairs, and the list of decoders, which is empty
-                                            and says nothing about it. */
+                                            stand-in that fails politely), Android's key store's key pairs, and the list of decoders: the stand-in's
+                                            H.264, AAC and MP3 (hk_codec_standin.c), and no H.265. */
                                          "battery", "timezone", "tls", "tls-loopback", "tls-https", "keystore", "codecs",
                                          /* And what Android's WebView asks of the platform before it shows a page, each answered as Android
                                             answers it: the app's id within its user (UserHandle.getAppId), whether cleartext HTTP is
@@ -1450,6 +1453,10 @@ static int run_data(void)
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup",
                                          "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "media-metadata",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
+                                         /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
+                                            order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
+                                            AudioSpecificConfig and with ADTS headers, MP3. */
+                                         "codec-avc", "codec-avc-flush", "codec-avc-inband", "codec-avc-async", "codec-aac", "codec-aac-adts", "codec-mp3",
                                          /* And the network from Java, on loopback: names, an HTTP server of the app's own and HttpURLConnection, UDP, a server
                                             socket closed under the thread waiting in accept, a java.nio selector, the interfaces, ConnectivityManager. */
                                          "net-localhost", "net-http", "net-udp", "net-close", "net-nio", "net-interfaces", "net-connectivity" };
@@ -1485,6 +1492,8 @@ static int run_data(void)
     CHECK(wait_line("I/DataTest: media-player-done ok", 0, 30) >= 0);
     CHECK(wait_line("I/DataTest: media-player-ogg-done ok", 0, 30) >= 0);
     CHECK(wait_line("I/DataTest: sound-pool-played ok", 0, 30) >= 0);
+    /* The asynchronous decoder of "codec-avc-async": every picture came to its callback, in display order, on its handler's thread. */
+    CHECK(wait_line("I/DataTest: codec-avc-async-done ok", 0, 30) >= 0);
     /* The window's insets, when its views are first laid out, say the frame they are relative to: the screen, which the window fills. */
     {
         int frame = wait_line("I/DataTest: insets-frame ", 0, 30), fw = 0, fh = 0;

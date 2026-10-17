@@ -229,6 +229,126 @@ typedef struct megler_media_host {
 } megler_media_host;
 
 /*
+ * Decoders of samples, for an app's Java MediaCodec.
+ *
+ * An app that plays video or music through android.media.MediaCodec
+ * (ExoPlayer does, and apps that use MediaCodec themselves) reads the file
+ * itself and hands the decoder one sample at a time: an access unit of H.264
+ * or H.265 (one picture), a packet of AAC or MP3. The layer takes the samples
+ * in all the forms Android lets an app hand them over -- start codes or
+ * length prefixes, parameter sets in the stream or apart from it as the
+ * codec-specific data, ADTS headers or none -- and asks the shell for the
+ * decoding proper, in one form (Media Foundation's decoder transforms on a
+ * phone):
+ *
+ *   supports      whether a decoder of this kind (MEGLER_CODEC_*) is there.
+ *                 Asked when an app first lists the decoders (MediaCodecList),
+ *                 once for each kind; the app is shown those that are.
+ *   open          a decoder for `format`, or NULL. Pictures: `width` and
+ *                 `height` are what the app said (0 when it did not), and
+ *                 `config` is the stream's parameter sets in Annex-B (each NAL
+ *                 unit after a start code 00 00 00 01) -- SPS and PPS for
+ *                 H.264, VPS, SPS and PPS for H.265 -- or nothing when the app
+ *                 has not given them yet. Sound: `sample_rate` and `channels`
+ *                 are the stream's (never 0), and `config` is AAC's
+ *                 AudioSpecificConfig (always there for AAC: the layer makes
+ *                 one when the app gave none) or, for MP3, nothing.
+ *   push          one sample, in decode order, with its time. H.264, H.265:
+ *                 one access unit in Annex-B; the first after open and after
+ *                 each flush has the parameter sets in front of its slices
+ *                 (the layer puts them there when the app's did not have
+ *                 them), and a later one has them when they change. AAC: one
+ *                 raw access unit, no ADTS header. MP3: one or more whole
+ *                 frames. True when it was taken (what it decodes to may come
+ *                 out later); false when the decoder failed on it, which the
+ *                 shell says in its log.
+ *   drain         the end of the stream: what the decoder holds back (pictures
+ *                 waiting for later ones, sound) is to come out of the pulls
+ *                 that follow. Samples may come again after it.
+ *   pull_picture  the next picture, in display order (but see `reorder`): a
+ *                 handle, with what it is in *picture; NULL when none is
+ *                 ready. Its memory stays as it is until release_picture.
+ *   release_picture  done with a picture. Any thread, any time, before or
+ *                 after its decoder is closed.
+ *   pull_sound    the next block of 16-bit sound into *sound, true; false when
+ *                 none is ready. Its samples stay until the next call for that
+ *                 decoder.
+ *   flush         what was pushed and not pulled is dropped, and so is what
+ *                 the decoder holds back; the next sample starts afresh (the
+ *                 app has sought to a key frame).
+ *   close         the decoder is done with.
+ *
+ *   reorder       how many places early a picture may come out of
+ *                 pull_picture: 0 when it hands them out in display order, as
+ *                 Media Foundation's decoders do. Otherwise the layer holds
+ *                 that many back and puts them in order by their times (a
+ *                 decoder that gives pictures in decode order, as Apple's
+ *                 VideoToolbox does, would say 4).
+ *
+ * A picture is `width` x `height` visible pixels, the top row first, and
+ * `time_us` is the time of the sample it was decoded from. MEGLER_CODEC_NV12:
+ * `data` is the luma of the top left visible pixel, rows `stride` bytes
+ * apart, and `chroma` the U, V pair of that pixel, at half the size both
+ * ways, rows `chroma_stride` apart (the visible part starts at an even x and
+ * y). `matrix` says how such a picture becomes colour: MEGLER_CODEC_BT601,
+ * MEGLER_CODEC_BT709, or 0 when the stream does not say (the layer then takes
+ * BT.601 for pictures under 720 lines and BT.709 for the rest, as Android
+ * does); `full_range` is luma from 0 to 255 rather than 16 to 235.
+ * MEGLER_CODEC_RGBA: `data` is R, G, B, A bytes, rows `stride` apart, and the
+ * rest is not used.
+ *
+ * A block of sound is `frames` frames of `channels` interleaved samples (one
+ * or two: a decoder of more channels is asked for two), at `sample_rate`;
+ * `time_us` is the time of its first frame.
+ *
+ * The calls for one decoder come one at a time, from the app's threads (any
+ * of them, never the shell's UI thread); calls for two decoders may come at
+ * once, and so may release_picture. All of it may be left zero: no decoder
+ * is listed then, and an app that asks for one is told there is none, as on
+ * a phone without them.
+ */
+enum { MEGLER_CODEC_H264 = 1, MEGLER_CODEC_H265 = 2, MEGLER_CODEC_AAC = 3, MEGLER_CODEC_MP3 = 4 };
+enum { MEGLER_CODEC_NV12 = 1, MEGLER_CODEC_RGBA = 2 };
+enum { MEGLER_CODEC_BT601 = 1, MEGLER_CODEC_BT709 = 2 };
+
+typedef struct megler_codec_format {
+    int width, height;                 /* pictures; 0: not said */
+    int sample_rate, channels;         /* sound */
+    const uint8_t *config;
+    size_t config_size;
+} megler_codec_format;
+
+typedef struct megler_codec_picture {
+    int format;                        /* MEGLER_CODEC_NV12 or MEGLER_CODEC_RGBA */
+    int width, height;
+    const uint8_t *data, *chroma;
+    int stride, chroma_stride;
+    int matrix;
+    bool full_range;
+    int64_t time_us;
+} megler_codec_picture;
+
+typedef struct megler_codec_sound {
+    const int16_t *samples;
+    int frames, sample_rate, channels;
+    int64_t time_us;
+} megler_codec_sound;
+
+typedef struct megler_codec_host {
+    void *user;
+    int reorder;
+    bool (*supports)(void *user, int kind);
+    void *(*open)(void *user, int kind, const megler_codec_format *format);
+    bool (*push)(void *user, void *codec, const uint8_t *data, size_t size, int64_t time_us);
+    void (*drain)(void *user, void *codec);
+    void *(*pull_picture)(void *user, void *codec, megler_codec_picture *picture);
+    void (*release_picture)(void *user, void *picture);
+    bool (*pull_sound)(void *user, void *codec, megler_codec_sound *sound);
+    void (*flush)(void *user, void *codec);
+    void (*close)(void *user, void *codec);
+} megler_codec_host;
+
+/*
  * The phone's own folders in an app's storage.
  *
  * Android's shared storage (/sdcard, /storage/emulated/0) is one folder under
@@ -992,6 +1112,8 @@ typedef struct megler_run_config {
     megler_window_host window;
     megler_audio_host audio;
     megler_media_host media;
+    /* Decoders of samples for a Java app's MediaCodec (see megler_codec_host). May be left zero. */
+    megler_codec_host codec;
     /* The phone's own folders in the app's shared storage (see megler_storage_host). May be left zero. */
     megler_storage_host storage;
     /*
