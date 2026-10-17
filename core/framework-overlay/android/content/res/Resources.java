@@ -23,6 +23,12 @@
 // theme has some nine hundred items and half a dozen ancestors, so a theme cost millions of comparisons: Bag.put alone
 // was 2.4 of the 6.3 million bytecode instructions of an app's start, and 2.1 of the 5.5 million of its first dialog
 // (docs/JAVA.md, "What an AlertDialog cost").
+//
+// And shared libraries: the resources of an APK added with AssetManager.addAssetPathAsSharedLibrary -- Android's WebView --
+// are a table of their own (meglerAddLibrary), whose package is given the next package id from 0x02, as Android's
+// AssetManager2 gives a dynamic package; an id of that package is looked up there (table), its files are read out of that
+// APK (apkOf), and getIdentifier finds its names when asked for that package. The original knew two tables, the app's and
+// the platform's, and every id that was not the platform's went to the app's.
 package android.content.res;
 
 import android.graphics.Typeface;
@@ -95,7 +101,41 @@ public class Resources {
         }
     }
     private static byte[] emptyTable() { return new byte[] { 2, 0, 12, 0, 12, 0, 0, 0, 0, 0, 0, 0 }; }
-    static ResTable table(int id) { return ((id >>> 24) == 1) ? sFramework : sApp; }
+    static ResTable table(int id) { int p = id >>> 24; if (p == 1) return sFramework; ResTable lib = sLibs[p]; return lib != null ? lib : sApp; }
+
+    // ---- megler-w10m: shared libraries (see the top of the file)
+    /** The tables of shared libraries by the package id each was given, and the core's number of each one's APK. */
+    private static final ResTable[] sLibs = new ResTable[256];
+    private static final int[] sLibApks = new int[256];
+    private static int sNextLibraryId = 0x02;
+    /**
+     * Reads the resources.arsc of the APK the core has as number `apk` (megler.Native.addApk) as a shared library: its package
+     * (id 0 in the table, a dynamic one) is given the next free package id from 0x02 on, which is put in id[0], and its name in
+     * name[0]. id[0] stays 0 when the APK has no resources. AssetManager.addAssetPathAsSharedLibrary calls this.
+     */
+    static void meglerAddLibrary(int apk, int[] id, String[] name) {
+        synchronized (sLock) {
+            loadTables();
+            byte[] d = megler.Native.readApkFile(apk, "resources.arsc");
+            if (d == null || sNextLibraryId >= 0x7f) return;
+            ResTable t = new ResTable(d, sNextLibraryId);
+            if (t.packages.isEmpty()) return;
+            sLibs[sNextLibraryId] = t;
+            sLibApks[sNextLibraryId] = apk;
+            id[0] = sNextLibraryId++;
+            name[0] = t.packages.get(0).name;
+        }
+    }
+    /** The core's number of the APK that holds the files of a resource id: the platform's (1), a library's, or the app's (0). */
+    private static int apkOf(int id) { int p = id >>> 24; return p == 1 ? 1 : sLibs[p] != null ? sLibApks[p] : 0; }
+    /** The table of the shared library of that package name, or null. */
+    private static ResTable library(String packageName) {
+        if (packageName == null) return null;
+        synchronized (sLock) {
+            for (ResTable t : sLibs) if (t != null && !t.packages.isEmpty() && packageName.equals(t.packages.get(0).name)) return t;
+        }
+        return null;
+    }
 
     public static Resources getSystem() { synchronized (sLock) { if (sSystem == null) sSystem = new Resources(new AssetManager()); return sSystem; } }
     public final AssetManager getAssets() { return mAssets; }
@@ -202,6 +242,8 @@ public class Resources {
         if (type == null) return 0;
         try { return Integer.parseInt(n); } catch (NumberFormatException e) {}
         if ("android".equals(pkg)) return sFramework.identifier("android", type, n);
+        ResTable lib = library(pkg);
+        if (lib != null) return lib.identifier(pkg, type, n);
         int id = sApp.identifier(null, type, n);
         if (id == 0 && (pkg == null || "android".equals(pkg))) id = sFramework.identifier("android", type, n);
         return id;
@@ -350,8 +392,8 @@ public class Resources {
     // ---- files
     /** The bytes of a file in the APK that holds resource id (res/...). */
     public byte[] meglerFile(String path, int id) {
-        byte[] d = megler.Native.readApkFile((id >>> 24) == 1 ? 1 : 0, path);
-        if (d == null && (id >>> 24) != 1) {
+        byte[] d = megler.Native.readApkFile(apkOf(id), path);
+        if (d == null && apkOf(id) == 0) {
             // a split APK may hold it
             for (int k = 2; k < 12 && d == null; k++) d = megler.Native.readApkFile(k, path);
         }
@@ -384,11 +426,11 @@ public class Resources {
         TypedValue v = new TypedValue();
         getValue(id, v, true);
         String path = v.string.toString();
-        long fdoff = megler.Native.apkFileFd((id >>> 24) == 1 ? 1 : 0, path);
+        long fdoff = megler.Native.apkFileFd(apkOf(id), path);
         if (fdoff == -1) throw new NotFoundException("File " + path + " is compressed and cannot be opened as a file descriptor");
         java.io.FileDescriptor fd = new java.io.FileDescriptor();
         try { java.lang.reflect.Field f = java.io.FileDescriptor.class.getDeclaredField("descriptor"); f.setAccessible(true); f.setInt(fd, (int) (fdoff >>> 40)); } catch (Exception e) {}
-        return new AssetFileDescriptor(path, fd, fdoff & 0xFFFFFFFFFFL, megler.Native.apkFileLength((id >>> 24) == 1 ? 1 : 0, path));
+        return new AssetFileDescriptor(path, fd, fdoff & 0xFFFFFFFFFFL, megler.Native.apkFileLength(apkOf(id), path));
     }
     /** The density a drawable resource's image was made for. */
     public int meglerDrawableDensity(int id) { TypedValue v = new TypedValue(); return meglerValue(id, v, true) ? (v.density == 0 ? 160 : v.density == 0xffff ? mMetrics.densityDpi : v.density) : 160; }

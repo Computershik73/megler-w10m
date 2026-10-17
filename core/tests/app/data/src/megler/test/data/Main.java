@@ -287,6 +287,7 @@ public class Main extends Activity {
         userHandle();
         cleartext();
         compatChange();
+        sharedLibrary();
         xml();
         assetFd();
         tasks();
@@ -1037,6 +1038,38 @@ public class Main extends Activity {
         step("compat-change", () -> {
             java.lang.reflect.Method m = Class.forName("android.app.compat.CompatChanges").getMethod("isChangeEnabled", long.class);
             return !(Boolean) m.invoke(null, 214741472L) && (Boolean) m.invoke(null, 1L);
+        });
+    }
+
+    /**
+     * A shared library's APK added to the app's resources and files, as Android adds the WebView's (the Android root's
+     * /system/app/webview/webview.apk, where tools/dvm-android-root.sh puts it; without it the step has nothing to look at): a
+     * cookie of its own, its package given an id from 0x02 that the resources know it by, a resource of it found by name and
+     * read, and a file of its assets opened as a descriptor where it is stored, as Chromium maps its ICU data. Adding it
+     * again gives the same cookie.
+     */
+    private void sharedLibrary() {
+        step("shared-library", () -> {
+            String apk = "/system/app/webview/webview.apk";
+            if (!new File(apk).isFile()) {
+                Log.i("DataTest", "shared-library: no WebView in the Android root");
+                return true;
+            }
+            android.content.res.AssetManager am = getAssets();
+            java.lang.reflect.Method add = am.getClass().getMethod("addAssetPathAsSharedLibrary", String.class);
+            int cookie = (Integer) add.invoke(am, apk);
+            @SuppressWarnings("unchecked") android.util.SparseArray<String> ids = (android.util.SparseArray<String>) am.getClass().getMethod("getAssignedPackageIdentifiers").invoke(am);
+            int pkg = -1;
+            for (int i = 0; i < ids.size(); i++) if ("com.android.webview".equals(ids.valueAt(i))) pkg = ids.keyAt(i);
+            int icon = getResources().getIdentifier("icon_webview", "drawable", "com.android.webview");
+            String label = getResources().getString(getResources().getIdentifier("abc_action_mode_done", "string", "com.android.webview"));
+            android.content.res.AssetFileDescriptor icu = am.openNonAssetFd("assets/icudtl.dat");
+            long length = icu.getLength(), offset = icu.getStartOffset();
+            icu.close();
+            Log.i("DataTest", "shared-library cookie=" + cookie + " package=0x" + Integer.toHexString(pkg) + " icon=0x" + Integer.toHexString(icon)
+                    + " label=" + label + " icudtl=" + length + "@" + offset);
+            return cookie >= 2 && pkg >= 2 && pkg < 0x7f && (icon >>> 24) == pkg && getResources().getDrawable(icon, null) != null
+                    && label.length() > 0 && length > 1000000 && offset > 0 && (Integer) add.invoke(am, apk) == cookie;
         });
     }
 

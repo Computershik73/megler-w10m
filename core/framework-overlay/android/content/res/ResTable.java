@@ -11,6 +11,12 @@
 // (docs/JAVA.md, "What an AlertDialog cost", has the profile).
 // Here the names are indexed for one type at a time, when a name of that type is first asked for, and each entry is read
 // once, in the first configuration that has it. The answers are the same.
+//
+// And a table that is a shared library's (ResTable(data, dynamicId); Android's WebView APK, added to the app's resources by
+// AssetManager.addAssetPathAsSharedLibrary): its package has id 0 in the file, a dynamic package, and is given dynamicId here,
+// and the ids in its values, its bags' keys and parents that name package 0 -- its own resources, as such a table refers to
+// them -- are given that package id when they are read (dynamic), as Android's DynamicRefTable does. The original read the
+// package under id 0 and left those ids as they were.
 package android.content.res;
 
 import java.nio.ByteBuffer;
@@ -101,7 +107,12 @@ public final class ResTable {
     public final ArrayList<Package> packages = new ArrayList<>();
     final Package[] byId = new Package[256];
 
-    public ResTable(byte[] data) {
+    public ResTable(byte[] data) { this(data, 0); }
+    /** megler-w10m: the package id a shared library's package (id 0 in the file) is given; 0 for any other table. */
+    final int dynamicId;
+    /** A shared library's table: its package, id 0 in the file, is given dynamicId (see the top of the file). */
+    public ResTable(byte[] data, int dynamicId) {
+        this.dynamicId = dynamicId;
         b = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
         int size = b.getInt(4), off = b.getShort(2) & 0xffff;
         StringPool sp = null;
@@ -117,6 +128,7 @@ public final class ResTable {
 
     private void readPackage(int off, int size) {
         int pid = b.getInt(off + 8);
+        if (pid == 0 && dynamicId != 0) pid = dynamicId;
         // a table can carry one package in several chunks (the platform's does): they are one package, each chunk with its own name pools
         Package p = byId[pid & 255];
         boolean fresh = p == null;
@@ -267,22 +279,26 @@ public final class ResTable {
         v.density = en.density;
         if (v.type == TYPE_DYNAMIC_REFERENCE) v.type = TYPE_REFERENCE;
         if (v.type == TYPE_DYNAMIC_ATTRIBUTE) v.type = TYPE_ATTRIBUTE;
+        if (v.type == TYPE_REFERENCE || v.type == TYPE_ATTRIBUTE) v.data = en.src.dynamic(v.data);
         return true;
     }
+    /** megler-w10m: an id read from a shared library's table that names package 0, its own, with the package id it was given. */
+    int dynamic(int id) { return dynamicId != 0 && id != 0 && (id >>> 24) == 0 ? id | (dynamicId << 24) : id; }
 
     /** A bag's parent and its items (attr id -> value), parents' items first, then its own. */
-    public int bagParent(Entry en) { return en.complex() ? en.src.b.getInt(en.off + 8) : 0; }
+    public int bagParent(Entry en) { return en.complex() ? en.src.dynamic(en.src.b.getInt(en.off + 8)) : 0; }
     public int bagCount(Entry en) { return en.complex() ? en.src.b.getInt(en.off + 12) : 0; }
     /** The i-th item: its name (attr id) and value into v. */
     public int bagItem(Entry en, int i, android.util.TypedValue v) {
         ByteBuffer b = en.src.b; StringPool strings = en.src.strings;
         int sz = b.getShort(en.off) & 0xffff;
         int m = en.off + sz + 12 * i;
-        int name = b.getInt(m);
+        int name = en.src.dynamic(b.getInt(m));
         v.type = b.get(m + 4 + 3) & 255;
         v.data = b.getInt(m + 8);
         if (v.type == TYPE_DYNAMIC_REFERENCE) v.type = TYPE_REFERENCE;
         if (v.type == TYPE_DYNAMIC_ATTRIBUTE) v.type = TYPE_ATTRIBUTE;
+        if (v.type == TYPE_REFERENCE || v.type == TYPE_ATTRIBUTE) v.data = en.src.dynamic(v.data);
         v.string = v.type == TYPE_STRING ? strings.get(v.data) : null;
         v.density = en.density;
         return name;

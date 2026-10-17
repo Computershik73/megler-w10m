@@ -2956,7 +2956,7 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: forty-three files** in the overlay,
+**What differs from the original's framework: forty-four files** in the overlay,
 most of them a statement or a few methods each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and nine files of members added** to classes of the original's.
@@ -3488,7 +3488,25 @@ on a looper thread of its own and takes it back with `next()`.
   step "compat-change" asks for that change (off: it is written for Android 9)
   and for one the platform does not know (on).
 
-The original has all thirty-four faults; they are its author's to take back.
+- `android/content/res/AssetManager.java`, `Resources.java` and `ResTable.java`
+  (one fault, three files), shared libraries: an APK added with
+  `addAssetPathAsSharedLibrary` -- Android's WebView APK, whose resources
+  and files the WebView's code finds through the app's `AssetManager` --
+  where the original's methods were signatures answering 0 or null and every
+  id that was not the platform's was looked for in the app's table. The core
+  opens the APK beside the app's (`megler.Native.addApk`, two natives added by
+  `megler/Native.java.members`); its table's package, id 0 in a shared
+  library's file, is given the next free package id from 0x02, as Android's
+  AssetManager2 gives a dynamic package, and the ids that name package 0 in
+  that table are given it as they are read; `getAssignedPackageIdentifiers`,
+  `getApkPaths` and `findCookieForPath` answer; `open`, `openFd`,
+  `openNonAsset`, `openNonAssetFd` and `list` look in the library's APK after
+  the app's. The data app's step "shared-library" adds the Android root's
+  WebView APK, finds its package as 0x2, one of its drawables and one of its
+  strings by name and reads both, and opens its `assets/icudtl.dat` as a
+  descriptor where it is stored, as Chromium maps its ICU data.
+
+The original has all thirty-five faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in

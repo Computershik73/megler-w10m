@@ -1439,6 +1439,7 @@ static int run_data(void)
                                          "user-handle",
                                          "cleartext",
                                          "compat-change",
+                                         "shared-library",
                                          /* And XML through android.util.Xml: a serializer and a pull parser, kXML's. And a stored file of
                                             the APK as a descriptor whose number is taken from its ParcelFileDescriptor. And the app's task as
                                             ActivityManager describes it. And registerReceiver's other forms through a ContextWrapper. And a

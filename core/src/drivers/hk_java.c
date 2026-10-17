@@ -40,7 +40,7 @@
 #include "hk_java_gl.h"
 
 #define MAX_EVENTS 256
-#define MAX_APKS 12
+#define MAX_APKS 16
 
 /* The phases of an event as megler.AppRunner.deliver reads them. */
 enum { EV_DOWN = 0, EV_MOVE = 1, EV_UP = 2, EV_CANCEL = 3, EV_KEY = 4, EV_BACK = 5, EV_HOST_PAUSE = 6, EV_TEXT = 7, EV_INSETS = 8 };
@@ -53,7 +53,11 @@ static struct {
     char activity[200], application[200], package[128];
     char guest_apk[400];               /* the APK's path as the app sees it */
     hk_thread *main;
-    /* The APKs by the framework's numbers: 0 the app's, 1 the platform's resources, 2.. the app's splits. */
+    /*
+     * The APKs by the framework's numbers: 0 the app's, 1 the platform's resources, 2 to 11 the app's splits, 12 on the shared
+     * libraries the framework adds while the app runs (Native.addApk: Android's WebView). The framework looks for a split's
+     * files in 2 to 11 alone.
+     */
     hk_zip apk[MAX_APKS];
     bool apk_open[MAX_APKS];
     char *apk_path[MAX_APKS];
@@ -242,6 +246,61 @@ N(Native_listAssets)
 }
 
 N(Native_readApkFile) { c->ret.l = apk_file(c->args[0].i, text_of(c->args[1].l)); }
+
+#define FIRST_LIBRARY_APK 12
+
+static void open_apk(int index, const char *host_path);
+
+/*
+ * addApk(String path): a shared library's APK, which the framework's AssetManager adds to the app's resources and files
+ * (addAssetPathAsSharedLibrary; the WebView's, /system/app/webview/webview.apk). The path is the app's, as Android names it;
+ * the APK is opened as one more of the numbered APKs above, from 12 on, and its number is the answer: the same number for a
+ * path already open, -1 when it cannot be opened or there is no room.
+ */
+N(Native_addApk)
+{
+    const char *path = text_of(c->args[0].l);
+    char *host = path[0] ? hk_fs_host_path(path) : NULL;
+    int i, free_at = -1;
+    c->ret.i = -1;
+    if (!host) return;
+    hk_lock_acquire(&J.lock);
+    for (i = FIRST_LIBRARY_APK; i < MAX_APKS; i++) {
+        if (J.apk_open[i] && !strcmp(J.apk_path[i], host)) {
+            c->ret.i = i;
+            break;
+        }
+        if (!J.apk_open[i] && free_at < 0) free_at = i;
+    }
+    if (c->ret.i < 0 && free_at >= 0) {
+        open_apk(free_at, host);
+        if (J.apk_open[free_at]) {
+            c->ret.i = free_at;
+            hk_info("java: %s is APK %d of the app's resources and files", path, free_at);
+        }
+    }
+    hk_lock_release(&J.lock);
+    free(host);
+}
+
+/* listApkFiles(int apk, String prefix): what lies under the prefix ("assets/x/") in that APK, each name once (as listAssets). */
+N(Native_listApkFiles)
+{
+    asset_list l;
+    int apk = c->args[0].i, i;
+    hk_jobj *a;
+    memset(&l, 0, sizeof(l));
+    l.dir = text_of(c->args[1].l);
+    l.dir_len = strlen(l.dir);
+    if (apk >= 0 && apk < MAX_APKS && J.apk_open[apk]) hk_zip_each(&J.apk[apk], l.dir, list_one, &l);
+    a = hk_dvm_new_array("[Ljava/lang/String;", l.n);
+    for (i = 0; i < l.n; i++) {
+        if (a) a->u.oarr.v[i] = hk_dvm_new_string(l.names[i]);
+        free(l.names[i]);
+    }
+    free(l.names);
+    c->ret.l = a;
+}
 N(Native_apkFileFd) { c->ret.j = apk_fd(c->args[0].i, text_of(c->args[1].l)); }
 N(Native_apkFileLength) { c->ret.j = apk_length(c->args[0].i, text_of(c->args[1].l)); }
 
@@ -463,6 +522,8 @@ static const hk_jhle k_native[] = {
     { "megler/Native", "assetFd", NULL, Native_assetFd },
     { "megler/Native", "assetLength", NULL, Native_assetLength },
     { "megler/Native", "readApkFile", NULL, Native_readApkFile },
+    { "megler/Native", "addApk", NULL, Native_addApk },
+    { "megler/Native", "listApkFiles", NULL, Native_listApkFiles },
     { "megler/Native", "apkFileFd", NULL, Native_apkFileFd },
     { "megler/Native", "apkFileLength", NULL, Native_apkFileLength },
     { "megler/Native", "apkPath", NULL, Native_apkPath },

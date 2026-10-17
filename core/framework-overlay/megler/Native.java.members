@@ -19,3 +19,11 @@
     public static native void presentRect(int left, int top, int right, int bottom);
     /** For the tests (hk_java_check_partial): whether megler.ViewRoot checks each frame drawn in part against the same frame drawn whole. */
     public static native boolean checkPartial();
+    /**
+     * Shared libraries' APKs (android.content.res.AssetManager.addAssetPathAsSharedLibrary: Android's WebView): opens the APK at
+     * that path as one more of the APKs the core reads files of (readApkFile, apkFileFd, apkFileLength), and answers its number
+     * among them, the same number for the same path again; -1 when it cannot be read (core/src/drivers/hk_java.c).
+     */
+    public static native int addApk(String path);
+    /** The names of the entries of APK number `apk` that lie under `prefix` ("assets/x/"): a file's own name, a folder's name once. */
+    public static native String[] listApkFiles(int apk, String prefix);

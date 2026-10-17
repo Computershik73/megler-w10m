@@ -46,6 +46,13 @@
 #                           fonts stand in.
 #   usr/icu/icudt60l.dat    ICU's data
 #   usr/share/zoneinfo/*    the time zones
+#   app/webview/webview.apk Android's System WebView, AOSP's prebuilt of
+#                           Chromium for 32-bit ARM, where Android's image has
+#                           it (/system/app/webview): android.webkit.WebView
+#                           loads it into the app (WebViewFactory). Where
+#                           tools/webview-fetch.sh has fetched it
+#                           (build/webview/webview.apk); without it a WebView
+#                           cannot be made, as on a phone without one
 #
 # Files are copied only when they are missing or older than their source, and
 # the script says what the folder holds and how large it is.
@@ -126,11 +133,21 @@ for f in "$A9/system/fonts/"*.ttf; do
   FONTS=$((FONTS + 1))
 done
 [ "$FONTS" -gt 0 ] || echo "  (no fonts in build/android9/system/fonts: tools/android9-unpack.sh fonts takes them out of the image)"
+size() { du -sk "$1" | cut -f1; }
+# Android's System WebView, where tools/webview-fetch.sh has put it.
+WEBVIEW="no WebView"
+if [ -f "$ROOT/build/webview/webview.apk" ]; then
+  mkdir -p "$OUT/app/webview"
+  cmp -s "$ROOT/build/webview/webview.apk" "$OUT/app/webview/webview.apk" || cp "$ROOT/build/webview/webview.apk" "$OUT/app/webview/webview.apk"
+  WEBVIEW="the WebView $(size "$OUT/app/webview") KB"
+else
+  echo "  (not there: build/webview/webview.apk: tools/webview-fetch.sh fetches Android's System WebView)"
+  rm -rf "$OUT/app/webview"
+fi
 # The Java framework an app with an Activity runs on, where it has been built (tools/build-framework.sh).
 FW="no Java framework"
 if [ -f "$ROOT/build/framework/megler-framework.dex" ]; then
   cp -u "$ROOT/build/framework/megler-framework.dex" "$OUT/framework/"
   FW="the Java framework"
 fi
-size() { du -sk "$1" | cut -f1; }
-echo "${OUT#$ROOT/}: $(size "$OUT") KB in all: framework $(size "$OUT/framework") KB ($FW, $RES_SAID), lib $(size "$OUT/lib") KB ($LIBS libraries), $CERTS certificates, $FONTS fonts, usr $(size "$OUT/usr") KB"
+echo "${OUT#$ROOT/}: $(size "$OUT") KB in all: framework $(size "$OUT/framework") KB ($FW, $RES_SAID), lib $(size "$OUT/lib") KB ($LIBS libraries), $CERTS certificates, $FONTS fonts, usr $(size "$OUT/usr") KB, $WEBVIEW"
