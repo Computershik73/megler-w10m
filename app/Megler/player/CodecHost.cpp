@@ -218,6 +218,8 @@ struct CodecHost::Codec {
     DWORD in = 0, out = 0;           // stream ids
     bool decoderSamples = false;     // the decoder brings its own output samples
     bool lowLatency = false;         // MF_LOW_LATENCY was taken
+    bool p010 = false;               // the pictures come as P010 (ten bits a sample), and are made NV12's eight here
+    bool tenBitsFirst = false;       // P010 is taken where NV12 is offered too (CodecHost::preferTenBits, for the tests)
     DWORD outSize = 0, outAlign = 0; // of ours
     winrt::com_ptr<IMFSample> spare; // an output sample of ours the decoder did not fill
 
@@ -249,17 +251,28 @@ struct CodecHost::Codec {
         if (++failures <= 3) shellLog::write(format("codec: %s (%s): %s", kindName(kind), name.c_str(), what.c_str()));
     }
 
-    /// The picture's output type: NV12, the size, the visible part, the rows.
-    bool chooseVideoOutput() {
+    /// The first output type of this subtype the decoder offers, or null.
+    winrt::com_ptr<IMFMediaType> offeredOutput(const GUID& wanted) {
         for (DWORD i = 0;; i++) {
             winrt::com_ptr<IMFMediaType> type;
-            if (FAILED(transform->GetOutputAvailableType(out, i, type.put()))) break;
+            if (FAILED(transform->GetOutputAvailableType(out, i, type.put()))) return nullptr;
             GUID subtype = {};
             type->GetGUID(MF_MT_SUBTYPE, &subtype);
-            if (subtype != MFVideoFormat_NV12) continue;
+            if (subtype == wanted) return type;
+        }
+    }
+
+    /// The picture's output type: NV12 (or, from a decoder of ten-bit streams that offers nothing else, P010), the size,
+    /// the visible part, the rows.
+    bool chooseVideoOutput() {
+        winrt::com_ptr<IMFMediaType> type = tenBitsFirst ? offeredOutput(MFVideoFormat_P010) : nullptr;
+        p010 = type != nullptr;
+        if (!type) type = offeredOutput(MFVideoFormat_NV12);
+        if (!type) p010 = (type = offeredOutput(MFVideoFormat_P010)) != nullptr;
+        if (type) {
             const HRESULT hr = transform->SetOutputType(out, type.get(), 0);
             if (FAILED(hr)) {
-                fail(format("NV12 output refused (0x%08X)", unsigned(hr)));
+                fail(format("%s output refused (0x%08X)", p010 ? "P010" : "NV12", unsigned(hr)));
                 return false;
             }
             UINT32 w = 0, h = 0;
@@ -280,7 +293,7 @@ struct CodecHost::Codec {
                 visibleHeight = area.Area.cy;
             }
             stride = int(INT32(MFGetAttributeUINT32(type.get(), MF_MT_DEFAULT_STRIDE, 0)));
-            if (stride <= 0) stride = frameWidth;
+            if (stride <= 0) stride = frameWidth * (p010 ? 2 : 1);
             const UINT32 m = MFGetAttributeUINT32(type.get(), MF_MT_YUV_MATRIX, MFVideoTransferMatrix_Unknown);
             matrix = m == MFVideoTransferMatrix_BT709 ? MEGLER_CODEC_BT709 : m == MFVideoTransferMatrix_BT601 ? MEGLER_CODEC_BT601 : 0;
             fullRange = MFGetAttributeUINT32(type.get(), MF_MT_VIDEO_NOMINAL_RANGE, MFNominalRange_16_235) == MFNominalRange_0_255;
@@ -288,13 +301,13 @@ struct CodecHost::Codec {
         }
         std::string offered;
         for (DWORD i = 0;; i++) {
-            winrt::com_ptr<IMFMediaType> type;
-            if (FAILED(transform->GetOutputAvailableType(out, i, type.put()))) break;
+            winrt::com_ptr<IMFMediaType> other;
+            if (FAILED(transform->GetOutputAvailableType(out, i, other.put()))) break;
             GUID subtype = {};
-            type->GetGUID(MF_MT_SUBTYPE, &subtype);
+            other->GetGUID(MF_MT_SUBTYPE, &subtype);
             offered += (offered.empty() ? "" : " ") + subtypeName(subtype);
         }
-        fail("no NV12 among the outputs it offers (" + (offered.empty() ? std::string("none") : offered) + ")");
+        fail("no NV12 or P010 among the outputs it offers (" + (offered.empty() ? std::string("none") : offered) + ")");
         return false;
     }
 
@@ -454,15 +467,25 @@ struct CodecHost::Codec {
             fail(format("a picture of %lu bytes is not %dx%d NV12 with rows of %ld", length, frameWidth, frameHeight, pitch));
             return;
         }
-        const BYTE* luma = base + size_t(cropY) * size_t(pitch) + size_t(cropX);
-        const BYTE* chroma = base + size_t(frameHeight) * size_t(pitch) + size_t(cropY / 2) * size_t(pitch) + size_t(cropX);
-        if (decoderSamples) {
-            // The decoder's own buffer goes back to it: the visible part copied out, NV12 as it was.
-            const size_t w = size_t(visibleWidth), h = size_t(visibleHeight), ch = (h + 1) / 2;
-            picture->copy.resize(w * h + ((w + 1) & ~size_t(1)) * ch);
-            for (size_t y = 0; y < h; y++) memcpy(picture->copy.data() + y * w, luma + y * size_t(pitch), w);
-            const size_t cw = (w + 1) & ~size_t(1);
-            for (size_t y = 0; y < ch; y++) memcpy(picture->copy.data() + w * h + y * cw, chroma + y * size_t(pitch), cw);
+        const size_t bytes = p010 ? 2 : 1; // a sample's
+        const BYTE* luma = base + size_t(cropY) * size_t(pitch) + size_t(cropX) * bytes;
+        const BYTE* chroma = base + size_t(frameHeight) * size_t(pitch) + size_t(cropY / 2) * size_t(pitch) + size_t(cropX) * bytes;
+        if (decoderSamples || p010) {
+            // The decoder's own buffer goes back to it, or P010 is made NV12: the visible part copied out, eight bits a
+            // sample (P010 has its ten in the high bits of sixteen: the high byte of each, little-endian).
+            const size_t w = size_t(visibleWidth), h = size_t(visibleHeight), ch = (h + 1) / 2, cw = (w + 1) & ~size_t(1);
+            picture->copy.resize(w * h + cw * ch);
+            uint8_t* to = picture->copy.data();
+            for (size_t y = 0; y < h; y++, to += w) {
+                const BYTE* from = luma + y * size_t(pitch);
+                if (!p010) memcpy(to, from, w);
+                else for (size_t x = 0; x < w; x++) to[x] = from[2 * x + 1];
+            }
+            for (size_t y = 0; y < ch; y++, to += cw) {
+                const BYTE* from = chroma + y * size_t(pitch);
+                if (!p010) memcpy(to, from, cw);
+                else for (size_t x = 0; x < cw; x++) to[x] = from[2 * x + 1];
+            }
             if (picture->planar) picture->planar->Unlock2D();
             else picture->buffer->Unlock();
             picture->planar = nullptr;
@@ -552,8 +575,8 @@ struct CodecHost::Codec {
             if (hr == MF_E_TRANSFORM_STREAM_CHANGE || (buffer.dwStatus & MFT_OUTPUT_DATA_BUFFER_FORMAT_CHANGE)) {
                 const bool chosen = isVideo(kind) ? chooseVideoOutput() : chooseAudioOutput(outChannels);
                 if (isVideo(kind))
-                    shellLog::write(format("codec: %s pictures are now %dx%d, %dx%d of them shown from %d,%d, rows of %d", kindName(kind), frameWidth, frameHeight,
-                                           visibleWidth, visibleHeight, cropX, cropY, stride));
+                    shellLog::write(format("codec: %s pictures are now %dx%d %s, %dx%d of them shown from %d,%d, rows of %d bytes", kindName(kind), frameWidth,
+                                           frameHeight, p010 ? "P010 (made NV12 here)" : "NV12", visibleWidth, visibleHeight, cropX, cropY, stride));
                 else
                     shellLog::write(format("codec: %s sound is now %d Hz in %d channels", kindName(kind), rate, channels));
                 if (!chosen) return false;
@@ -636,6 +659,12 @@ megler_codec_host CodecHost::callbacks() {
     return host;
 }
 
+namespace {
+std::atomic<bool> gTenBitsFirst{false};
+}
+
+void CodecHost::preferTenBits(bool prefer) { gTenBitsFirst = prefer; }
+
 std::string CodecHost::summary() {
     std::string line;
     serviceWorker().run([&] {
@@ -672,6 +701,7 @@ bool CodecHost::supportsThunk(void*, int kind) {
 void* CodecHost::openThunk(void*, int kind, const megler_codec_format* asked) {
     auto codec = std::make_unique<Codec>();
     codec->kind = kind;
+    codec->tenBitsFirst = gTenBitsFirst;
     codec->worker = std::make_unique<Worker>();
     bool ok = false;
     Codec* c = codec.get();

@@ -3568,8 +3568,10 @@ pictures (NV12 or RGBA) and blocks of 16-bit sound. The shell's side is
 Media Foundation's synchronous decoder transforms (`player/CodecHost.cpp`):
 found with `MFTEnumEx`, fed with `ProcessInput`, emptied with
 `ProcessOutput`, a change of size or format followed, NV12 pictures held in
-the shell's own buffers until the core lets them go, sound asked for as
-16-bit PCM in two channels at most, each decoder on a thread of its own.
+the shell's own buffers until the core lets them go (P010, which a decoder
+of ten-bit streams may offer alone, is copied out as NV12, the high eight
+of each sample's ten bits), sound asked for as 16-bit PCM in two channels at
+most, each decoder on a thread of its own.
 Picture decoders are asked for low latency (`MF_LOW_LATENCY`): a picture
 then comes out as soon as the stream's own reordering allows, as from
 Android's decoders, rather than once the decoder's whole picture buffer is
@@ -3661,7 +3663,12 @@ The tests:
     96 x 64 after a codec-config buffer gives all 36 in order, each at its
     own size;
   - H.265 the same three ways and the flush (168 x 94 of 168 x 96, the first
-    picture after 3 units);
+    picture after 3 units), and H.265 Main 10 (`hevc10.hkau`, ten bits a
+    sample) likewise, which this PC's decoder hands out as NV12 itself; and
+    both once more with P010 taken where it is offered beside NV12
+    (`CodecHost::preferTenBits`, for the tests), which is the way of a
+    decoder that offers P010 alone: rows of 336 bytes for 168 pixels, made
+    NV12, every picture in order in its grey;
   - AAC raw with csd-0 and with ADTS headers alone: 23 blocks of 1024 frames,
     44100 Hz in two channels, the tone 440.0 Hz at 8181 RMS (the stream's
     8192); MP3 configured without a rate: 23664 frames of the 24192 the

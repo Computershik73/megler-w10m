@@ -661,6 +661,22 @@ int hk_codec_speed_run(const char *streams, const struct megler_codec_host *host
     return g_failed;
 }
 
+int hk_codec_tests_h265_run(const char *streams, const struct megler_codec_host *host, const char *how, hk_test_sink sink, void *user, int *checks)
+{
+    char name[200];
+    g_checks = g_failed = 0;
+    g_sink = sink;
+    g_sink_user = user;
+    hk_java_media_set_host(host);
+    snprintf(name, sizeof(name), "H.265, %s", how);
+    test_pictures(streams, "hevc.hkau", name);
+    snprintf(name, sizeof(name), "H.265 Main 10, %s", how);
+    test_pictures(streams, "hevc10.hkau", name);
+    hk_java_media_set_host(NULL);
+    *checks += g_checks;
+    return g_failed;
+}
+
 int hk_codec_tests_run(const char *streams, const struct megler_codec_host *host, hk_test_sink sink, void *user, int *checks)
 {
     g_checks = g_failed = 0;
@@ -672,6 +688,7 @@ int hk_codec_tests_run(const char *streams, const struct megler_codec_host *host
     test_pictures(streams, "avc.hkau", "H.264");
     test_size_change(streams);
     test_pictures(streams, "hevc.hkau", "H.265");
+    test_pictures(streams, "hevc10.hkau", "H.265 Main 10");
     test_sound(streams, "aac.hkau", "AAC with its AudioSpecificConfig", false, 1024);
     test_sound(streams, "aac.hkau", "AAC with ADTS headers and nothing else", true, 1024);
     test_sound(streams, "mp3.hkau", "MP3, configured without its rate or channels", false, 1152);

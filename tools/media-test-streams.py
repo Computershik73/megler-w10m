@@ -17,6 +17,7 @@ nothing here runs during a build.
   avc-small.hkau  12 pictures more of the same kind at 96 x 64, picture N again Y = 16 + 8 N: what an app's stream
               that changes its size (adaptive streaming does) goes on with.
   hevc.hkau   the same pictures as avc.hkau as H.265 Main (libx265), VPS, SPS and PPS together as csd-0.
+  hevc10.hkau the same as H.265 Main 10, ten bits a sample (Y = 64 + 32 N of 1023), which decoders hand out as P010.
   aac.hkau    AAC LC, 44100 Hz, stereo, half a second of a 440 Hz tone (made at half of full scale, and 3 dB less in
               each channel once ffmpeg makes it stereo: 8192 RMS): raw access units (the ADTS headers taken off) and the
               AudioSpecificConfig as csd-0.
@@ -167,9 +168,10 @@ def main():
     x264 = ["-preset", "medium", "-profile:v", "main", "-x264-params", "bframes=2:b-adapt=0:b-pyramid=none:keyint=12:min-keyint=12:scenecut=0:open-gop=0"]
     video("avc.hkau", "video/avc", "libx264", x264, lambda u: u[0] & 0x1F, (7, 8), (6, 9))
     video("avc-small.hkau", "video/avc", "libx264", x264, lambda u: u[0] & 0x1F, (7, 8), (6, 9), 96, 64, 12)
-    video("hevc.hkau", "video/hevc", "libx265",
-          ["-preset", "medium", "-x265-params", "log-level=error:bframes=2:b-adapt=0:b-pyramid=0:keyint=12:min-keyint=12:scenecut=0:open-gop=0"],
-          lambda u: (u[0] >> 1) & 0x3F, (32, 33, 34), (35, 39, 40))
+    x265 = "log-level=error:bframes=2:b-adapt=0:b-pyramid=0:keyint=12:min-keyint=12:scenecut=0:open-gop=0"
+    video("hevc.hkau", "video/hevc", "libx265", ["-preset", "medium", "-x265-params", x265], lambda u: (u[0] >> 1) & 0x3F, (32, 33, 34), (35, 39, 40))
+    video("hevc10.hkau", "video/hevc", "libx265", ["-preset", "medium", "-profile:v", "main10", "-x265-params", x265], lambda u: (u[0] >> 1) & 0x3F,
+          (32, 33, 34), (35, 39, 40), source="nullsrc=s=168x94:r=30,format=yuv420p,geq=lum='16+8*N':cb=128:cr=128,format=yuv420p10le")
     tone = "sine=frequency=440:sample_rate=44100:duration=0.5,volume=4"
     with tempfile.TemporaryDirectory() as tmp:
         aac = os.path.join(tmp, "a.aac")

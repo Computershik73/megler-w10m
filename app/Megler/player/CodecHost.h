@@ -12,7 +12,8 @@
 //   them out, which for Media Foundation's decoders is display order. Its
 //   buffer is this host's own and is held, not copied, until the core lets
 //   the picture go (a decoder that brings buffers of its own has them copied
-//   out, so that its pool is not drained);
+//   out, so that its pool is not drained; so is P010, which a decoder of
+//   ten-bit streams may offer alone, as NV12 with the high eight bits);
 // - sound as 16-bit PCM, two channels at most (a decoder asked for stereo
 //   where it can downmix, the first two channels taken where it cannot).
 // A decoder's change of picture size or sound format
@@ -48,6 +49,9 @@ public:
     megler_codec_host callbacks();
     /// Which decoder each kind would have, by name, in a line ("H.264: Microsoft H264 Video Decoder MFT; H.265: none; ...").
     std::string summary();
+    /// For the tests: P010 rather than NV12 from a decoder that offers both, for decoders opened after this, so that the
+    /// way taken for one that offers P010 alone is gone through on a PC whose decoders offer NV12 too.
+    void preferTenBits(bool prefer);
 
     struct Codec;
     struct Picture;

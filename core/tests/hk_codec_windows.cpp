@@ -28,6 +28,9 @@ const megler_codec_host* hk_codec_windows_host(void) {
     return &host;
 }
 
+/// P010 rather than NV12 from decoders that offer both (CodecHost::preferTenBits).
+void hk_codec_windows_ten_bits(int prefer) { megler::app::CodecHost::shared().preferTenBits(prefer != 0); }
+
 /// Which decoder Windows has for each kind, in a line.
 void hk_codec_windows_summary(char* out, size_t size) { snprintf(out, size, "%s", megler::app::CodecHost::shared().summary().c_str()); }
 

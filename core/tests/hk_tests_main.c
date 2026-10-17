@@ -654,6 +654,7 @@ static int storage_windows_mode(char **argv)
 /* hk_codec_windows.cpp: the shell's own megler_codec_host. */
 const megler_codec_host *hk_codec_windows_host(void);
 void hk_codec_windows_summary(char *out, size_t size);
+void hk_codec_windows_ten_bits(int prefer);
 #endif
 
 static int codec_windows_mode(int argc, char **argv)
@@ -669,6 +670,10 @@ static int codec_windows_mode(int argc, char **argv)
     hk_codec_windows_summary(summary, sizeof(summary));
     printf("  Windows' decoders: %s\n", summary);
     failed = hk_codec_tests_run(argv[2], hk_codec_windows_host(), NULL, NULL, &checks);
+    /* H.265 once more with P010 taken where a decoder offers it beside NV12: the way of a phone's decoder that offers P010 alone. */
+    hk_codec_windows_ten_bits(1);
+    failed += hk_codec_tests_h265_run(argv[2], hk_codec_windows_host(), "P010 taken where the decoder offers it", NULL, NULL, &checks);
+    hk_codec_windows_ten_bits(0);
     if (argc >= 5) failed += hk_codec_speed_run(argv[4], hk_codec_windows_host(), NULL, NULL, &checks);
     printf("%d checks, %d failed\n", checks, failed);
     return failed ? 1 : 0;
