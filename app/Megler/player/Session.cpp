@@ -2,6 +2,7 @@
 
 #include "player/Session.h"
 
+#include "player/CodecHost.h"
 #include "player/GfxHost.h"
 #include "player/KeyboardHost.h"
 #include "player/MediaHost.h"
@@ -188,6 +189,8 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         config.window = window->callbacks();
         config.audio = audio->callbacks();
         config.media = MediaHost::shared().callbacks();
+        // A Java app's MediaCodec: Media Foundation's decoder transforms, one sample at a time (player/CodecHost.h).
+        config.codec = CodecHost::shared().callbacks();
         config.storage = StorageHost::shared().callbacks();
         // For an app that is Java: its drawing, and where Android's libcore and the framework are -- NULL is the folder
         // `android` of the installed package, which is where tools/build-appx.sh --libcore (or --java) puts them. An app

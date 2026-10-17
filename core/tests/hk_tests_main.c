@@ -50,6 +50,12 @@
  *       the shell's storage host (app/Megler/player/StorageHost.cpp: Windows.Storage) through megler_storage_host: the tests of
  *       hk_storage_tests.c with it in the stand-in's place, on folders under the scratch folder. Only in the build
  *       tools/build-tests.sh win makes; any other says so and does nothing
+ *   hk_tests --codec-windows <streams dir> <scratch dir> [speed streams dir]
+ *       the shell's decoders (app/Megler/player/CodecHost.cpp: Media Foundation's decoder transforms) through
+ *       megler_codec_host, under the core's codec for MediaCodec: the tests of hk_codec_tests.c on the streams in that folder
+ *       (core/tests/app/data/assets), and, with a third folder, how fast they decode the streams there
+ *       (tools/media-test-streams.py --speed). Only in the build tools/build-tests.sh win makes; any other says so and does
+ *       nothing
  *   hk_tests --run <apk> <data dir> [milliseconds]
  *       start the APK with a stand-in for OpenGL ES, touch it, press Back, and say what happened
  *   hk_tests --load <dir> <library>...
@@ -65,6 +71,7 @@
 #include "../src/hk_core.h"
 #include "../src/jni/hk_jni.h"
 #include "../src/ld/hk_ld.h"
+#include "hk_codec_tests.h"
 #include "hk_gfx_record.h"
 #include "hk_gfx_scenes.h"
 #include "hk_gfx_standin.h"
@@ -641,10 +648,48 @@ static int storage_windows_mode(char **argv)
 #endif
 }
 
+/* -------------------------------------------------------- --codec-windows */
+
+#ifdef HK_CODEC_WINDOWS
+/* hk_codec_windows.cpp: the shell's own megler_codec_host. */
+const megler_codec_host *hk_codec_windows_host(void);
+void hk_codec_windows_summary(char *out, size_t size);
+void hk_codec_windows_ten_bits(int prefer);
+#endif
+
+static int codec_windows_mode(int argc, char **argv)
+{
+#ifdef HK_CODEC_WINDOWS
+    megler_config config;
+    char summary[600];
+    int checks = 0, failed;
+    memset(&config, 0, sizeof(config));
+    config.data_dir = argv[3];
+    config.package_dir = argv[3];
+    megler_init(&config);
+    hk_codec_windows_summary(summary, sizeof(summary));
+    printf("  Windows' decoders: %s\n", summary);
+    failed = hk_codec_tests_run(argv[2], hk_codec_windows_host(), NULL, NULL, &checks);
+    /* H.265 once more with P010 taken where a decoder offers it beside NV12: the way of a phone's decoder that offers P010 alone. */
+    hk_codec_windows_ten_bits(1);
+    failed += hk_codec_tests_h265_run(argv[2], hk_codec_windows_host(), "P010 taken where the decoder offers it", NULL, NULL, &checks);
+    hk_codec_windows_ten_bits(0);
+    if (argc >= 5) failed += hk_codec_speed_run(argv[4], hk_codec_windows_host(), NULL, NULL, &checks);
+    printf("%d checks, %d failed\n", checks, failed);
+    return failed ? 1 : 0;
+#else
+    (void)argc;
+    (void)argv;
+    printf("(the shell's decoders -- Media Foundation's transforms -- are not in this build of the tests: --codec-windows does nothing here; tools/build-tests.sh win runs it)\n");
+    return 0;
+#endif
+}
+
 int main(int argc, char **argv)
 {
     if (argc >= 3 && !strcmp(argv[1], "--gfx-windows")) return gfx_windows_mode(argc, argv);
     if (argc >= 3 && !strcmp(argv[1], "--storage-windows")) return storage_windows_mode(argv);
+    if (argc >= 4 && !strcmp(argv[1], "--codec-windows")) return codec_windows_mode(argc, argv);
     if (argc >= 5 && !strcmp(argv[1], "--gfx-replay")) return gfx_replay_mode(argc, argv);
     if (argc >= 7 && !strcmp(argv[1], "--gfx-record")) {
         megler_config config;

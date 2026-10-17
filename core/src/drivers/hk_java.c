@@ -563,16 +563,15 @@ static const hk_jhle k_native[] = {
 /* ------------------------------------------- what is not answered yet */
 
 /*
- * The framework's other native classes: sound, web views, sensors and video
- * decoding. None is written here yet. Each of their methods answers zero,
- * false or null, said once in the log for the class, and the framework's own
- * Java makes of that what an app can live with: a sound that did not load is
- * id 0, a sensor is not available, a codec not supported, a web view an empty
- * rectangle. The one that needs another answer than zero to say "no" is below.
- * (Databases, megler.Sqlite, are hk_java_sqlite.c; OpenGL ES and EGL,
- * hk_java_gl.c and hk_java_gles.c, whose tables are registered after this one:
- * the entries here for their classes are only for a native the framework might
- * declare and they do not bind.)
+ * The framework's other native classes: web views and sensors. Neither is
+ * written here yet. Each of their methods answers zero, false or null, said
+ * once in the log for the class, and the framework's own Java makes of that
+ * what an app can live with: a sensor is not available, a web view an empty
+ * rectangle. (Databases, megler.Sqlite, are hk_java_sqlite.c; sound, megler.Audio,
+ * hk_java_audio.c; the decoders behind MediaCodec, megler.MediaCodecNative,
+ * hk_java_media.c; OpenGL ES and EGL, hk_java_gl.c and hk_java_gles.c, whose
+ * tables are registered after this one: the entries here for their classes are
+ * only for a native the framework might declare and they do not bind.)
  */
 N(Absent)
 {
@@ -602,26 +601,10 @@ N(Absent)
  * line above.
  */
 N(Sensors_available) { c->ret.j = 0; }
-/*
- * MediaCodecNative.supported(mime): no, for every type, and no gap to report either. A MediaCodec is fed an app's compressed
- * samples one at a time; the shell's decoding (megler_media_host, Media Foundation's source reader on a phone) takes a whole
- * file by its path, which the NDK's AMediaExtractor and AMediaCodec are made to fit (ndk/hk_media.c) and a Java MediaCodec
- * cannot be. Decoding samples needs a call of the shell's that megler.h does not have. The overlay's MediaCodecList lists a
- * decoder only when this says yes, so its list is empty, as a phone's without decoders is (AIDA64's Codecs page is that
- * list). The class's other methods are still "not there yet" when something calls them.
- */
-N(MediaCodecNative_supported) { c->ret.j = 0; }
-/* An AudioTrack is initialised when its id is not negative. */
-N(Absent_minus_one) { Absent(c); c->ret.j = 0; c->ret.i = -1; }
-
 static const hk_jhle k_absent[] = {
-    { "megler/Audio", "trackOpen", NULL, Absent_minus_one },
     { "megler/Sensors", "available", NULL, Sensors_available },
-    { "megler/MediaCodecNative", "supported", NULL, MediaCodecNative_supported },
-    { "megler/Audio", NULL, NULL, Absent },
     { "megler/Web", NULL, NULL, Absent },
     { "megler/Sensors", NULL, NULL, Absent },
-    { "megler/MediaCodecNative", NULL, NULL, Absent },
     { "megler/EGLNative", NULL, NULL, Absent },
     { "android/opengl/GLES10", NULL, NULL, Absent },
     { "android/opengl/GLES10Ext", NULL, NULL, Absent },
@@ -1098,6 +1081,9 @@ static void main_thread(void *arg)
         hk_dvm_register(k_absent);
         hk_dvm_register(hk_java_sqlite_natives());
         hk_dvm_register(hk_java_webview_natives());
+        hk_dvm_register(hk_java_audio_natives());
+        hk_java_media_set_host(&J.config->codec);
+        hk_dvm_register(hk_java_media_natives());
         hk_java_gfx_set_host(&J.config->gfx);
         hk_java_gfx_set_present(present, NULL);
         hk_java_gfx_set_present_canvas(present_canvas, NULL);

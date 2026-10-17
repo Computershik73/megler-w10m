@@ -22,7 +22,7 @@ struct hk_voice {
     u32 pos;                           /* frame within the buffer being played */
     u32 frac;                          /* 16.16 fraction between that frame and the next */
     u32 step;                          /* source frames per output frame, 16.16 */
-    float gain;
+    float gain, gain_l, gain_r;
     u32 played;
     u64 position;
     hk_voice_done_fn done;
@@ -54,8 +54,8 @@ static u32 mix_voice(hk_voice *v, float *mix, int frames)
         const queued *q = &v->queue[v->head];
         const u8 *frame = q->data + (size_t)v->pos * v->frame_bytes;
         float l = sample_at(v, frame, 0), r = v->channels > 1 ? sample_at(v, frame, 1) : l;
-        mix[i * 2] += l * v->gain;
-        mix[i * 2 + 1] += r * v->gain;
+        mix[i * 2] += l * v->gain * v->gain_l;
+        mix[i * 2 + 1] += r * v->gain * v->gain_r;
         v->frac += v->step;
         v->pos += v->frac >> 16;
         v->position += v->frac >> 16;
@@ -194,17 +194,25 @@ static void mixer_thread(void *arg)
     }
 }
 
+/*
+ * The mixer's thread, started with the first voice, and the run's output, opened then. An output the run names later
+ * (another run in the same process: the tests) is opened when the next voice is made; the one tried is not tried again.
+ */
+static bool g_open_asked;
+static bool (*g_open_tried)(void *user, int rate);
+
 static void ensure_mixer(void)
 {
-    const megler_run_config *run;
-    if (g_mixer) return;
+    const megler_run_config *run = hk_run_config();
+    if (g_mixer && g_open_asked && run->audio.open == g_open_tried) return;
     hk_lock_acquire(&g_lock);
-    if (!g_mixer) {
-        run = hk_run_config();
+    if (!g_open_asked || run->audio.open != g_open_tried) {
+        g_open_asked = true;
+        g_open_tried = run->audio.open;
         g_host_open = run->audio.open && run->audio.open(run->audio.user, HK_AUDIO_RATE);
         if (!g_host_open) hk_warn("audio: no output; the app's sound is consumed silently");
-        g_mixer = hk_thread_start(mixer_thread, NULL, 256 * 1024, "audio-mixer");
     }
+    if (!g_mixer) g_mixer = hk_thread_start(mixer_thread, NULL, 256 * 1024, "audio-mixer");
     hk_lock_release(&g_lock);
 }
 
@@ -219,7 +227,7 @@ hk_voice *hk_voice_create(int rate, int channels, int bits, bool is_float)
     v->is_float = is_float;
     v->frame_bytes = (u32)(channels * bits / 8);
     v->step = (u32)(((u64)rate << 16) / HK_AUDIO_RATE);
-    v->gain = 1.0f;
+    v->gain = v->gain_l = v->gain_r = 1.0f;
     ensure_mixer();
     hk_lock_acquire(&g_lock);
     v->next = g_voices;
@@ -269,6 +277,21 @@ void hk_voice_set_playing(hk_voice *v, bool playing)
 }
 
 void hk_voice_set_gain(hk_voice *v, float gain) { v->gain = gain < 0 ? 0 : gain; }
+
+void hk_voice_set_gains(hk_voice *v, float left, float right)
+{
+    v->gain_l = left < 0 ? 0 : left;
+    v->gain_r = right < 0 ? 0 : right;
+}
+
+void hk_voice_set_rate(hk_voice *v, int rate)
+{
+    if (rate < 1000 || rate > 400000) return;
+    hk_lock_acquire(&g_lock);
+    v->rate = rate;
+    v->step = (u32)(((u64)rate << 16) / HK_AUDIO_RATE);
+    hk_lock_release(&g_lock);
+}
 
 void hk_voice_set_done(hk_voice *v, hk_voice_done_fn fn, void *user)
 {

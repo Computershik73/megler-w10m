@@ -279,5 +279,6 @@ void hk_bionic_init(void)
     hk_bionic_register(hk_tab_native_activity);
     hk_bionic_register(hk_opensles_table());
     hk_bionic_register(hk_media_table());
+    hk_bionic_register(hk_aaudio_table());
     hk_bionic_register(hk_java_ndk_table());
 }

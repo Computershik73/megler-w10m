@@ -2018,11 +2018,7 @@ no native code or has it for 32-bit ARM.
   first asked (so that it can be told whether the app wants it or the
   framework's own start-up touched it; `megler.Sensors.available`, which the
   framework asks at every start, is answered "no" without a word):
-  `megler.Audio` (an `AudioTrack` that is not initialised, a sound that did not
-  load), `megler.Web` (an empty rectangle), `megler.Sensors` (not available),
-  `megler.MediaCodecNative` (not supported; its `supported`, which the
-  overlay's `MediaCodecList` asks for every type, answers no without a word,
-  so the list of decoders is empty). Also not asked of the
+  `megler.Web` (an empty rectangle), `megler.Sensors` (not available). Also not asked of the
   shell yet: the keyboard, the clipboard (it is the app's own), sharing,
   opening a URL, insets (zero), dark mode (no), vibration.
 - **Which way up.** The surface is whatever `megler_run_config` says, upright or
@@ -3102,7 +3098,7 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: ninety-six files** in the overlay,
+**What differs from the original's framework: ninety-eight files** in the overlay,
 most of them a statement or a few methods each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and nine files of members added** to classes of the original's, **and four files of the original's taken
@@ -3476,17 +3472,25 @@ on a looper thread of its own and takes it back with `next()`.
 - `android/media/MediaCodecList.java`, one method, this port's circumstance
   again: every decoder is listed only when `megler.MediaCodecNative.supported`
   says its type can be decoded (the original listed H.264, AAC and MP3
-  always and asked only for HEVC). Here none can be yet: a `MediaCodec` is
-  fed an app's compressed samples, and the shell decodes whole files by path
-  (`megler_media_host`, which the NDK's extractor and codec are made to fit);
-  decoding samples needs a call of the shell's that `megler.h` does not have
-  (Media Foundation's decoder transforms on the phone). So the list is empty,
-  which Android allows. AIDA64's Codecs page listed three decoders that could
-  not be made and logged "megler/MediaCodecNative is not there yet"; under qemu
-  it now shows one line of its own in place of the list (three words; the
-  stand-in draws no letters to read), nothing is logged, and the app runs on. The
-  original `MediaCodec.createDecoderByType` still says in its message that
-  Megler decodes H.264, HEVC, AAC and MP3, which is not so here.
+  always and asked only for HEVC). The list must be what `MediaCodec` can
+  make, and here that is whatever the shell's decoders are
+  (`megler_codec_host`: Media Foundation's on a phone, "Decoders for
+  MediaCodec" below), which a phone may lack one of. With no decoder at all
+  the list is empty, which Android allows: an app finds none and
+  `createDecoderByType` throws `IOException`. The original
+  `MediaCodec.createDecoderByType` still says in that message that Megler
+  decodes H.264, HEVC, AAC and MP3.
+- `android/media/MediaCodec.java`, one rule, and the original's fault: an
+  input buffer goes back to the app (`dequeueInputBuffer`, or the
+  `Callback`) only while fewer outputs wait to be released than a phone's
+  decoder has buffers for (eight pictures, sixteen blocks of sound); else it
+  is held until `releaseOutputBuffer` brings them below that. The original
+  handed every buffer back as soon as it was decoded, so the decoder never
+  filled, and ExoPlayer, which feeds a renderer for as long as it is given
+  buffers and has samples (up to fifty seconds of them), would have decoded
+  everything it had loaded in one turn of its loop and kept every picture
+  until its time. The NDK's decoder here (`ndk/hk_media.c`) had learnt the
+  same from Unity.
 
 - `android/preference/PreferenceActivity.java`, the largest: the activity's
   content and preference headers. Android's `onCreate` sets a layout in which
@@ -3662,6 +3666,20 @@ on a looper thread of its own and takes it back with `next()`.
   the app on VK's "not a robot" page. The data app's step "cameras" reads
   the list (empty, not null) and `Camera.getNumberOfCameras()` (0).
 
+- `android/media/MediaMetadata.java`, in place of the generated stub, whose
+  getters answered null and 0, whose `writeToParcel` wrote nothing and whose
+  `CREATOR` was null. AndroidX's `MediaMetadataCompat.getMediaMetadata()`
+  makes the platform's object by writing itself (its Bundle) into a Parcel and
+  reading it back with `MediaMetadata.CREATOR`; `MediaSessionCompat` does that
+  for every `setMetadata`. Spotify's "MediaSession worker" thread threw a
+  NullPointerException there for each track, dozens of times a minute. Now
+  Android's class: a Bundle of the keys, the Builder that fills it, the Parcel
+  form (the Bundle, then the bitmap size limit, which a parcel holding the
+  Bundle alone leaves at its default), and `getDescription` made of the display keys or
+  the title, artist and album. The data app's step "media-metadata" sends one
+  through a Parcel and reads one from a Bundle alone, as the compat class
+  writes it.
+
 - `android/webkit/`, forty-nine files: AOSP's `android.webkit` at
   android-15.0.0_r36 (`tools/webview-fetch.sh` fetches the sources to compare)
   in the place of the original's WebView over WKWebView and its generated
@@ -3697,7 +3715,7 @@ on a looper thread of its own and takes it back with `next()`.
   crash handling lists the WebView's APK and library folders at the
   browser's start, and ended the start on the null it got.
 
-The original has all thirty-six faults; they are its author's to take back.
+The original has all thirty-seven faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in
@@ -3713,11 +3731,189 @@ test apps are that file's layouts, styles and nine-patches.
 | The original's file | What it is | Here |
 |---|---|---|
 | `megler-tl-dvm-sqlite.c` | the system's SQLite | (done) `drivers/hk_java_sqlite.c` on SQLite's amalgamation compiled into the core, with a VFS over the host layer: "Databases" |
-| `megler-tl-dvm-audio.c`, `-media.c` | `AudioTrack`, `SoundPool`, `MediaPlayer`, `MediaCodec` | onto `ndk/hk_audio.c`; decoding on Media Foundation. `MediaCodec` needs a call of the shell's that decodes samples, not files; until then `MediaCodecList` is empty |
+| `megler-tl-dvm-audio.c` | `AudioTrack`, `SoundPool`, `MediaPlayer` | (done) `drivers/hk_java_audio.c`: "Sound from Java", below |
+| `megler-tl-dvm-media.c` | `MediaCodec` | (done) `drivers/hk_java_media.c` over the shell's decoders (`megler_codec_host`): "Decoders for MediaCodec", below |
 | `megler-tl-dvm-gles*.c`, `EGLNative` | generated calls into ANGLE | (done) `drivers/hk_java_gles.c`, generated by `tools/gles-natives.py` from the declarations and Khronos' prototypes, and `drivers/hk_java_gl.c`: "OpenGL ES from Java"; the picture over OpenGL is composed in the core |
 | `megler-tl-dvm-web.m` | `WebView` | (done) not the shell's: Android's System WebView, Chromium, whose library runs as the app's code and draws in software ("The WebView") |
 | `megler-tl-dvm-sensors.m` | sensors | `Windows.Devices.Sensors` |
 | the keyboard, clipboard, sharing, URLs, orientation, insets | `megler.Native`'s calls to the host | calls of the shell's that `megler.h` does not have yet |
+
+### Sound from Java
+
+`megler.Audio`'s natives (`drivers/hk_java_audio.c`) are what the framework's
+`AudioTrack`, `MediaPlayer` and `SoundPool` play through, as on iOS
+(`megler-tl-dvm-audio.c`), on the mixer of `ndk/hk_audio.c`:
+
+- a track (an `AudioTrack`; the music a `MediaPlayer` decodes and writes) is
+  one of AAudio's written streams (`hk_pcm_*`, `ndk/hk_aaudio.c`): 16-bit PCM
+  at the track's rate and channels, 100 ms of it waiting at most. A blocking
+  write waits for room, paused or not, as `AudioTrack.write` does, until a
+  flush, a stop or a close;
+- a sound (`SoundPool`) is decoded whole when loaded, and each play of it is a
+  voice of the mixer at the sound's rate times the play's, with its two
+  volumes and its loops;
+- a decoder reads what the app has in memory or behind a descriptor:
+  - Ogg Vorbis through stb_vorbis (`core/third_party/stb_vorbis`, public
+    domain; Windows has no Vorbis decoder);
+  - WAV (8, 16, 24 or 32-bit PCM, or float), read here;
+  - anything else (MP3, AAC and M4A, FLAC, WMA) through the shell's decoder
+    (`megler_media_host`). It wants a file, so the bytes are written to one
+    under `media/` in the data folder, named for what they are, and deleted
+    with the decoder.
+  A decoder gives 16-bit samples, at most two channels.
+
+The mixer gained per-channel volumes and a rate that can change
+(`hk_voice_set_gains`, `hk_voice_set_rate`) for these.
+
+The data app's steps:
+- "audio-track": a playing track takes a second of PCM in about a second;
+- "media-player": a WAV the step writes plays to its end in about its half second;
+- "media-player-ogg": the Ogg asset `tone.ogg` (440 Hz, half a second, made
+  with ffmpeg's libvorbis), through its descriptor, plays to its end likewise;
+- "sound-pool": the same asset, loaded and then played.
+
+### Decoders for MediaCodec
+
+`megler.MediaCodecNative`'s natives (`drivers/hk_java_media.c`) are what the
+framework's `MediaCodec` decodes through, as on iOS (`megler-tl-dvm-media.c`,
+over VideoToolbox and AudioToolbox). `MediaCodec` itself is the original's
+Java: it decodes each queued buffer at once, on the thread that queues it,
+keeps the outputs in order for `dequeueOutputBuffer` or for the `Callback`
+on its handler (ExoPlayer's asynchronous mode), and draws a picture that is
+released with `render` into the output `Surface` with `lockCanvas`, scaled
+to it. The decoding proper is the shell's, through a call of its own in
+`megler.h`, `megler_codec_host`: a decoder of a kind (H.264, H.265, AAC, MP3)
+opened with the stream's configuration, fed one sample at a time, giving
+pictures (NV12 or RGBA) and blocks of 16-bit sound. The shell's side is
+Media Foundation's synchronous decoder transforms (`player/CodecHost.cpp`):
+found with `MFTEnumEx`, fed with `ProcessInput`, emptied with
+`ProcessOutput`, a change of size or format followed, NV12 pictures held in
+the shell's own buffers until the core lets them go (P010, which a decoder
+of ten-bit streams may offer alone, is copied out as NV12, the high eight
+of each sample's ten bits), sound asked for as 16-bit PCM in two channels at
+most, each decoder on a thread of its own.
+Picture decoders are asked for low latency (`MF_LOW_LATENCY`): a picture
+then comes out as soon as the stream's own reordering allows, as from
+Android's decoders, rather than once the decoder's whole picture buffer is
+full (on this PC's H.264 decoder, after 2 units of the test stream instead
+of 18 to 24, varying with its threads). The flag file
+`codec-no-low-latency` brings the decoders' own way back.
+What the core does between an app's buffers and that call:
+
+- **Pictures.** An app may hand H.264 and H.265 over with start codes or
+  length-prefixed, with the parameter sets in the stream, as csd-0 and csd-1
+  (or as MP4's avcC or hvcC record), or in a buffer flagged as codec-specific
+  data. The shell is given Annex-B alone, without access unit delimiters,
+  and the parameter sets in front of the first unit after a start or a flush
+  when the unit does not carry them.
+- **Display order.** Media Foundation's decoders give pictures in display
+  order. A decoder that gives them in decode order (VideoToolbox) says how
+  far out they can be (`reorder`): that many are held, sorted by time, the
+  earliest going on as each new one comes, all of them at the end of the
+  stream. A flush drops what is held. In low-latency mode a Media
+  Foundation decoder trusts the stream to say how far its pictures are
+  reordered; should one come out after a later one has gone on, that is
+  said in the log, and four are held back from then on (twice as many each
+  time it happens again, up to sixteen).
+- **Sound.** One packet per buffer. AAC's AudioSpecificConfig is csd-0 or a
+  codec-specific buffer; ADTS headers are taken off, and the first one is the
+  configuration when there is no other; with neither, one is made from the
+  format's rate and channels. MP3's rate and channels are its first frame's.
+- **A picture to the screen.** `renderFrame` turns the shell's picture into
+  the `Bitmap` MediaCodec draws: NV12 to colour with BT.601 or BT.709, video
+  range or full, as the stream says, and as Android does when it says
+  nothing (BT.601 under 720 lines, BT.709 from there), from tables, a block
+  of 2 x 2 pixels at a time.
+
+`MediaCodecList` (the overlay's) lists a decoder for each kind the shell
+says it has.
+
+The tests:
+- the core's ("the decoders behind a Java app's MediaCodec", both hosts and
+  the phone's Self-test): `core/tests/hk_codec_standin.c` stands in for the
+  shell's decoders and decodes nothing, but refuses a unit that is not
+  Annex-B, has no slice, or comes first without the parameter sets, refuses
+  ADTS, and hands pictures out in decode order (`reorder` 4), each a grey
+  whose luma says its time. Ten units in decode order come out as ten
+  pictures in display order in the right grey, with the parameter sets as
+  csd in Annex-B, as an avcC record with length-prefixed units, in the first
+  unit, and in a codec-config buffer; a flush with four held drops them and
+  the four after it come out alone; AAC with csd, with a configuration over
+  what the format said, with a codec-config buffer, and with ADTS and none;
+  MP3 whose first frame says 22050 Hz in one channel; NV12's red in BT.601
+  and BT.709, video range and full, and RGBA. And a decoder that says it
+  gives pictures in order and does not: after the first picture out of
+  place the rest come in order, and after a flush all of them.
+- the data app's steps, under qemu with the same stand-in (the assets
+  `avc.hkau`, `aac.hkau`, `mp3.hkau`, made by `tools/media-test-streams.py`
+  with ffmpeg: 24 pictures of H.264 with two B-pictures between references
+  and an IDR at 0 and 12, 168 x 94; half a second of a 440 Hz tone as AAC LC
+  and as MP3):
+  - "codecs": the stand-in's three decoders listed, one found for a film's
+    format and made, and H.265 an `IOException`;
+  - "codec-avc": csd-0 and csd-1, each picture shown on a `Surface` over a
+    `SurfaceTexture`: the output format, then the 24 pictures in display
+    order, then the end of the stream; the last one is in the
+    `SurfaceTexture` in its grey;
+  - "codec-avc-flush": seven units, a flush, then from the IDR at 12: only
+    pictures 12 to 23 come out;
+  - "codec-avc-inband": the parameter sets in a codec-config buffer;
+  - "codec-avc-async": the callbacks on a `HandlerThread`, the 24 pictures in
+    order on its thread ("codec-avc-async-done", which the runner waits for);
+  - "codec-aac", "codec-aac-adts", "codec-mp3": a block of PCM for each
+    packet, 44100 Hz in two channels;
+  - "codec-avc-full": units queued and no output taken: the decoder is
+    full (`dequeueInputBuffer` says try again) with eight pictures or more
+    waiting, before all 24 are in; once the waiting ones are released it
+    takes input again, and all 24 come out in order.
+- the shell's own decoders on a PC (`tools/build-tests.sh win`, as
+  `hk_tests --codec-windows`: `core/tests/hk_codec_tests.c` over
+  `player/CodecHost.cpp`, built into the test program with
+  `core/tests/hk_codec_windows.cpp`), fed the same streams and
+  `avc-small.hkau`. On this PC (Windows 11) MFTEnumEx finds "Microsoft H264
+  Video Decoder MFT", "HEVCVideoExtension" (the Store's), "Microsoft AAC
+  Audio Decoder MFT" and "MP3 Decoder MFT", and:
+  - H.264, with the parameter sets as csd, in the first unit, in a
+    codec-config buffer, and as avcC with length-prefixed units: all 24
+    pictures in display order (Media Foundation's decoder reorders them
+    itself), the first after 2 units, each 168 x 94 out of 176 x 96
+    decoded, its luma and its colour after `renderFrame` the grey its number
+    says; a flush after seven units (pictures 0 to 5 out by then) and then
+    from the IDR at 12 gives 12 to 23 alone; and a stream that goes on at
+    96 x 64 after a codec-config buffer gives all 36 in order, each at its
+    own size;
+  - H.265 the same three ways and the flush (168 x 94 of 168 x 96, the first
+    picture after 3 units), and H.265 Main 10 (`hevc10.hkau`, ten bits a
+    sample) likewise, which this PC's decoder hands out as NV12 itself; and
+    both once more with P010 taken where it is offered beside NV12
+    (`CodecHost::preferTenBits`, for the tests), which is the way of a
+    decoder that offers P010 alone: rows of 336 bytes for 168 pixels, made
+    NV12, every picture in order in its grey;
+  - AAC raw with csd-0 and with ADTS headers alone: 23 blocks of 1024 frames,
+    44100 Hz in two channels, the tone 440.0 Hz at 8181 RMS (the stream's
+    8192); MP3 configured without a rate: 23664 frames of the 24192 the
+    frames hold (the decoder's own delay), 440.0 Hz at 7782 RMS;
+  - H.264 and AAC decoded at once on two threads, five times each, every run
+    whole.
+  And timed (`hk_codec_speed_run`) on two seconds of ffmpeg's moving test
+  picture at 720p and 1080p, made into `build/media-speed` by
+  `tools/media-test-streams.py --speed` (not kept in the repository): on
+  this PC (the test program's `/O1`), H.264 at 720p 3.2 ms a picture to
+  decode and 4.3 ms for `renderFrame` to turn it into a bitmap, at 1080p
+  5.7 and 9.8 ms, H.265 at 1080p 3.9 and 10.6 ms; the first picture after 3
+  units (three B-pictures between references; H.265 after 4). The
+  conversion cost more than the decoding, so `renderFrame` takes its terms
+  from tables now and does a block of 2 x 2 pixels at a time, the pixels
+  unchanged: a picture of 1920 x 1080 in 3.8 ms where it took 13.0, built as
+  the app is (`/O2`). The speed run times it alone first, with no decoder at
+  work beside it (4.4 ms in a `/O2` build of the test program, 6.8 in the
+  usual `/O1` one); with the decoder's threads at work beside it the times
+  wander by a half.
+- the same on a phone: `tools/build-appx.sh arm --auto codec` packs the
+  streams and makes the timed ones into the package's folder `codec`, and
+  the auto run goes through both with the phone's own decoders, a line each
+  into `megler-auto.log` (`tools/phone.py auto` fetches it), starting with
+  which decoder the phone has for each kind.
 
 ### 3. Apps that are not the test apps
 

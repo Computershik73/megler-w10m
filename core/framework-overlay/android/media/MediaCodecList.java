@@ -2,14 +2,11 @@
 // It differs in infos(): every decoder is listed only when megler.MediaCodecNative.supported says its type can be decoded;
 // the original listed H.264, AAC and MP3 always and asked only for HEVC.
 //
-// Why. The list must be what MediaCodec can make. Here no type can be decoded from an app's samples yet: the shell's
-// decoding (megler_media_host, Media Foundation's source reader on the phone) takes a whole file by its path, which the
-// NDK's extractor and codec are made to fit (core/src/ndk/hk_media.c) and a Java MediaCodec cannot be, and a decoder of
-// samples needs a call of the shell's that megler.h does not have. supported() answers no for every type
-// (core/src/drivers/hk_java.c), so the list is empty, which Android allows: an app finds no decoder and
-// createDecoderByType throws IOException, as on a phone without one. Before, AIDA64's Codecs page listed three decoders
-// that could not be made, and the first look at the list logged "megler/MediaCodecNative is not there yet". When the shell
-// can decode samples the list fills itself from the same answers. Everything else is the original's, unchanged.
+// Why. The list must be what MediaCodec can make, and here that is whatever the shell's decoders are (megler_codec_host in
+// megler.h; core/src/drivers/hk_java_media.c asks it in supported()), which a phone may lack one of. With none the list is
+// empty, which Android allows: an app finds no decoder and createDecoderByType throws IOException, as on a phone without
+// one. Before, AIDA64's Codecs page listed three decoders that could not be made. Everything else is the original's,
+// unchanged.
 package android.media;
 
 import java.util.ArrayList;

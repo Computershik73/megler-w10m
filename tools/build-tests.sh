@@ -26,6 +26,13 @@
 #       stand-in did, on folders of build/tests-win/scratch-storage. A PC's
 #       test program is no app container: what the broker refuses an app is
 #       not found out here.
+#       And the shell's decoders for a Java app's MediaCodec
+#       (app/Megler/player/CodecHost.cpp: Media Foundation's decoder
+#       transforms), built in likewise and run as --codec-windows: the core's
+#       codec over this PC's own decoders, fed the data app's streams
+#       (core/tests/app/data/assets) and checked against what they hold,
+#       and timed on 720p and 1080p streams it makes into build/media-speed
+#       (tools/media-test-streams.py --speed, where Python and ffmpeg are).
 #
 # The tests are run twice where Android 9's boot class path has been unpacked
 # (build/android9/boot): once with the Dalvik runtime on its built-in
@@ -227,9 +234,9 @@ elif [ "$MODE" = win ]; then
   for s in "${SRCS[@]}"; do ALL+=("$(w "$ROOT/$s")"); done
   ZALL=()
   for s in "${ZSRCS[@]}"; do ZALL+=("$(w "$ROOT/$s")"); done
-  # (HK_GFX_WINDOWS, HK_STORAGE_WINDOWS: this build has the shell's drawing and its storage host in it; hk_tests_main.c's
-  # --gfx-windows and --storage-windows modes.)
-  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c "$OPT" /MT /W3 /std:c11 /utf-8 /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DHK_GFX_WINDOWS /DHK_STORAGE_WINDOWS "${SQLITE_CL[@]}" "${WEBP_CL[@]}" \
+  # (HK_GFX_WINDOWS, HK_STORAGE_WINDOWS, HK_CODEC_WINDOWS: this build has the shell's drawing, its storage host and its
+  # decoders in it; hk_tests_main.c's --gfx-windows, --storage-windows and --codec-windows modes.)
+  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c "$OPT" /MT /W3 /std:c11 /utf-8 /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DHK_GFX_WINDOWS /DHK_STORAGE_WINDOWS /DHK_CODEC_WINDOWS "${SQLITE_CL[@]}" "${WEBP_CL[@]}" \
     "/I$(w "$ROOT/core/third_party/zlib")" "/Fo$(w "$OUT/obj")\\" "${ALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
   "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /O1 /MT /w /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS \
     "/Fo$(w "$OUT/zobj")\\" "${ZALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
@@ -262,13 +269,17 @@ elif [ "$MODE" = win ]; then
   # in for the rest of the shell (core/tests/hk_storage_windows.cpp). The shell's precompiled header is read as a plain
   # header here; the projection's headers are the SDK's own. Compiled as for an app container (WINAPI_FAMILY_APP), which
   # is what the phone's package is compiled as: the headers then show what an app may call and nothing else.
-  STORAGE_SRC=("$(w "$ROOT/app/Megler/player/StorageHost.cpp")" "$(w "$ROOT/app/Megler/shell/Strings.cpp")" "$(w "$ROOT/core/tests/hk_storage_windows.cpp")")
+  # And the shell's decoders for a Java app's MediaCodec (app/Megler/player/CodecHost.cpp: Media Foundation's decoder
+  # transforms), likewise, with the lines that hand them to the tests (core/tests/hk_codec_windows.cpp); the shell's log
+  # they write to is hk_storage_windows.cpp's.
+  STORAGE_SRC=("$(w "$ROOT/app/Megler/player/StorageHost.cpp")" "$(w "$ROOT/app/Megler/shell/Strings.cpp")" "$(w "$ROOT/core/tests/hk_storage_windows.cpp")"
+               "$(w "$ROOT/app/Megler/player/CodecHost.cpp")" "$(w "$ROOT/core/tests/hk_codec_windows.cpp")")
   mkdir -p "$OUT/storageobj"
   rm -f "$OUT/storageobj/"*.obj
   INCLUDE="$INCLUDE;$(w "$SDK/Include/$SDKV/winrt");$(w "$SDK/Include/$SDKV/cppwinrt")" \
     "$VC/bin/Hostx64/x64/cl.exe" "${GFX_FLAGS[@]}" /Zc:__cplusplus /bigobj /DWINAPI_FAMILY=WINAPI_FAMILY_APP /O1 /MP "/Fo$(w "$OUT/storageobj")\\" "${STORAGE_SRC[@]}" \
     | grep -v -E '^[A-Za-z0-9_]+\.cpp$' || true
-  for obj in StorageHost Strings hk_storage_windows; do
+  for obj in StorageHost Strings hk_storage_windows CodecHost hk_codec_windows; do
     [ -f "$OUT/storageobj/$obj.obj" ] || { echo "compile failed: $obj.cpp" >&2; exit 1; }
   done
   # (MEGLER_TESTS_MAP=1: a linker map beside it, hk_tests.map, which tools/dvm-bench.sh profile reads.)
@@ -279,7 +290,7 @@ elif [ "$MODE" = win ]; then
   # `hk_dvm_interpret` first, so that what it measures is the change and not where the loop fell.)
   [ -n "${MEGLER_TESTS_ORDER:-}" ] && MAPOPT+=("/ORDER:@$(w "$MEGLER_TESTS_ORDER")")
   "$VC/bin/Hostx64/x64/link.exe" /nologo ${MAPOPT[@]+"${MAPOPT[@]}"} "/OUT:$(w "$OUT/hk_tests.exe")" "$(w "$OUT/obj")\\*.obj" "$(w "$OUT/zobj")\\*.obj" "$(w "$OUT/gfxobj")\\*.obj" \
-    "$(w "$OUT/storageobj")\\*.obj" bcrypt.lib synchronization.lib d2d1.lib d3d11.lib dwrite.lib ole32.lib oleaut32.lib ws2_32.lib iphlpapi.lib
+    "$(w "$OUT/storageobj")\\*.obj" bcrypt.lib synchronization.lib d2d1.lib d3d11.lib dwrite.lib ole32.lib oleaut32.lib ws2_32.lib iphlpapi.lib mfplat.lib mfuuid.lib
   echo "built $OUT/hk_tests.exe"
   if [ "$RUN" = 1 ]; then
     rm -rf "$OUT/scratch"
@@ -313,6 +324,18 @@ elif [ "$MODE" = win ]; then
     # instead of the stand-in, on folders under a scratch folder of its own.
     rm -rf "$OUT/scratch-storage"
     "$OUT/hk_tests.exe" --storage-windows "$(w "$OUT/scratch-storage")" || STATUS=1
+    # The shell's decoders: the core's codec for MediaCodec over Media Foundation's own decoder transforms, fed the data
+    # app's streams (H.264 and H.265 with B-pictures, AAC, MP3) and checked against what they hold; and timed on longer
+    # streams of 720p and 1080p, made once into build/media-speed where Python and ffmpeg are (they are not kept in the
+    # repository).
+    rm -rf "$OUT/scratch-codec"
+    SPEED=()
+    if [ -f "$ROOT/build/media-speed/speed-avc-1080p.hkau" ] || python "$(w "$ROOT/tools/media-test-streams.py")" --speed "$(w "$ROOT/build/media-speed")" > /dev/null 2>&1; then
+      SPEED=("$(w "$ROOT/build/media-speed")")
+    else
+      echo "(the streams to time the decoders by could not be made: tools/media-test-streams.py --speed needs Python and ffmpeg)"
+    fi
+    "$OUT/hk_tests.exe" --codec-windows "$(w "$ROOT/core/tests/app/data/assets")" "$(w "$OUT/scratch-codec")" ${SPEED[@]+"${SPEED[@]}"} || STATUS=1
     # The Java test apps' own drawing, as `tools/build-tests.sh arm` recorded it under qemu: drawn again by the stand-in,
     # which must give the recorded pictures back pixel for pixel, and then by the shell's drawing, into
     # build/gfx-pictures/app-<app>-N.png -- the app's views as a phone's Direct2D and DirectWrite would draw them, laid

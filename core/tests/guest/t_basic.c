@@ -765,17 +765,20 @@ int t_hardware_buffer(void)
 }
 
 /*
- * AAudio (libaaudio), as Chromium and Oboe start a stream: a builder first. None is given here (sound goes through OpenSL
- * ES): AAUDIO_ERROR_UNAVAILABLE and no builder. 2, or the negated step that failed.
+ * AAudio (libaaudio), as Chromium and Oboe start a stream: a builder first, AAUDIO_OK and a builder (ndk/hk_aaudio.c; its
+ * streams are tested by t_aaudio.c), and the builder's setUsage, which Chromium binds weakly, is there. 2, or the negated
+ * step that failed.
  */
 int t_aaudio(void)
 {
-    void *aaudio = dlopen("libaaudio.so", 0), *builder = (void *)1;
-    int (*create)(void **);
+    void *aaudio = dlopen("libaaudio.so", 0), *builder = 0;
+    int (*create)(void **), (*destroy)(void *);
     if (!aaudio) return -1;
     create = (int (*)(void **))dlsym(aaudio, "AAudio_createStreamBuilder");
-    if (!create) return -1;
-    if (create(&builder) != -889 || builder) return -2;
+    destroy = (int (*)(void *))dlsym(aaudio, "AAudioStreamBuilder_delete");
+    if (!create || !destroy || !dlsym(aaudio, "AAudioStreamBuilder_setUsage")) return -1;
+    if (create(&builder) != 0 || !builder) return -2;
+    destroy(builder);
     return 2;
 }
 

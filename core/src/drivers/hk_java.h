@@ -2,6 +2,7 @@
 #ifndef HK_JAVA_H
 #define HK_JAVA_H
 
+#include "../../include/megler.h"
 #include "../hk_base.h"
 #include "../jni/hk_jni.h"
 
@@ -40,6 +41,37 @@ void hk_java_keyboard_height(int pixels);
 
 /* hk_java_sqlite.c: megler.Sqlite's native methods, on the SQLite compiled into the core -- or, in a build without it, their refusal. */
 const hk_jhle *hk_java_sqlite_natives(void);
+/* megler.Audio: AudioTrack, MediaPlayer and SoundPool (hk_java_audio.c). */
+const hk_jhle *hk_java_audio_natives(void);
+
+/*
+ * megler.MediaCodecNative: the decoders behind MediaCodec, over the shell's (megler_codec_host; hk_java_media.c). The host
+ * is copied; NULL or one left zero lists no decoder. Set it before the app's code runs.
+ */
+const hk_jhle *hk_java_media_natives(void);
+void hk_java_media_set_host(const megler_codec_host *host);
+/*
+ * The same decoders without Java, as the natives use them, for the tests. A codec is made for a MIME type and configured
+ * with what MediaFormat says (csd-0 to csd-2: NULL or empty when not there); each decode is one queued buffer with
+ * MediaCodec's flags (2 codec-specific data, 4 the end of the stream). Frames come in display order with info = { time,
+ * width, height }; sound as 16-bit PCM in a block to free(), info = { time, rate, channels }.
+ */
+typedef struct hk_mcodec hk_mcodec;
+typedef struct hk_mframe hk_mframe;
+bool hk_mcodec_supported(const char *mime);
+hk_mcodec *hk_mcodec_create(const char *mime);
+bool hk_mcodec_configure(hk_mcodec *c, i32 width, i32 height, i32 rate, i32 channels, const u8 *const csd[3], const size_t csd_size[3]);
+void hk_mcodec_decode(hk_mcodec *c, const u8 *data, size_t size, i64 time_us, i32 flags);
+hk_mframe *hk_mcodec_next_frame(hk_mcodec *c, i64 info[3]);
+u8 *hk_mcodec_next_pcm(hk_mcodec *c, i64 info[3], size_t *bytes);
+const megler_codec_picture *hk_mcodec_frame_picture(const hk_mframe *f);
+/* A picture into memory of the core's bitmaps (B, G, R, A, top row first), as much of it as fits. */
+bool hk_mcodec_render(const megler_codec_picture *p, void *bgra, i32 width, i32 height, i32 stride);
+void hk_mcodec_free_frame(hk_mframe *f);
+void hk_mcodec_flush(hk_mcodec *c);
+void hk_mcodec_destroy(hk_mcodec *c);
+/* width << 16 | height: as configured, then the latest picture's. */
+i32 hk_mcodec_size(hk_mcodec *c);
 
 /* hk_java_webview.c: what Android's platform gives the WebView besides Java (its library loader, its platform support). */
 const hk_jhle *hk_java_webview_natives(void);

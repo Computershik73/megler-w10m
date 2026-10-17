@@ -39,7 +39,8 @@ has to answer.
   client and Conscrypt has also been checked on the HP Elite x3.
 - OpenGL ES 2.0 on any phone; 3.0 where the GPU's driver gives Direct3D feature
   level 10 or more. No Vulkan.
-- Sound through OpenSL ES buffer queues (what FMOD, OpenAL Soft and SDL sit on).
+- Sound through OpenSL ES buffer queues (what FMOD, OpenAL Soft and SDL sit on)
+  and AAudio output streams (what apps that decode their own sound use, Spotify among them).
   Films an engine plays through `libmediandk.so`, when they are something Windows
   decodes (MP4 with H.264 and AAC).
 - The network over the phone's own Winsock: TCP and UDP, servers included, names,

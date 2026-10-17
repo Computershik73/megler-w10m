@@ -18,7 +18,13 @@
 #              the network as an app would (megler_net_check): a public name,
 #              a connection to its port 80 and a HEAD request, the same
 #              against a server of its own on loopback, a UDP round trip on
-#              loopback, and the interfaces; `play` opens the
+#              loopback, and the interfaces; `codec` runs the decoders a
+#              Java app's MediaCodec has (player/CodecHost.cpp: Media
+#              Foundation's transforms) through the tests of
+#              core/tests/hk_codec_tests.c, on the data app's streams and on
+#              streams made here to time them by (720p and 1080p H.264, 1080p
+#              H.265; tools/media-test-streams.py, ffmpeg), all in the
+#              package's folder `codec`; `play` opens the
 #              library's game; `java` starts the packaged Java test app hello.apk, takes
 #              its picture every five seconds, taps its button and presses
 #              Back (it brings --java with it). Default: none -- the normal
@@ -98,6 +104,7 @@ AUTO_JAVA=0
 AUTO_GFX=0
 AUTO_STORAGE=0
 AUTO_NET=0
+AUTO_CODEC=0
 LIBCORE=0
 JAVA=0
 while [ $# -gt 0 ]; do
@@ -120,8 +127,9 @@ while [ $# -gt 0 ]; do
           gfx) AUTO_GFX=1 ;;
           storage) AUTO_STORAGE=1 ;;
           net) AUTO_NET=1 ;;
+          codec) AUTO_CODEC=1 ;;
           none) ;;
-          *) echo "unknown --auto mode: $mode (probe, selftest, gfx, storage, net, play, java)" >&2; exit 2 ;;
+          *) echo "unknown --auto mode: $mode (probe, selftest, gfx, storage, net, codec, play, java)" >&2; exit 2 ;;
         esac
       done ;;
     --libcore) LIBCORE=1 ;;
@@ -138,6 +146,7 @@ AUTO_MODES=""
 [ "$AUTO_GFX" = 1 ] && AUTO_MODES="${AUTO_MODES:+$AUTO_MODES,}gfx"
 [ "$AUTO_STORAGE" = 1 ] && AUTO_MODES="${AUTO_MODES:+$AUTO_MODES,}storage"
 [ "$AUTO_NET" = 1 ] && AUTO_MODES="${AUTO_MODES:+$AUTO_MODES,}net"
+[ "$AUTO_CODEC" = 1 ] && AUTO_MODES="${AUTO_MODES:+$AUTO_MODES,}codec"
 [ "$AUTO_PLAY" = 1 ] && AUTO_MODES="${AUTO_MODES:+$AUTO_MODES,}play"
 [ "$AUTO_JAVA" = 1 ] && AUTO_MODES="${AUTO_MODES:+$AUTO_MODES,}java"
 # The self-test starts a small app of its own, and one app is all a start of Megler can run.
@@ -292,7 +301,7 @@ echo "=== shell (C++/WinRT, C++20) ==="
 # change of modes recompiles what includes it and nothing else.
 AUTO_CONFIG="$OBJ/auto-config"
 mkdir -p "$AUTO_CONFIG"
-AUTO_HEADER="$(printf '#define MEGLER_AUTO_PROBE %s\n#define MEGLER_AUTO_SELFTEST %s\n#define MEGLER_AUTO_PLAY %s\n#define MEGLER_AUTO_JAVA %s\n#define MEGLER_AUTO_GFX %s\n#define MEGLER_AUTO_STORAGE %s\n#define MEGLER_AUTO_NET %s\n' "$AUTO_PROBE" "$AUTO_SELFTEST" "$AUTO_PLAY" "$AUTO_JAVA" "$AUTO_GFX" "$AUTO_STORAGE" "$AUTO_NET")"
+AUTO_HEADER="$(printf '#define MEGLER_AUTO_PROBE %s\n#define MEGLER_AUTO_SELFTEST %s\n#define MEGLER_AUTO_PLAY %s\n#define MEGLER_AUTO_JAVA %s\n#define MEGLER_AUTO_GFX %s\n#define MEGLER_AUTO_STORAGE %s\n#define MEGLER_AUTO_NET %s\n#define MEGLER_AUTO_CODEC %s\n' "$AUTO_PROBE" "$AUTO_SELFTEST" "$AUTO_PLAY" "$AUTO_JAVA" "$AUTO_GFX" "$AUTO_STORAGE" "$AUTO_NET" "$AUTO_CODEC")"
 if [ "$(cat "$AUTO_CONFIG/AutoConfig.h" 2>/dev/null)" != "$AUTO_HEADER" ]; then
   echo "$AUTO_HEADER" > "$AUTO_CONFIG/AutoConfig.h"
   rm -f "$OBJ/shell/AutoRun.obj"
@@ -336,7 +345,8 @@ rm -rf "$BUILD/link" && mkdir -p "$BUILD/link"
 # phones whose OS lacks it -- delay-loaded, it is resolved on first use, not at
 # launch. XAudio2_9.dll likewise (an app's sound; player/AudioHost.cpp
 # catches its failure to load), and Media Foundation's mfplat.dll and
-# mfreadwrite.dll (an app's films; player/MediaHost.cpp), and Direct2D's
+# mfreadwrite.dll (an app's films, player/MediaHost.cpp; a Java app's
+# MediaCodec, player/CodecHost.cpp), and Direct2D's
 # d2d1.dll and DirectWrite's dwrite.dll (a Java app's drawing;
 # player/GfxHost.cpp, which reaches WIC through CoCreateInstance and so names
 # no third DLL). No /guard:cf: nothing here is built with it,
@@ -461,6 +471,16 @@ if ls "$GUEST"/*.so > /dev/null 2>&1; then
   echo "    selftest: $(ls "$STAGE/selftest" | tr '\n' ' ')"
 else
   echo "    WARNING: no guest test libraries in build/guest/armeabi-v7a; the self-test will fail the tests that load them" >&2
+fi
+# What the auto run `codec` decodes (app/Megler/auto/AutoRun.cpp): the data app's streams, and streams to time the
+# decoders by, made here with ffmpeg (they are not in the repository: 4 MB) -- without Python or ffmpeg, only the first.
+if [ "$AUTO_CODEC" = 1 ]; then
+  mkdir -p "$STAGE/codec"
+  cp "$ROOT/core/tests/app/data/assets/"*.hkau "$STAGE/codec/"
+  if ! python "$(w "$ROOT/tools/media-test-streams.py")" --speed "$(w "$STAGE/codec")" > "$BUILD/media-speed.log" 2>&1; then
+    echo "    WARNING: the streams to time the decoders by could not be made (build/appx-$ARCH/media-speed.log): only the tests run" >&2
+  fi
+  echo "    codec: $(ls "$STAGE/codec" | tr '\n' ' ')"
 fi
 # The demo the library offers when it is empty (app/Megler/library/Library.cpp).
 if [ -f "$DEMO" ]; then

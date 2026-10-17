@@ -1,7 +1,8 @@
 // The auto run (AutoRun.h): which stages this build has, the thread they run
 // on, and megler-auto.log. tools/build-appx.sh writes AutoConfig.h with
 // MEGLER_AUTO_PROBE, MEGLER_AUTO_SELFTEST, MEGLER_AUTO_GFX, MEGLER_AUTO_STORAGE,
-// MEGLER_AUTO_NET, MEGLER_AUTO_PLAY and MEGLER_AUTO_JAVA set to 0 or 1.
+// MEGLER_AUTO_NET, MEGLER_AUTO_CODEC, MEGLER_AUTO_PLAY and MEGLER_AUTO_JAVA set to 0
+// or 1.
 #include "pch.h"
 
 #include "auto/AutoRun.h"
@@ -44,6 +45,9 @@
 #ifndef MEGLER_AUTO_NET
 #define MEGLER_AUTO_NET 0
 #endif
+#ifndef MEGLER_AUTO_CODEC
+#define MEGLER_AUTO_CODEC 0
+#endif
 
 #if MEGLER_AUTO_GFX
 // The one place where the shell looks past megler.h into the core: the scenes
@@ -54,6 +58,13 @@
 #include "player/GfxHost.h"
 
 #include "../../../core/tests/hk_gfx_scenes.h"
+#endif
+
+#if MEGLER_AUTO_CODEC
+// Likewise for a Java app's MediaCodec: the core's tests of its codec, run over the shell's own decoders.
+#include "player/CodecHost.h"
+
+#include "../../../core/tests/hk_codec_tests.h"
 #endif
 
 namespace megler::app::autorun {
@@ -69,6 +80,7 @@ const char* modes() {
         add(MEGLER_AUTO_GFX, "gfx");
         add(MEGLER_AUTO_STORAGE, "storage");
         add(MEGLER_AUTO_NET, "net");
+        add(MEGLER_AUTO_CODEC, "codec");
         add(MEGLER_AUTO_PLAY, "play");
         add(MEGLER_AUTO_JAVA, "java");
         return s;
@@ -76,7 +88,7 @@ const char* modes() {
     return text.c_str();
 }
 
-#if MEGLER_AUTO_PROBE || MEGLER_AUTO_SELFTEST || MEGLER_AUTO_GFX || MEGLER_AUTO_STORAGE || MEGLER_AUTO_NET || MEGLER_AUTO_PLAY || MEGLER_AUTO_JAVA
+#if MEGLER_AUTO_PROBE || MEGLER_AUTO_SELFTEST || MEGLER_AUTO_GFX || MEGLER_AUTO_STORAGE || MEGLER_AUTO_NET || MEGLER_AUTO_CODEC || MEGLER_AUTO_PLAY || MEGLER_AUTO_JAVA
 namespace {
 
 /// How long the play stage lets a game run before it calls the run done
@@ -213,6 +225,33 @@ void runNet() {
 }
 #endif
 
+#if MEGLER_AUTO_CODEC
+/// The decoders a Java app's MediaCodec has here (CodecHost, Media Foundation's transforms) under the core's codec for
+/// it, through the tests of core/tests/hk_codec_tests.c on the streams in the package's folder `codec`: which decoders
+/// the phone has, whether they give what the streams hold, and how fast they are. It runs no app.
+void runCodec() {
+    autoLine("codec: started");
+    const std::string folder = narrow(platform::installDirectory() + L"\\codec");
+    autoLine("codec: the phone's decoders: " + CodecHost::shared().summary());
+    const megler_codec_host host = CodecHost::shared().callbacks();
+    const auto line = [](const char* text, void*) {
+        autoLine(text);
+        shellLog::write(std::string("codec check: ") + text);
+    };
+    int checks = 0, failed = 0;
+    try {
+        failed = hk_codec_tests_run(folder.c_str(), &host, line, nullptr, &checks);
+        failed += hk_codec_speed_run(folder.c_str(), &host, line, nullptr, &checks);
+    } catch (...) {
+        autoLine("codec: aborted by an exception");
+        failed++;
+    }
+    const std::string done = format("DONE codec: %d checks, %d failed", checks, failed);
+    autoLine(done);
+    shellLog::write("auto run: " + done);
+}
+#endif
+
 void runAll(const std::string& description) {
     const std::wstring& local = platform::localStateDirectory();
     // Every stage's log started afresh, this build's stages or not: an update
@@ -240,6 +279,9 @@ void runAll(const std::string& description) {
 #if MEGLER_AUTO_NET
     runNet();
 #endif
+#if MEGLER_AUTO_CODEC
+    runCodec();
+#endif
     gChecksDone = true;
 #if !MEGLER_AUTO_PLAY && !MEGLER_AUTO_JAVA
     finish();
@@ -250,7 +292,7 @@ void runAll(const std::string& description) {
 #endif
 
 bool start(std::string description) {
-#if MEGLER_AUTO_PROBE || MEGLER_AUTO_SELFTEST || MEGLER_AUTO_GFX || MEGLER_AUTO_STORAGE || MEGLER_AUTO_NET || MEGLER_AUTO_PLAY || MEGLER_AUTO_JAVA
+#if MEGLER_AUTO_PROBE || MEGLER_AUTO_SELFTEST || MEGLER_AUTO_GFX || MEGLER_AUTO_STORAGE || MEGLER_AUTO_NET || MEGLER_AUTO_CODEC || MEGLER_AUTO_PLAY || MEGLER_AUTO_JAVA
     // The stack of the Device screen's own checks (shell/Checks.cpp): the
     // self-test calls Android code on the thread it runs on.
     return platform::startThread([description] { runAll(description); }, size_t(8) << 20);
