@@ -2956,7 +2956,7 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: forty-two files** in the overlay,
+**What differs from the original's framework: forty-three files** in the overlay,
 most of them a statement or a few methods each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and nine files of members added** to classes of the original's.
@@ -3477,6 +3477,16 @@ on a looper thread of its own and takes it back with `next()`.
   in any app. The data app, written for Android 9 and saying nothing in its
   manifest, is refused it (its step "cleartext"); the WebView test app says
   `usesCleartextTraffic="true"` and loads its pages over http.
+
+- `android/app/compat/CompatChanges.java`, new: Android 11's system API for
+  whether a compatibility change is on for the app, which the WebView's glue
+  asks about WebSettings' simplified dark mode (change 214741472) on Android
+  13 and later; its start ended on `NoClassDefFoundError` without the class.
+  A change is on unless it is enabled only from a target SDK the app does not
+  reach (the changes asked about here are listed with theirs), as a change
+  with neither `@Disabled` nor `@EnabledSince` is on Android. The data app's
+  step "compat-change" asks for that change (off: it is written for Android 9)
+  and for one the platform does not know (on).
 
 The original has all thirty-four faults; they are its author's to take back.
 

@@ -286,6 +286,7 @@ public class Main extends Activity {
         codecs();
         userHandle();
         cleartext();
+        compatChange();
         xml();
         assetFd();
         tasks();
@@ -1024,6 +1025,18 @@ public class Main extends Activity {
         step("cleartext", () -> {
             android.security.NetworkSecurityPolicy p = android.security.NetworkSecurityPolicy.getInstance();
             return !p.isCleartextTrafficPermitted() && !p.isCleartextTrafficPermitted("example.com") && p == android.security.NetworkSecurityPolicy.getInstance();
+        });
+    }
+
+    /**
+     * A compatibility change's state for this app (android.app.compat.CompatChanges, Android 11's system API: by reflection):
+     * WebSettings' simplified dark mode, enabled from target SDK 33, is off for an app written for 9; a change the platform
+     * does not know is on.
+     */
+    private void compatChange() {
+        step("compat-change", () -> {
+            java.lang.reflect.Method m = Class.forName("android.app.compat.CompatChanges").getMethod("isChangeEnabled", long.class);
+            return !(Boolean) m.invoke(null, 214741472L) && (Boolean) m.invoke(null, 1L);
         });
     }
 
