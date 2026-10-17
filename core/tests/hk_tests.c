@@ -1130,6 +1130,42 @@ static void test_guest(const char *libdir, const char *scratch)
             CHECK(trapped && !left);
         }
     }
+
+    /*
+     * AAudio as Spotify's core uses it (core/tests/guest/t_aaudio.c says what each result is): libaaudio.so opened by name and
+     * its functions looked up; a stream fed by its callback on the mixer's thread, one written to, which takes a second of
+     * sound in about a second, and the streams that are refused. The mixer has no output here and keeps time by itself.
+     */
+    {
+        hk_lib *aa = hk_ld_load("libt_aaudio.so");
+        int r[20];
+        CHECK(aa != NULL);
+        if (aa && hk_ld_init(aa)) {
+            say("guest library: AAudio streams over the mixer");
+            CHECK_INT(FN(aa, int (*)(int *), "t_aaudio_run")(r), 1);
+            say("  %d callbacks of %d frames in 300 ms, %d after the stop; a second written in %d ms", r[5], r[2], r[10], r[12]);
+            CHECK_INT(r[0], 1);
+            CHECK_INT(r[1], 0);
+            CHECK_INT(r[2], 480);
+            CHECK_INT(r[3], 480002);
+            CHECK_INT(r[4], 4);
+            CHECK(r[5] >= 10);
+            CHECK_INT(r[6], 0);
+            CHECK_INT(r[7], 1);
+            CHECK_INT(r[8], 0);
+            CHECK_INT(r[9], 10);
+            CHECK(r[10] <= 1);
+            CHECK_INT(r[11], 22050);
+            CHECK(r[12] >= 700 && r[12] <= 3000);
+            CHECK_INT(r[13], 0);
+            CHECK_INT(r[14], -889);
+            CHECK_INT(r[15], -883);
+            CHECK_INT(r[16], 10);
+            CHECK_INT(r[17], 3);
+            CHECK_INT(r[18], 0);
+            CHECK_INT(r[19], 1);
+        }
+    }
 }
 
 /*

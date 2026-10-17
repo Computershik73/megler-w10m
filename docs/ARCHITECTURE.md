@@ -36,7 +36,7 @@ code cannot enter it. So:
 │   run/      one app: APKs, data directories, the driver            │
 │   drivers/  the Java side of each kind of app (NativeActivity)     │
 │   jni/      JNIEnv over a Java world implemented in C              │
-│   ndk/      libandroid, EGL/GLES over ANGLE, OpenSL ES             │
+│   ndk/      libandroid, EGL/GLES over ANGLE, OpenSL ES, AAudio     │
 │   bionic/   libc, libm, libdl, liblog, pthreads, files             │
 │   ld/       the dynamic linker; guest thread-local storage         │
 │   arm/      what is rewritten in guest code; the assembly stubs    │
@@ -501,6 +501,25 @@ keeps running.
 
 *Proven:* a guest playing three buffers at 22050 Hz mono through the callback chain
 arrives as the right number of frames at the right level on both channels.
+
+AAudio's output streams (`ndk/hk_aaudio.c`, as `libaaudio.so`) are voices of the same
+mixer, each fed from a ring of sixteen buffers of its own, a burst long (10 ms, or the
+frames per callback the app asked for), of which four wait to be played at a time
+(`setBufferSizeInFrames` changes how many). A stream with a data callback starts on
+four buffers of silence, and each buffer the mixer finishes is refilled by the app's
+callback on the mixer's thread. A stream without one is written to: `AAudioStream_write`
+copies the app's frames into the ring and waits, up to its timeout, while every buffer
+waits to be played. There is no input stream (no microphone), and 24-bit packed samples
+are refused as an invalid format.
+
+*Proven:* a guest that opens `libaaudio.so` by name and looks its functions up, as
+Spotify's native core does (`core/tests/guest/t_aaudio.c`):
+- a callback stream of stereo float at 48 kHz has a 480-frame burst and is called
+  back about thirty times in 300 ms, and not after it is stopped;
+- a written stream takes a second of sound in about a second, and while paused a
+  write that does not wait takes nothing;
+- an input stream is unavailable, 24-bit packed an invalid format;
+- a callback that returns STOP is not called again and its stream is stopped.
 
 ### Films
 

@@ -194,17 +194,25 @@ static void mixer_thread(void *arg)
     }
 }
 
+/*
+ * The mixer's thread, started with the first voice, and the run's output, opened then. An output the run names later
+ * (another run in the same process: the tests) is opened when the next voice is made; the one tried is not tried again.
+ */
+static bool g_open_asked;
+static bool (*g_open_tried)(void *user, int rate);
+
 static void ensure_mixer(void)
 {
-    const megler_run_config *run;
-    if (g_mixer) return;
+    const megler_run_config *run = hk_run_config();
+    if (g_mixer && g_open_asked && run->audio.open == g_open_tried) return;
     hk_lock_acquire(&g_lock);
-    if (!g_mixer) {
-        run = hk_run_config();
+    if (!g_open_asked || run->audio.open != g_open_tried) {
+        g_open_asked = true;
+        g_open_tried = run->audio.open;
         g_host_open = run->audio.open && run->audio.open(run->audio.user, HK_AUDIO_RATE);
         if (!g_host_open) hk_warn("audio: no output; the app's sound is consumed silently");
-        g_mixer = hk_thread_start(mixer_thread, NULL, 256 * 1024, "audio-mixer");
     }
+    if (!g_mixer) g_mixer = hk_thread_start(mixer_thread, NULL, 256 * 1024, "audio-mixer");
     hk_lock_release(&g_lock);
 }
 
