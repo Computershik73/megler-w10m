@@ -424,6 +424,71 @@ static void test_hardware_buffers(void)
     CHECK(hk_bionic_find("AHardwareBuffer_getId") != NULL);
 }
 
+/*
+ * Fence syncs (hk_egl.c), which the ANGLE inside Chromium makes through the system's EGL once a canvas is in a hardware
+ * buffer: the three extensions named; a fence made with a context current, of type fence, signalled, its condition
+ * prior commands; a wait for it satisfied, a server wait done; a native fence made over a descriptor of someone else's,
+ * which is closed, signalled, and gives none out; both destroyed; one made with an attribute it does not take refused.
+ */
+static void test_fence_syncs(void)
+{
+    typedef void *(*create_fn)(void *, unsigned, const int *);
+    typedef unsigned (*destroy_fn)(void *, void *);
+    typedef int (*client_wait_fn)(void *, void *, int, u64);
+    typedef unsigned (*attrib_fn)(void *, void *, int, int *);
+    typedef int (*wait_fn)(void *, void *, int);
+    typedef int (*dup_fn)(void *, void *);
+    typedef int (*pipe_fn)(int *);
+    typedef int (*close_fn)(int);
+    create_fn create = (create_fn)hk_egl_resolve("eglCreateSyncKHR");
+    destroy_fn destroy = (destroy_fn)hk_egl_resolve("eglDestroySyncKHR");
+    client_wait_fn client_wait = (client_wait_fn)hk_egl_resolve("eglClientWaitSyncKHR");
+    attrib_fn attrib = (attrib_fn)hk_egl_resolve("eglGetSyncAttribKHR");
+    wait_fn wait = (wait_fn)hk_egl_resolve("eglWaitSyncKHR");
+    dup_fn dup_fd = (dup_fn)hk_egl_resolve("eglDupNativeFenceFDANDROID");
+    void *(*get_display)(void *) = (void *(*)(void *))hk_egl_resolve("eglGetDisplay");
+    const char *(*query)(void *, int) = (const char *(*)(void *, int))hk_egl_resolve("eglQueryString");
+    pipe_fn pipe_ = (pipe_fn)hk_bionic_find("pipe");
+    close_fn close_ = (close_fn)hk_bionic_find("close");
+    void *(*create_ctx)(void *, void *, void *, const int *) = (void *(*)(void *, void *, void *, const int *))hk_gl_standin("eglCreateContext");
+    unsigned (*make_current)(void *, void *, void *, void *) = (unsigned (*)(void *, void *, void *, void *))hk_gl_standin("eglMakeCurrent");
+    unsigned (*destroy_ctx)(void *, void *) = (unsigned (*)(void *, void *))hk_gl_standin("eglDestroyContext");
+    static const int es2[] = { 0x3098, 2, 0x3038 }, none[] = { 0x3038 }, bad[] = { 0x3145, 3, 0x3038 };
+    int fds[2] = { -1, -1 }, native_attribs[3], v = 0;
+    void *d, *ctx, *f, *n;
+    const char *ext;
+    say("Fence syncs (EGL_KHR_fence_sync, EGL_KHR_wait_sync, EGL_ANDROID_native_fence_sync)");
+    CHECK(create && destroy && client_wait && attrib && wait && dup_fd && pipe_ && close_);
+    if (!create || !destroy || !client_wait || !attrib || !wait || !dup_fd || !get_display || !query || !pipe_ || !close_) return;
+    d = get_display(NULL);
+    ext = query(d, 0x3055);
+    CHECK(ext && strstr(ext, "EGL_KHR_fence_sync") && strstr(ext, "EGL_KHR_wait_sync") && strstr(ext, "EGL_ANDROID_native_fence_sync"));
+    ctx = create_ctx(d, NULL, NULL, es2);
+    CHECK(ctx && make_current(d, NULL, NULL, ctx));
+    f = create(d, 0x30F9, none);
+    CHECK(f != NULL);
+    CHECK(attrib(d, f, 0x30F7, &v) && v == 0x30F9);
+    CHECK(attrib(d, f, 0x30F1, &v) && v == 0x30F2);
+    CHECK(attrib(d, f, 0x30F8, &v) && v == 0x30F0);
+    CHECK(client_wait(d, f, 1, 1000000000ull) == 0x30F6);
+    CHECK(wait(d, f, 0) == 1);
+    CHECK(create(d, 0x30F9, bad) == NULL);
+    /* A native fence over a descriptor of someone else's: the descriptor is EGL's to close. */
+    CHECK(pipe_(fds) == 0);
+    native_attribs[0] = 0x3145;
+    native_attribs[1] = fds[0];
+    native_attribs[2] = 0x3038;
+    n = create(d, 0x3144, native_attribs);
+    CHECK(n != NULL);
+    CHECK(close_(fds[0]) == -1);
+    close_(fds[1]);
+    CHECK(attrib(d, n, 0x30F8, &v) && v == 0x3146);
+    CHECK(dup_fd(d, n) == -1);
+    CHECK(destroy(d, f) && destroy(d, n));
+    make_current(d, NULL, NULL, NULL);
+    destroy_ctx(d, ctx);
+}
+
 static void test_calls(void)
 {
     hk_jobj *a, *s;
@@ -921,6 +986,7 @@ int hk_gl_natives_tests_run(hk_test_sink sink, void *user, int *checks)
     hk_java_gl_reset();
     test_version();
     test_hardware_buffers();
+    test_fence_syncs();
     test_calls();
     test_buffers();
     hk_gl_standin_reset(true, false);

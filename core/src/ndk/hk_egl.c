@@ -3,6 +3,7 @@
 #include <stdio.h>
 
 #include "../bionic/hk_bionic.h"
+#include "../bionic/hk_fd.h"
 #include "../hk_core.h"
 #include "../host/hk_host.h"
 #include "../run/hk_run.h"
@@ -377,13 +378,13 @@ static EGLBoolean g_eglInitialize(EGLDisplay d, EGLint *major, EGLint *minor)
     return 1;
 }
 
-static const char *buffer_extensions(const char *angle);
+static const char *layer_extensions(const char *angle);
 
 static const char *g_eglQueryString(EGLDisplay d, EGLint name)
 {
     fn_query_string real = A(fn_query_string, "eglQueryString");
     if (name == EGL_VERSION && d && d == display() && g_told_version[0]) return g_told_version;
-    if (name == EGL_EXTENSIONS && d && d == display()) return buffer_extensions(real ? real(d, name) : NULL);
+    if (name == EGL_EXTENSIONS && d && d == display()) return layer_extensions(real ? real(d, name) : NULL);
     return real ? real(d, name) : NULL;
 }
 
@@ -657,17 +658,24 @@ static bool has_ext(const char *list, const char *name)
     return false;
 }
 
-/* ANGLE's extensions, and the two of hardware buffers where ANGLE has what they are made of. */
-static const char *buffer_extensions(const char *angle)
+/*
+ * ANGLE's extensions and the layer's own: fence syncs (below), and the two of hardware buffers where ANGLE has what they
+ * are made of.
+ */
+static const char *layer_extensions(const char *angle)
 {
-    static const char more[] = " EGL_ANDROID_get_native_client_buffer EGL_ANDROID_image_native_buffer";
+    static const char fences[] = " EGL_KHR_fence_sync EGL_KHR_wait_sync EGL_ANDROID_native_fence_sync";
+    static const char buffers[] = " EGL_ANDROID_get_native_client_buffer EGL_ANDROID_image_native_buffer";
     const char *out;
-    if (!angle || !has_ext(angle, "EGL_KHR_image_base") || !has_ext(angle, "EGL_KHR_gl_texture_2D_image")) return angle;
+    bool images;
+    if (!angle) return angle;
+    images = has_ext(angle, "EGL_KHR_image_base") && has_ext(angle, "EGL_KHR_gl_texture_2D_image");
     hk_lock_acquire(&g_ext_lock);
     if (g_ext_from != angle || !g_ext) {
-        char *ext = (char *)hk_alloc(strlen(angle) + sizeof(more));
+        char *ext = (char *)hk_alloc(strlen(angle) + sizeof(fences) + sizeof(buffers));
         strcpy(ext, angle);
-        strcat(ext, more);
+        if (!has_ext(angle, "EGL_KHR_fence_sync")) strcat(ext, fences);
+        if (images) strcat(ext, buffers);
         /* (One made before may still be read by whoever asked for it then: it is kept.) */
         g_ext = ext;
         g_ext_from = angle;
@@ -876,6 +884,157 @@ static void *g_eglCreateImageKHR(EGLDisplay d, EGLContext ctx, EGLenum target, v
     return real ? real(d, ctx, target, buffer, attribs) : NULL;
 }
 
+/* ------------------------------------------------------------- fence syncs
+ *
+ * EGL_KHR_fence_sync, EGL_KHR_wait_sync and EGL_ANDROID_native_fence_sync, which ANGLE over Direct3D 11 does not have.
+ * The ANGLE inside Chromium's WebView makes fences of both kinds through the system's EGL once a page's canvas is in a
+ * hardware buffer (Chromium ends each access to one with a native fence), and called through nothing when none were
+ * named. Here every context of ANGLE's puts its commands on the one Direct3D 11 device in the order they come, so a
+ * fence needs nothing for the graphics processor to wait on: making one flushes the current context's commands, and the
+ * CPU's wait for it (eglClientWaitSyncKHR, or asking its status) is glFinish on the context current then -- which, on
+ * that one device, waits for everything put there before. A wait of the graphics processor (eglWaitSyncKHR) is nothing.
+ * A native fence's file descriptor given to make one is closed, its fence taken as signalled; one is never given out
+ * (eglDupNativeFenceFDANDROID answers EGL_NO_NATIVE_FENCE_FD_ANDROID): Chromium then has no fence to pass on and waits on
+ * none. Other kinds of sync (EGL_KHR_reusable_sync) are ANGLE's.
+ */
+#define EGL_SYNC_PRIOR_COMMANDS_COMPLETE_KHR 0x30F0
+#define EGL_SYNC_STATUS_KHR 0x30F1
+#define EGL_SIGNALED_KHR 0x30F2
+#define EGL_CONDITION_SATISFIED_KHR 0x30F6
+#define EGL_SYNC_TYPE_KHR 0x30F7
+#define EGL_SYNC_CONDITION_KHR 0x30F8
+#define EGL_SYNC_FENCE_KHR 0x30F9
+#define EGL_SYNC_NATIVE_FENCE_ANDROID 0x3144
+#define EGL_SYNC_NATIVE_FENCE_FD_ANDROID 0x3145
+#define EGL_SYNC_NATIVE_FENCE_SIGNALED_ANDROID 0x3146
+#define EGL_NO_NATIVE_FENCE_FD_ANDROID (-1)
+#define EGL_BAD_ATTRIBUTE 0x3004
+#define EGL_BAD_MATCH 0x3009
+
+typedef struct fence {
+    struct fence *next;
+    EGLenum type;
+} fence;
+
+typedef void *(*fn_create_sync)(EGLDisplay, EGLenum, const EGLint *);
+typedef EGLBoolean (*fn_destroy_sync)(EGLDisplay, void *);
+typedef EGLint (*fn_client_wait_sync)(EGLDisplay, void *, EGLint, u64);
+typedef EGLBoolean (*fn_get_sync_attrib)(EGLDisplay, void *, EGLint, EGLint *);
+typedef EGLint (*fn_wait_sync)(EGLDisplay, void *, EGLint);
+typedef EGLContext (*fn_current_context)(void);
+
+static hk_lock g_fence_lock = HK_LOCK_INIT;
+static fence *g_fences;
+
+static bool is_fence(void *sync)
+{
+    fence *f;
+    hk_lock_acquire(&g_fence_lock);
+    for (f = g_fences; f && (void *)f != sync; f = f->next) { }
+    hk_lock_release(&g_fence_lock);
+    return f != NULL;
+}
+
+/* glFlush or glFinish on the context current on this thread, if there is one. */
+static void fence_gl(const char *name)
+{
+    fn_current_context current = A(fn_current_context, "eglGetCurrentContext");
+    fn_gl_void gl = A(fn_gl_void, name);
+    if (current && current() && gl) gl();
+}
+
+static void *g_eglCreateSyncKHR(EGLDisplay d, EGLenum type, const EGLint *attribs)
+{
+    fn_create_sync real = A(fn_create_sync, "eglCreateSyncKHR");
+    fence *f;
+    int i;
+    if (type != EGL_SYNC_FENCE_KHR && type != EGL_SYNC_NATIVE_FENCE_ANDROID) return real ? real(d, type, attribs) : NULL;
+    if (!d || d != display()) {
+        g_error = EGL_BAD_DISPLAY;
+        return NULL;
+    }
+    for (i = 0; attribs && attribs[i] != EGL_NONE; i += 2) {
+        if (type == EGL_SYNC_NATIVE_FENCE_ANDROID && attribs[i] == EGL_SYNC_NATIVE_FENCE_FD_ANDROID) {
+            /* A fence of someone else's to stand for: taken as signalled, and its descriptor is EGL's to close. */
+            if (attribs[i + 1] >= 0) hk_fd_close(attribs[i + 1]);
+            continue;
+        }
+        g_error = EGL_BAD_ATTRIBUTE;
+        return NULL;
+    }
+    fence_gl("glFlush");
+    f = (fence *)hk_alloc(sizeof(*f));
+    f->type = type;
+    hk_lock_acquire(&g_fence_lock);
+    f->next = g_fences;
+    g_fences = f;
+    hk_lock_release(&g_fence_lock);
+    return f;
+}
+
+static EGLBoolean g_eglDestroySyncKHR(EGLDisplay d, void *sync)
+{
+    fn_destroy_sync real = A(fn_destroy_sync, "eglDestroySyncKHR");
+    fence **at;
+    hk_lock_acquire(&g_fence_lock);
+    for (at = &g_fences; *at && (void *)*at != sync; at = &(*at)->next) { }
+    if (*at) {
+        fence *f = *at;
+        *at = f->next;
+        hk_lock_release(&g_fence_lock);
+        free(f);
+        return 1;
+    }
+    hk_lock_release(&g_fence_lock);
+    return real ? real(d, sync) : 0;
+}
+
+static EGLint g_eglClientWaitSyncKHR(EGLDisplay d, void *sync, EGLint flags, u64 timeout)
+{
+    fn_client_wait_sync real = A(fn_client_wait_sync, "eglClientWaitSyncKHR");
+    if (!is_fence(sync)) return real ? real(d, sync, flags, timeout) : 0;
+    fence_gl("glFinish");
+    return EGL_CONDITION_SATISFIED_KHR;
+}
+
+static EGLBoolean g_eglGetSyncAttribKHR(EGLDisplay d, void *sync, EGLint attribute, EGLint *value)
+{
+    fn_get_sync_attrib real = A(fn_get_sync_attrib, "eglGetSyncAttribKHR");
+    fence *f;
+    EGLenum type = 0;
+    hk_lock_acquire(&g_fence_lock);
+    for (f = g_fences; f && (void *)f != sync; f = f->next) { }
+    if (f) type = f->type;
+    hk_lock_release(&g_fence_lock);
+    if (!f) return real ? real(d, sync, attribute, value) : 0;
+    if (!value) {
+        g_error = EGL_BAD_PARAMETER;
+        return 0;
+    }
+    switch (attribute) {
+    case EGL_SYNC_TYPE_KHR: *value = (EGLint)type; return 1;
+    case EGL_SYNC_STATUS_KHR: fence_gl("glFinish"); *value = EGL_SIGNALED_KHR; return 1;
+    case EGL_SYNC_CONDITION_KHR:
+        *value = type == EGL_SYNC_NATIVE_FENCE_ANDROID ? EGL_SYNC_NATIVE_FENCE_SIGNALED_ANDROID : EGL_SYNC_PRIOR_COMMANDS_COMPLETE_KHR;
+        return 1;
+    default: g_error = EGL_BAD_ATTRIBUTE; return 0;
+    }
+}
+
+static EGLint g_eglWaitSyncKHR(EGLDisplay d, void *sync, EGLint flags)
+{
+    fn_wait_sync real = A(fn_wait_sync, "eglWaitSyncKHR");
+    if (!is_fence(sync)) return real ? real(d, sync, flags) : 0;
+    return 1;
+}
+
+static EGLint g_eglDupNativeFenceFDANDROID(EGLDisplay d, void *sync)
+{
+    (void)d;
+    if (!is_fence(sync)) g_error = EGL_BAD_PARAMETER;
+    return EGL_NO_NATIVE_FENCE_FD_ANDROID;
+}
+
 /* ----------------------------------------------- GLES functions with floats
  *
  * One adapter per function: it receives each float as the 32 bits the guest
@@ -931,6 +1090,12 @@ static const hk_sym g_egl_overrides[] = {
     HK_WRAP("eglQueryString", g_eglQueryString),
     HK_WRAP("eglGetNativeClientBufferANDROID", g_eglGetNativeClientBufferANDROID),
     HK_WRAP("eglCreateImageKHR", g_eglCreateImageKHR),
+    HK_WRAP("eglCreateSyncKHR", g_eglCreateSyncKHR),
+    HK_WRAP("eglDestroySyncKHR", g_eglDestroySyncKHR),
+    HK_WRAP("eglClientWaitSyncKHR", g_eglClientWaitSyncKHR),
+    HK_WRAP("eglGetSyncAttribKHR", g_eglGetSyncAttribKHR),
+    HK_WRAP("eglWaitSyncKHR", g_eglWaitSyncKHR),
+    HK_WRAP("eglDupNativeFenceFDANDROID", g_eglDupNativeFenceFDANDROID),
     HK_WRAP("eglTerminate", g_eglTerminate),
     HK_WRAP("eglChooseConfig", g_eglChooseConfig),
     HK_WRAP("eglGetConfigAttrib", g_eglGetConfigAttrib),

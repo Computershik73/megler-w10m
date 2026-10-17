@@ -2647,9 +2647,17 @@ buffers (`AHardwareBuffer`, `ndk/hk_ahb.c`) it makes EGL images of
 images of textures): each buffer is a texture of ANGLE's made in a context of
 the layer's own (docs/ARCHITECTURE.md, "Graphics"). Without them Chromium lost
 each canvas's GPU context ("GPU state invalid"): a 2D canvas went on in
-software and WebGL was not offered. Under qemu Chromium does not draw canvases
-on the stand-in, so these are tried there only through the core's test
-(`hk_gl_tests.c`, test_hardware_buffers); on a phone they are not tried yet.
+software and WebGL was not offered. With them, Chromium ends each access to
+a buffer with a fence of Android's (EGL_SYNC_NATIVE_FENCE_ANDROID), made by
+its ANGLE through the system's EGL whatever that EGL names: on the phone that
+was a call through nothing until the layer's EGL had fence syncs of its own
+(`EGL_KHR_fence_sync`, `EGL_KHR_wait_sync`, `EGL_ANDROID_native_fence_sync`:
+making one flushes, waiting for one is `glFinish`, every context of ANGLE's
+being in order on one Direct3D 11 device; no native fence descriptor is given
+out). Under qemu Chromium does not draw canvases on the stand-in, so the
+buffers are tried there only through the core's tests (`hk_gl_tests.c`,
+test_hardware_buffers and test_fence_syncs), the fences also by Chromium
+itself, which uses them once they are named.
 The WebView test app's step "canvas" fills a 300x150 canvas of the page's and
 reads a pixel back (`getImageData`), and says whether the page has WebGL and
 what a pixel it cleared green reads: under qemu `webgl=no`; on a phone,
