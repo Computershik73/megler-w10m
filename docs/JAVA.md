@@ -2606,7 +2606,15 @@ all), `mmap` following an address it is given (PartitionAlloc's out-of-memory
 crash), shared memory whose mappings are the same memory (every page arrived
 empty: Mojo's data pipes), and surface control in `libandroid`
 (`gfx::SurfaceControl::IsSupported` CHECKs that every function is there on
-Android 10 and later); docs/ARCHITECTURE.md has the core's.
+Android 10 and later); docs/ARCHITECTURE.md has the core's. On the phone,
+VK's "not a robot" page found more, each a call through nothing or an
+exception that ends the process on purpose: the EGL version (ANGLE over
+Direct3D 11 says 1.5 and has no fence syncs; the ANGLE inside Chromium takes
+1.5 to mean them and called an `eglCreateSyncKHR` it had not loaded, so an
+app is told 1.4: `ndk/hk_egl.c`), hardware buffers (below),
+`CameraManager.getCameraIdList` (null; now an empty list) and AAudio (now
+`ndk/hk_aaudio.c`'s). Spotify's WebView, drawn on a `RenderNode`'s canvas,
+found the draw functor ("Drawing", above).
 
 **Direct system calls.** `libwebviewchromium.so` has five sites that make a
 system call past libc: at +0x33c2dd2 (`gettid`), +0x33c2f6a (`futex`),
@@ -2616,6 +2624,22 @@ unseen; with the flag `trap-svc` the loader makes each site a fault
 (arm/hk_patch.c). In every run of the WebView test with the flag on, none was
 reached: loading, starting, five pages, JavaScript, cookies, a redirect and
 typing make no direct system call.
+
+**On the phone** (the HP Elite x3, packages 229 to 249): the test app
+passes every step it passes under qemu, the provider made in 0.8 s and the
+page loaded in 1.6 s, Chromium's GPU thread on ANGLE's Direct3D 11, with the
+flag `trap-svc` as well; a tap where the log says the field is and the keys
+h, e, l, l, o (the automation's flags `px-12-434-697` and `key-16-36` to
+`key-20-43`) leave "hello" in the field, the window giving way to the
+keyboard. Of real apps, VK mp3 mod and Kate open VK ID's "not a robot" check
+in a WebView after a sign-in is tried, and it was shown -- the sheet, its
+text, the button that closes it -- but the check itself went no further
+than "loading" or "something went wrong, try again later", its canvases
+having lost their GPU contexts (hardware buffers, below, came after; not yet
+tried with it). Via, a browser built on the WebView, shows a search engine's
+page of results over https; Chinese text in it is boxes (the root has no CJK
+font). Twice a fresh start's first connection, to an address that took one a
+moment later, failed with ENETUNREACH, and the page with it; not explained.
 
 **Canvases and WebGL** are drawn by Chromium's GPU service into hardware
 buffers (`AHardwareBuffer`, `ndk/hk_ahb.c`) it makes EGL images of

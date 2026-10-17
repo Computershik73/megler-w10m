@@ -466,8 +466,14 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   the app gave it, `evaluateJavascript` answers, cookies are kept and sent,
   a redirect to a callback URL of the app's scheme reaches
   `shouldOverrideUrlLoading`, as an OAuth login ends, and a tap on a field of
-  the page brings the keyboard, whose text arrives in the field. Not yet on a
-  phone.
+  the page brings the keyboard, whose text arrives in the field. On the
+  phone (2026-10-17 and 18, packages 229 to 249) the test app passes the
+  same, the WebView started in 0.8 s, Chromium's GPU thread on ANGLE; VK mp3
+  mod and Kate show VK ID's "not a robot" sheet in their WebViews, but the
+  check in it did not load ("something went wrong") while its canvases had
+  no hardware buffers; those are there since (`ndk/hk_ahb.c`), as is the
+  WebView on a `RenderNode`'s canvas that ended Spotify; neither tried on a
+  phone yet.
   Not there: garbage collection (an app that animates lasts minutes); sound
   from Java; a `SurfaceView` drawn by native code; method
   handles; other apps (the
