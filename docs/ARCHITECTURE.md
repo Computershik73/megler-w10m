@@ -539,6 +539,20 @@ binds it to the app's external texture through an EGLImage. The shell's side is
 `player/MediaHost.cpp`: Media Foundation's source reader, two readers to a film
 (one stream each), on a thread of its own.
 
+An app whose Java plays video or music reads the file itself (ExoPlayer does)
+and hands `android.media.MediaCodec` one sample at a time. Those decoders are a
+second call of the shell's, `megler_codec_host`: a decoder of a kind (H.264,
+H.265, AAC, MP3) is opened with the stream's configuration, pushed one sample
+at a time, and gives pictures (NV12) and blocks of 16-bit sound back.
+`drivers/hk_java_media.c` takes whatever form an app hands the samples in and
+gives the shell one: Annex-B with the parameter sets in front of the first
+unit, raw AAC with its AudioSpecificConfig, MP3 frames; it puts pictures in
+display order where a decoder does not, and turns NV12 into the `Bitmap`
+MediaCodec draws into the app's `Surface`. The shell's side is
+`player/CodecHost.cpp`: Media Foundation's synchronous decoder transforms
+(`MFTEnumEx`, `ProcessInput`, `ProcessOutput`), a thread for each decoder.
+docs/JAVA.md, "Decoders for MediaCodec", has the details and the tests.
+
 ## Files and the shared storage
 
 Android's paths are looked up in a mount table (`bionic/hk_libc_io.c`). What an

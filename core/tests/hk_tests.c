@@ -760,6 +760,45 @@ static void test_codec_pictures(void)
         hk_mcodec_destroy(c);
     }
     {
+        /*
+         * A decoder that says it gives pictures in display order (reorder 0) and gives them in decode order: the first picture out
+         * of place (1, after 3) goes on as it is, and from then on four are held back, so that the rest come in order; after a
+         * flush the same units come out in order from the first.
+         */
+        static megler_codec_host liar;
+        hk_mcodec *c;
+        u8 sps[16], pps[16], unit[64];
+        size_t ns = 0, np = 0, nu, size[3] = { 0, 0, 0 };
+        const u8 *csd[3] = { NULL, NULL, NULL };
+        static const int first_run[10] = { 0, 3, 1, 2, 4, 5, 6, 7, 8, 9 };
+        int run;
+        bool grey = true;
+        liar = *hk_codec_standin();
+        liar.reorder = 0;
+        hk_java_media_set_host(&liar);
+        put_avc_nal(sps, &ns, 0x67, false);
+        put_avc_nal(pps, &np, 0x68, false);
+        csd[0] = sps, size[0] = ns, csd[1] = pps, size[1] = np;
+        c = hk_mcodec_create("video/avc");
+        CHECK(hk_mcodec_configure(c, 0, 0, 0, 0, csd, size));
+        for (run = 0; run < 2; run++) {
+            bool as_said = true;
+            n = 0;
+            for (i = 0; i < 10; i++) {
+                nu = 0;
+                put_avc_nal(unit, &nu, i ? 0x41 : 0x65, false);
+                hk_mcodec_decode(c, unit, nu, (i64)k_decode_order[i] * 1000000 / 30, i == 9 ? 4 : 0);
+                n += drain_frames(c, times + n, 16 - n, &grey);
+            }
+            for (i = 0; i < 10 && i < n; i++)
+                if (times[i] != (run ? i : first_run[i])) as_said = false;
+            CHECK(n == 10 && as_said && grey);
+            hk_mcodec_flush(c);
+        }
+        hk_mcodec_destroy(c);
+        hk_java_media_set_host(hk_codec_standin());
+    }
+    {
         /* No parameter sets anywhere: nothing to put in front, and the decoder refuses the unit, as a real one finds nothing to decode. */
         hk_mcodec *c = hk_mcodec_create("video/avc");
         u8 unit[32];

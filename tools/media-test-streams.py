@@ -13,9 +13,12 @@ nothing here runs during a build.
               decoder gives back says which picture it is. Its SPS and PPS are taken out of the first access unit
               and are the codec-specific data (csd-0, csd-1, each with its start code), as an MP4's avcC gives
               them to an app; access unit delimiters and SEI are left out.
-  hevc.hkau   the same pictures as H.265 Main (libx265), VPS, SPS and PPS together as csd-0.
-  aac.hkau    AAC LC, 44100 Hz, stereo, half a second of a 440 Hz tone at half of full scale: raw access units
-              (the ADTS headers taken off) and the AudioSpecificConfig as csd-0.
+  avc-small.hkau  12 pictures more of the same kind at 96 x 64, picture N again Y = 16 + 8 N: what an app's stream
+              that changes its size (adaptive streaming does) goes on with.
+  hevc.hkau   the same pictures as avc.hkau as H.265 Main (libx265), VPS, SPS and PPS together as csd-0.
+  aac.hkau    AAC LC, 44100 Hz, stereo, half a second of a 440 Hz tone (made at half of full scale, and 3 dB less in
+              each channel once ffmpeg makes it stereo: 8192 RMS): raw access units (the ADTS headers taken off) and the
+              AudioSpecificConfig as csd-0.
   mp3.hkau    the same tone as MPEG-1 Layer III at 128 kbit/s, one frame a packet, no ID3 or Xing header.
 
 The file: "HKMEDIA1", the MIME type in 32 bytes (zero-padded), then little-endian u32 width, height, sample rate,
@@ -82,11 +85,11 @@ def nal_units(data):
     return units
 
 
-def video(name, mime, encoder, params, nal_type, config_types, drop_types):
+def video(name, mime, encoder, params, nal_type, config_types, drop_types, width=168, height=94, count=24):
     with tempfile.TemporaryDirectory() as tmp:
         ts = os.path.join(tmp, "v.ts")
-        run("ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "nullsrc=s=168x94:r=30,format=yuv420p,geq=lum='16+8*N':cb=128:cr=128",
-            "-frames:v", "24", "-c:v", encoder, *params, "-f", "mpegts", ts)
+        run("ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "nullsrc=s=%dx%d:r=30,format=yuv420p,geq=lum='16+8*N':cb=128:cr=128" % (width, height),
+            "-frames:v", str(count), "-c:v", encoder, *params, "-f", "mpegts", ts)
         pk = packets(ts)
     first = min(p[0] for p in pk)
     config, records = [], []
@@ -104,7 +107,7 @@ def video(name, mime, encoder, params, nal_type, config_types, drop_types):
         csd = [(FLAG_CONFIG, 0, b"\0\0\0\1" + c) for c in config]     # csd-0 the SPS, csd-1 the PPS
     else:
         csd = [(FLAG_CONFIG, 0, b"".join(b"\0\0\0\1" + c for c in config))]
-    write(name, mime, 168, 94, 0, 0, csd + records)
+    write(name, mime, width, height, 0, 0, csd + records)
 
 
 def adts_frames(data):
@@ -136,10 +139,9 @@ def mp3_frames(data):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    video("avc.hkau", "video/avc", "libx264",
-          ["-preset", "medium", "-profile:v", "main",
-           "-x264-params", "bframes=2:b-adapt=0:b-pyramid=none:keyint=12:min-keyint=12:scenecut=0:open-gop=0"],
-          lambda u: u[0] & 0x1F, (7, 8), (6, 9))
+    x264 = ["-preset", "medium", "-profile:v", "main", "-x264-params", "bframes=2:b-adapt=0:b-pyramid=none:keyint=12:min-keyint=12:scenecut=0:open-gop=0"]
+    video("avc.hkau", "video/avc", "libx264", x264, lambda u: u[0] & 0x1F, (7, 8), (6, 9))
+    video("avc-small.hkau", "video/avc", "libx264", x264, lambda u: u[0] & 0x1F, (7, 8), (6, 9), 96, 64, 12)
     video("hevc.hkau", "video/hevc", "libx265",
           ["-preset", "medium", "-x265-params", "log-level=error:bframes=2:b-adapt=0:b-pyramid=0:keyint=12:min-keyint=12:scenecut=0:open-gop=0"],
           lambda u: (u[0] >> 1) & 0x3F, (32, 33, 34), (35, 39, 40))

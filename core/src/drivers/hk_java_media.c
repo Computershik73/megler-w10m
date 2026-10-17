@@ -12,7 +12,8 @@
  *   carry them itself: a decoder that starts afresh needs them before its first slice.
  * - Display order. MediaCodec hands pictures out in display order. A shell's decoder that gives them in decode order
  *   says how far out they can be (megler_codec_host.reorder): that many are held here, sorted by time, and the earliest
- *   goes on when one more comes; at the end of the stream all of them go.
+ *   goes on when one more comes; at the end of the stream all of them go. A decoder that said it gives them in order
+ *   and then does not is caught at its first picture out of place, and pictures are held back from then on.
  * - Sound (AAC, MP3). One packet per queued buffer. AAC's AudioSpecificConfig comes as csd-0 or in a codec-specific
  *   buffer; ADTS headers (which some apps leave on, saying "is-adts") are taken off, and the first one gives the
  *   configuration when nothing else did; with neither, one is made from the format's rate and channels. MP3's rate
@@ -115,6 +116,13 @@ struct hk_mcodec {
     /* Pictures out of the decoder, sorted by time, and those that go to Java in this order. */
     hk_mframe *sorted, *ready, **ready_tail;
     i32 nsorted;
+    /*
+     * How many are held back besides what the shell says (megler_codec_host.reorder): learnt when a picture comes out earlier
+     * than one already gone on, since the last flush, the time of which is `gone`.
+     */
+    i32 learnt;
+    i64 gone;
+    bool any_gone;
     blob unit;                         /* the unit being put together for the decoder */
     i64 pushed, pictures, blocks, failed;
 };
@@ -144,9 +152,16 @@ static void drop_frames(hk_mcodec *c)
     c->nsorted = 0;
 }
 
-/* Everything the decoder has ready, sorted in; the earliest go on to Java while more than `keep` are held. */
-static void pull_pictures(hk_mcodec *c, int keep)
+/*
+ * Everything the decoder has ready, sorted in; the earliest go on to Java while more are held than the decoder can be out
+ * of order by (all of them, at the end of the stream). How far that is, is the shell's to say; but a decoder that says
+ * "in display order" may not be for every stream (a Media Foundation decoder in low-latency mode trusts the stream to
+ * say how far its pictures are reordered), so a picture that comes out after a later one has gone on is told in the log,
+ * goes on as it is, and from then on four are held back, and twice as many each time it happens again, up to sixteen.
+ */
+static void pull_pictures(hk_mcodec *c, bool all)
 {
+    i32 keep;
     for (;;) {
         hk_mframe *f, **p;
         megler_codec_picture pic;
@@ -163,6 +178,13 @@ static void pull_pictures(hk_mcodec *c, int keep)
                     pic.height);
             continue;
         }
+        if (c->any_gone && pic.time_us < c->gone && c->learnt < 16) {
+            c->learnt = c->learnt ? c->learnt * 2 : 4;
+            hk_warn("media codec: the shell's %s decoder gave a picture of %lld ms after one of %lld ms: %d pictures are held back from now on to put them "
+                    "in order", kind_name(c->kind), (long long)(pic.time_us / 1000), (long long)(c->gone / 1000), (int)(g_host.reorder + c->learnt));
+            /* (What is out already does not count again: the pictures decoded before this one are as late as it is.) */
+            c->any_gone = false;
+        }
         f = (hk_mframe *)hk_alloc(sizeof(*f));
         f->picture = h;
         f->p = pic;
@@ -173,10 +195,13 @@ static void pull_pictures(hk_mcodec *c, int keep)
         if (!c->pictures++) hk_info("media codec: the first %s picture, %dx%d %s, at %lld ms", kind_name(c->kind), pic.width, pic.height,
                                    pic.format == MEGLER_CODEC_NV12 ? "NV12" : "RGBA", (long long)(pic.time_us / 1000));
     }
+    keep = all ? 0 : g_host.reorder + c->learnt;
     while (c->nsorted > keep) {
         hk_mframe *f = c->sorted;
         c->sorted = f->next;
         c->nsorted--;
+        if (!c->any_gone || f->p.time_us > c->gone) c->gone = f->p.time_us;
+        c->any_gone = true;
         f->next = NULL;
         *c->ready_tail = f;
         c->ready_tail = &f->next;
@@ -370,11 +395,11 @@ static void video_decode(hk_mcodec *c, const u8 *d, size_t n, i64 time_us, i32 f
             push(c, c->unit.d, c->unit.n, time_us);
         }
         c->fresh = false;
-        pull_pictures(c, g_host.reorder);
+        pull_pictures(c, false);
     }
     if ((flags & FLAG_EOS) && c->dec) {
         if (g_host.drain) g_host.drain(g_host.user, c->dec);
-        pull_pictures(c, 0);
+        pull_pictures(c, true);
     }
 }
 
@@ -587,7 +612,7 @@ hk_mframe *hk_mcodec_next_frame(hk_mcodec *c, i64 info[3])
     hk_mframe *f;
     if (!c) return NULL;
     hk_lock_acquire(&c->lock);
-    pull_pictures(c, g_host.reorder);
+    pull_pictures(c, false);
     f = c->ready;
     if (f) {
         c->ready = f->next;
@@ -653,6 +678,7 @@ void hk_mcodec_flush(hk_mcodec *c)
     if (c->dec && g_host.flush) g_host.flush(g_host.user, c->dec);
     drop_frames(c);
     c->fresh = true;
+    c->any_gone = false;
     hk_lock_release(&c->lock);
 }
 

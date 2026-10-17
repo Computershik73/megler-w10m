@@ -283,7 +283,9 @@ typedef struct megler_media_host {
  *                 Media Foundation's decoders do. Otherwise the layer holds
  *                 that many back and puts them in order by their times (a
  *                 decoder that gives pictures in decode order, as Apple's
- *                 VideoToolbox does, would say 4).
+ *                 VideoToolbox does, would say 4). Should a picture still
+ *                 come out after a later one, the layer says so in the log
+ *                 and holds more back from then on.
  *
  * A picture is `width` x `height` visible pixels, the top row first, and
  * `time_us` is the time of the sample it was decoded from. MEGLER_CODEC_NV12:

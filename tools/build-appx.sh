@@ -334,7 +334,8 @@ rm -rf "$BUILD/link" && mkdir -p "$BUILD/link"
 # phones whose OS lacks it -- delay-loaded, it is resolved on first use, not at
 # launch. XAudio2_9.dll likewise (an app's sound; player/AudioHost.cpp
 # catches its failure to load), and Media Foundation's mfplat.dll and
-# mfreadwrite.dll (an app's films; player/MediaHost.cpp), and Direct2D's
+# mfreadwrite.dll (an app's films, player/MediaHost.cpp; a Java app's
+# MediaCodec, player/CodecHost.cpp), and Direct2D's
 # d2d1.dll and DirectWrite's dwrite.dll (a Java app's drawing;
 # player/GfxHost.cpp, which reaches WIC through CoCreateInstance and so names
 # no third DLL). No /guard:cf: nothing here is built with it,

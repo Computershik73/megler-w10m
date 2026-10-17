@@ -3553,9 +3553,19 @@ released with `render` into the output `Surface` with `lockCanvas`, scaled
 to it. The decoding proper is the shell's, through a call of its own in
 `megler.h`, `megler_codec_host`: a decoder of a kind (H.264, H.265, AAC, MP3)
 opened with the stream's configuration, fed one sample at a time, giving
-pictures (NV12 or RGBA) and blocks of 16-bit sound. The shell's side of it
-is not written yet; until it is, no decoder is listed. What the core does
-between an app's buffers and that call:
+pictures (NV12 or RGBA) and blocks of 16-bit sound. The shell's side is
+Media Foundation's synchronous decoder transforms (`player/CodecHost.cpp`):
+found with `MFTEnumEx`, fed with `ProcessInput`, emptied with
+`ProcessOutput`, a change of size or format followed, NV12 pictures held in
+the shell's own buffers until the core lets them go, sound asked for as
+16-bit PCM in two channels at most, each decoder on a thread of its own.
+Picture decoders are asked for low latency (`MF_LOW_LATENCY`): a picture
+then comes out as soon as the stream's own reordering allows, as from
+Android's decoders, rather than once the decoder's whole picture buffer is
+full (on this PC's H.264 decoder, after 2 units of the test stream instead
+of 18 to 24, varying with its threads). The flag file
+`codec-no-low-latency` brings the decoders' own way back.
+What the core does between an app's buffers and that call:
 
 - **Pictures.** An app may hand H.264 and H.265 over with start codes or
   length-prefixed, with the parameter sets in the stream, as csd-0 and csd-1
@@ -3567,7 +3577,11 @@ between an app's buffers and that call:
   order. A decoder that gives them in decode order (VideoToolbox) says how
   far out they can be (`reorder`): that many are held, sorted by time, the
   earliest going on as each new one comes, all of them at the end of the
-  stream. A flush drops what is held.
+  stream. A flush drops what is held. In low-latency mode a Media
+  Foundation decoder trusts the stream to say how far its pictures are
+  reordered; should one come out after a later one has gone on, that is
+  said in the log, and four are held back from then on (twice as many each
+  time it happens again, up to sixteen).
 - **Sound.** One packet per buffer. AAC's AudioSpecificConfig is csd-0 or a
   codec-specific buffer; ADTS headers are taken off, and the first one is the
   configuration when there is no other; with neither, one is made from the
@@ -3593,7 +3607,9 @@ The tests:
   the four after it come out alone; AAC with csd, with a configuration over
   what the format said, with a codec-config buffer, and with ADTS and none;
   MP3 whose first frame says 22050 Hz in one channel; NV12's red in BT.601
-  and BT.709, video range and full, and RGBA.
+  and BT.709, video range and full, and RGBA. And a decoder that says it
+  gives pictures in order and does not: after the first picture out of
+  place the rest come in order, and after a flush all of them.
 - the data app's steps, under qemu with the same stand-in (the assets
   `avc.hkau`, `aac.hkau`, `mp3.hkau`, made by `tools/media-test-streams.py`
   with ffmpeg: 24 pictures of H.264 with two B-pictures between references
@@ -3612,6 +3628,30 @@ The tests:
     order on its thread ("codec-avc-async-done", which the runner waits for);
   - "codec-aac", "codec-aac-adts", "codec-mp3": a block of PCM for each
     packet, 44100 Hz in two channels.
+- the shell's own decoders on a PC (`tools/build-tests.sh win`, as
+  `hk_tests --codec-windows`: `core/tests/hk_codec_tests.c` over
+  `player/CodecHost.cpp`, built into the test program with
+  `core/tests/hk_codec_windows.cpp`), fed the same streams and
+  `avc-small.hkau`. On this PC (Windows 11) MFTEnumEx finds "Microsoft H264
+  Video Decoder MFT", "HEVCVideoExtension" (the Store's), "Microsoft AAC
+  Audio Decoder MFT" and "MP3 Decoder MFT", and:
+  - H.264, with the parameter sets as csd, in the first unit, in a
+    codec-config buffer, and as avcC with length-prefixed units: all 24
+    pictures in display order (Media Foundation's decoder reorders them
+    itself), the first after 2 units, each 168 x 94 out of 176 x 96
+    decoded, its luma and its colour after `renderFrame` the grey its number
+    says; a flush after seven units (pictures 0 to 5 out by then) and then
+    from the IDR at 12 gives 12 to 23 alone; and a stream that goes on at
+    96 x 64 after a codec-config buffer gives all 36 in order, each at its
+    own size;
+  - H.265 the same three ways and the flush (168 x 94 of 168 x 96, the first
+    picture after 3 units);
+  - AAC raw with csd-0 and with ADTS headers alone: 23 blocks of 1024 frames,
+    44100 Hz in two channels, the tone 440.0 Hz at 8181 RMS (the stream's
+    8192); MP3 configured without a rate: 23664 frames of the 24192 the
+    frames hold (the decoder's own delay), 440.0 Hz at 7782 RMS;
+  - H.264 and AAC decoded at once on two threads, five times each, every run
+    whole.
 
 ### 3. Apps that are not the test apps
 
