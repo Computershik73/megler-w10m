@@ -1435,11 +1435,13 @@ static int run_data(void)
                                          /* And what Android's WebView asks of the platform before it shows a page, each answered as Android
                                             answers it: the app's id within its user (UserHandle.getAppId), whether cleartext HTTP is
                                             permitted (NetworkSecurityPolicy), a compatibility change's state for the app's target
-                                            (CompatChanges), and the WebView APK added to the app's resources as a shared library. */
+                                            (CompatChanges), the WebView APK added to the app's resources as a shared library, and
+                                            the cameras there are (none, as a device without one says). */
                                          "user-handle",
                                          "cleartext",
                                          "compat-change",
                                          "shared-library",
+                                         "cameras",
                                          /* And XML through android.util.Xml: a serializer and a pull parser, kXML's. And a stored file of
                                             the APK as a descriptor whose number is taken from its ParcelFileDescriptor. And the app's task as
                                             ActivityManager describes it. And registerReceiver's other forms through a ContextWrapper. And a

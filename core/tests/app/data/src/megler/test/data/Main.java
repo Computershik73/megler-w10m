@@ -288,6 +288,7 @@ public class Main extends Activity {
         cleartext();
         compatChange();
         sharedLibrary();
+        cameras();
         xml();
         assetFd();
         tasks();
@@ -1070,6 +1071,20 @@ public class Main extends Activity {
                     + " label=" + label + " icudtl=" + length + "@" + offset);
             return cookie >= 2 && pkg >= 2 && pkg < 0x7f && (icon >>> 24) == pkg && getResources().getDrawable(icon, null) != null
                     && label.length() > 0 && length > 1000000 && offset > 0 && (Integer) add.invoke(am, apk) == cookie;
+        });
+    }
+
+    /**
+     * The cameras there are: none (the phone's are not offered to an app here), said as a device without a camera says it --
+     * Camera2's empty list of ids, the old API's count of 0. The WebView counts them through getCameraIdList().length as soon
+     * as a page asks for its media devices; the framework's list was null.
+     */
+    private void cameras() {
+        step("cameras", () -> {
+            android.hardware.camera2.CameraManager cm = (android.hardware.camera2.CameraManager) getSystemService(CAMERA_SERVICE);
+            String[] ids = cm.getCameraIdList();
+            Log.i("DataTest", "cameras ids=" + (ids == null ? "null" : String.valueOf(ids.length)) + " old=" + android.hardware.Camera.getNumberOfCameras());
+            return ids != null && ids.length == 0 && android.hardware.Camera.getNumberOfCameras() == 0;
         });
     }
 

@@ -3100,7 +3100,7 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: ninety-five files** in the overlay,
+**What differs from the original's framework: ninety-six files** in the overlay,
 most of them a statement or a few methods each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and nine files of members added** to classes of the original's, **and four files of the original's taken
@@ -3651,6 +3651,15 @@ on a looper thread of its own and takes it back with `next()`.
   strings by name and reads both, and opens its `assets/icudtl.dat` as a
   descriptor where it is stored, as Chromium maps its ICU data.
 
+- `android/hardware/camera2/CameraManager.java`, `getCameraIdList` and
+  `getCameraIdListNoLazy`, generated signatures that answered null: an empty
+  list, what a device without a camera says (the phone's cameras are not
+  offered to an app here). The WebView counts the cameras with
+  `getCameraIdList().length` as soon as a page asks for its media devices,
+  and the NullPointerException, thrown inside Chromium's native code, ended
+  the app on VK's "not a robot" page. The data app's step "cameras" reads
+  the list (empty, not null) and `Camera.getNumberOfCameras()` (0).
+
 - `android/webkit/`, forty-nine files: AOSP's `android.webkit` at
   android-15.0.0_r36 (`tools/webview-fetch.sh` fetches the sources to compare)
   in the place of the original's WebView over WKWebView and its generated
@@ -3686,7 +3695,7 @@ on a looper thread of its own and takes it back with `next()`.
   crash handling lists the WebView's APK and library folders at the
   browser's start, and ended the start on the null it got.
 
-The original has all thirty-five faults; they are its author's to take back.
+The original has all thirty-six faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in
