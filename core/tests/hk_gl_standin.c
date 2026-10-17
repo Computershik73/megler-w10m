@@ -30,6 +30,16 @@ typedef struct sb_surface {
     u8 *px;                            /* R, G, B, A, rows bottom first */
 } sb_surface;
 
+/* A texture's pixels, R, G, B, A, rows in the order given (bottom first, as OpenGL has it); shared by the EGL images of it. */
+typedef struct sb_store {
+    int w, h, refs;
+    u8 *px;
+} sb_store;
+
+typedef struct sb_image {
+    sb_store *store;
+} sb_image;
+
 typedef struct sb_attr {
     bool on;
     i32 size, stride;
@@ -71,7 +81,8 @@ static struct {
         float values[MAX_VARS][16];
     } programs[MAX_OBJECTS];
     struct { bool alive; u8 *data; size_t size; } buffers[MAX_OBJECTS];
-    struct { bool alive; int w, h; } textures[MAX_OBJECTS];
+    struct { bool alive; int w, h; sb_store *store; } textures[MAX_OBJECTS];
+    struct { bool alive; u32 texture; } framebuffers[MAX_OBJECTS];   /* a framebuffer object's colour texture */
 } S;
 
 static HK_THREAD_LOCAL sb_context *t_ctx;
@@ -98,7 +109,7 @@ static const char *e_QueryString(void *d, int name)
 {
     (void)d;
     return name == 0x3055 ? "EGL_KHR_no_config_context EGL_KHR_surfaceless_context EGL_KHR_create_context EGL_ANGLE_query_surface_pointer "
-                            "EGL_ANGLE_surface_d3d_texture_2d_share_handle"
+                            "EGL_ANGLE_surface_d3d_texture_2d_share_handle EGL_KHR_image_base EGL_KHR_gl_texture_2D_image"
            : name == 0x3053 ? "Megler (stand-in)"
                             : "1.5 (stand-in)";
 }
@@ -555,10 +566,16 @@ static u32 new_name(int kind)
 {
     u32 i;
     hk_lock_acquire(&g_lock);
-    for (i = 1; i < MAX_OBJECTS && (kind ? S.textures[i].alive : S.buffers[i].alive); i++) { }
+    for (i = 1; i < MAX_OBJECTS && (kind == 2 ? S.framebuffers[i].alive : kind ? S.textures[i].alive : S.buffers[i].alive); i++) { }
     if (i < MAX_OBJECTS) {
-        if (kind) S.textures[i].alive = true;
-        else S.buffers[i].alive = true;
+        if (kind == 2) {
+            S.framebuffers[i].alive = true;
+            S.framebuffers[i].texture = 0;
+        } else if (kind) {
+            S.textures[i].alive = true;
+        } else {
+            S.buffers[i].alive = true;
+        }
     }
     hk_lock_release(&g_lock);
     return i < MAX_OBJECTS ? i : 0;
@@ -602,25 +619,153 @@ static void g_GenTextures(i32 n, u32 *names)
     i32 i;
     for (i = 0; i < n; i++) names[i] = new_name(1);
 }
+static void store_release(sb_store *s)
+{
+    if (s && --s->refs == 0) {
+        free(s->px);
+        free(s);
+    }
+}
 static void g_DeleteTextures(i32 n, const u32 *names)
 {
     i32 i;
+    hk_lock_acquire(&g_lock);
     for (i = 0; i < n; i++)
-        if (names[i] && names[i] < MAX_OBJECTS) S.textures[names[i]].alive = false;
+        if (names[i] && names[i] < MAX_OBJECTS) {
+            S.textures[names[i]].alive = false;
+            store_release(S.textures[names[i]].store);
+            S.textures[names[i]].store = NULL;
+        }
+    hk_lock_release(&g_lock);
 }
 static void g_BindTexture(u32 target, u32 name)
 {
     (void)target;
     if (t_ctx) t_ctx->texture = name;
 }
+/* Rows of RGBA, RGB or RGB 5-6-5 pixels, as the unpack alignment lays them out, into a store's R, G, B, A. */
+static void store_put(sb_store *s, i32 x, i32 y, i32 w, i32 h, u32 format, u32 type, const u8 *in)
+{
+    i32 bpp = type == 0x8363 ? 2 : format == GL_RGBA ? 4 : 3, align = t_ctx ? t_ctx->unpack_align : 4, r, c;
+    size_t row = ((size_t)w * (size_t)bpp + (size_t)align - 1) / (size_t)align * (size_t)align;
+    if (!in) return;
+    for (r = 0; r < h; r++)
+        for (c = 0; c < w; c++) {
+            const u8 *p = in + (size_t)r * row + (size_t)c * (size_t)bpp;
+            u8 *o;
+            if (x + c < 0 || y + r < 0 || x + c >= s->w || y + r >= s->h) continue;
+            o = s->px + ((size_t)(y + r) * (size_t)s->w + (size_t)(x + c)) * 4;
+            if (type == 0x8363) {
+                u16 v = (u16)(p[0] | p[1] << 8);
+                o[0] = (u8)((v >> 11) * 255 / 31);
+                o[1] = (u8)(((v >> 5) & 63) * 255 / 63);
+                o[2] = (u8)((v & 31) * 255 / 31);
+                o[3] = 255;
+            } else {
+                o[0] = p[0];
+                o[1] = p[1];
+                o[2] = p[2];
+                o[3] = bpp == 4 ? p[3] : 255;
+            }
+        }
+}
 static void g_TexImage2D(u32 target, i32 level, i32 internal, i32 w, i32 h, i32 border, u32 format, u32 type, const void *pixels)
 {
     u32 t = t_ctx ? t_ctx->texture : 0;
-    (void)target; (void)level; (void)internal; (void)border; (void)format; (void)type; (void)pixels;
-    if (t && t < MAX_OBJECTS) {
-        S.textures[t].w = w;
-        S.textures[t].h = h;
+    sb_store *s;
+    (void)target; (void)level; (void)internal; (void)border;
+    if (!t || t >= MAX_OBJECTS || w <= 0 || h <= 0) return;
+    s = (sb_store *)calloc(1, sizeof(*s));
+    s->w = w;
+    s->h = h;
+    s->refs = 1;
+    s->px = (u8 *)calloc((size_t)w * (size_t)h, 4);
+    store_put(s, 0, 0, w, h, format, type, (const u8 *)pixels);
+    hk_lock_acquire(&g_lock);
+    store_release(S.textures[t].store);
+    S.textures[t].store = s;
+    S.textures[t].w = w;
+    S.textures[t].h = h;
+    hk_lock_release(&g_lock);
+}
+static void g_TexSubImage2D(u32 target, i32 level, i32 x, i32 y, i32 w, i32 h, u32 format, u32 type, const void *pixels)
+{
+    u32 t = t_ctx ? t_ctx->texture : 0;
+    (void)target; (void)level;
+    if (!t || t >= MAX_OBJECTS || !S.textures[t].store) {
+        g_error(GL_INVALID_OPERATION);
+        return;
     }
+    store_put(S.textures[t].store, x, y, w, h, format, type, (const u8 *)pixels);
+}
+
+/* EGL images of textures (EGL_KHR_gl_texture_2D_image): the texture's pixels, which a texture made of the image shares. */
+static void *e_CreateImage(void *d, void *ctx, unsigned target, void *buffer, const int *attribs)
+{
+    u32 t = (u32)(hk_addr)buffer;
+    sb_image *im = NULL;
+    (void)d; (void)ctx; (void)attribs;
+    hk_lock_acquire(&g_lock);
+    if (target == 0x30B1 && t && t < MAX_OBJECTS && S.textures[t].alive && S.textures[t].store) {
+        im = (sb_image *)calloc(1, sizeof(*im));
+        im->store = S.textures[t].store;
+        im->store->refs++;
+    }
+    hk_lock_release(&g_lock);
+    return im;
+}
+static unsigned e_DestroyImage(void *d, void *image)
+{
+    sb_image *im = (sb_image *)image;
+    (void)d;
+    if (!im) return 0;
+    hk_lock_acquire(&g_lock);
+    store_release(im->store);
+    hk_lock_release(&g_lock);
+    free(im);
+    return 1;
+}
+static void g_EGLImageTargetTexture2DOES(u32 target, void *image)
+{
+    sb_image *im = (sb_image *)image;
+    u32 t = t_ctx ? t_ctx->texture : 0;
+    (void)target;
+    if (!im || !t || t >= MAX_OBJECTS) {
+        g_error(GL_INVALID_OPERATION);
+        return;
+    }
+    hk_lock_acquire(&g_lock);
+    im->store->refs++;
+    store_release(S.textures[t].store);
+    S.textures[t].store = im->store;
+    S.textures[t].w = im->store->w;
+    S.textures[t].h = im->store->h;
+    hk_lock_release(&g_lock);
+}
+
+/* Framebuffer objects with a texture for their colour: drawn into by glClear and read by glReadPixels. */
+static volatile i32 g_next_name = 1000;   /* the complete mode's names (below) */
+static void g_GenFramebuffers(i32 n, u32 *names)
+{
+    i32 i;
+    /* Past the table's room (a WebView's GL makes many), names that draw nothing, as the complete mode's are. */
+    for (i = 0; i < n; i++)
+        if (!(names[i] = new_name(2))) names[i] = (u32)hk_atomic_add(&g_next_name, 1);
+}
+static void g_FramebufferTexture2D(u32 target, u32 attachment, u32 textarget, u32 texture, i32 level)
+{
+    i32 fb = t_ctx ? (target == GL_READ_FRAMEBUFFER ? t_ctx->read_fb : t_ctx->fb) : 0;
+    (void)attachment; (void)textarget; (void)level;
+    if (fb > 0 && fb < MAX_OBJECTS) S.framebuffers[fb].texture = texture;
+}
+static u32 g_CheckFramebufferStatus(u32 target) { (void)target; return 0x8CD5; }   /* GL_FRAMEBUFFER_COMPLETE */
+/* The store of the colour texture of a framebuffer object, or NULL (none, or the window's). */
+static sb_store *fb_store(i32 fb)
+{
+    u32 t;
+    if (fb <= 0 || fb >= MAX_OBJECTS || !S.framebuffers[fb].alive) return NULL;
+    t = S.framebuffers[fb].texture;
+    return t && t < MAX_OBJECTS && S.textures[t].alive ? S.textures[t].store : NULL;
 }
 static u8 g_IsTexture(u32 name) { return name && name < MAX_OBJECTS && S.textures[name].alive; }
 static void g_TexParameteri(u32 target, u32 name, i32 v) { (void)target; (void)name; (void)v; }
@@ -663,10 +808,16 @@ static void g_Clear(u32 mask)
 {
     size_t i, n;
     u8 c[4];
-    if (!t_ctx || !t_surf || !(mask & GL_COLOR_BUFFER_BIT)) return;
+    sb_store *s = t_ctx ? fb_store(t_ctx->fb) : NULL;
+    if (!t_ctx || (!t_surf && !s) || !(mask & GL_COLOR_BUFFER_BIT)) return;
     for (i = 0; i < 4; i++) c[i] = byte_of(t_ctx->clear[i]);
-    n = (size_t)t_surf->w * (size_t)t_surf->h;
-    for (i = 0; i < n; i++) memcpy(t_surf->px + 4 * i, c, 4);
+    if (s) {
+        n = (size_t)s->w * (size_t)s->h;
+        for (i = 0; i < n; i++) memcpy(s->px + 4 * i, c, 4);
+    } else {
+        n = (size_t)t_surf->w * (size_t)t_surf->h;
+        for (i = 0; i < n; i++) memcpy(t_surf->px + 4 * i, c, 4);
+    }
     hk_lock_acquire(&g_lock);
     S.stats.clears++;
     memcpy(S.stats.clear, t_ctx->clear, sizeof(S.stats.clear));
@@ -774,6 +925,20 @@ static void g_ReadPixels(i32 x, i32 y, i32 w, i32 h, u32 format, u32 type, void 
 {
     u8 *out = (u8 *)data;
     i32 r, c;
+    sb_store *s = t_ctx ? fb_store(t_ctx->read_fb) : NULL;
+    if (s && t_ctx && !t_ctx->pack_buffer && format == GL_RGBA && type == 0x1401) {
+        /* A framebuffer object with a texture: its pixels. */
+        for (r = 0; r < h; r++)
+            for (c = 0; c < w; c++) {
+                u8 *o = out + ((size_t)r * (size_t)w + (size_t)c) * 4;
+                if (y + r < 0 || y + r >= s->h || x + c < 0 || x + c >= s->w) memset(o, 0, 4);
+                else memcpy(o, s->px + ((size_t)(y + r) * (size_t)s->w + (size_t)(x + c)) * 4, 4);
+            }
+        hk_lock_acquire(&g_lock);
+        S.stats.reads++;
+        hk_lock_release(&g_lock);
+        return;
+    }
     if (!t_ctx || !t_surf) return;
     if (t_ctx->pack_buffer) {
         u32 b = t_ctx->pack_buffer;
@@ -864,7 +1029,6 @@ static void g_GetFloatv(u32 name, float *v)
  * glGen* calls, an OpenGL ES 2.0 device's limits answered, framebuffers complete, shader precision highp. The EGL
  * functions that were missing are there in either mode: they are EGL 1.4's.
  */
-static volatile i32 g_next_name = 1000;
 
 static unsigned e_GetConfigs(void *d, void **configs, int size, int *num)
 {
@@ -899,7 +1063,6 @@ static void g_Gen(i32 n, u32 *out)
     i32 i;
     for (i = 0; out && i < n; i++) out[i] = (u32)hk_atomic_add(&g_next_name, 1);
 }
-static u32 g_CheckFramebufferStatus(u32 target) { (void)target; return 0x8CD5; }   /* GL_FRAMEBUFFER_COMPLETE */
 static void g_GetBooleanv(u32 name, u8 *v) { (void)name; if (v) v[0] = 0; }
 static void g_GetParamiv3(u32 a, u32 b, i32 *v) { (void)a; (void)b; if (v) v[0] = 0; }
 static void g_GetParamiv4(u32 a, u32 b, u32 c, i32 *v) { (void)a; (void)b; (void)c; if (v) v[0] = 0; }
@@ -936,10 +1099,10 @@ static bool complete_integer(u32 name, i32 *v)
 static void *complete_fn(const char *name)
 {
     static const struct { const char *name; void *fn; } k[] = {
-        { "glGenFramebuffers", (void *)g_Gen }, { "glGenRenderbuffers", (void *)g_Gen }, { "glGenVertexArrays", (void *)g_Gen },
+        { "glGenRenderbuffers", (void *)g_Gen }, { "glGenVertexArrays", (void *)g_Gen },
         { "glGenVertexArraysOES", (void *)g_Gen }, { "glGenQueries", (void *)g_Gen }, { "glGenQueriesEXT", (void *)g_Gen },
         { "glGenSamplers", (void *)g_Gen }, { "glGenTransformFeedbacks", (void *)g_Gen },
-        { "glCheckFramebufferStatus", (void *)g_CheckFramebufferStatus }, { "glGetBooleanv", (void *)g_GetBooleanv },
+        { "glGetBooleanv", (void *)g_GetBooleanv },
         { "glGetShaderPrecisionFormat", (void *)g_GetShaderPrecisionFormat },
         { "glGetRenderbufferParameteriv", (void *)g_GetParamiv3 }, { "glGetTexParameteriv", (void *)g_GetParamiv3 },
         { "glGetTexParameterfv", (void *)g_GetParamiv3 }, { "glGetBufferParameteriv", (void *)g_GetParamiv3 },
@@ -997,6 +1160,10 @@ void *hk_gl_standin(const char *name)
         { "glDisableVertexAttribArray", (void *)g_DisableVertexAttribArray }, { "glDrawArrays", (void *)g_DrawArrays },
         { "glReadPixels", (void *)g_ReadPixels }, { "glGetError", (void *)g_GetError }, { "glGetString", (void *)g_GetString },
         { "glGetIntegerv", (void *)g_GetIntegerv }, { "glGetFloatv", (void *)g_GetFloatv },
+        { "glTexSubImage2D", (void *)g_TexSubImage2D }, { "eglCreateImageKHR", (void *)e_CreateImage },
+        { "eglDestroyImageKHR", (void *)e_DestroyImage }, { "glEGLImageTargetTexture2DOES", (void *)g_EGLImageTargetTexture2DOES },
+        { "glGenFramebuffers", (void *)g_GenFramebuffers }, { "glFramebufferTexture2D", (void *)g_FramebufferTexture2D },
+        { "glCheckFramebufferStatus", (void *)g_CheckFramebufferStatus },
     };
     size_t i;
     for (i = 0; i < HK_COUNT(k); i++)

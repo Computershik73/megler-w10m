@@ -61,6 +61,7 @@ extern const hk_sym hk_tab_mem[], hk_tab_str[], hk_tab_wchar[], hk_tab_stdio[], 
 const hk_sym *hk_opensles_table(void);
 const hk_sym *hk_media_table(void);    /* ndk/hk_media.c */
 const hk_sym *hk_aaudio_table(void);   /* ndk/hk_aaudio.c */
+const hk_sym *hk_ahb_table(void);      /* ndk/hk_ahb.c: AHardwareBuffer */
 /* The device's API level as native code is told it (the property ro.build.version.sdk, 28 unless a driver has said otherwise). */
 int hk_sdk_level(void);
 const hk_sym *hk_java_ndk_table(void); /* drivers/hk_java_ndk.c: libjnigraphics, on the Java framework's Bitmap */

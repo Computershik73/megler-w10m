@@ -2617,12 +2617,21 @@ unseen; with the flag `trap-svc` the loader makes each site a fault
 reached: loading, starting, five pages, JavaScript, cookies, a redirect and
 typing make no direct system call.
 
+**Canvases and WebGL** are drawn by Chromium's GPU service into hardware
+buffers (`AHardwareBuffer`, `ndk/hk_ahb.c`) it makes EGL images of
+(`EGL_ANDROID_image_native_buffer`, named by the layer's EGL where ANGLE has
+images of textures): each buffer is a texture of ANGLE's made in a context of
+the layer's own (docs/ARCHITECTURE.md, "Graphics"). Without them Chromium lost
+each canvas's GPU context ("GPU state invalid"): a 2D canvas went on in
+software and WebGL was not offered. Under qemu Chromium does not draw canvases
+on the stand-in, so these are tried there only through the core's test
+(`hk_gl_tests.c`, test_hardware_buffers); on a phone they are not tried yet.
+
 **What is not there.** Drawing on the graphics processor (the GL functor);
-`AAudio`, `AImageReader`, `AHardwareBuffer` and the rest of the 78 imports the
-layer does not provide (sound from a page, video, camera); the WebView APK's
-own processes and services (its developer UI, its variations seed service:
-"Failed to bind to WebView service", which it survives); class loaders of
-their own (above).
+`AImageReader` and the rest of the imports the layer does not provide (video,
+camera); the WebView APK's own processes and services (its developer UI, its
+variations seed service: "Failed to bind to WebView service", which it
+survives); class loaders of their own (above).
 
 ### Monitors and threads
 

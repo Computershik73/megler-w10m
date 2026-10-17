@@ -9,7 +9,10 @@
  * their attributes and uniforms are read out of their source ("attribute vec4 aPosition;", "uniform vec4 uColor;"), every
  * compile and link succeeds and has a log saying so. glReadPixels gives R, G, B, A, or B, G, R, A with GL_BGRA_EXT, which
  * its extensions list. Contexts of OpenGL ES 2 and 3 are made; one of version 1 is refused unless asked for, as an ANGLE
- * without OpenGL ES 1 refuses it. All contexts share their objects. Anything it does not have is "no such function".
+ * without OpenGL ES 1 refuses it. All contexts share their objects. A texture keeps its pixels (glTexImage2D and
+ * glTexSubImage2D of RGBA, RGB and RGB 5-6-5); an EGL image of a texture (EGL_KHR_gl_texture_2D_image, which its EGL lists)
+ * shares them with a texture made of it (glEGLImageTargetTexture2DOES); a framebuffer object with a texture for its colour
+ * is what glClear fills and glReadPixels reads. Anything it does not have is "no such function".
  */
 #ifndef HK_GL_STANDIN_H
 #define HK_GL_STANDIN_H

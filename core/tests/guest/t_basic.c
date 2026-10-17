@@ -746,22 +746,56 @@ int t_surface_control(void)
 }
 
 /*
- * Hardware buffers (AHardwareBuffer, libandroid), as Chromium asks for them: by dlsym. None can be made here (no gralloc):
- * allocate answers NO_MEMORY with no buffer, isSupported says no. 3, or the negated step that failed.
+ * Hardware buffers (AHardwareBuffer, libandroid), as Chromium asks for them: by dlsym, a 64x64 R8G8B8A8 one for the
+ * graphics processor, and read as ANGLE reads one, through the ANativeWindowBuffer that is two pointers into it
+ * (android_util.cpp in AOSP's external/angle): its magic, width, height, format, layer count and usage there; a format no
+ * texture is made of refused with BAD_VALUE; written and read back through a lock; released. 6, or the negated step that
+ * failed.
  */
 int t_hardware_buffer(void)
 {
-    struct { unsigned width, height, layers, format; unsigned long long usage; unsigned stride, rfu0; unsigned long long rfu1; } desc = {
-        64, 64, 1, 1, 0x300, 0, 0, 0 };   /* 64x64 R8G8B8A8_UNORM, read and written by the graphics processor */
-    void *android = dlopen("libandroid.so", 0), *buffer = (void *)1;
-    int (*allocate)(const void *, void **), (*supported)(const void *);
+    struct desc { unsigned width, height, layers, format; unsigned long long usage; unsigned stride, rfu0; unsigned long long rfu1; };
+    struct anwb {   /* Android's ANativeWindowBuffer, as ANGLE declares it */
+        int magic, version;
+        void *reserved[4];
+        void (*inc_ref)(void *), (*dec_ref)(void *);
+        int width, height, stride, format, usage_deprecated;
+        unsigned layer_count;
+        void *reserved1;
+        const void *handle;
+        unsigned long long usage;
+        void *reserved_proc[6];
+    };
+    struct desc want = { 64, 64, 1, 1, 0x333, 0, 0, 0 }, fp16 = { 64, 64, 1, 0x16, 0x300, 0, 0, 0 }, got;
+    void *android = dlopen("libandroid.so", 0), *buffer = 0, *none = (void *)1;
+    unsigned char *px = 0;
+    const struct anwb *w;
+    int (*allocate)(const void *, void **), (*supported)(const void *), (*lock)(void *, unsigned long long, int, const void *, void **);
+    int (*unlock)(void *, int *);
+    void (*describe)(const void *, void *), (*release)(void *);
     if (!android) return -1;
     allocate = (int (*)(const void *, void **))dlsym(android, "AHardwareBuffer_allocate");
     supported = (int (*)(const void *))dlsym(android, "AHardwareBuffer_isSupported");
-    if (!allocate || !supported) return -1;
-    if (allocate(&desc, &buffer) != -12 || buffer) return -2;
-    if (supported(&desc) != 0) return -3;
-    return 3;
+    lock = (int (*)(void *, unsigned long long, int, const void *, void **))dlsym(android, "AHardwareBuffer_lock");
+    unlock = (int (*)(void *, int *))dlsym(android, "AHardwareBuffer_unlock");
+    describe = (void (*)(const void *, void *))dlsym(android, "AHardwareBuffer_describe");
+    release = (void (*)(void *))dlsym(android, "AHardwareBuffer_release");
+    if (!allocate || !supported || !lock || !unlock || !describe || !release) return -1;
+    if (supported(&want) != 1 || supported(&fp16) != 0 || allocate(&fp16, &none) != -22 || none) return -2;
+    if (allocate(&want, &buffer) != 0 || !buffer) return -3;
+    w = (const struct anwb *)((const char *)buffer + 2 * sizeof(void *));
+    if (sizeof(struct anwb) != 96 || w->magic != 0x5f626672 || w->version != 96 || w->width != 64 || w->height != 64 || w->stride != 64 ||
+        w->format != 1 || w->layer_count != 1 || w->usage != 0x333)
+        return -4;
+    describe(buffer, &got);
+    if (got.width != 64 || got.height != 64 || got.layers != 1 || got.format != 1 || got.stride != 64) return -5;
+    if (lock(buffer, 0x30, -1, 0, (void **)&px) != 0 || !px) return -6;
+    px[0] = 0x5a;
+    px[64 * 64 * 4 - 1] = 0xa5;
+    if (unlock(buffer, 0) != 0 || lock(buffer, 0x3, -1, 0, (void **)&px) != 0 || px[0] != 0x5a || px[64 * 64 * 4 - 1] != 0xa5) return -6;
+    unlock(buffer, 0);
+    release(buffer);
+    return 6;
 }
 
 /*

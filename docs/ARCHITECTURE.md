@@ -239,6 +239,16 @@ ANGLE's functions. This layer adds the display, the window, and the float adapte
   `SwapChainPanel` in the app's XAML.
 - `ANativeWindow_setBuffersGeometry` sets the size frames are rendered at, as on
   Android.
+- Hardware buffers (`AHardwareBuffer`, `ndk/hk_ahb.c`) are memory of the layer's
+  for the CPU and, from the first EGL image of one
+  (`EGL_ANDROID_image_native_buffer`), a texture of ANGLE's made for it in a
+  context of the layer's own, on a thread of its own that keeps that context
+  current (`ndk/hk_egl.c`); the image is an image of that texture
+  (`EGL_KHR_gl_texture_2D_image`). A lock for reading reads the texture back
+  when the graphics processor may have drawn into it; an unlock after writing
+  uploads what was written. A buffer is laid out as Android's `GraphicBuffer`
+  is on 32-bit ARM, its `ANativeWindowBuffer` two words in, where ANGLE looks.
+  Chromium's WebView draws a page's canvases and WebGL into them.
 
 *Proven:* the EGL and GLES plumbing, against a stand-in; and on a phone, that ANGLE
 loads from the package and makes a display and a context (Direct3D 11 at feature

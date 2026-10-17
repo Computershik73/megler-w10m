@@ -57,6 +57,17 @@ void hk_egl_probe(void (*line)(const char *fmt, ...));
  */
 bool hk_egl_external_upload(u32 external, u32 *helper, void **image, int *helper_w, int *helper_h, const u8 *rgba, int w, int h);
 
+/*
+ * Hardware buffers' textures (ndk/hk_ahb.c): an EGL image of a buffer's texture, made with the buffer's pixels the first
+ * time (NULL when none can be); the texture read back into the buffer's pixels; the pixels uploaded to it; the texture
+ * deleted. Each on a thread of this layer's that keeps a context of its own current.
+ */
+struct hk_ahb;
+void *hk_egl_ahb_image(struct hk_ahb *b);
+bool hk_egl_ahb_read(struct hk_ahb *b);
+bool hk_egl_ahb_upload(struct hk_ahb *b);
+void hk_egl_ahb_forget(struct hk_ahb *b);
+
 /* hk_gltex.c: the wrapper a texture-making function goes through (or `host` itself for any other), and what has been asked for so far. */
 void *hk_gltex_wrap(const char *name, void *host);
 void hk_gltex_report(char *out, size_t size);

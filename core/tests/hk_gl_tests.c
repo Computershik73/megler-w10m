@@ -17,6 +17,7 @@
 #include "../src/drivers/hk_java_gl.h"
 #include "../src/dvm/hk_dvm.h"
 #include "../src/dvm/hk_dvm_internal.h"
+#include "../src/bionic/hk_bionic.h"
 #include "../src/host/hk_host.h"
 #include "../src/ndk/hk_egl.h"
 #include "hk_gfx_tests.h"
@@ -270,6 +271,157 @@ static void test_version(void)
     say("  EGL %d.%d, \"%s\"", major, minor, version ? version : "(none)");
     CHECK(major == 1 && minor == 4);
     CHECK(version && !strncmp(version, "1.4", 3));
+}
+
+/*
+ * Hardware buffers (ndk/hk_ahb.c) and EGL images of them (hk_egl.c), as Chromium's GPU service and the ANGLE inside it use
+ * them, over the stand-in, whose textures keep their pixels and whose EGL images share them: a 4x2 R8G8B8A8 buffer laid out
+ * where ANGLE reads it (the ANativeWindowBuffer eight bytes in), written by the CPU, made an EGL image of with no context,
+ * a texture of the test's own made of that image and read through a framebuffer object (the CPU's pixels, rows in the
+ * buffer's order), cleared green by the graphics processor and locked for reading (green); formats refused; one sent
+ * through a socket of the process and received.
+ */
+static void test_hardware_buffers(void)
+{
+    typedef struct { u32 width, height, layers, format; u64 usage; u32 stride, rfu0; u64 rfu1; } desc_t;
+    typedef int (*alloc_fn)(const desc_t *, void **);
+    typedef void (*ref_fn)(void *);
+    typedef void (*describe_fn)(const void *, desc_t *);
+    typedef int (*supported_fn)(const desc_t *);
+    typedef int (*lock_fn)(void *, u64, i32, const void *, void **);
+    typedef int (*unlock_fn)(void *, i32 *);
+    typedef int (*send_fn)(const void *, int);
+    typedef int (*recv_fn)(int, void **);
+    typedef int (*socketpair_fn)(int, int, int, int *);
+    typedef int (*close_fn)(int);
+    alloc_fn allocate = (alloc_fn)hk_bionic_find("AHardwareBuffer_allocate");
+    ref_fn release = (ref_fn)hk_bionic_find("AHardwareBuffer_release");
+    describe_fn describe = (describe_fn)hk_bionic_find("AHardwareBuffer_describe");
+    supported_fn supported = (supported_fn)hk_bionic_find("AHardwareBuffer_isSupported");
+    lock_fn lock = (lock_fn)hk_bionic_find("AHardwareBuffer_lock");
+    unlock_fn unlock = (unlock_fn)hk_bionic_find("AHardwareBuffer_unlock");
+    send_fn send_handle = (send_fn)hk_bionic_find("AHardwareBuffer_sendHandleToUnixSocket");
+    recv_fn recv_handle = (recv_fn)hk_bionic_find("AHardwareBuffer_recvHandleFromUnixSocket");
+    socketpair_fn socketpair_ = (socketpair_fn)hk_bionic_find("socketpair");
+    close_fn close_ = (close_fn)hk_bionic_find("close");
+    void *(*get_display)(void *) = (void *(*)(void *))hk_egl_resolve("eglGetDisplay");
+    const char *(*query)(void *, int) = (const char *(*)(void *, int))hk_egl_resolve("eglQueryString");
+    void *(*client_of)(const void *) = (void *(*)(const void *))hk_egl_resolve("eglGetNativeClientBufferANDROID");
+    void *(*create_image)(void *, void *, unsigned, void *, const int *) =
+        (void *(*)(void *, void *, unsigned, void *, const int *))hk_egl_resolve("eglCreateImageKHR");
+    unsigned (*destroy_image)(void *, void *) = (unsigned (*)(void *, void *))hk_egl_resolve("eglDestroyImageKHR");
+    /* The test's own context and texture: the stand-in's own functions, as an app's GL would be its driver's. */
+    void *(*create_ctx)(void *, void *, void *, const int *) = (void *(*)(void *, void *, void *, const int *))hk_gl_standin("eglCreateContext");
+    unsigned (*make_current)(void *, void *, void *, void *) = (unsigned (*)(void *, void *, void *, void *))hk_gl_standin("eglMakeCurrent");
+    unsigned (*destroy_ctx)(void *, void *) = (unsigned (*)(void *, void *))hk_gl_standin("eglDestroyContext");
+    void (*gen_textures)(i32, u32 *) = (void (*)(i32, u32 *))hk_gl_standin("glGenTextures");
+    void (*delete_textures)(i32, const u32 *) = (void (*)(i32, const u32 *))hk_gl_standin("glDeleteTextures");
+    void (*bind_texture)(u32, u32) = (void (*)(u32, u32))hk_gl_standin("glBindTexture");
+    void (*target_image)(u32, void *) = (void (*)(u32, void *))hk_gl_standin("glEGLImageTargetTexture2DOES");
+    void (*gen_fbos)(i32, u32 *) = (void (*)(i32, u32 *))hk_gl_standin("glGenFramebuffers");
+    void (*bind_fbo)(u32, u32) = (void (*)(u32, u32))hk_gl_standin("glBindFramebuffer");
+    void (*fbo_texture)(u32, u32, u32, u32, i32) = (void (*)(u32, u32, u32, u32, i32))hk_gl_standin("glFramebufferTexture2D");
+    void (*read_pixels)(i32, i32, i32, i32, u32, u32, void *) = (void (*)(i32, i32, i32, i32, u32, u32, void *))hk_gl_standin("glReadPixels");
+    void (*clear_color)(float, float, float, float) = (void (*)(float, float, float, float))hk_gl_standin("glClearColor");
+    void (*clear)(u32) = (void (*)(u32))hk_gl_standin("glClear");
+    static const int es2[] = { 0x3098, 2, 0x3038 };
+    static const int preserved[] = { 0x30D2, 1, 0x3038 };
+    desc_t want = { 4, 2, 1, 1, 0x333, 0, 0, 0 }, got, fp16 = { 4, 2, 1, 0x16, 0x300, 0, 0, 0 };
+    void *b = NULL, *again = NULL, *client, *image, *ctx, *d, *bad = (void *)1;
+    u8 *px = NULL, read[32];
+    const u8 *anwb;
+    u32 tex = 0, fbo = 0, word;
+    int i, sv[2] = { -1, -1 }, fence = 0;
+    bool same = true, green = true;
+    say("Hardware buffers and EGL images of them (AHardwareBuffer, EGL_ANDROID_image_native_buffer)");
+    CHECK(allocate && release && describe && supported && lock && unlock && send_handle && recv_handle && client_of && create_image && destroy_image);
+    if (!allocate || !release || !describe || !supported || !lock || !unlock || !send_handle || !recv_handle || !client_of || !create_image ||
+        !destroy_image || !get_display || !query || !socketpair_ || !close_)
+        return;
+    d = get_display(NULL);
+    CHECK(query(d, 0x3055) && strstr(query(d, 0x3055), "EGL_ANDROID_image_native_buffer") &&
+          strstr(query(d, 0x3055), "EGL_ANDROID_get_native_client_buffer"));
+    CHECK(supported(&want) == 1);
+    CHECK(supported(&fp16) == 0);
+    CHECK(allocate(&fp16, &bad) == -22 && !bad);
+    CHECK(allocate(&want, &b) == 0 && b);
+    if (!b) return;
+    describe(b, &got);
+    CHECK(got.width == 4 && got.height == 2 && got.layers == 1 && got.format == 1 && got.usage == 0x333 && got.stride == 4);
+    /* Where ANGLE looks: the ANativeWindowBuffer at +8, its magic, size, width, height, stride, format, layer count, usage. */
+    anwb = (const u8 *)b + 8;
+    memcpy(&word, anwb, 4);
+    CHECK_HEX(word, 0x5f626672);
+    memcpy(&word, anwb + 4, 4);
+    CHECK(word == 96);
+    memcpy(&word, anwb + 32, 4);
+    CHECK(word == 4);
+    memcpy(&word, anwb + 36, 4);
+    CHECK(word == 2);
+    memcpy(&word, anwb + 40, 4);
+    CHECK(word == 4);
+    memcpy(&word, anwb + 44, 4);
+    CHECK(word == 1);
+    memcpy(&word, anwb + 52, 4);
+    CHECK(word == 1);
+    memcpy(&word, anwb + 64, 4);
+    CHECK_HEX(word, 0x333);
+    /* The CPU writes: pixel i is (i * 30, 255 - i * 30, i, 255). */
+    CHECK(lock(b, 0x30, -1, NULL, (void **)&px) == 0 && px);
+    if (!px) return;
+    for (i = 0; i < 8; i++) {
+        px[i * 4] = (u8)(i * 30);
+        px[i * 4 + 1] = (u8)(255 - i * 30);
+        px[i * 4 + 2] = (u8)i;
+        px[i * 4 + 3] = 255;
+    }
+    CHECK(unlock(b, &fence) == 0 && fence == -1);
+    client = client_of(b);
+    CHECK(client == (void *)anwb);
+    image = create_image(d, NULL, 0x3140, client, preserved);
+    CHECK(image != NULL);
+    CHECK(create_image(d, NULL, 0x3140, (void *)read, preserved) == NULL);
+    if (!image) {
+        release(b);
+        return;
+    }
+    /* A texture of the test's own made of the image, read through a framebuffer object: what the CPU wrote. */
+    ctx = create_ctx(d, NULL, NULL, es2);
+    CHECK(ctx && make_current(d, NULL, NULL, ctx));
+    gen_textures(1, &tex);
+    bind_texture(0x0DE1, tex);
+    target_image(0x0DE1, image);
+    gen_fbos(1, &fbo);
+    bind_fbo(0x8D40, fbo);
+    fbo_texture(0x8D40, 0x8CE0, 0x0DE1, tex, 0);
+    memset(read, 0, sizeof(read));
+    read_pixels(0, 0, 4, 2, 0x1908, 0x1401, read);
+    for (i = 0; i < 32; i++)
+        if (read[i] != px[i]) same = false;
+    CHECK(same);
+    /* The graphics processor draws into it; a lock for reading sees that. */
+    clear_color(0, 1, 0, 1);
+    clear(0x4000);
+    CHECK(lock(b, 0x3, -1, NULL, (void **)&px) == 0 && px);
+    for (i = 0; px && i < 8; i++)
+        if (px[i * 4] != 0 || px[i * 4 + 1] != 255 || px[i * 4 + 2] != 0 || px[i * 4 + 3] != 255) green = false;
+    CHECK(green);
+    CHECK(unlock(b, NULL) == 0);
+    say("  4x2 R8G8B8A8: written %s, drawn into %s", same ? "and read through an EGL image" : "and NOT read back", green ? "and read by the CPU" : "and NOT read back");
+    bind_fbo(0x8D40, 0);
+    delete_textures(1, &tex);
+    make_current(d, NULL, NULL, NULL);
+    destroy_ctx(d, ctx);
+    CHECK(destroy_image(d, image));
+    /* Through a socket of the process: the same buffer, with a reference for the receiver. */
+    CHECK(socketpair_(1, 1, 0, sv) == 0);
+    CHECK(send_handle(b, sv[0]) == 0);
+    CHECK(recv_handle(sv[1], &again) == 0 && again == b);
+    close_(sv[0]);
+    close_(sv[1]);
+    if (again) release(again);
+    release(b);
+    CHECK(hk_bionic_find("AHardwareBuffer_getId") != NULL);
 }
 
 static void test_calls(void)
@@ -768,6 +920,7 @@ int hk_gl_natives_tests_run(hk_test_sink sink, void *user, int *checks)
     hk_gl_standin_reset(true, false);
     hk_java_gl_reset();
     test_version();
+    test_hardware_buffers();
     test_calls();
     test_buffers();
     hk_gl_standin_reset(true, false);

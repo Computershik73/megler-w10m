@@ -6,6 +6,7 @@
 #include "../hk_core.h"
 #include "../host/hk_host.h"
 #include "../run/hk_run.h"
+#include "hk_ahb.h"
 #include "hk_ndk.h"
 
 /* ------------------------------------------------------------- the source */
@@ -169,53 +170,63 @@ static EGLDisplay make_display(void)
  * So these few things are done on a thread of this layer's own, which never
  * ends; the thread that asked waits for it.
  */
-static struct {
+typedef struct service {
     hk_lock lock;
     hk_cond wake, done;
     void (*fn)(void *);
     void *arg;
     u32 posted, finished;
     hk_thread *thread;
-} G_SERVICE = { HK_LOCK_INIT, HK_COND_INIT, HK_COND_INIT, 0, 0, 0, 0, 0 };
+    const char *name;
+} service;
 
-static void service_main(void *unused)
+/*
+ * Two such threads: this one, and one for hardware buffers' textures (below), which keeps a context of the layer's own
+ * current, and whose jobs come from the app's graphics threads while this one may be waiting for the shell.
+ */
+static service G_SERVICE = { HK_LOCK_INIT, HK_COND_INIT, HK_COND_INIT, 0, 0, 0, 0, 0, "graphics-service" };
+static service G_BUFFERS = { HK_LOCK_INIT, HK_COND_INIT, HK_COND_INIT, 0, 0, 0, 0, 0, "graphics-buffers" };
+
+static void service_main(void *p)
 {
-    (void)unused;
-    hk_lock_acquire(&G_SERVICE.lock);
+    service *s = (service *)p;
+    hk_lock_acquire(&s->lock);
     for (;;) {
         void (*fn)(void *);
         void *arg;
-        while (!G_SERVICE.fn) hk_cond_wait(&G_SERVICE.wake, &G_SERVICE.lock);
-        fn = G_SERVICE.fn;
-        arg = G_SERVICE.arg;
-        hk_lock_release(&G_SERVICE.lock);
+        while (!s->fn) hk_cond_wait(&s->wake, &s->lock);
+        fn = s->fn;
+        arg = s->arg;
+        hk_lock_release(&s->lock);
         fn(arg);
-        hk_lock_acquire(&G_SERVICE.lock);
-        G_SERVICE.fn = NULL;
-        G_SERVICE.finished++;
-        hk_cond_broadcast(&G_SERVICE.done);
+        hk_lock_acquire(&s->lock);
+        s->fn = NULL;
+        s->finished++;
+        hk_cond_broadcast(&s->done);
     }
 }
 
-static void on_service_thread(void (*fn)(void *), void *arg)
+static void run_on(service *s, void (*fn)(void *), void *arg)
 {
     u32 mine;
-    hk_lock_acquire(&G_SERVICE.lock);
-    if (!G_SERVICE.thread) G_SERVICE.thread = hk_thread_start(service_main, NULL, 512 * 1024, "graphics-service");
-    if (!G_SERVICE.thread) {
-        hk_lock_release(&G_SERVICE.lock);
+    hk_lock_acquire(&s->lock);
+    if (!s->thread) s->thread = hk_thread_start(service_main, s, 512 * 1024, s->name);
+    if (!s->thread) {
+        hk_lock_release(&s->lock);
         fn(arg);
         return;
     }
     /* One job at a time, in the order asked. */
-    while (G_SERVICE.fn) hk_cond_wait(&G_SERVICE.done, &G_SERVICE.lock);
-    G_SERVICE.fn = fn;
-    G_SERVICE.arg = arg;
-    mine = ++G_SERVICE.posted;
-    hk_cond_broadcast(&G_SERVICE.wake);
-    while ((i32)(G_SERVICE.finished - mine) < 0) hk_cond_wait(&G_SERVICE.done, &G_SERVICE.lock);
-    hk_lock_release(&G_SERVICE.lock);
+    while (s->fn) hk_cond_wait(&s->done, &s->lock);
+    s->fn = fn;
+    s->arg = arg;
+    mine = ++s->posted;
+    hk_cond_broadcast(&s->wake);
+    while ((i32)(s->finished - mine) < 0) hk_cond_wait(&s->done, &s->lock);
+    hk_lock_release(&s->lock);
 }
+
+static void on_service_thread(void (*fn)(void *), void *arg) { run_on(&G_SERVICE, fn, arg); }
 
 /* What the shell is asked for, as jobs for that thread. */
 typedef struct shell_job {
@@ -366,10 +377,13 @@ static EGLBoolean g_eglInitialize(EGLDisplay d, EGLint *major, EGLint *minor)
     return 1;
 }
 
+static const char *buffer_extensions(const char *angle);
+
 static const char *g_eglQueryString(EGLDisplay d, EGLint name)
 {
     fn_query_string real = A(fn_query_string, "eglQueryString");
     if (name == EGL_VERSION && d && d == display() && g_told_version[0]) return g_told_version;
+    if (name == EGL_EXTENSIONS && d && d == display()) return buffer_extensions(real ? real(d, name) : NULL);
     return real ? real(d, name) : NULL;
 }
 
@@ -610,6 +624,258 @@ static EGLBoolean g_eglSwapInterval(EGLDisplay d, EGLint interval) { (void)d; (v
 
 static void *g_eglGetProcAddress(const char *name) { return hk_egl_resolve(name); }
 
+/* --------------------------------------------------------- hardware buffers
+ *
+ * Android's EGL makes images of hardware buffers (EGL_ANDROID_image_native_buffer, ndk/hk_ahb.c): what Chromium's GPU
+ * service draws a page's canvases and WebGL into. ANGLE has no such buffers, so a buffer's image is an image of a texture
+ * of ANGLE's made for it in a context of the layer's own (EGL_KHR_gl_texture_2D_image), on a thread of the layer's own that
+ * keeps that context current: G_BUFFERS. The extensions are named where ANGLE has images of textures; an image of a
+ * buffer is asked for with no context (EGL_NO_CONTEXT), which is the spec's.
+ */
+#define EGL_NATIVE_BUFFER_ANDROID 0x3140
+#define EGL_GL_TEXTURE_2D_KHR 0x30B1
+#define EGL_IMAGE_PRESERVED_KHR 0x30D2
+#define EGL_BAD_PARAMETER 0x300C
+
+typedef void *(*fn_create_image)(EGLDisplay, EGLContext, EGLenum, void *, const EGLint *);
+
+static hk_lock g_ext_lock = HK_LOCK_INIT;
+static const char *g_ext_from;         /* ANGLE's string, as it was when g_ext was made of it */
+static char *g_ext;
+static EGLContext g_buffer_ctx;        /* the layer's own, current on G_BUFFERS */
+static u32 g_buffer_fbo;
+
+/* Whether an extension is named in a list of them. */
+static bool has_ext(const char *list, const char *name)
+{
+    size_t n = strlen(name);
+    const char *at = list;
+    while (list && (at = strstr(at, name)) != NULL) {
+        if ((at == list || at[-1] == ' ') && (at[n] == ' ' || at[n] == 0)) return true;
+        at += n;
+    }
+    return false;
+}
+
+/* ANGLE's extensions, and the two of hardware buffers where ANGLE has what they are made of. */
+static const char *buffer_extensions(const char *angle)
+{
+    static const char more[] = " EGL_ANDROID_get_native_client_buffer EGL_ANDROID_image_native_buffer";
+    const char *out;
+    if (!angle || !has_ext(angle, "EGL_KHR_image_base") || !has_ext(angle, "EGL_KHR_gl_texture_2D_image")) return angle;
+    hk_lock_acquire(&g_ext_lock);
+    if (g_ext_from != angle || !g_ext) {
+        char *ext = (char *)hk_alloc(strlen(angle) + sizeof(more));
+        strcpy(ext, angle);
+        strcat(ext, more);
+        /* (One made before may still be read by whoever asked for it then: it is kept.) */
+        g_ext = ext;
+        g_ext_from = angle;
+    }
+    out = g_ext;
+    hk_lock_release(&g_ext_lock);
+    return out;
+}
+
+/* On G_BUFFERS: the layer's own context, current there from the first job on. */
+static bool buffer_context(void)
+{
+    static const EGLint es2[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
+    fn_create_context create = A(fn_create_context, "eglCreateContext");
+    fn_make_current make = A(fn_make_current, "eglMakeCurrent");
+    EGLContext ctx;
+    EGLSurface surface = NULL;
+    if (g_buffer_ctx) return true;
+    if (!display() || !create || !make) return false;
+    ctx = create(g_display, NULL, NULL, es2);
+    if (!ctx || !make(g_display, NULL, NULL, ctx)) {
+        /* Without contexts that need no configuration, or none current without a surface: a configuration's, over a pbuffer. */
+        static const EGLint want[] = { EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT, EGL_SURFACE_TYPE, EGL_PBUFFER_BIT, EGL_RED_SIZE, 8, EGL_NONE };
+        static const EGLint one[] = { EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE };
+        fn_choose_config choose = A(fn_choose_config, "eglChooseConfig");
+        fn_pbuffer pbuffer = A(fn_pbuffer, "eglCreatePbufferSurface");
+        fn_destroy_context destroy = A(fn_destroy_context, "eglDestroyContext");
+        EGLConfig config = NULL;
+        EGLint n = 0;
+        if (ctx && destroy) destroy(g_display, ctx);
+        ctx = NULL;
+        if (choose && pbuffer && choose(g_display, want, &config, 1, &n) && n > 0) {
+            ctx = create(g_display, config, NULL, es2);
+            surface = ctx ? pbuffer(g_display, config, one) : NULL;
+        }
+        if (!ctx || !surface || !make(g_display, surface, surface, ctx)) {
+            hk_err("egl: no context of the layer's own for hardware buffers' textures; no image of one can be made");
+            return false;
+        }
+    }
+    g_buffer_ctx = ctx;
+    return true;
+}
+
+enum { J_IMAGE, J_READ, J_UPLOAD, J_FORGET };
+typedef struct buffer_job {
+    hk_ahb *b;
+    int what;
+    void *image;
+    bool ok;
+} buffer_job;
+
+static void buffer_job_run(void *p)
+{
+    enum {
+        TEXTURE_2D = 0x0DE1, LINEAR = 0x2601, CLAMP_TO_EDGE = 0x812F, MIN_FILTER = 0x2801, MAG_FILTER = 0x2800, WRAP_S = 0x2802,
+        WRAP_T = 0x2803, UNPACK_ALIGNMENT = 0x0CF5, PACK_ALIGNMENT = 0x0D05, FRAMEBUFFER = 0x8D40, COLOR_ATTACHMENT0 = 0x8CE0,
+        RGBA = 0x1908, UNSIGNED_BYTE = 0x1401, UNSIGNED_SHORT_5_6_5 = 0x8363
+    };
+    typedef void (*fn_gen)(i32, u32 *);
+    typedef void (*fn_bind)(u32, u32);
+    typedef void (*fn_param)(u32, u32, i32);
+    typedef void (*fn_storei)(u32, i32);
+    typedef void (*fn_image)(u32, i32, i32, i32, i32, i32, u32, u32, const void *);
+    typedef void (*fn_sub_image)(u32, i32, i32, i32, i32, i32, u32, u32, const void *);
+    typedef void (*fn_read)(i32, i32, i32, i32, u32, u32, void *);
+    typedef void (*fn_fbo_texture)(u32, u32, u32, u32, i32);
+    static const EGLint preserved[] = { EGL_IMAGE_PRESERVED_KHR, 1, EGL_NONE };
+    buffer_job *j = (buffer_job *)p;
+    hk_ahb *b = j->b;
+    fn_gen gen = A(fn_gen, "glGenTextures"), del = A(fn_gen, "glDeleteTextures"), gen_fbo = A(fn_gen, "glGenFramebuffers");
+    fn_bind bind = A(fn_bind, "glBindTexture"), bind_fbo = A(fn_bind, "glBindFramebuffer");
+    fn_param param = A(fn_param, "glTexParameteri");
+    fn_storei storei = A(fn_storei, "glPixelStorei");
+    fn_image tex_image = A(fn_image, "glTexImage2D");
+    fn_sub_image sub_image = A(fn_sub_image, "glTexSubImage2D");
+    fn_read read = A(fn_read, "glReadPixels");
+    fn_fbo_texture fbo_texture = A(fn_fbo_texture, "glFramebufferTexture2D");
+    fn_gl_void flush = A(fn_gl_void, "glFlush");
+    fn_create_image create_image = A(fn_create_image, "eglCreateImageKHR");
+    u32 format, type, w = b->width, h = b->height;
+    if (!gen || !bind || !param || !storei || !tex_image || !sub_image || !flush || !buffer_context() || !hk_ahb_gl_format(b, &format, &type)) return;
+    switch (j->what) {
+    case J_IMAGE:
+        if (!create_image) return;
+        if (!b->texture) {
+            gen(1, &b->texture);
+            bind(TEXTURE_2D, b->texture);
+            param(TEXTURE_2D, MIN_FILTER, LINEAR);
+            param(TEXTURE_2D, MAG_FILTER, LINEAR);
+            param(TEXTURE_2D, WRAP_S, CLAMP_TO_EDGE);
+            param(TEXTURE_2D, WRAP_T, CLAMP_TO_EDGE);
+            storei(UNPACK_ALIGNMENT, 1);
+            tex_image(TEXTURE_2D, 0, (i32)format, (i32)w, (i32)h, 0, format, type, b->pixels);
+            b->cpu_newer = false;
+        } else if (b->cpu_newer && b->pixels) {
+            bind(TEXTURE_2D, b->texture);
+            storei(UNPACK_ALIGNMENT, 1);
+            sub_image(TEXTURE_2D, 0, 0, 0, (i32)w, (i32)h, format, type, b->pixels);
+            b->cpu_newer = false;
+        }
+        j->image = create_image(g_display, g_buffer_ctx, EGL_GL_TEXTURE_2D_KHR, (void *)(hk_addr)b->texture, preserved);
+        flush();
+        j->ok = j->image != NULL;
+        break;
+    case J_READ:
+        if (!b->texture || !b->pixels || !read || !bind_fbo || !fbo_texture || (!g_buffer_fbo && !gen_fbo)) return;
+        if (!g_buffer_fbo) gen_fbo(1, &g_buffer_fbo);
+        bind_fbo(FRAMEBUFFER, g_buffer_fbo);
+        fbo_texture(FRAMEBUFFER, COLOR_ATTACHMENT0, TEXTURE_2D, b->texture, 0);
+        storei(PACK_ALIGNMENT, 1);
+        if (format == RGBA) {
+            read(0, 0, (i32)w, (i32)h, RGBA, UNSIGNED_BYTE, b->pixels);
+        } else {
+            /* What every OpenGL ES reads, R, G, B, A bytes, packed into the buffer's own format. */
+            u8 *rgba = (u8 *)malloc((size_t)w * h * 4);
+            size_t i, n = (size_t)w * h;
+            if (rgba) {
+                read(0, 0, (i32)w, (i32)h, RGBA, UNSIGNED_BYTE, rgba);
+                for (i = 0; i < n; i++) {
+                    const u8 *s = rgba + i * 4;
+                    if (type == UNSIGNED_SHORT_5_6_5) {
+                        u16 v = (u16)(((s[0] >> 3) << 11) | ((s[1] >> 2) << 5) | (s[2] >> 3));
+                        b->pixels[i * 2] = (u8)v;
+                        b->pixels[i * 2 + 1] = (u8)(v >> 8);
+                    } else {
+                        memcpy(b->pixels + i * 3, s, 3);
+                    }
+                }
+                free(rgba);
+            }
+        }
+        fbo_texture(FRAMEBUFFER, COLOR_ATTACHMENT0, TEXTURE_2D, 0, 0);
+        bind_fbo(FRAMEBUFFER, 0);
+        j->ok = true;
+        break;
+    case J_UPLOAD:
+        if (!b->texture || !b->pixels) return;
+        bind(TEXTURE_2D, b->texture);
+        storei(UNPACK_ALIGNMENT, 1);
+        sub_image(TEXTURE_2D, 0, 0, 0, (i32)w, (i32)h, format, type, b->pixels);
+        flush();
+        j->ok = true;
+        break;
+    case J_FORGET:
+        /* Images made of it keep what they show: an EGL image outlives its texture. */
+        if (b->texture && del) del(1, &b->texture);
+        b->texture = 0;
+        flush();
+        j->ok = true;
+        break;
+    }
+}
+
+static bool buffer_job_do(hk_ahb *b, int what, void **image)
+{
+    buffer_job j;
+    memset(&j, 0, sizeof(j));
+    j.b = b;
+    j.what = what;
+    run_on(&G_BUFFERS, buffer_job_run, &j);
+    if (image) *image = j.image;
+    return j.ok;
+}
+
+void *hk_egl_ahb_image(hk_ahb *b)
+{
+    void *image = NULL;
+    hk_lock_acquire(&b->lock);
+    buffer_job_do(b, J_IMAGE, &image);
+    hk_lock_release(&b->lock);
+    return image;
+}
+bool hk_egl_ahb_read(hk_ahb *b) { return buffer_job_do(b, J_READ, NULL); }
+bool hk_egl_ahb_upload(hk_ahb *b) { return buffer_job_do(b, J_UPLOAD, NULL); }
+void hk_egl_ahb_forget(hk_ahb *b) { buffer_job_do(b, J_FORGET, NULL); }
+
+static void *g_eglGetNativeClientBufferANDROID(const void *buffer)
+{
+    hk_ahb *b = hk_ahb_of(buffer);
+    if (!b) {
+        g_error = EGL_BAD_PARAMETER;
+        return NULL;
+    }
+    return (u8 *)b + HK_AHB_ANWB_OFFSET;
+}
+
+static void *g_eglCreateImageKHR(EGLDisplay d, EGLContext ctx, EGLenum target, void *buffer, const EGLint *attribs)
+{
+    fn_create_image real = A(fn_create_image, "eglCreateImageKHR");
+    if (target == EGL_NATIVE_BUFFER_ANDROID) {
+        hk_ahb *b = hk_ahb_of_client_buffer(buffer);
+        void *image;
+        if (!d || d != display()) {
+            g_error = EGL_BAD_DISPLAY;
+            return NULL;
+        }
+        if (!b) {
+            g_error = EGL_BAD_PARAMETER;
+            return NULL;
+        }
+        image = hk_egl_ahb_image(b);
+        if (!image) g_error = EGL_BAD_ALLOC;
+        return image;
+    }
+    return real ? real(d, ctx, target, buffer, attribs) : NULL;
+}
+
 /* ----------------------------------------------- GLES functions with floats
  *
  * One adapter per function: it receives each float as the 32 bits the guest
@@ -663,6 +929,8 @@ static const hk_sym g_egl_overrides[] = {
     HK_WRAP("eglGetDisplay", g_eglGetDisplay),
     HK_WRAP("eglInitialize", g_eglInitialize),
     HK_WRAP("eglQueryString", g_eglQueryString),
+    HK_WRAP("eglGetNativeClientBufferANDROID", g_eglGetNativeClientBufferANDROID),
+    HK_WRAP("eglCreateImageKHR", g_eglCreateImageKHR),
     HK_WRAP("eglTerminate", g_eglTerminate),
     HK_WRAP("eglChooseConfig", g_eglChooseConfig),
     HK_WRAP("eglGetConfigAttrib", g_eglGetConfigAttrib),
