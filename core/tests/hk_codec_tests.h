@@ -26,7 +26,8 @@ int hk_codec_tests_run(const char *streams, const struct megler_codec_host *host
  * How fast the host's picture decoders are, with the core's codec over them as MediaCodec has it: the streams
  * `tools/media-test-streams.py --speed` makes (H.264 at 720p and 1080p, H.265 at 1080p, two seconds of a moving picture
  * each), those of them that are in `streams`, each decoded whole as fast as it goes: the time a picture takes to decode
- * and to be turned into a bitmap (renderFrame), and how many units went in before the first picture came out. Checked:
+ * and to be turned into a bitmap (renderFrame), and how many units went in before the first picture came out; and first
+ * renderFrame alone, on a made-up picture of 1920 x 1080 with no decoder at work beside it. Checked:
  * every picture came out, in order, at the stream's size. Returns the number of failed checks and adds the number made
  * to *checks.
  */

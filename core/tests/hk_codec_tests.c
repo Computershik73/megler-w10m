@@ -613,6 +613,38 @@ static void speed_of(const char *dir, const char *file)
     stream_free(&s);
 }
 
+/* renderFrame alone, with no decoder at work beside it: a picture of 1920 x 1080 in NV12 into a bitmap, the best of ten. */
+static void speed_of_render(void)
+{
+    enum { W = 1920, H = 1080 };
+    u8 *nv12 = (u8 *)hk_alloc((size_t)W * H * 3 / 2), *bgra = (u8 *)hk_alloc((size_t)W * H * 4);
+    megler_codec_picture p;
+    u64 best = (u64)-1;
+    u32 seed = 1;
+    size_t i;
+    int run;
+    for (i = 0; i < (size_t)W * H * 3 / 2; i++) {
+        seed = seed * 1103515245u + 12345u;
+        nv12[i] = (u8)(seed >> 16);
+    }
+    memset(&p, 0, sizeof(p));
+    p.format = MEGLER_CODEC_NV12;
+    p.width = W;
+    p.height = H;
+    p.data = nv12;
+    p.chroma = nv12 + (size_t)W * H;
+    p.stride = p.chroma_stride = W;
+    for (run = 0; run < 10; run++) {
+        u64 t = hk_time_monotonic_ns();
+        hk_mcodec_render(&p, bgra, W, H, W * 4);
+        t = hk_time_monotonic_ns() - t;
+        if (t < best) best = t;
+    }
+    say("renderFrame alone: a picture of %dx%d in NV12 into a bitmap in %.2f ms (the best of ten)", W, H, (double)best / 1e6);
+    free(nv12);
+    free(bgra);
+}
+
 int hk_codec_speed_run(const char *streams, const struct megler_codec_host *host, hk_test_sink sink, void *user, int *checks)
 {
     g_checks = g_failed = 0;
@@ -620,6 +652,7 @@ int hk_codec_speed_run(const char *streams, const struct megler_codec_host *host
     g_sink_user = user;
     hk_java_media_set_host(host);
     say("how fast the decoders behind MediaCodec are (the streams in %s)", streams);
+    speed_of_render();
     speed_of(streams, "speed-avc-720p.hkau");
     speed_of(streams, "speed-avc-1080p.hkau");
     speed_of(streams, "speed-hevc-1080p.hkau");

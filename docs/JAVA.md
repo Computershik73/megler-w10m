@@ -3600,7 +3600,8 @@ What the core does between an app's buffers and that call:
 - **A picture to the screen.** `renderFrame` turns the shell's picture into
   the `Bitmap` MediaCodec draws: NV12 to colour with BT.601 or BT.709, video
   range or full, as the stream says, and as Android does when it says
-  nothing (BT.601 under 720 lines, BT.709 from there).
+  nothing (BT.601 under 720 lines, BT.709 from there), from tables, a block
+  of 2 x 2 pixels at a time.
 
 `MediaCodecList` (the overlay's) lists a decoder for each kind the shell
 says it has.
@@ -3673,7 +3674,14 @@ The tests:
   this PC (the test program's `/O1`), H.264 at 720p 3.2 ms a picture to
   decode and 4.3 ms for `renderFrame` to turn it into a bitmap, at 1080p
   5.7 and 9.8 ms, H.265 at 1080p 3.9 and 10.6 ms; the first picture after 3
-  units (three B-pictures between references; H.265 after 4).
+  units (three B-pictures between references; H.265 after 4). The
+  conversion cost more than the decoding, so `renderFrame` takes its terms
+  from tables now and does a block of 2 x 2 pixels at a time, the pixels
+  unchanged: a picture of 1920 x 1080 in 3.8 ms where it took 13.0, built as
+  the app is (`/O2`). The speed run times it alone first, with no decoder at
+  work beside it (4.4 ms in a `/O2` build of the test program, 6.8 in the
+  usual `/O1` one); with the decoder's threads at work beside it the times
+  wander by a half.
 - the same on a phone: `tools/build-appx.sh arm --auto codec` packs the
   streams and makes the timed ones into the package's folder `codec`, and
   the auto run goes through both with the phone's own decoders, a line each
