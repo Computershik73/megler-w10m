@@ -40,6 +40,8 @@ void hk_java_keyboard_height(int pixels);
 
 /* hk_java_sqlite.c: megler.Sqlite's native methods, on the SQLite compiled into the core -- or, in a build without it, their refusal. */
 const hk_jhle *hk_java_sqlite_natives(void);
+/* megler.Audio: AudioTrack, MediaPlayer and SoundPool (hk_java_audio.c). */
+const hk_jhle *hk_java_audio_natives(void);
 
 #ifdef __cplusplus
 }

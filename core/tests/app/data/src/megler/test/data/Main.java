@@ -298,6 +298,7 @@ public class Main extends Activity {
         storageStats();
         broadcastExplicit();
         mediaMetadata();
+        sound();
         network();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
@@ -1041,10 +1042,20 @@ public class Main extends Activity {
             };
             registerReceiver(r, new android.content.IntentFilter("megler.test.RELAY"));
             sendBroadcast(new android.content.Intent("megler.test.RELAY"));
-            new android.os.Handler().postDelayed(() -> {
-                unregisterReceiver(r);
-                boolean held = relayHeard == 1 && targetHeard == 1 && offHeard == 0 && registered[0] == 1;
-                Log.i("DataTest", "broadcast-relay " + (held ? "ok" : "FAILED") + " relay=" + relayHeard + " target=" + targetHeard + " off=" + offHeard + " registered=" + registered[0]);
+            /* Looked at once the main thread is free, and again while the relay has gone out and not arrived, for up to two seconds. */
+            final android.os.Handler h = new android.os.Handler();
+            h.postDelayed(new Runnable() {
+                int looks;
+
+                @Override public void run() {
+                    if (++looks < 10 && relayHeard >= 1 && targetHeard == 0) {
+                        h.postDelayed(this, 200);
+                        return;
+                    }
+                    unregisterReceiver(r);
+                    boolean held = relayHeard == 1 && targetHeard == 1 && offHeard == 0 && registered[0] == 1;
+                    Log.i("DataTest", "broadcast-relay " + (held ? "ok" : "FAILED") + " relay=" + relayHeard + " target=" + targetHeard + " off=" + offHeard + " registered=" + registered[0]);
+                }
             }, 1500);
             return true;
         });
@@ -1078,6 +1089,86 @@ public class Main extends Activity {
                     && back.getLong(android.media.MediaMetadata.METADATA_KEY_DURATION) == 215000 && back.equals(m)
                     && "Someone".contentEquals(back.getDescription().getSubtitle())
                     && "From compat".equals(fromCompat.getString(android.media.MediaMetadata.METADATA_KEY_TITLE));
+        });
+    }
+
+    /** `frames` of a 440 Hz tone at `rate`, 16-bit mono, as a WAV file. */
+    private static void writeWav(java.io.File f, int rate, int frames) throws java.io.IOException {
+        java.nio.ByteBuffer b = java.nio.ByteBuffer.allocate(44 + frames * 2).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        b.put("RIFF".getBytes()).putInt(36 + frames * 2).put("WAVE".getBytes()).put("fmt ".getBytes()).putInt(16).putShort((short) 1)
+                .putShort((short) 1).putInt(rate).putInt(rate * 2).putShort((short) 2).putShort((short) 16).put("data".getBytes()).putInt(frames * 2);
+        for (int i = 0; i < frames; i++) b.putShort((short) (Math.sin(i * 2 * Math.PI * 440 / rate) * 8000));
+        try (java.io.FileOutputStream out = new java.io.FileOutputStream(f)) {
+            out.write(b.array());
+        }
+    }
+
+    /**
+     * Sound from Java, which megler.Audio plays: a playing AudioTrack takes a second of PCM in about a second, as its blocking
+     * write does; a MediaPlayer plays a WAV the step writes and an Ogg Vorbis asset (tone.ogg: 440 Hz, half a second, 22050 Hz
+     * mono, made with ffmpeg's libvorbis) through its descriptor, and says when each has played to its end; a SoundPool loads
+     * the Ogg and plays it once it is loaded. The later lines are checked by the test.
+     */
+    private void sound() {
+        step("audio-track", () -> {
+            int rate = 22050;
+            android.media.AudioTrack t = new android.media.AudioTrack(android.media.AudioManager.STREAM_MUSIC, rate, android.media.AudioFormat.CHANNEL_OUT_MONO,
+                    android.media.AudioFormat.ENCODING_PCM_16BIT, rate, android.media.AudioTrack.MODE_STREAM);
+            short[] pcm = new short[rate];
+            for (int i = 0; i < pcm.length; i++) pcm[i] = (short) (Math.sin(i * 2 * Math.PI * 440 / rate) * 8000);
+            t.play();
+            long t0 = System.nanoTime();
+            int written = t.write(pcm, 0, pcm.length);
+            long ms = (System.nanoTime() - t0) / 1000000;
+            int head = t.getPlaybackHeadPosition();
+            t.stop();
+            t.release();
+            detail = "wrote " + written + " in " + ms + " ms, head at " + head;
+            return written == rate && ms >= 600 && head > 0;
+        });
+        step("media-player", () -> {
+            java.io.File wav = new java.io.File(getCacheDir(), "tone.wav");
+            writeWav(wav, 22050, 11025);
+            android.media.MediaPlayer mp = new android.media.MediaPlayer();
+            mp.setDataSource(wav.getPath());
+            mp.prepare();
+            int duration = mp.getDuration();
+            final long t0 = System.nanoTime();
+            mp.setOnCompletionListener(p -> {
+                long ms = (System.nanoTime() - t0) / 1000000;
+                Log.i("DataTest", "media-player-done " + (ms >= 300 ? "ok" : "FAILED") + " after " + ms + " ms");
+                p.release();
+            });
+            mp.start();
+            detail = "duration " + duration + " ms";
+            return duration >= 450 && duration <= 550;
+        });
+        step("media-player-ogg", () -> {
+            android.content.res.AssetFileDescriptor afd = getAssets().openFd("tone.ogg");
+            android.media.MediaPlayer mp = new android.media.MediaPlayer();
+            mp.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
+            mp.prepare();
+            afd.close();
+            int duration = mp.getDuration();
+            final long t0 = System.nanoTime();
+            mp.setOnCompletionListener(p -> {
+                long ms = (System.nanoTime() - t0) / 1000000;
+                Log.i("DataTest", "media-player-ogg-done " + (ms >= 300 ? "ok" : "FAILED") + " after " + ms + " ms");
+                p.release();
+            });
+            mp.start();
+            detail = "duration " + duration + " ms";
+            return duration >= 450 && duration <= 550;
+        });
+        step("sound-pool", () -> {
+            android.media.SoundPool pool = new android.media.SoundPool(4, android.media.AudioManager.STREAM_MUSIC, 0);
+            pool.setOnLoadCompleteListener((p, id, status) -> {
+                int stream = status == 0 ? p.play(id, 1f, 1f, 0, 0, 1f) : 0;
+                Log.i("DataTest", "sound-pool-played " + (stream > 0 ? "ok" : "FAILED") + " status=" + status + " stream=" + stream);
+            });
+            int id = pool.load(getAssets().openFd("tone.ogg"), 1);
+            detail = "load gave " + id;
+            return id > 0;
         });
     }
 

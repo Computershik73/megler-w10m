@@ -13,7 +13,13 @@
  *     the ring is filled with silence, so the first callbacks come at once;
  *   - AAudioStream_write: the app's frames are copied into the ring, and the
  *     call waits, up to its timeout, while every buffer is waiting to be
- *     played.
+ *     played. What a write leaves in a buffer it did not fill goes to the
+ *     mixer as it is, a shorter buffer, so that nothing written waits for
+ *     the next write to be heard.
+ *
+ * Java's AudioTrack, and the music MediaPlayer decodes, are written streams
+ * too (hk_pcm_*, for drivers/hk_java_audio.c): a blocking write there also
+ * waits while a paused stream is full, as AudioTrack's does.
  *
  * Output only: there is no microphone here, and an input stream is refused
  * as unavailable. Formats are those the mixer takes (16-bit, 32-bit, float);
@@ -71,10 +77,14 @@ typedef struct aa_stream {
     u8 *mem;                           /* AA_BUFFERS * burst frames */
     u32 next, fill;                    /* the buffer being filled, and how many of its frames are */
     u32 waiting;                       /* buffers handed to the mixer and not yet played */
+    u32 frames_in[AA_BUFFERS];         /* how many frames each buffer handed over holds */
+    u32 waiting_frames;                /* and those of the buffers waiting, together */
+    u32 generation;                    /* one more at each flush or stop: a waiting write gives up */
     u64 written;
     u32 xruns;
     i32 busy;                          /* the mixer's thread is in this stream's callback */
     bool closed, released, callback_stopped;
+    bool java;                         /* a Java track's (hk_pcm_open): not said as AAudio's */
 } aa_stream;
 
 /* What an app asks of AAudio, said for its first calls: a stream it gives up on is the last line here. */
@@ -205,7 +215,11 @@ static void voice_done(hk_voice *v, void *user)
         hk_lock_release(&s->lock);
         return;
     }
-    if (s->waiting) s->waiting--;
+    if (s->waiting) {
+        u32 oldest = (s->next + AA_BUFFERS - s->waiting) % AA_BUFFERS;
+        s->waiting_frames -= s->frames_in[oldest] < s->waiting_frames ? s->frames_in[oldest] : s->waiting_frames;
+        s->waiting--;
+    }
     if (!s->waiting && s->state == ST_STARTED) s->xruns++;
     hk_cond_broadcast(&s->cond);
     s->busy++;
@@ -217,12 +231,15 @@ static void voice_done(hk_voice *v, void *user)
 
 static u8 *buffer_at(aa_stream *s, u32 i) { return s->mem + (size_t)i * s->burst * s->frame_bytes; }
 
-/* The buffer being filled goes to the mixer. With the lock held. */
+/* The buffer being filled goes to the mixer: full, or as much of it as a write filled. With the lock held. */
 static void hand_over(aa_stream *s)
 {
-    if (!hk_voice_enqueue(s->voice, buffer_at(s, s->next), s->burst * s->frame_bytes)) return;
+    u32 frames = s->fill ? s->fill : s->burst;
+    if (!hk_voice_enqueue(s->voice, buffer_at(s, s->next), frames * s->frame_bytes)) return;
+    s->frames_in[s->next] = frames;
     s->waiting++;
-    s->written += s->burst;
+    s->waiting_frames += frames;
+    s->written += frames;
     s->next = (s->next + 1) % AA_BUFFERS;
     s->fill = 0;
 }
@@ -249,7 +266,7 @@ static void refill(aa_stream *s)
     }
 }
 
-static i32 AAudioStreamBuilder_openStream(aa_builder *b, aa_stream **out)
+static i32 open_stream(aa_builder *b, aa_stream **out, bool java)
 {
     aa_stream *s;
     i32 channels, format, rate;
@@ -263,9 +280,10 @@ static i32 AAudioStreamBuilder_openStream(aa_builder *b, aa_stream **out)
     if (!channels) channels = 2;
     format = b->format ? b->format : FMT_I16;
     rate = b->rate ? b->rate : HK_AUDIO_RATE;
-    AA_SAY("openStream: %s, %d Hz, %d channels, %s, %s, %d frames per callback, capacity %d frames, performance mode %d",
-           b->direction == DIR_INPUT ? "input" : "output", (int)rate, (int)channels, format_name(format), b->data_cb ? "a data callback" : "written",
-           (int)b->frames_per_callback, (int)b->capacity, (int)b->performance);
+    if (!java)
+        AA_SAY("openStream: %s, %d Hz, %d channels, %s, %s, %d frames per callback, capacity %d frames, performance mode %d",
+               b->direction == DIR_INPUT ? "input" : "output", (int)rate, (int)channels, format_name(format), b->data_cb ? "a data callback" : "written",
+               (int)b->frames_per_callback, (int)b->capacity, (int)b->performance);
     if (b->direction == DIR_INPUT) {
         hk_note_once("aaudio: an input stream was asked for; there is no microphone here, and the app is told it is unavailable");
         return AA_ERROR_UNAVAILABLE;
@@ -300,12 +318,17 @@ static i32 AAudioStreamBuilder_openStream(aa_builder *b, aa_stream **out)
     hk_lock_init(&s->lock);
     hk_cond_init(&s->cond);
     s->state = ST_OPEN;
+    s->java = java;
     hk_voice_set_done(s->voice, voice_done, s);
-    hk_info("aaudio: stream %d Hz, %d channels, %s, %s, %u frames a burst", (int)rate, (int)channels, format_name(format),
-            b->data_cb ? "fed by its callback" : "written to", (unsigned)s->burst);
+    if (java) hk_info("audio: a Java track, %d Hz, %d channels", (int)rate, (int)channels);
+    else
+        hk_info("aaudio: stream %d Hz, %d channels, %s, %s, %u frames a burst", (int)rate, (int)channels, format_name(format),
+                b->data_cb ? "fed by its callback" : "written to", (unsigned)s->burst);
     *out = s;
     return AA_OK;
 }
+
+static i32 AAudioStreamBuilder_openStream(aa_builder *b, aa_stream **out) { return open_stream(b, out, false); }
 
 static i32 AAudioStream_requestStart(aa_stream *s)
 {
@@ -315,7 +338,7 @@ static i32 AAudioStream_requestStart(aa_stream *s)
         hk_lock_release(&s->lock);
         return AA_ERROR_INVALID_STATE;
     }
-    AA_SAY("requestStart (from %s)", state_name(s->state));
+    if (!s->java) AA_SAY("requestStart (from %s)", state_name(s->state));
     s->callback_stopped = false;
     set_state(s, ST_STARTED);
     /* A callback stream starts on silence, as many buffers as may wait: the mixer asks for the first real one when the first of them has played. */
@@ -344,7 +367,9 @@ static void drop_queued(aa_stream *s)
 {
     hk_voice_clear(s->voice);
     s->waiting = 0;
+    s->waiting_frames = 0;
     s->fill = 0;
+    s->generation++;
     hk_cond_broadcast(&s->cond);
 }
 
@@ -404,7 +429,7 @@ static i32 AAudioStream_release(aa_stream *s)
 static i32 AAudioStream_close(aa_stream *s)
 {
     if (!s) return AA_ERROR_NULL;
-    AA_SAY("close");
+    if (!s->java) AA_SAY("close");
     let_go(s, ST_CLOSED);
     hk_lock_acquire(&s->lock);
     s->closed = true;
@@ -435,29 +460,30 @@ static i32 AAudioStream_waitForStateChange(aa_stream *s, i32 input, i32 *next, i
 }
 
 /*
- * The app's frames into the ring: as many as there is room for, waiting up to the timeout while every buffer waits
- * to be played. A buffer goes to the mixer when it is full. How many frames were taken, or an error.
+ * Frames into the ring: as many as there is room for, waiting while every buffer waits to be played -- up to the
+ * timeout, or with `forever` until there is room. A buffer goes to the mixer when it is full, and what is left in one
+ * at the end goes as it is. Only a playing stream makes room: before the start (priming) or when paused, an AAudio
+ * write takes what fits and returns; AudioTrack's (`any_state`) waits for the play. A flush or a stop ends the wait.
+ * How many frames were taken.
  */
-static i32 AAudioStream_write(aa_stream *s, const void *data, i32 frames, i64 timeout_ns)
+static i32 stream_write(aa_stream *s, const void *data, i32 frames, i64 timeout_ns, bool forever, bool any_state)
 {
     const u8 *from = (const u8 *)data;
-    u64 end;
+    u64 end = hk_time_monotonic_ns() + (timeout_ns > 0 ? (u64)timeout_ns : 0);
+    u32 generation;
     i32 done = 0;
-    if (!s || !data) return AA_ERROR_NULL;
-    if (frames < 0) return AA_ERROR_ILLEGAL_ARGUMENT;
-    if (s->b.data_cb) return AA_ERROR_INVALID_STATE;     /* a callback stream is not written to */
-    end = hk_time_monotonic_ns() + (timeout_ns > 0 ? (u64)timeout_ns : 0);
     hk_lock_acquire(&s->lock);
-    if (s->closed || s->released) {
-        hk_lock_release(&s->lock);
-        return AA_ERROR_INVALID_STATE;
-    }
-    while (done < frames && !s->closed && !s->released) {
+    generation = s->generation;
+    while (done < frames && !s->closed && !s->released && s->generation == generation) {
         u32 n;
         if (!s->fill && s->waiting >= s->in_use) {
             u64 now = hk_time_monotonic_ns();
-            /* Only a playing stream makes room; before the start (priming) or when paused, it is full until then. */
-            if (s->state != ST_STARTED || now >= end) break;
+            if (forever) {
+                if (s->state != ST_STARTED && !any_state) break;
+                hk_cond_wait_ns(&s->cond, &s->lock, 100000000ull);
+                continue;
+            }
+            if ((s->state != ST_STARTED && !any_state) || now >= end) break;
             hk_cond_wait_ns(&s->cond, &s->lock, end - now);
             continue;
         }
@@ -468,8 +494,17 @@ static i32 AAudioStream_write(aa_stream *s, const void *data, i32 frames, i64 ti
         done += (i32)n;
         if (s->fill == s->burst) hand_over(s);
     }
+    if (s->fill && !s->closed && !s->released) hand_over(s);
     hk_lock_release(&s->lock);
     return done;
+}
+
+static i32 AAudioStream_write(aa_stream *s, const void *data, i32 frames, i64 timeout_ns)
+{
+    if (!s || !data) return AA_ERROR_NULL;
+    if (frames < 0) return AA_ERROR_ILLEGAL_ARGUMENT;
+    if (s->b.data_cb || s->closed || s->released) return AA_ERROR_INVALID_STATE;     /* a callback stream is not written to */
+    return stream_write(s, data, frames, timeout_ns, false, false);
 }
 
 static i32 AAudioStream_read(aa_stream *s, void *data, i32 frames, i64 timeout_ns)
@@ -563,6 +598,56 @@ static i32 AAudio_setMMapPolicy(i32 policy)
 {
     (void)policy;
     return AA_OK;
+}
+
+/* ------------------------------------------------- written streams for Java */
+
+hk_pcm *hk_pcm_open(int rate, int channels, int format, int buffer_ms)
+{
+    aa_builder *b = NULL;
+    aa_stream *s = NULL;
+    AAudio_createStreamBuilder(&b);
+    b->rate = rate;
+    b->channels = channels;
+    b->format = format == 2 ? FMT_FLOAT : FMT_I16;
+    open_stream(b, &s, true);
+    AAudioStreamBuilder_delete(b);
+    if (s) AAudioStream_setBufferSizeInFrames(s, rate * buffer_ms / 1000);
+    return s;
+}
+
+int hk_pcm_write(hk_pcm *p, const void *frames, int count, bool wait)
+{
+    if (!p || !frames || count <= 0 || p->closed || p->released) return 0;
+    return stream_write(p, frames, count, 0, wait, true);
+}
+
+void hk_pcm_play(hk_pcm *p, bool play)
+{
+    if (!p) return;
+    if (play) AAudioStream_requestStart(p);
+    else AAudioStream_requestPause(p);
+}
+
+void hk_pcm_flush(hk_pcm *p)
+{
+    if (!p) return;
+    hk_lock_acquire(&p->lock);
+    if (!p->closed && !p->released) drop_queued(p);
+    hk_lock_release(&p->lock);
+}
+
+void hk_pcm_volume(hk_pcm *p, float left, float right)
+{
+    if (p && p->voice && !p->released) hk_voice_set_gains(p->voice, left, right);
+}
+
+u64 hk_pcm_position(hk_pcm *p) { return p && p->voice && !p->released ? hk_voice_position(p->voice) : 0; }
+int hk_pcm_pending(hk_pcm *p) { return p && !p->released ? (int)(p->waiting_frames + p->fill) : 0; }
+
+void hk_pcm_close(hk_pcm *p)
+{
+    if (p) AAudioStream_close(p);
 }
 
 #define D(fn) { #fn, (void *)(fn) }

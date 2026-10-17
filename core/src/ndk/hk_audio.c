@@ -22,7 +22,7 @@ struct hk_voice {
     u32 pos;                           /* frame within the buffer being played */
     u32 frac;                          /* 16.16 fraction between that frame and the next */
     u32 step;                          /* source frames per output frame, 16.16 */
-    float gain;
+    float gain, gain_l, gain_r;
     u32 played;
     u64 position;
     hk_voice_done_fn done;
@@ -54,8 +54,8 @@ static u32 mix_voice(hk_voice *v, float *mix, int frames)
         const queued *q = &v->queue[v->head];
         const u8 *frame = q->data + (size_t)v->pos * v->frame_bytes;
         float l = sample_at(v, frame, 0), r = v->channels > 1 ? sample_at(v, frame, 1) : l;
-        mix[i * 2] += l * v->gain;
-        mix[i * 2 + 1] += r * v->gain;
+        mix[i * 2] += l * v->gain * v->gain_l;
+        mix[i * 2 + 1] += r * v->gain * v->gain_r;
         v->frac += v->step;
         v->pos += v->frac >> 16;
         v->position += v->frac >> 16;
@@ -227,7 +227,7 @@ hk_voice *hk_voice_create(int rate, int channels, int bits, bool is_float)
     v->is_float = is_float;
     v->frame_bytes = (u32)(channels * bits / 8);
     v->step = (u32)(((u64)rate << 16) / HK_AUDIO_RATE);
-    v->gain = 1.0f;
+    v->gain = v->gain_l = v->gain_r = 1.0f;
     ensure_mixer();
     hk_lock_acquire(&g_lock);
     v->next = g_voices;
@@ -277,6 +277,21 @@ void hk_voice_set_playing(hk_voice *v, bool playing)
 }
 
 void hk_voice_set_gain(hk_voice *v, float gain) { v->gain = gain < 0 ? 0 : gain; }
+
+void hk_voice_set_gains(hk_voice *v, float left, float right)
+{
+    v->gain_l = left < 0 ? 0 : left;
+    v->gain_r = right < 0 ? 0 : right;
+}
+
+void hk_voice_set_rate(hk_voice *v, int rate)
+{
+    if (rate < 1000 || rate > 400000) return;
+    hk_lock_acquire(&g_lock);
+    v->rate = rate;
+    v->step = (u32)(((u64)rate << 16) / HK_AUDIO_RATE);
+    hk_lock_release(&g_lock);
+}
 
 void hk_voice_set_done(hk_voice *v, hk_voice_done_fn fn, void *user)
 {

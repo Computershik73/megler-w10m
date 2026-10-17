@@ -1445,9 +1445,11 @@ static int run_data(void)
                                             cursor and selection handles. And ParcelFileDescriptor's dup, detachFd and adoptFd. And a theme
                                             attribute that names itself. And MessageQueue.next(), and the app's storage statistics. And a
                                             broadcast that names its receiver, which reaches that receiver alone. And the platform's
-                                            MediaMetadata through a Parcel, as MediaMetadataCompat makes it. */
+                                            MediaMetadata through a Parcel, as MediaMetadataCompat makes it. And sound from Java: an
+                                            AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup",
                                          "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "media-metadata",
+                                         "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And the network from Java, on loopback: names, an HTTP server of the app's own and HttpURLConnection, UDP, a server
                                             socket closed under the thread waiting in accept, a java.nio selector, the interfaces, ConnectivityManager. */
                                          "net-localhost", "net-http", "net-udp", "net-close", "net-nio", "net-interfaces", "net-connectivity" };
@@ -1479,6 +1481,10 @@ static int run_data(void)
     expect_line("I/DataTest: battery-received ok", &at, 30);
     /* The broadcasts of the step "broadcast-explicit", once delivered: the relayed one, which names Target, reached Target alone. */
     CHECK(wait_line("I/DataTest: broadcast-relay ok relay=1 target=1 off=0 registered=1", 0, 30) >= 0);
+    /* The sound the step "audio-track" and those after it started: each MediaPlayer played to its end, the SoundPool's sound played once loaded. */
+    CHECK(wait_line("I/DataTest: media-player-done ok", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: media-player-ogg-done ok", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: sound-pool-played ok", 0, 30) >= 0);
     /* The window's insets, when its views are first laid out, say the frame they are relative to: the screen, which the window fills. */
     {
         int frame = wait_line("I/DataTest: insets-frame ", 0, 30), fw = 0, fh = 0;

@@ -549,14 +549,9 @@ N(Sensors_available) { c->ret.j = 0; }
  * list). The class's other methods are still "not there yet" when something calls them.
  */
 N(MediaCodecNative_supported) { c->ret.j = 0; }
-/* An AudioTrack is initialised when its id is not negative. */
-N(Absent_minus_one) { Absent(c); c->ret.j = 0; c->ret.i = -1; }
-
 static const hk_jhle k_absent[] = {
-    { "megler/Audio", "trackOpen", NULL, Absent_minus_one },
     { "megler/Sensors", "available", NULL, Sensors_available },
     { "megler/MediaCodecNative", "supported", NULL, MediaCodecNative_supported },
-    { "megler/Audio", NULL, NULL, Absent },
     { "megler/Web", NULL, NULL, Absent },
     { "megler/Sensors", NULL, NULL, Absent },
     { "megler/MediaCodecNative", NULL, NULL, Absent },
@@ -1034,6 +1029,7 @@ static void main_thread(void *arg)
         hk_dvm_register(k_native);
         hk_dvm_register(k_absent);
         hk_dvm_register(hk_java_sqlite_natives());
+        hk_dvm_register(hk_java_audio_natives());
         hk_java_gfx_set_host(&J.config->gfx);
         hk_java_gfx_set_present(present, NULL);
         hk_java_gfx_set_present_canvas(present_canvas, NULL);
