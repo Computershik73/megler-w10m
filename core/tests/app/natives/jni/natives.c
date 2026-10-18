@@ -706,6 +706,33 @@ static void *icu_function(void *lib, const char *name, int *version)
 }
 
 /*
+ * A string made as VK mp3 mod's app-lock library makes one: AllocObject on java.lang.String, then the constructor
+ * String(byte[], String) called on it with CallVoidMethodA -- and the same with CallNonvirtualVoidMethod and String(char[])
+ * --, the allocated object then used as the string. On Android the runtime turns such a call into StringFactory's and the
+ * reference into the new string. The two strings joined with a '|'; null if a call threw.
+ */
+JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_allocatedString(JNIEnv *env, jclass cls, jbyteArray bytes, jcharArray chars)
+{
+    jclass string = (*env)->FindClass(env, "java/lang/String");
+    jmethodID from_bytes = (*env)->GetMethodID(env, string, "<init>", "([BLjava/lang/String;)V");
+    jmethodID from_chars = (*env)->GetMethodID(env, string, "<init>", "([C)V");
+    jmethodID concat = (*env)->GetMethodID(env, string, "concat", "(Ljava/lang/String;)Ljava/lang/String;");
+    jobject a, b, joined;
+    jvalue args[2];
+    (void)cls;
+    a = (*env)->AllocObject(env, string);
+    args[0].l = bytes;
+    args[1].l = (*env)->NewStringUTF(env, "UTF-8");
+    (*env)->CallVoidMethodA(env, a, from_bytes, args);
+    if ((*env)->ExceptionCheck(env)) return NULL;
+    b = (*env)->AllocObject(env, string);
+    (*env)->CallNonvirtualVoidMethod(env, b, string, from_chars, chars);
+    if ((*env)->ExceptionCheck(env)) return NULL;
+    joined = (*env)->CallObjectMethod(env, a, concat, (*env)->NewStringUTF(env, "|"));
+    return (jstring)(*env)->CallObjectMethod(env, joined, concat, b);
+}
+
+/*
  * The system's ICU, opened by name as Android 7 to 9 let an app open it (public.libraries.android.txt lists libicuuc.so and
  * libicui18n.so), and a function of each found as MX Player's player library finds them, trying the versions: u_strlen,
  * called, and ucsdet_open. The version of both, -1 when a library did not open, -2 when a function was not found, -3 when

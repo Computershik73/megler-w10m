@@ -470,11 +470,46 @@ static jmeth *get_method(hk_jclass *cls, const char *name, const char *sig, bool
 }
 
 /* `exact`: the method itself (CallNonvirtual, a constructor), not what the object's class has made of it. */
+/*
+ * A String constructor called through JNI on a string AllocObject made (Call(Nonvirtual)VoidMethod with String.<init>):
+ * libcore's constructors only throw ("Use StringFactory instead"), and ART turns the call into StringFactory's method with
+ * the same parameters and makes the receiver's reference the new string (InvokeVirtualOrInterfaceWith*, is_string_init).
+ * References here are the objects themselves, so the receiver takes the new string's contents instead: its text in a
+ * buffer of its own (which hk_dvm_object_dying frees, `native` holding it), its hash and kept UTF-8 forgotten. Native code
+ * that makes a string so and then uses the object it allocated -- the app-lock library of VK mp3 mod -- sees the string.
+ */
+static void string_init_on(hk_jobj *self, jmeth *m, const hk_jvalue *args)
+{
+    hk_jobj *made = NULL;
+    u16 *text;
+    if (!self || self->kind != HK_J_STRING) {
+        hk_dvm_throw("java/lang/InstantiationException", "java.lang.String's constructor called through JNI on an object that is no string AllocObject made");
+        return;
+    }
+    if (!hk_dvm_string_init(m->sig, args, &made) || !made) return;
+    text = (u16 *)hk_alloc(((size_t)(u32)made->u.str.len16 + 1) * 2);
+    if (made->u.str.len16) memcpy(text, made->u.str.u16, (size_t)made->u.str.len16 * 2);
+    text[made->u.str.len16] = 0;
+    if (self->native) free(self->native);
+    self->native = text;
+    self->u.str.u16 = text;
+    self->u.str.len16 = made->u.str.len16;
+    if (self->u.str.utf8) {
+        free(self->u.str.utf8);
+        self->u.str.utf8 = NULL;
+    }
+    if (g_dvm.c_string->nslots > 0) hk_dvm_slots(self)[0].j = 0;   /* libcore's String: its one field, the hash, made again when asked */
+}
+
 static hk_jvalue invoke_as(hk_jobj *self, jmeth *m, const hk_jvalue *args, bool exact)
 {
     hk_jcall c;
     memset(&c, 0, sizeof(c));
     if (!m) return c.ret;                                        /* the lookup failed and said so; the caller went on regardless */
+    if (m->dvm && !m->is_static && m->dvm->cls == g_dvm.c_string && !strcmp(m->name, "<init>")) {
+        string_init_on(self, m, args);
+        return c.ret;
+    }
     if (m->dvm) {
         hk_dvm_method *target = m->dvm;
         hk_jvalue clean[JARGS];
@@ -1201,7 +1236,15 @@ static hk_jobj *j_NewRef(JNIEnvP e, hk_jobj *o) { (void)e; return hk_jni_ref(o);
 static void j_DeleteRef(JNIEnvP e, hk_jobj *o) { (void)e; hk_jni_unref(o); }
 static u8 j_IsSameObject(JNIEnvP e, hk_jobj *a, hk_jobj *b) { (void)e; return a == b; }
 static i32 j_EnsureLocalCapacity(JNIEnvP e, i32 cap) { (void)e; (void)cap; return 0; }
-static hk_jobj *j_AllocObject(JNIEnvP e, hk_jobj *cls) { (void)e; return new_obj(HK_J_OBJECT, class_of(cls)); }
+/* AllocObject: an object of the class, its constructor not run. A String is an empty string of its own, as ART gives one
+   (mirror::String::AllocEmptyString); a String constructor called on it then gives it its contents (string_init_on). */
+static hk_jobj *j_AllocObject(JNIEnvP e, hk_jobj *cls)
+{
+    hk_jclass *c = class_of(cls);
+    (void)e;
+    if (is_real(c) && c->dvm == g_dvm.c_string) return hk_dvm_alloc_string(NULL, 0);
+    return new_obj(HK_J_OBJECT, c);
+}
 static hk_jobj *j_GetObjectClass(JNIEnvP e, hk_jobj *o)
 {
     (void)e;

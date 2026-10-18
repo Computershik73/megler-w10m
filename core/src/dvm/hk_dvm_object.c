@@ -830,6 +830,8 @@ void hk_dvm_object_dying(void *p)
     int i;
     if (o->monitor) free(o->monitor);
     if (o->j.kind == HK_J_STRING && o->j.u.str.utf8) free(o->j.u.str.utf8);
+    /* A string AllocObject made and a JNI call of a String constructor filled keeps its text in a buffer of its own (hk_jni.c). */
+    if (o->j.kind == HK_J_STRING && o->j.native) free(o->j.native);
     if (o->j.fields) {
         for (i = 0; i < o->j.nfields; i++) free(o->j.fields[i].name);
         free(o->j.fields);

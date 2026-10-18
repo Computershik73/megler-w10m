@@ -132,6 +132,7 @@ public class Lib {
     static native int watchLooper(LooperReport report);
     /** The system's ICU opened by name and a function of each of its two libraries found by its versioned name: the version, or below 1. */
     static native int icuVersion();
+    static native String allocatedString(byte[] bytes, char[] chars);
     /** Objects held in a native method's locals and by a global reference while System.gc() runs: 1 when all read as they were. */
     static native int holdAcrossGc();
 

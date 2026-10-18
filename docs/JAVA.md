@@ -2309,7 +2309,7 @@ and not a test.
 | `NewGlobalRef`, `NewLocalRef`, `NewWeakGlobalRef` and their `Delete`s | the object itself. A weak reference never goes null, since nothing is collected | app, libcore |
 | `GetObjectRefType` | global when native code holds a global reference to the object, weak when only a weak one, local otherwise, invalid for NULL. A count for each object, since a reference is the object's address; exact unless a library asks about a local reference to an object it also holds globally | app |
 | `IsSameObject` | right | app |
-| `AllocObject` | the object with no constructor run | nothing |
+| `AllocObject` | the object with no constructor run; for `java.lang.String` an empty string of its own, as ART gives, which a `String` constructor called on it through `Call(Nonvirtual)VoidMethod` then fills, as StringFactory's method with the same parameters (ART turns the call into that and the reference into the new string; here the object takes its contents) | app ("string-alloc") |
 | `NewObject`, `V`, `A` | right; a `String` is made whole from the arguments | app (`...`), core (`A`), libcore (`V`) |
 | `GetObjectClass`, `IsInstanceOf` | right | app, core |
 | `GetMethodID`, `GetStaticMethodID` | initialises the class; `NoSuchMethodError` | app, core, libcore |

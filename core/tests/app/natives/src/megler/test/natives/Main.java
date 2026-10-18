@@ -346,5 +346,11 @@ public class Main extends Activity {
             detail = "version=" + v;
             return v == 60;
         });
+        step("string-alloc", () -> {
+            /* A string AllocObject made and a String constructor called on it through JNI, as an app-lock library makes its hashes. */
+            String s = Lib.allocatedString("hash\u00e9".getBytes(java.nio.charset.StandardCharsets.UTF_8), new char[] { 'a', 'b', 'c' });
+            detail = "string=" + s;
+            return "hash\u00e9|abc".equals(s) && s.length() == 9 && s.hashCode() == "hash\u00e9|abc".hashCode();
+        });
     }
 }
