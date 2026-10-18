@@ -900,6 +900,125 @@ static EGLBoolean g_eglQuerySurface(EGLDisplay d, EGLSurface handle, EGLint attr
  * The surfaces the app makes current are what EGL is given for them (real_of); which of the windows' own are current on this
  * thread is kept, for eglGetCurrentSurface, a swap, and a surface replaced under the app's handle.
  */
+/* ------------------------------------------------------------- GL errors
+ *
+ * The flag trace-gl-errors: what ANGLE finds wrong with an app's OpenGL ES, in the log. Each context an app makes current
+ * gets ANGLE's debug output (GL_KHR_debug) with a callback of the layer's, which logs ANGLE's errors, warnings and
+ * performance notes -- the first five of each message, then every hundredth with its count -- and a shader that does not
+ * compile or a program that does not link is said with its info log (glCompileShader and glLinkProgram go through the
+ * layer while the flag is on). A scene drawn only in part is usually ANGLE refusing draws or shaders, of which an app says
+ * nothing itself. At most 3000 lines a run.
+ */
+typedef void (*fn_debug_proc)(u32 source, u32 type, u32 id, u32 severity, i32 length, const char *message, const void *user);
+typedef void (*fn_debug_callback)(fn_debug_proc proc, const void *user);
+typedef void (*fn_debug_control)(u32 source, u32 type, u32 severity, i32 count, const u32 *ids, u8 enabled);
+typedef void (*fn_gl_enum)(u32 cap);
+typedef void (*fn_gl_uint)(u32 name);
+typedef void (*fn_get_iv)(u32 name, u32 pname, i32 *value);
+typedef void (*fn_get_log)(u32 name, i32 size, i32 *length, char *log);
+
+static int g_gl_errors = -1;
+static volatile i32 g_gl_error_lines;
+static hk_lock g_gl_errors_lock = HK_LOCK_INIT;
+static struct {
+    u32 hash, count;
+} g_gl_seen[512];
+static EGLContext g_gl_debugged[64];
+static fn_gl_uint h_compile_shader, h_link_program;
+
+static bool gl_errors_wanted(void)
+{
+    if (g_gl_errors < 0) g_gl_errors = hk_flag("trace-gl-errors") ? 1 : 0;
+    return g_gl_errors != 0;
+}
+
+static bool gl_error_line_left(void) { return hk_atomic_add(&g_gl_error_lines, 1) <= 3000; }
+
+static void gl_debug_message(u32 source, u32 type, u32 id, u32 severity, i32 length, const char *message, const void *user)
+{
+    static const char *const k_types[] = { "error", "deprecated", "undefined behaviour", "portability", "performance", "other" };
+    u32 hash = 2166136261u, count = 0;
+    const char *m;
+    int i, n = 0;
+    (void)source;
+    (void)user;
+    if (!message) return;
+    for (m = message; *m && (length < 0 || m - message < length); m++) hash = (hash ^ (u8)*m) * 16777619u;
+    hash ^= type * 31u + id;
+    hk_lock_acquire(&g_gl_errors_lock);
+    for (i = 0; i < (int)HK_COUNT(g_gl_seen); i++) {
+        u32 at = (hash + (u32)i) & (HK_COUNT(g_gl_seen) - 1);
+        if (!g_gl_seen[at].count || g_gl_seen[at].hash == hash) {
+            g_gl_seen[at].hash = hash;
+            count = ++g_gl_seen[at].count;
+            break;
+        }
+    }
+    hk_lock_release(&g_gl_errors_lock);
+    if (count > 5 && count % 100) return;
+    if (!gl_error_line_left()) return;
+    n = length >= 0 && length < 600 ? length : 600;
+    hk_info("gl: ANGLE says (%s, severity 0x%x, %u time%s): %.*s", type >= 0x824C && type <= 0x8251 ? k_types[type - 0x824C] : "message", (unsigned)severity,
+            (unsigned)count, count == 1 ? "" : "s", n, message);
+}
+
+/* The calling thread's context, just made current: ANGLE's debug output to the layer's callback, the first time. */
+static void gl_debug_context(EGLContext ctx)
+{
+    fn_gl_enum enable = A(fn_gl_enum, "glEnable");
+    fn_debug_callback set = A(fn_debug_callback, "glDebugMessageCallbackKHR");
+    fn_debug_control control = A(fn_debug_control, "glDebugMessageControlKHR");
+    size_t i, free_at = HK_COUNT(g_gl_debugged);
+    hk_lock_acquire(&g_gl_errors_lock);
+    for (i = 0; i < HK_COUNT(g_gl_debugged); i++) {
+        if (g_gl_debugged[i] == ctx) {
+            hk_lock_release(&g_gl_errors_lock);
+            return;
+        }
+        if (!g_gl_debugged[i] && free_at == HK_COUNT(g_gl_debugged)) free_at = i;
+    }
+    if (free_at < HK_COUNT(g_gl_debugged)) g_gl_debugged[free_at] = ctx;
+    hk_lock_release(&g_gl_errors_lock);
+    if (!set) set = A(fn_debug_callback, "glDebugMessageCallback");
+    if (!control) control = A(fn_debug_control, "glDebugMessageControl");
+    if (!enable || !set) return;
+    enable(0x92E0);                                    /* GL_DEBUG_OUTPUT */
+    enable(0x8242);                                    /* GL_DEBUG_OUTPUT_SYNCHRONOUS: said on the thread that made the call */
+    set(gl_debug_message, NULL);
+    if (control) control(0x1100, 0x1100, 0x1100, 0, NULL, 1);    /* GL_DONT_CARE: all of them */
+    if (gl_error_line_left()) hk_info("gl: ANGLE's debug output is on for context %p (the flag trace-gl-errors)", (void *)ctx);
+}
+
+static void gl_said_log(bool program, u32 name)
+{
+    fn_get_log get_log = A(fn_get_log, program ? "glGetProgramInfoLog" : "glGetShaderInfoLog");
+    fn_get_iv get = A(fn_get_iv, program ? "glGetProgramiv" : "glGetShaderiv");
+    char log[1200];
+    i32 ok = 1, type = 0, length = 0;
+    if (!get) return;
+    get(name, program ? 0x8B82 : 0x8B81, &ok);           /* GL_LINK_STATUS, GL_COMPILE_STATUS */
+    if (ok) return;
+    if (!program) get(name, 0x8B4F, &type);              /* GL_SHADER_TYPE */
+    log[0] = 0;
+    if (get_log) get_log(name, (i32)sizeof(log) - 1, &length, log);
+    log[length > 0 && length < (i32)sizeof(log) ? length : (i32)sizeof(log) - 1] = 0;
+    if (gl_error_line_left())
+        hk_info("gl: %s %u did not %s: %s", program ? "program" : type == 0x8B31 ? "vertex shader" : type == 0x8B30 ? "fragment shader" : "shader", (unsigned)name,
+                program ? "link" : "compile", log[0] ? log : "(no log)");
+}
+
+static void w_compile_shader(u32 shader)
+{
+    h_compile_shader(shader);
+    gl_said_log(false, shader);
+}
+
+static void w_link_program(u32 program)
+{
+    h_link_program(program);
+    gl_said_log(true, program);
+}
+
 static EGLBoolean g_eglMakeCurrent(EGLDisplay d, EGLSurface draw, EGLSurface read, EGLContext ctx)
 {
     static volatile i32 said;
@@ -911,6 +1030,7 @@ static EGLBoolean g_eglMakeCurrent(EGLDisplay d, EGLSurface draw, EGLSurface rea
     if (ok) {
         t_draw = ctx ? wd : NULL;
         t_read = ctx ? wr : NULL;
+        if (ctx && gl_errors_wanted()) gl_debug_context(ctx);
     } else {
         refused(wd || wr ? "eglMakeCurrent of a window surface on a view's window" : "eglMakeCurrent", &said);
     }
@@ -1514,6 +1634,14 @@ static void *resolve(const char *name)
         for (i = 0; g_egl_overrides[i].name; i++)
             if (!strcmp(g_egl_overrides[i].name, name)) return g_egl_overrides[i].addr;
         return angle(name);
+    }
+    if (gl_errors_wanted() && !strcmp(name, "glCompileShader")) {
+        if (!h_compile_shader) h_compile_shader = (fn_gl_uint)angle(name);
+        return h_compile_shader ? (void *)w_compile_shader : NULL;
+    }
+    if (gl_errors_wanted() && !strcmp(name, "glLinkProgram")) {
+        if (!h_link_program) h_link_program = (fn_gl_uint)angle(name);
+        return h_link_program ? (void *)w_link_program : NULL;
     }
     for (i = 0; i < HK_COUNT(g_adapters); i++) {
         if (strcmp(g_adapters[i].name, name)) continue;
