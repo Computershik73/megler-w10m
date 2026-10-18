@@ -33,6 +33,7 @@ Back. No real app has been tried.
 | The shared storage: one `/sdcard` for every app, the app's own `Android/data` and `obb` in it, and links to folders of the phone's own through handles the shell hands over | **passes under qemu and on PC** with a stand-in for the shell (`core/tests/hk_storage_tests.c`, 451 checks), and on PC with the shell's own host over Windows.Storage (`player/StorageHost.cpp`, the same checks; a test program is no app container). **On the phone** (HP Elite x3, 0.1.0.126, `tools/build-appx.sh arm --auto storage`): Music, Pictures, Movies and DCIM are found and answer, and the check's 102 steps pass -- 24 in each link, in a folder of its own: files made, written, read back, appended to, emptied, renamed, moved, removed, folders likewise, and a file moved from one link to another. One thing the PC did not show: an open straight after a close is at times refused with a sharing violation, something of Windows' own having the new file for a moment (2 steps of 102, different ones each run); the host asks again for up to a second. A folder is not moved into another folder by renaming (the app is told EXDEV, and copies). **Not tried**: the Settings section (the list, Add a Folder with the folder picker, the folders Windows remembers across starts), Documents, Downloads, a memory card |
 | The network: TCP and UDP sockets, servers included, blocking and not; the app's own AF_UNIX sockets; names (`getaddrinfo`, `getnameinfo`, `gethostbyname`); the interfaces; poll, select and epoll over sockets with pipes, eventfds and files (docs/ARCHITECTURE.md, "The network") | **passes under qemu and on PC** over loopback (`core/tests/hk_net_tests.c`: 234 checks under qemu, 225 on the PC, which cannot run the test of signal 34 ending a blocked call), and from Java under qemu (the test app `data`: `InetAddress`, `HttpURLConnection` against a `ServerSocket` of the app's own, `DatagramSocket`, a `ServerSocket` closed under the thread in `accept`, a `java.nio` selector, `NetworkInterface`). The check a phone is to run (`megler_net_check`: a public name, `HEAD /generate_204` on its port 80, a server of its own on 127.0.0.1, UDP on 127.0.0.1) passes on both with the internet. **Passed on the HP Elite x3, 2026-10-16**: 16 native network checks, Java loopback TLS including rejection of an untrusted certificate, external HTTP/HTTPS, and HTTP/2 ALPN through the Android 10 public API. See [PHONE-NETWORK.md](PHONE-NETWORK.md) for the app failures and fixes. |
 | OpenGL ES from an app's Java: the 832 natives of `GLES10` to `GLES32` (793 generated, 39 by hand), EGL14 and EGL10 over `megler.EGLNative`, a `GLSurfaceView`'s renderer on a GL thread of the layer's own, the window composed in the core of the views over the frames read back (docs/ARCHITECTURE.md, "OpenGL ES from an app's Java") | **passes under qemu and on PC** on a stand-in for OpenGL ES that draws (`core/tests/hk_gl_tests.c`: 86 checks on libcore, 67 on the built-in java.lang; the test app `gl`: 49 checks under qemu -- a renderer's calls in Android's order, sixty frames a second at most, `RENDERMODE_WHEN_DIRTY`, `queueEvent`, a fixed size, pause and resume, EGL14 on a pbuffer, EGL10 and GL10 on a `SurfaceView`, and the picture). AIDA64 and Device Info read the GPU's strings and show them under qemu. A swap of a 720 x 1182 surface costs 1.45 ms on the PC with the stand-in's read-back (a copy of memory); ANGLE's waits for the GPU and **has not been measured: nothing of it has run on a phone** (the log's `java: OpenGL frames` line will say it there) |
+| A `SurfaceView` drawn by an app's native code: `ANativeWindow_fromSurface` on its `Surface`, EGL window surfaces on that window from the app's own threads, composed under the views as those of EGL from Java are, and `ANativeWindow_lock`; a `SurfaceTexture`'s `Surface` likewise, its frames handed to the texture (docs/JAVA.md, "A SurfaceView drawn by native code") | **passes under qemu** (the test app `natives`, 31 checks, with the shell composing the window and with the core: the window's size and format, an EGL surface on it from a thread never attached to Java, its frames in the view's place the right way up, the surface resized by `setFixedSize` and by the geometry at the next swap, the window no longer valid and the swap refused after `surfaceDestroyed`, a new window when the surface comes back, a software buffer in RGB 565 scaled into its view; a `TextureView`'s texture drawn in software and with EGL). **Not tried on a phone**; Asphalt 9 is the app it was made for (its log: `java: ANativeWindow_fromSurface: a window of`, `egl: window surface ... on a view's window`, `java: OpenGL frames`) |
 | Sound out of the phone (XAudio2) | **heard on the phone** with build 0.1.0.21, the Probe's tone and the demo's; XAudio2 played every frame it was given. With 0.1.0.19 nothing was heard and the log could not say why: the engine was built on the app's own thread then, and nothing was counted |
 | ANGLE: its DLLs, a display, a context | **works on the phone**: Direct3D 11 at feature level 11_1, EGL 1.5, OpenGL ES 3.0; 16384-pixel textures, DXT, depth textures, NPOT; no ETC1, no ASTC |
 | A window surface over the shell's texture, the copy to the swap chain, the picture on screen | **works on the phone**: the right way up, the right colours, 1280x720 scaled to a 2560x1440 screen, 59 frames a second paced by `Present(1)` |
@@ -509,7 +510,13 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   starts another for a result before it is shown now waits to be shown, as
   on Android (docs/JAVA.md, `android/app/Activity.java`). Its installer then
   said the download had failed: `WifiManager` said the Wi-Fi was off; it is
-  on now (docs/JAVA.md, `android/net/wifi/WifiManager.java`). Spotify's WebView
+  on now (docs/JAVA.md, `android/net/wifi/WifiManager.java`). Past its
+  installer it showed Gameloft's splash and then nothing (package 267): its
+  engine draws from native code on its `SurfaceView`, and
+  `ANativeWindow_fromSurface` gave NULL for the framework's `Surface`; a window
+  of the view's surface, with EGL and software drawing on it, is there now
+  (docs/JAVA.md, "A SurfaceView drawn by native code"), not yet tried on the
+  phone. Spotify's WebView
   then (packages 252 and 254) ended out of memory on an image of 126 MB that
   Chromium decodes and maps twice, in a 2 GB address space whose largest
   free stretch was 135 MB (docs/JAVA.md, "Out of memory"); the layer's
@@ -532,7 +539,7 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   a node as well. Not known yet why the phone does not; the shell's scenes
   check a letter of that size under that scale for the phone to say.
   Not there: garbage collection (an app that animates lasts minutes); sound
-  from Java; a `SurfaceView` drawn by native code; method
+  from Java; method
   handles; other apps (the
   package manager knows only the one running); Kotlin has run only as part of
   Device Info.
@@ -552,7 +559,7 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   connected over Wi-Fi, whatever the phone has.
 - **ETC1 textures** (see above).
 - **Direct system calls** in guest code (`svc 0`), which a JIT inside an app makes.
-- **The on-screen keyboard**, sensors, the software `ANativeWindow_lock` path.
+- **The on-screen keyboard**, sensors, the software `ANativeWindow_lock` path on a driver's window (a NativeActivity's; a `SurfaceView`'s has one).
 - **Room.** A 32-bit process has 2 GB of addresses, and a big game wants more (see Unity above).
 - C++ exceptions thrown through guest frames are untested (no NDK here to build a
   C++ test with); the unwinder's lookup (`dl_unwind_find_exidx`) is provided.

@@ -217,6 +217,11 @@ EOF
         echo "the Java test app gl again, the window composed by the core (the shell takes no frames)"
         MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/java-data-gl && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --java gl $WB/gl.apk $WB/java-data-gl $WB/android-root '$WROOT/build/java-pictures-readback' 0 480x800@160 readback 2>&1" || STATUS=1
       fi
+      # And natives likewise: the EGL surfaces its native code makes on a SurfaceView, in a context of its own, read back.
+      if [ -f "$ROOT/build/guest/java/natives.apk" ]; then
+        echo "the Java test app natives again, the window composed by the core (the shell takes no frames)"
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/java-data-natives && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --java natives $WB/natives.apk $WB/java-data-natives $WB/android-root '$WROOT/build/java-pictures-readback' 0 480x800@160 readback 2>&1" || STATUS=1
+      fi
       # And an upright surface, as a phone held upright gives an app that does not ask for landscape: the same app, the same checks.
       echo "the Java test app hello again, on an upright surface (720 x 1280 at 320 dpi)"
       MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/hello.apk' $WB/hello.apk && rm -rf $WB/java-data-hello && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --java hello $WB/hello.apk $WB/java-data-hello $WB/android-root '$WROOT/build/java-pictures-upright' 0 720x1280@320 2>&1" || STATUS=1

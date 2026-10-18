@@ -64,7 +64,7 @@ const hk_sym *hk_aaudio_table(void);   /* ndk/hk_aaudio.c */
 const hk_sym *hk_ahb_table(void);      /* ndk/hk_ahb.c: AHardwareBuffer */
 /* The device's API level as native code is told it (the property ro.build.version.sdk, 28 unless a driver has said otherwise). */
 int hk_sdk_level(void);
-const hk_sym *hk_java_ndk_table(void); /* drivers/hk_java_ndk.c: libjnigraphics, on the Java framework's Bitmap */
+const hk_sym *hk_java_ndk_table(void); /* drivers/hk_java_ndk.c: libjnigraphics, on the Java framework's Bitmap; ANativeWindow_fromSurface */
 
 /* Float wrappers: the host function named, taking and returning bits. */
 #define HK_SF_D_D(name, fn) static u64 name(u64 x) { return hk_db(fn(hk_d(x))); }

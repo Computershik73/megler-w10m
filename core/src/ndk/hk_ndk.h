@@ -14,18 +14,50 @@ extern "C" {
 
 /* ----------------------------------------------------------- ANativeWindow */
 
+typedef struct hk_nwindow_ops hk_nwindow_ops;
+
 typedef struct hk_nwindow {
     volatile i32 refs;
     int width, height;             /* the surface, in pixels */
     int buffer_width, buffer_height;   /* what the app asked to render at (ANativeWindow_setBuffersGeometry); 0: the surface's size */
     int format;
+    const hk_nwindow_ops *ops;     /* a window that is not a driver's (a SurfaceView's: drivers/hk_java_ndk.c); NULL for a driver's */
 } hk_nwindow;
+
+/*
+ * A window of someone else's than the driver that drew the app's whole surface: the Java driver's windows of a SurfaceView's
+ * Surface (drivers/hk_java_ndk.c). Its size follows its surface, it can go (surfaceDestroyed) while native code still holds
+ * it, and EGL window surfaces and software buffers on it are its own; the NDK's functions and EGL (ndk/hk_egl.c) ask it.
+ */
+struct hk_nwindow_ops {
+    /* Its surface's size now. */
+    void (*size)(const hk_nwindow *w, int *width, int *height);
+    /* Whether its surface is still there: false from surfaceDestroyed on, for good, as on Android. */
+    bool (*valid)(const hk_nwindow *w);
+    /* ANativeWindow_lock and ANativeWindow_unlockAndPost: buffer an ANativeWindow_Buffer, dirty an ARect or NULL; 0 or Android's negative error. */
+    int (*lock)(hk_nwindow *w, void *buffer, i32 *dirty);
+    int (*unlock)(hk_nwindow *w);
+    /*
+     * An EGL window surface on it (eglCreateWindowSurface), made with the first of `configs` (EGL configurations) that works:
+     * its object, NULL when none can be made. Then for that object: the EGLSurface of EGL's own it is now and its size, which
+     * the app's surface stands for in every EGL call (it is another after a swap that found the window resized); a swap on the
+     * calling thread, the surface current there (false: the window is gone); and its end.
+     */
+    void *(*egl_create)(hk_nwindow *w, void *const *configs, int count);
+    void *(*egl_handle)(void *surface, int *width, int *height);
+    bool (*egl_swap)(void *surface);
+    void (*egl_destroy)(void *surface);
+    /* The last reference went. */
+    void (*gone)(hk_nwindow *w);
+};
 
 hk_nwindow *hk_nwindow_create(int width, int height);
 void hk_nwindow_acquire(hk_nwindow *w);
 void hk_nwindow_release(hk_nwindow *w);
-/* The size frames are rendered at. */
+/* The size frames are rendered at: what ANativeWindow_setBuffersGeometry asked for, else the surface's now. */
 void hk_nwindow_buffer_size(const hk_nwindow *w, int *width, int *height);
+/* Whether the window can still be drawn on (a driver's always can). */
+bool hk_nwindow_valid(const hk_nwindow *w);
 
 /* ------------------------------------------------------------- AInputQueue */
 

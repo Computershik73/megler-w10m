@@ -22,23 +22,36 @@ hk_nwindow *hk_nwindow_create(int width, int height)
 void hk_nwindow_acquire(hk_nwindow *w) { if (w) hk_atomic_add(&w->refs, 1); }
 void hk_nwindow_release(hk_nwindow *w)
 {
-    if (w && hk_atomic_add(&w->refs, -1) == 0) free(w);
+    if (!w || hk_atomic_add(&w->refs, -1) != 0) return;
+    if (w->ops && w->ops->gone) w->ops->gone(w);
+    else free(w);
 }
 
 void hk_nwindow_buffer_size(const hk_nwindow *w, int *width, int *height)
 {
-    *width = w->buffer_width > 0 ? w->buffer_width : w->width;
-    *height = w->buffer_height > 0 ? w->buffer_height : w->height;
+    int sw = w->width, sh = w->height;
+    if (w->ops && w->ops->size) w->ops->size(w, &sw, &sh);
+    *width = w->buffer_width > 0 ? w->buffer_width : sw;
+    *height = w->buffer_height > 0 ? w->buffer_height : sh;
 }
 
-static int g_nw_width(hk_nwindow *w) { int a, b; if (!w) return -1; hk_nwindow_buffer_size(w, &a, &b); return a; }
-static int g_nw_height(hk_nwindow *w) { int a, b; if (!w) return -1; hk_nwindow_buffer_size(w, &a, &b); return b; }
-static int g_nw_format(hk_nwindow *w) { return w ? w->format : -1; }
+bool hk_nwindow_valid(const hk_nwindow *w) { return w && (!w->ops || !w->ops->valid || w->ops->valid(w)); }
+
+/* What Android's window answers once its surface has gone (status_t NO_INIT, -ENODEV): every question and every change refused. */
+#define NW_GONE (-19)
+
+static int g_nw_width(hk_nwindow *w) { int a, b; if (!w) return -1; if (!hk_nwindow_valid(w)) return NW_GONE; hk_nwindow_buffer_size(w, &a, &b); return a; }
+static int g_nw_height(hk_nwindow *w) { int a, b; if (!w) return -1; if (!hk_nwindow_valid(w)) return NW_GONE; hk_nwindow_buffer_size(w, &a, &b); return b; }
+static int g_nw_format(hk_nwindow *w) { return !w ? -1 : !hk_nwindow_valid(w) ? NW_GONE : w->format; }
 
 static int g_nw_set_geometry(hk_nwindow *w, int width, int height, int format)
 {
     if (!w) return -1;
-    /* Takes effect for surfaces made after it, which is when apps call it: before eglCreateWindowSurface. */
+    if (!hk_nwindow_valid(w)) return NW_GONE;
+    /*
+     * The size frames are rendered at from the next buffer on: an EGL surface made after this has it, and on a window of a
+     * SurfaceView's one made before has it from its next swap on, as on Android.
+     */
     w->buffer_width = width;
     w->buffer_height = height;
     if (format) w->format = format;
@@ -47,20 +60,13 @@ static int g_nw_set_geometry(hk_nwindow *w, int width, int height, int format)
 
 static int g_nw_lock(hk_nwindow *w, void *buffer, void *dirty)
 {
-    (void)w; (void)buffer; (void)dirty;
-    hk_note_once("ANativeWindow_lock: drawing into the window without OpenGL ES is not supported yet");
+    if (w && w->ops && w->ops->lock) return w->ops->lock(w, buffer, (i32 *)dirty);
+    hk_note_once("ANativeWindow_lock: the app's whole window is drawn with OpenGL ES alone here; a software buffer is refused");
     return -1;
 }
-static int g_nw_unlock(hk_nwindow *w) { (void)w; return -1; }
+static int g_nw_unlock(hk_nwindow *w) { return w && w->ops && w->ops->unlock ? w->ops->unlock(w) : -1; }
 static int g_nw_ok(hk_nwindow *w) { (void)w; return 0; }
-/* A Surface made by a driver carries its window (drivers/hk_unity.c); the caller owns a reference, as on Android. */
-static hk_nwindow *g_nw_from_surface(void *env, hk_jobj *surface)
-{
-    hk_nwindow *w = surface ? (hk_nwindow *)surface->native : NULL;
-    (void)env;
-    if (w) hk_nwindow_acquire(w);
-    return w;
-}
+/* (ANativeWindow_fromSurface is drivers/hk_java_ndk.c's: a driver's Surface carries its window, a SurfaceView's has one made.) */
 
 /* ================================================================= ALooper */
 
@@ -840,7 +846,6 @@ const hk_sym hk_tab_ndk[] = {
     N("ASurfaceTransactionStats_releaseASurfaceControls", g_sc_nothing),
     N("ASurfaceTransactionStats_getPreviousReleaseFenceFd", g_stats_release_fence),
     N("ANativeWindow_acquire", hk_nwindow_acquire), N("ANativeWindow_release", hk_nwindow_release),
-    N("ANativeWindow_fromSurface", g_nw_from_surface),
     N("ANativeWindow_getWidth", g_nw_width), N("ANativeWindow_getHeight", g_nw_height), N("ANativeWindow_getFormat", g_nw_format),
     N("ANativeWindow_setBuffersGeometry", g_nw_set_geometry), N("ANativeWindow_lock", g_nw_lock),
     N("ANativeWindow_unlockAndPost", g_nw_unlock), N("ANativeWindow_setBuffersTransform", g_nw_ok), N("ANativeWindow_setFrameRate", g_nw_ok),

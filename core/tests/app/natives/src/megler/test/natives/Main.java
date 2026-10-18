@@ -24,7 +24,8 @@ import java.util.Arrays;
 /**
  * Runs the native library through everything Lib declares, one named step after another. Each step is a line of the log --
  * "name ok" or "name FAILED" and why -- and a line on the screen; the test reads the log, a person the screen. Under the lines is
- * the bitmap the library painted, drawn as it is, pixel for pixel.
+ * the bitmap the library painted, drawn as it is, pixel for pixel. Between the two, two SurfaceViews native code draws on
+ * (WindowTest), whose steps go on after these.
  */
 public class Main extends Activity {
     private static final StringBuilder sLines = new StringBuilder();
@@ -71,6 +72,7 @@ public class Main extends Activity {
     }
 
     private Picture picture;
+    private WindowTest windows;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -80,6 +82,13 @@ public class Main extends Activity {
         root.setBackgroundColor(0xFFE0E0E0);
         picture = new Picture(this);
         root.addView(picture, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 96));
+        /* Native code on SurfaceViews, under the picture; its steps go on after the others, one for each tap of the test's. */
+        windows = new WindowTest(this);
+        root.addView(windows.view(), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 120));
+        root.setOnTouchListener((v, e) -> {
+            if (e.getAction() == android.view.MotionEvent.ACTION_UP) windows.tapped();
+            return true;
+        });
         sText = new TextView(this);
         sText.setTextColor(0xFF000000);
         sText.setTextSize(10);
@@ -101,6 +110,7 @@ public class Main extends Activity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        windows.end();
         Log.i("NativesTest", "onDestroy");
     }
 

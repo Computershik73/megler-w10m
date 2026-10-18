@@ -53,6 +53,8 @@ typedef unsigned EGLBoolean, EGLenum;
 #define EGL_BAD_DISPLAY 0x3008
 #define EGL_BAD_NATIVE_WINDOW 0x300B
 #define EGL_BAD_SURFACE 0x300D
+#define EGL_DRAW 0x3059
+#define EGL_READ 0x305A
 #define EGL_SURFACE_TYPE 0x3033
 #define EGL_NATIVE_VISUAL_ID 0x302E
 #define EGL_RED_SIZE 0x3024
@@ -103,6 +105,9 @@ typedef EGLContext (*fn_create_context)(EGLDisplay, EGLConfig, EGLContext, const
 typedef EGLBoolean (*fn_destroy_context)(EGLDisplay, EGLContext);
 typedef EGLBoolean (*fn_make_current)(EGLDisplay, EGLSurface, EGLSurface, EGLContext);
 typedef EGLBoolean (*fn_swap)(EGLDisplay, EGLSurface);
+typedef EGLSurface (*fn_current_surface)(EGLint);
+typedef EGLContext (*fn_current_ctx)(void);
+typedef EGLBoolean (*fn_surface_attrib)(EGLDisplay, EGLSurface, EGLint, EGLint);
 typedef EGLBoolean (*fn_query_display_attrib)(EGLDisplay, EGLint, intptr_t *);
 typedef EGLBoolean (*fn_query_device_attrib)(void *, EGLint, intptr_t *);
 typedef const u8 *(*fn_gl_get_string)(unsigned);
@@ -334,20 +339,56 @@ static EGLDisplay display(void)
 
 /* --------------------------------------------------------------- surfaces */
 
+/*
+ * The app's window surfaces. On the window a driver made for the app's whole surface, a surface is EGL's own, over the
+ * shell's texture. On a window of someone else's -- a SurfaceView's, which native code had from ANativeWindow_fromSurface
+ * (drivers/hk_java_ndk.c) -- it is the window's own (`native`, hk_nwindow_ops), and what the app is given as its EGLSurface is
+ * this entry: the surface of EGL's that it stands for is another once the window has been resized (a swap after the size
+ * changed makes a new one, as Android's next buffer has the window's new size), so every EGL call that takes one is given the
+ * one it stands for now (real_of), and eglGetCurrentSurface gives the app's back.
+ */
 typedef struct surface {
-    EGLSurface handle;
+    EGLSurface handle;                 /* what the app was given: EGL's own surface, or this entry for a window's own */
     hk_nwindow *window;
     int width, height;
     bool from_host;                    /* its texture is the shell's */
+    void *native;                      /* the window's own surface (hk_nwindow_ops.egl_create); NULL for one of EGL's */
 } surface;
 static surface g_surfaces[16];
+static hk_lock g_surfaces_lock = HK_LOCK_INIT;
+/* The windows' own surfaces current on this thread, as the app named them (eglMakeCurrent's draw and read). */
+static HK_THREAD_LOCAL surface *t_draw, *t_read;
 
 static surface *surface_of(EGLSurface s)
 {
     size_t i;
-    for (i = 0; i < HK_COUNT(g_surfaces); i++)
-        if (g_surfaces[i].handle == s && s) return &g_surfaces[i];
-    return NULL;
+    surface *found = NULL;
+    if (!s) return NULL;
+    hk_lock_acquire(&g_surfaces_lock);
+    for (i = 0; i < HK_COUNT(g_surfaces) && !found; i++)
+        if (g_surfaces[i].handle == s) found = &g_surfaces[i];
+    hk_lock_release(&g_surfaces_lock);
+    return found;
+}
+
+/* The entry a handle is, when it is one of the windows' own surfaces (the app's handle is the entry's address). */
+static surface *window_surface(EGLSurface h)
+{
+    hk_addr at = (hk_addr)h, base = (hk_addr)g_surfaces;
+    surface *s;
+    if (at < base || at >= base + sizeof(g_surfaces) || (at - base) % sizeof(surface)) return NULL;
+    s = (surface *)h;
+    return s->native && s->handle == h ? s : NULL;
+}
+
+/* The surface of EGL's that a window's own stands for now, and its size. */
+static EGLSurface window_real(surface *s, int *width, int *height) { return (EGLSurface)s->window->ops->egl_handle(s->native, width, height); }
+
+/* What EGL itself is to be given for a surface the app names. */
+static EGLSurface real_of(EGLSurface h)
+{
+    surface *s = window_surface(h);
+    return s ? window_real(s, NULL, NULL) : h;
 }
 
 /* ------------------------------------------------------- what guests call */
@@ -512,78 +553,160 @@ static EGLContext g_eglCreateContext(EGLDisplay d, EGLConfig config, EGLContext 
     return real(d, no_config ? NULL : config, share, attribs);
 }
 
+/* A free entry, taken (its handle set to something not null until the caller fills it); NULL when all are in use. */
+static surface *take_entry(void)
+{
+    size_t i;
+    surface *s = NULL;
+    hk_lock_acquire(&g_surfaces_lock);
+    for (i = 0; i < HK_COUNT(g_surfaces) && !s; i++)
+        if (!g_surfaces[i].handle) s = &g_surfaces[i];
+    if (s) {
+        memset(s, 0, sizeof(*s));
+        s->handle = (EGLSurface)s;
+    }
+    hk_lock_release(&g_surfaces_lock);
+    return s;
+}
+
+static void free_entry(surface *s)
+{
+    hk_lock_acquire(&g_surfaces_lock);
+    memset(s, 0, sizeof(*s));
+    hk_lock_release(&g_surfaces_lock);
+}
+
+/*
+ * A window surface on a window of someone else's (a SurfaceView's): the window's own, made with the configurations an 8888
+ * surface can have that are nearest the app's (the window's frames go to the shell as 8888 textures), the app's first.
+ */
+static EGLSurface window_surface_create(EGLDisplay d, EGLConfig config, hk_nwindow *window)
+{
+    EGLConfig candidates[32];
+    surface *s;
+    void *native;
+    int count;
+    if (!hk_nwindow_valid(window)) {
+        hk_info("egl: no window surface on a window whose surface has gone");
+        g_error = EGL_BAD_NATIVE_WINDOW;
+        return NULL;
+    }
+    s = take_entry();
+    if (!s) {
+        hk_warn("egl: no window surface: %d are in use", (int)HK_COUNT(g_surfaces));
+        g_error = EGL_BAD_ALLOC;
+        return NULL;
+    }
+    count = surface_configs(d, config, candidates, (int)HK_COUNT(candidates));
+    native = window->ops->egl_create(window, candidates, count);
+    if (!native) {
+        free_entry(s);
+        g_error = EGL_BAD_ALLOC;
+        return NULL;
+    }
+    hk_nwindow_acquire(window);
+    s->window = window;
+    s->native = native;
+    window_real(s, &s->width, &s->height);
+    hk_info("egl: window surface %dx%d on a view's window: its frames are shown where the view is", s->width, s->height);
+    return s->handle;
+}
+
 static EGLSurface g_eglCreateWindowSurface(EGLDisplay d, EGLConfig config, hk_nwindow *window, const EGLint *attribs)
 {
     const megler_run_config *run = hk_run_config();
     surface *s = NULL;
-    size_t i;
     EGLint none[] = { EGL_NONE };
     (void)attribs;
     if (!window) {
         g_error = EGL_BAD_NATIVE_WINDOW;
         return NULL;
     }
-    for (i = 0; i < HK_COUNT(g_surfaces) && !s; i++)
-        if (!g_surfaces[i].handle) s = &g_surfaces[i];
+    if (window->ops && window->ops->egl_create) return window_surface_create(d, config, window);
+    s = take_entry();
     if (!s) {
         g_error = EGL_BAD_ALLOC;
         return NULL;
     }
-    hk_nwindow_buffer_size(window, &s->width, &s->height);
-    s->window = window;
-    s->from_host = false;
-    if (run->window.acquire_target && g_d3d_device) {
-        fn_pbuffer_from from = A(fn_pbuffer_from, "eglCreatePbufferFromClientBuffer");
-        void *texture;
-        if (!g_device_attached) {
-            g_device_attached = true;
-            if (run->window.attach_device && !shell_attach_device(g_d3d_device)) hk_err("egl: the shell could not make a swap chain on ANGLE's device");
+    {
+        /* (The entry stays taken, its handle its own address, until EGL's surface is in it.) */
+        EGLSurface h = NULL;
+        int width, height;
+        bool from_host = false;
+        hk_nwindow_buffer_size(window, &width, &height);
+        if (run->window.acquire_target && g_d3d_device) {
+            fn_pbuffer_from from = A(fn_pbuffer_from, "eglCreatePbufferFromClientBuffer");
+            void *texture;
+            if (!g_device_attached) {
+                g_device_attached = true;
+                if (run->window.attach_device && !shell_attach_device(g_d3d_device)) hk_err("egl: the shell could not make a swap chain on ANGLE's device");
+            }
+            fn_get_error err = A(fn_get_error, "eglGetError");
+            EGLConfig candidates[32];
+            int count = surface_configs(d, config, candidates, (int)HK_COUNT(candidates)), k, first_error = 0;
+            texture = shell_acquire_target(width, height);
+            if (!from) hk_err("egl: this ANGLE has no eglCreatePbufferFromClientBuffer");
+            for (k = 0; texture && from && k < count && !h; k++) {
+                h = from(d, EGL_D3D_TEXTURE_ANGLE, texture, candidates[k], none);
+                if (!h && !first_error && err) first_error = err();
+            }
+            if (h) {
+                from_host = true;
+                if (k > 1) hk_info("egl: the shell's texture was taken with the %s of %d configurations tried", k == 2 ? "second" : "last", k);
+            } else {
+                hk_err("egl: no surface over the shell's %dx%d texture (%d configurations tried, EGL error 0x%x); frames will not be shown", width, height,
+                       texture && from ? count : 0, first_error);
+                if (texture && run->window.release_target) shell_release_target();
+            }
         }
-        fn_get_error err = A(fn_get_error, "eglGetError");
-        EGLConfig candidates[32];
-        int count = surface_configs(d, config, candidates, (int)HK_COUNT(candidates)), k, first_error = 0;
-        texture = shell_acquire_target(s->width, s->height);
-        if (!from) hk_err("egl: this ANGLE has no eglCreatePbufferFromClientBuffer");
-        for (k = 0; texture && from && k < count && !s->handle; k++) {
-            s->handle = from(d, EGL_D3D_TEXTURE_ANGLE, texture, candidates[k], none);
-            if (!s->handle && !first_error && err) first_error = err();
+        if (!h) {
+            /* No shell behind us (the tests), or its texture was refused: an off-screen buffer keeps the app running. */
+            fn_pbuffer pb = A(fn_pbuffer, "eglCreatePbufferSurface");
+            EGLint size[] = { EGL_WIDTH, 0, EGL_HEIGHT, 0, EGL_NONE };
+            size[1] = width;
+            size[3] = height;
+            h = pb ? pb(d, config, size) : NULL;
         }
-        if (s->handle) {
-            s->from_host = true;
-            if (k > 1) hk_info("egl: the shell's texture was taken with the %s of %d configurations tried", k == 2 ? "second" : "last", k);
-        } else {
-            hk_err("egl: no surface over the shell's %dx%d texture (%d configurations tried, EGL error 0x%x); frames will not be shown", s->width, s->height,
-                   texture && from ? count : 0, first_error);
-            if (texture && run->window.release_target) shell_release_target();
+        if (!h) {
+            free_entry(s);
+            return NULL;
         }
+        hk_nwindow_acquire(window);
+        hk_lock_acquire(&g_surfaces_lock);
+        s->window = window;
+        s->width = width;
+        s->height = height;
+        s->from_host = from_host;
+        s->handle = h;
+        hk_lock_release(&g_surfaces_lock);
+        hk_info("egl: window surface %dx%d%s", width, height, from_host ? "" : " (off-screen)");
+        return h;
     }
-    if (!s->handle) {
-        /* No shell behind us (the tests), or its texture was refused: an off-screen buffer keeps the app running. */
-        fn_pbuffer pb = A(fn_pbuffer, "eglCreatePbufferSurface");
-        EGLint size[] = { EGL_WIDTH, 0, EGL_HEIGHT, 0, EGL_NONE };
-        size[1] = s->width;
-        size[3] = s->height;
-        s->handle = pb ? pb(d, config, size) : NULL;
-    }
-    if (!s->handle) {
-        s->window = NULL;
-        return NULL;
-    }
-    hk_nwindow_acquire(window);
-    hk_info("egl: window surface %dx%d%s", s->width, s->height, s->from_host ? "" : " (off-screen)");
-    return s->handle;
 }
 
 static EGLBoolean g_eglDestroySurface(EGLDisplay d, EGLSurface handle)
 {
     fn_destroy_surface real = A(fn_destroy_surface, "eglDestroySurface");
-    surface *s = surface_of(handle);
-    EGLBoolean ok = real ? real(d, handle) : 0;
+    surface *w = window_surface(handle), *s;
+    EGLBoolean ok;
+    if (w) {
+        /* A window's own: it ends with the window's part of it, and the entry is free again. */
+        hk_nwindow *window = w->window;
+        void *native = w->native;
+        if (t_draw == w) t_draw = NULL;
+        if (t_read == w) t_read = NULL;
+        free_entry(w);
+        window->ops->egl_destroy(native);
+        hk_nwindow_release(window);
+        return 1;
+    }
+    s = surface_of(handle);
+    ok = real ? real(d, handle) : 0;
     if (s) {
         const megler_run_config *run = hk_run_config();
         if (s->from_host && run->window.release_target) shell_release_target();
         if (s->window) hk_nwindow_release(s->window);
-        memset(s, 0, sizeof(*s));
+        free_entry(s);
     }
     return ok;
 }
@@ -591,7 +714,17 @@ static EGLBoolean g_eglDestroySurface(EGLDisplay d, EGLSurface handle)
 static EGLBoolean g_eglQuerySurface(EGLDisplay d, EGLSurface handle, EGLint attrib, EGLint *value)
 {
     fn_query_surface real = A(fn_query_surface, "eglQuerySurface");
-    surface *s = surface_of(handle);
+    surface *w = window_surface(handle), *s;
+    if (w) {
+        int width = 0, height = 0;
+        EGLSurface h = window_real(w, &width, &height);
+        if (attrib == EGL_WIDTH || attrib == EGL_HEIGHT) {
+            if (value) *value = attrib == EGL_WIDTH ? width : height;
+            return 1;
+        }
+        return real ? real(d, h, attrib, value) : 0;
+    }
+    s = surface_of(handle);
     if (s && attrib == EGL_WIDTH) {
         *value = s->width;
         return 1;
@@ -603,10 +736,76 @@ static EGLBoolean g_eglQuerySurface(EGLDisplay d, EGLSurface handle, EGLint attr
     return real ? real(d, handle, attrib, value) : 0;
 }
 
+/*
+ * The surfaces the app makes current are what EGL is given for them (real_of); which of the windows' own are current on this
+ * thread is kept, for eglGetCurrentSurface, a swap, and a surface replaced under the app's handle.
+ */
+static EGLBoolean g_eglMakeCurrent(EGLDisplay d, EGLSurface draw, EGLSurface read, EGLContext ctx)
+{
+    fn_make_current real = A(fn_make_current, "eglMakeCurrent");
+    surface *wd = window_surface(draw), *wr = window_surface(read);
+    EGLBoolean ok;
+    if (!real) return 0;
+    ok = real(d, wd ? window_real(wd, NULL, NULL) : draw, wr ? window_real(wr, NULL, NULL) : read, ctx);
+    if (ok) {
+        t_draw = ctx ? wd : NULL;
+        t_read = ctx ? wr : NULL;
+    }
+    return ok;
+}
+
+static EGLSurface g_eglGetCurrentSurface(EGLint which)
+{
+    fn_current_surface real = A(fn_current_surface, "eglGetCurrentSurface");
+    EGLSurface h = real ? real(which) : NULL;
+    surface *w = which == EGL_READ ? t_read : which == EGL_DRAW ? t_draw : NULL;
+    if (h && w && window_surface(w->handle) == w && window_real(w, NULL, NULL) == h) return w->handle;
+    return h;
+}
+
+static EGLBoolean g_eglSurfaceAttrib(EGLDisplay d, EGLSurface handle, EGLint attrib, EGLint value)
+{
+    fn_surface_attrib real = A(fn_surface_attrib, "eglSurfaceAttrib");
+    return real ? real(d, real_of(handle), attrib, value) : 0;
+}
+
+/*
+ * A swap of a window's own surface: the window shows the frame (false: its surface has gone -- EGL_BAD_NATIVE_WINDOW, what
+ * Android's GLSurfaceView expects then). A swap that found the window resized leaves the app's handle standing for a new
+ * surface of EGL's, which is made current here where the old one was.
+ */
+static EGLBoolean window_swap(EGLDisplay d, surface *w)
+{
+    EGLSurface before, after;
+    bool shown;
+    if (t_draw != w) {
+        /* As EGL has it: the surface swapped must be the calling thread's current one. */
+        g_error = EGL_BAD_SURFACE;
+        return 0;
+    }
+    before = window_real(w, NULL, NULL);
+    shown = w->window->ops->egl_swap(w->native);
+    after = window_real(w, &w->width, &w->height);
+    if (after != before) {
+        fn_make_current make = A(fn_make_current, "eglMakeCurrent");
+        fn_current_surface current = A(fn_current_surface, "eglGetCurrentSurface");
+        fn_current_ctx context = A(fn_current_ctx, "eglGetCurrentContext");
+        EGLSurface read = t_read == w ? after : current ? current(EGL_READ) : after;
+        if (!make || !context || !make(d, after, read, context())) hk_warn("egl: the window's surface of its new size could not be made current");
+    }
+    if (!shown) {
+        g_error = EGL_BAD_NATIVE_WINDOW;
+        return 0;
+    }
+    return 1;
+}
+
 static EGLBoolean g_eglSwapBuffers(EGLDisplay d, EGLSurface handle)
 {
-    surface *s = surface_of(handle);
+    surface *w = window_surface(handle), *s;
     hk_trace("eglSwapBuffers(%p)", (void *)handle);
+    if (w) return window_swap(d, w);
+    s = surface_of(handle);
     if (!s) {
         fn_swap real = A(fn_swap, "eglSwapBuffers");
         return real ? real(d, handle) : 0;
@@ -1104,6 +1303,9 @@ static const hk_sym g_egl_overrides[] = {
     HK_WRAP("eglDestroySurface", g_eglDestroySurface),
     HK_WRAP("eglQuerySurface", g_eglQuerySurface),
     HK_WRAP("eglSwapBuffers", g_eglSwapBuffers),
+    HK_WRAP("eglMakeCurrent", g_eglMakeCurrent),
+    HK_WRAP("eglGetCurrentSurface", g_eglGetCurrentSurface),
+    HK_WRAP("eglSurfaceAttrib", g_eglSurfaceAttrib),
     HK_WRAP("eglSwapInterval", g_eglSwapInterval),
     HK_WRAP("eglGetProcAddress", g_eglGetProcAddress),
     HK_END
