@@ -1612,6 +1612,12 @@ static int run_crash(void)
     expect_line("I/CrashTest: first onCreate", &at, 120);
     /* The app is written for Android 6: a row of no fixed width leaves its weighted, widthless children what they asked for, the rule Android keeps for apps that old. */
     expect_line("I/CrashTest: row unlimited=140:40+100 exact=200:100+100", &at, 30);
+    /*
+     * First starts Gate for a result from its first onResume: its window waits for the result, as on Android, so it hears no
+     * focus before it (the original showed it at once, and it lost a focus it was never given when Gate covered it).
+     */
+    expect_line("I/CrashTest: gate onCreate", &at, 60);
+    expect_line("I/CrashTest: first order resume,result:7:-1,resume,focus:true,", &at, 60);
     expect_line("I/CrashTest: second onCreate, about to throw", &at, 60);
     for (tries = 0; tries < 3000 && running(); tries++) hk_sleep_ns(10000000ull);
     CHECK(g_exited && g_status == -1);

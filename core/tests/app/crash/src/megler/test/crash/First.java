@@ -6,9 +6,13 @@ import android.os.Bundle;
 import android.util.Log;
 import android.widget.TextView;
 
-/** Shows a line of text, and once it is on the screen starts the activity that throws. */
+/**
+ * Shows a line of text, and once it is on the screen starts the activity that throws. Before that, from its first onResume,
+ * it starts Gate for a result, which gives it at once: what it hears meanwhile is said in order once it has the focus.
+ */
 public class First extends Activity {
-    private boolean started;
+    private boolean started, gated;
+    private final StringBuilder order = new StringBuilder();
 
     @Override
     protected void onCreate(Bundle state) {
@@ -35,10 +39,27 @@ public class First extends Activity {
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        order.append("resume,");
+        if (!gated) {
+            gated = true;
+            startActivityForResult(new Intent(this, Gate.class), 7);
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int request, int result, Intent data) {
+        order.append("result:").append(request).append(':').append(result).append(',');
+    }
+
+    @Override
     public void onWindowFocusChanged(boolean focus) {
         super.onWindowFocusChanged(focus);
+        order.append("focus:").append(focus).append(',');
         if (focus && !started) {
             started = true;
+            Log.i("CrashTest", "first order " + order);
             startActivity(new Intent(this, Second.class));
         }
     }

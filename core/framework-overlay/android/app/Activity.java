@@ -13,8 +13,16 @@
 //
 // And in getWindow: the window takes the manifest's android:windowSoftInputMode, as Activity.attach does on Android (when it
 // says anything). The original read the attribute and never used it, so an activity was resized for the keyboard whatever
-// it asked; ViewRoot (overlaid) now resizes, pans or leaves a window as its softInputMode says. Everything else is the
-// original's, unchanged.
+// it asked; ViewRoot (overlaid) now resizes, pans or leaves a window as its softInputMode says.
+//
+// And an activity that starts one of the app's activities for a result before its own window is on the screen (in onCreate,
+// onStart or onResume) does not show its window when it resumes: it shows it when it resumes again, once the other has
+// given its result. That is ActivityThread.handleResumeActivity's mStartedActivity ("willBeVisible"). The original showed
+// the window after every onResume, so the window had focus and lost it to the activity it had started, which Android never
+// gives it: Asphalt 9's MainActivity starts its data installer from onResume, creates its native game only in
+// onActivityResult, and its onWindowFocusChanged calls into that game, which was not there yet (a read at 0x34, package
+// 262). meglerVisible, which AppRunner asks whether an activity below must be started again, says whether the activity was
+// started and not stopped, so that such an activity is not started twice. Everything else is the original's, unchanged.
 package android.app;
 
 import android.content.*;
@@ -41,6 +49,8 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     private CharSequence mTitle;
     private int mTitleColor;
     private boolean mFinished, mDestroyed, mResumed, mStarted, mCalled, mVisibleFromClient = true, mChangingConfigurations;
+    /* started an activity of the app's for a result before its window was shown: the window waits for the next resume */
+    private boolean mStartedActivity;
     private int mResultCode = RESULT_CANCELED;
     private Intent mResultData;
     private Activity mParent, mCaller;
@@ -118,7 +128,8 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         fragmentHost(FragmentManager.HOST_RESUMED);
         onPostResume();
         each(c -> c.onActivityPostResumed(this));
-        if (mVisibleFromClient) makeVisible();
+        if (mVisibleFromClient && !mStartedActivity) makeVisible();
+        mStartedActivity = false;
     }
     public final void meglerPause() {
         each(c -> c.onActivityPrePaused(this));
@@ -146,7 +157,9 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         if (mWindow != null) mWindow.meglerDestroy();
     }
     public final void meglerBack() { onBackPressedMegler(); }
-    public final boolean meglerVisible() { return mWindow != null && mWindow.peekDecorView() != null && megler.ViewRoot.of(mWindow.peekDecorView()) != null; }
+    /* Whether it was started and not stopped since (AppRunner starts the activity below again when not); its window may be waiting (mStartedActivity). */
+    public final boolean meglerVisible() { return mStarted || windowShown(); }
+    private boolean windowShown() { return mWindow != null && mWindow.peekDecorView() != null && megler.ViewRoot.of(mWindow.peekDecorView()) != null; }
     public final Activity meglerCaller() { return mCaller; }
     public final int meglerRequestCode() { return mRequestCode; }
     public final int meglerResultCode() { return mResultCode; }
@@ -337,7 +350,10 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     @Override public void startActivity(Intent i) { startActivityForResult(i, -1); }
     @Override public void startActivity(Intent i, Bundle o) { startActivityForResult(i, -1, o); }
     public void startActivityForResult(Intent i, int request) { startActivityForResult(i, request, null); }
-    public void startActivityForResult(Intent i, int request, Bundle o) { megler.AppRunner.startActivity(this, i, request, o); }
+    public void startActivityForResult(Intent i, int request, Bundle o) {
+        if (request >= 0 && !windowShown() && megler.Manifest.resolve(i) != null) mStartedActivity = true;
+        megler.AppRunner.startActivity(this, i, request, o);
+    }
     public void startActivityFromChild(Activity child, Intent i, int request) { startActivityForResult(i, request); }
     public void startActivityFromFragment(Fragment f, Intent i, int request) { startActivityForResult(i, request); }
     public boolean startActivityIfNeeded(Intent i, int request) { startActivityForResult(i, request); return true; }

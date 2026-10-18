@@ -3529,6 +3529,23 @@ on a looper thread of its own and takes it back with `next()`.
   `NullPointerException` on it.
   And, the original's fault too, `getWindow` gives the window the manifest's
   `android:windowSoftInputMode`, which the original read and never used.
+  And an activity that starts one of the app's activities for a result
+  before its window is on the screen (in `onCreate`, `onStart` or
+  `onResume`) leaves its window off the screen until it resumes again with
+  the result, as `ActivityThread.handleResumeActivity` does
+  (`mStartedActivity`, "willBeVisible"); `meglerVisible`, which `AppRunner`
+  asks whether the activity below must be started again, says whether it was
+  started and not stopped. The original showed the window after every
+  `onResume`, so the window had the focus and lost it to the activity it had
+  started, which Android never gives it. Asphalt 9's `MainActivity` starts
+  its data installer from `onResume`, makes its native game only in
+  `onActivityResult`, and calls that game from `onWindowFocusChanged`: it
+  read at 0x34 and ended (package 262). The crash app's first activity starts
+  one for a result from `onResume` and says what it heard, in order, once it
+  has the focus: the result, then the focus, and nothing before. Not done:
+  when the activity started for a result is floating (a dialog's theme),
+  Android shows the one under it too; here its window waits as well, since
+  a window added later would lie above the dialog.
 
 - `android/widget/LinearLayout.java`, four statements: what a child with a
   weight and a size of 0 is given when the layout's own size is not exact.
@@ -3896,7 +3913,7 @@ on a looper thread of its own and takes it back with `next()`.
   recording do not change the list, a bitmap does; two hundred nodes of
   1440 x 2560 take 110 KB, where the original's ran out of memory.
 
-The original has all forty faults; they are its author's to take back.
+The original has all forty-one faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in

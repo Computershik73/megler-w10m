@@ -3,7 +3,9 @@
      What the test wants to see is how the layer says so.
      It is also the app whose launcher entries are aliases, as an app with a choice of icons has them: two names for the first Activity, the
      first of them disabled. No class has an alias's name; the layer must start the activity the enabled one stands for.
-     And it is the one test app written for an old Android (targetSdkVersion 23): what Android keeps as it was for apps of that age is tested here. -->
+     And it is the one test app written for an old Android (targetSdkVersion 23): what Android keeps as it was for apps of that age is tested here.
+     And the first Activity starts a third one for a result from its first onResume, as Asphalt 9 starts its data installer: its own window
+     waits for the result, and has no focus to lose before then. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="megler.test.crash" android:versionCode="1" android:versionName="1.0">
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="23" />
     <application android:label="@string/app_name">
@@ -21,5 +23,6 @@
             </intent-filter>
         </activity-alias>
         <activity android:name=".Second" />
+        <activity android:name=".Gate" />
     </application>
 </manifest>
