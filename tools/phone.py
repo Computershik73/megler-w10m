@@ -499,6 +499,13 @@ def cmd_auto(a):
     # here once killed a run the user had just started by hand.
     attach = a.no_install and megler_running() is True
     if attach:
+        # An auto run goes on after its AUTO DONE (the app is left as it is):
+        # attached to, it would hand its old logs over as this run's. Whose it
+        # is now this can't tell, so it is left running all the same.
+        done_before = read_app_file(pfn, "megler-auto.log") or b""
+        if b"AUTO DONE" in done_before:
+            sys.exit("Megler is running, but its auto run already wrote AUTO DONE: that is a finished run, not a new one. "
+                     "If it is yours, end it (python tools/phone.py stop) and run this again.")
         print("Megler is already running: attaching to its run")
     else:
         try:
