@@ -2513,12 +2513,16 @@ meta-data `com.android.webview.WebViewLibrary`). Its resources and files are
 added to the app's `AssetManager` as a shared library (below). Its class
 loader is a `PathClassLoader` over the APK with the APK's `lib/armeabi-v7a`
 as its native path, as Android's is for a package whose libraries are not
-extracted. `WebViewLibraryLoader` reserves 130 MB of address space, as the
-zygote does for a 32-bit process, and its two natives
-(`core/src/drivers/hk_java_webview.c`) load `libwebviewchromium.so` into it,
-the way `android_dlopen_ext` with `ANDROID_DLEXT_RESERVED_ADDRESS_HINT` does
-(`bionic/hk_libdl.c`), reading it out of the APK: 73 MB of code, its
-constructors run. Its `JNI_OnLoad` runs when Chromium's own `LibraryLoader`
+extracted. `WebViewLibraryLoader` asks for 130 MB of address space to be
+reserved, as the zygote does for a 32-bit process so that every app can load
+the library at one address with one RELRO; here there is one process and
+nothing to share, so its two natives (`core/src/drivers/hk_java_webview.c`)
+reserve nothing and load `libwebviewchromium.so` wherever its own size fits,
+reading it out of the APK: 72 MB of address space with the code the patcher
+adds, its constructors run (the test checks the size). It went into the 130
+MB at first, as `android_dlopen_ext` with
+`ANDROID_DLEXT_RESERVED_ADDRESS_HINT` does, and the other 58 MB stayed
+reserved for nothing. Its `JNI_OnLoad` runs when Chromium's own `LibraryLoader`
 calls `System.loadLibrary("webviewchromium")`, as on Android: the runtime now
 runs a library's `JNI_OnLoad` the first time Java loads it even when native
 code or the framework loaded it before (`dvm/hk_dvm_jvm.c`). Then

@@ -6,9 +6,11 @@
  * The loader. On Android the zygote reserves address space for the WebView's library, an isolated process loads it once to
  * write its relocated RELRO, and each app loads it into its reservation with that RELRO, by android_dlopen_ext with
  * ANDROID_DLEXT_RESERVED_ADDRESS and USE_RELRO, in the linker namespace of the WebView's class loader. Here there is one
- * process: nativeReserveAddressSpace maps the range as Chromium's own linker does (mmap, PROT_NONE), and
- * nativeLoadWithRelroFile loads the library into it the way android_dlopen_ext does with RESERVED_ADDRESS_HINT
- * (bionic/hk_libdl.c, hk_ld_load_placed), and runs its constructors; no RELRO is shared, there being no other process. The
+ * process, with no RELRO to share, and so no range to share it in: nativeReserveAddressSpace takes nothing and says it
+ * did, and nativeLoadWithRelroFile loads the library wherever its own size fits, as dlopen would, and runs its
+ * constructors. (It was loaded into the 130 MB the WebView asks for, as android_dlopen_ext does with
+ * RESERVED_ADDRESS_HINT; the library and the patcher's code take 72 MB, and the other 58 stayed reserved for nothing,
+ * out of a 2 GB address space where Spotify's WebView ended out of memory wanting 126 MB in one piece.) The
  * library is found as the class loader's namespace finds it: the loader's findLibrary names "<apk>!/lib/<abi>/<name>", an
  * APK whose libraries are used from it as they are (the WebView's are stored, not extracted), and that APK is given to the
  * linker to read libraries from. JNI_OnLoad is not run here: as on Android it runs when the WebView's own LibraryLoader calls
@@ -33,36 +35,14 @@
 
 #define N(name) static void name(hk_jcall *c)
 
-/* The range nativeReserveAddressSpace reserved, which the library is loaded into. */
-static void *g_reserved;
-static size_t g_reserved_size;
+/* What nativeReserveAddressSpace was asked for, which is not taken (see the top). */
+static i64 g_asked;
 
-/* nativeReserveAddressSpace(long size): true when the range is reserved. Once: a second call answers what the first did. */
+/* nativeReserveAddressSpace(long size): true, nothing reserved. */
 N(Loader_reserve)
 {
-    typedef void *(*mmap_fn)(void *, size_t, int, int, int, i32);
-    mmap_fn guest_mmap = (mmap_fn)hk_bionic_find("mmap");
-    i64 size = c->args[0].j;
-    void *p;
-    if (g_reserved) {
-        c->ret.z = 1;
-        return;
-    }
-    if (!guest_mmap || size <= 0 || size > (512 << 20)) {
-        c->ret.z = 0;
-        return;
-    }
-    /* PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS: what the zygote's loader and Chromium's linker reserve with. */
-    p = guest_mmap(NULL, (size_t)size, 0, 0x02 | 0x20, -1, 0);
-    if (!p || p == (void *)(hk_addr)-1) {
-        hk_warn("webview: %u MB of address space for the WebView's library could not be reserved", (unsigned)(size >> 20));
-        c->ret.z = 0;
-        return;
-    }
-    g_reserved = p;
-    g_reserved_size = (size_t)size;
-    hk_info("webview: %u MB of address space reserved for the WebView's library at %p", (unsigned)(size >> 20), p);
-    c->ret.z = 1;
+    g_asked = c->args[0].j;
+    c->ret.z = g_asked > 0;
 }
 
 /*
@@ -90,7 +70,7 @@ N(Loader_load)
 {
     const char *lib = hk_dvm_string_utf8(c->args[0].l);
     hk_jobj *loader = c->args[2].l;
-    char name[200], apk[400], why[300];
+    char name[200], apk[400];
     hk_jvalue arg, found;
     const char *path;
     char *host;
@@ -125,11 +105,10 @@ N(Loader_load)
             return;
         }
         free(host);
-        why[0] = 0;
         hk_info("webview: loading %s from %s", lib, apk);
-        l = g_reserved ? hk_ld_load_placed(lib, g_reserved, g_reserved_size, true, false, why, sizeof(why)) : hk_ld_load(lib);
+        l = hk_ld_load(lib);
         if (!l) {
-            hk_warn("webview: %s did not load%s%s", lib, why[0] ? ": " : "", why);
+            hk_warn("webview: %s did not load", lib);
             return;
         }
     }
@@ -137,7 +116,8 @@ N(Loader_load)
         hk_warn("webview: the constructors of %s did not run", lib);
         return;
     }
-    hk_info("webview: %s loaded at %p", lib, hk_ld_lib_base(l));
+    hk_info("webview: %s loaded at %p, %u MB of address space with the patcher's code (of the %u MB the WebView asked to reserve, none is)",
+            lib, hk_ld_lib_base(l), (unsigned)(hk_ld_lib_extent(l) >> 20), (unsigned)(g_asked >> 20));
     c->ret.i = 0;
 }
 
