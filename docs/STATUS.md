@@ -164,6 +164,18 @@ under "Films" below). What it took, beyond what qemu had shown:
     filled and sampled as DXT5, compressing the pixels as they are uploaded: 661 MB
     became 165. It costs some of the picture and nothing has judged how much.
     Flags `plain-textures` and `pack-textures` turn it off and on from the start.
+  - (Asphalt 9, package 278.) A game made for OpenGL ES 3 ships ETC2, which
+    Direct3D does not have: ANGLE decodes it to RGBA8 and keeps it so, 112 MB
+    of ETC2 came to 507 MB, and the addresses ran out in the first race (231 MB
+    left, the largest piece 17 MB; Direct3D's driver threw, and the game wrote
+    through the null it got). ETC textures now reach ANGLE in a format Direct3D
+    has, of the same size (`hk_gltex.c`): the RGB ones as ANGLE's own
+    `GL_ANGLE_lossy_etc_decode` formats, which ANGLE turns into BC1 as it loads
+    them; RGBA8 ETC2 EAC, which that extension does not offer over Direct3D, as
+    DXT5, each block decoded here and packed again (the decoder is checked
+    against ANGLE's own over 65536 blocks). A texture whose base level is not
+    whole blocks stays as the app gave it. Flag `etc-by-angle` gives every ETC
+    texture to ANGLE as the app gave it.
 
 Unity's frame pacing is `core/src/jni/hk_jni_loop.c`: Android's `Looper`,
 `Handler`, `HandlerThread`, `Message` and `Choreographer`, the boxed numbers, and
