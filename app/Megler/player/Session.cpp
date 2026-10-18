@@ -35,7 +35,7 @@ std::shared_ptr<AudioHost> gAudio;
 std::vector<std::shared_ptr<WindowHost>> gOldWindows;
 std::vector<std::shared_ptr<AudioHost>> gOldAudio;
 // What megler_run_config points at, alive for the rest of the process.
-std::string gApkPath;
+std::string gApkPath, gSplitsDir;
 bool gSuspended = false, gVisible = true, gFocused = true;
 
 // What the app was last told, and the order it is told in: held across the
@@ -168,6 +168,8 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         gSnapshot.apkId = apk.id;
         gSnapshot.title = apk.title();
         gApkPath = narrow(apk.path);
+        // An app in several APKs: the folder of its splits beside its base (library/Library.h).
+        gSplitsDir = apk.splitsDir.empty() ? std::string() : narrow(apk.splitsDir);
         window = gWindow = std::make_shared<WindowHost>(panel, width, height);
         audio = gAudio = std::make_shared<AudioHost>();
     }
@@ -177,11 +179,13 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
     audio->prepare(44100);
     // The phone's time zone and battery, which an app asks the layer for.
     phoneState::tell();
-    shellLog::write(format("session: starting %s (%s) at %dx%d, %d dpi", apk.id.c_str(), apk.report.package.c_str(), width, height,
+    shellLog::write(format("session: starting %s (%s%s) at %dx%d, %d dpi", apk.id.c_str(), apk.report.package.c_str(),
+                           apk.report.splits.empty() ? "" : format(", with %u splits", unsigned(apk.report.splits.size())).c_str(), width, height,
                            densityDpi));
     std::thread([window, audio, width, height, densityDpi] {
         megler_run_config config = {};
         config.apk_path = gApkPath.c_str();
+        config.splits_dir = gSplitsDir.empty() ? nullptr : gSplitsDir.c_str();
         config.split_apks = nullptr;
         config.split_count = 0;
         config.width = width;

@@ -104,7 +104,7 @@ public:
         const bool copying = import.active && !import.name.empty();
         setVisible(importCard_, copying);
         if (copying) {
-            importTitle_.Text(hs("Copying " + import.name));
+            importTitle_.Text(hs((import.unpacking ? "Unpacking " : "Copying ") + import.name));
             importBar_.Value(import.total ? double(import.copied) / double(import.total) : 0);
             importDetail_.Text(hs(formattedByteCount(import.copied) + " of " + formattedByteCount(import.total)));
         }
@@ -121,8 +121,8 @@ private:
         const auto entries = Library::instance().entries();
         if (entries.empty()) {
             auto empty = contentUnavailable(glyphs::game, "No Apps Yet",
-                                            "Add an Android game's APK from this phone's storage. Megler keeps its own copy "
-                                            "and tells you whether it can run here.");
+                                            "Add an Android game's APK from this phone's storage, or a bundle of split APKs "
+                                            "(.apks, .xapk). Megler keeps its own copy and tells you whether it can run here.");
             empty.Margin(ThicknessHelper::FromLengths(8, 48, 8, 0));
             auto first = primaryButton("Add APK", glyphs::add, [this] { addApk(); });
             first.HorizontalAlignment(HorizontalAlignment::Center);
