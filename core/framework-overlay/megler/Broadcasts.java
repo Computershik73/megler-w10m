@@ -14,6 +14,14 @@
 // here -- registered receivers hear ACTION_BATTERY_CHANGED again, and ACTION_POWER_CONNECTED or ACTION_POWER_DISCONNECTED
 // is sent when the phone went on or off a charger: the original had a battery that never changed and sent neither.
 //
+// And it keeps the network's sticky broadcast as it keeps the battery's: CONNECTIVITY_ACTION, which Android keeps for the
+// network it has and gives to whoever registers for it, the same two ways. The original kept none, and a receiver registered
+// for it heard nothing until the network changed, which under Megler is never. Asphalt 9 registers one in its activity's
+// onResume and tells its native code the connection's type from that receiver's onReceive and from nowhere else: its native
+// code, never told, took the phone to have no network, never opened a socket, and said "no network" over a loading screen that
+// stood still (package 275), while the game's Java side, which asks ConnectivityManager, reached its server. The intent says
+// what ConnectivityManager says (a connected Wi-Fi network), with the extras Android's has.
+//
 // And it differs in who receives a broadcast (send). An intent that names a component goes to that component alone, as on
 // Android: not to the receivers registered at run time, not to the manifest's receivers whose filters list its action.
 // The original gave it to all of them. Spotify's WidgetUpdateCoordinator is a manifest receiver for its own ACTION_USER_LOGIN,
@@ -27,24 +35,30 @@ package megler;
 
 import android.content.*;
 import android.content.pm.PackageManager;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.os.Handler;
 import android.os.Looper;
 import java.util.ArrayList;
 
-/** Broadcasts within the app: to receivers registered at run time and those in the manifest; the system's own few (battery) answered. */
+/** Broadcasts within the app: to receivers registered at run time and those in the manifest; the system's own few (battery, network) answered. */
 public final class Broadcasts {
     private static final ArrayList<Object[]> sReceivers = new ArrayList<>();
+    /** The sticky broadcasts Megler keeps, as Android keeps them: one intent for each, the last that was sent. */
+    private static final String[] STICKY = { Intent.ACTION_BATTERY_CHANGED, ConnectivityManager.CONNECTIVITY_ACTION };
     private Broadcasts() {}
     public static Intent register(BroadcastReceiver r, IntentFilter f) {
         /* With no receiver there is nothing to keep: the call only asks for the sticky intent. (A null in the list was a NullPointerException waiting for the first broadcast its filter matched.) */
         if (r != null) synchronized (sReceivers) { sReceivers.add(new Object[] { r, f }); }
-        if (f != null && f.hasAction(Intent.ACTION_BATTERY_CHANGED)) {
-            final Intent b = battery();
-            /* A sticky broadcast reaches the receiver it was registered with as any broadcast does: later, on the main thread, if it is still registered then. */
+        Intent first = null;
+        if (f != null) for (String action : STICKY) {
+            if (!f.hasAction(action)) continue;
+            final Intent b = action.equals(Intent.ACTION_BATTERY_CHANGED) ? battery() : connectivity();
+            /* A sticky broadcast reaches the receiver it was registered with as any broadcast does: later, on the main thread, if it is still registered then. Each the filter takes; the first is the value. */
             if (r != null) new Handler(Looper.getMainLooper()).post(() -> { if (registered(r)) r.onReceive(AppRunner.application(), b); });
-            return b;
+            if (first == null) first = b;
         }
-        return null;
+        return first;
     }
     private static boolean registered(BroadcastReceiver r) {
         synchronized (sReceivers) { for (Object[] e : sReceivers) if (e[0] == r) return true; }
@@ -71,6 +85,16 @@ public final class Broadcasts {
         b.putExtra("level", s[0]); b.putExtra("scale", s[1]); b.putExtra("status", s[2]); b.putExtra("plugged", s[3]); b.putExtra("health", s[4]);
         b.putExtra("voltage", s[5]); b.putExtra("temperature", s[6]); b.putExtra("present", s[7] != 0); b.putExtra("technology", Native.batteryTechnology());
         b.putExtra("battery_low", s[1] > 0 && s[0] * 100 / s[1] <= 15 && s[3] == 0); b.putExtra("invalid_charger", 0); b.putExtra("seq", 0);
+        return b;
+    }
+    /** The network as Android's sticky CONNECTIVITY_ACTION says it: the one ConnectivityManager reports, with the same extras. */
+    public static Intent connectivity() {
+        NetworkInfo info = new ConnectivityManager().getActiveNetworkInfo();
+        Intent b = new Intent(ConnectivityManager.CONNECTIVITY_ACTION);
+        b.putExtra(ConnectivityManager.EXTRA_NETWORK_INFO, info);
+        b.putExtra(ConnectivityManager.EXTRA_NETWORK_TYPE, info != null ? info.getType() : ConnectivityManager.TYPE_NONE);
+        if (info == null || !info.isConnected()) b.putExtra(ConnectivityManager.EXTRA_NO_CONNECTIVITY, true);
+        b.putExtra(ConnectivityManager.EXTRA_INET_CONDITION, info != null && info.isConnected() ? 100 : 0);
         return b;
     }
     public static void unregister(BroadcastReceiver r) { synchronized (sReceivers) { for (int i = sReceivers.size() - 1; i >= 0; i--) if (sReceivers.get(i)[0] == r) sReceivers.remove(i); } }

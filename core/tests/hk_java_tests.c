@@ -1660,7 +1660,7 @@ static int run_data(void)
                                             and an https URL through Android's HTTP client; or, where its library is not in the Android root, the
                                             stand-in that fails politely), Android's key store's key pairs, and the list of decoders: the stand-in's
                                             H.264, AAC and MP3 (hk_codec_standin.c), and no H.265. */
-                                         "battery", "timezone", "tls", "tls-loopback", "tls-https", "keystore", "codecs",
+                                         "battery", "connectivity", "timezone", "tls", "tls-loopback", "tls-https", "keystore", "codecs",
                                          /* And what Android's WebView asks of the platform before it shows a page, each answered as Android
                                             answers it: the app's id within its user (UserHandle.getAppId), whether cleartext HTTP is
                                             permitted (NetworkSecurityPolicy), a compatibility change's state for the app's target
@@ -1724,6 +1724,8 @@ static int run_data(void)
     expect_line("I/DataTest: permission-result ok after done=true", &at, 30);
     /* So does the battery's sticky broadcast to a receiver registered for it, once. */
     expect_line("I/DataTest: battery-received ok", &at, 30);
+    /* And the network's sticky broadcast (CONNECTIVITY_ACTION), once, to the receiver registered for it. */
+    CHECK(wait_line("I/DataTest: connectivity-received ok", 0, 30) >= 0);
     /* The broadcasts of the step "broadcast-explicit", once delivered: the relayed one, which names Target, reached Target alone. */
     CHECK(wait_line("I/DataTest: broadcast-relay ok relay=1 target=1 off=0 registered=1", 0, 30) >= 0);
     /* The sound the step "audio-track" and those after it started: each MediaPlayer played to its end, the SoundPool's sound played once loaded. */

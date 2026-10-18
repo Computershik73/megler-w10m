@@ -280,6 +280,7 @@ public class Main extends Activity {
         helper.close();
         storage(run);
         battery();
+        connectivity();
         timezone();
         tls();
         keystore(run);
@@ -602,6 +603,39 @@ public class Main extends Activity {
                 else Log.i("DataTest", "power-heard" + where + " " + intent.getAction());
             }
         }, news);
+    }
+
+    /**
+     * The network, as the sticky CONNECTIVITY_ACTION says it, which is how an app learns the network it starts on: registerReceiver
+     * gives the intent back, and a receiver registered for it is called with it, once, later, on the main thread (Asphalt 9 tells
+     * its native code the connection's type from there and from nowhere else). It says what ConnectivityManager says.
+     */
+    private void connectivity() {
+        step("connectivity", () -> {
+            android.content.IntentFilter filter = new android.content.IntentFilter(android.net.ConnectivityManager.CONNECTIVITY_ACTION);
+            android.content.Intent sticky = registerReceiver(null, filter);
+            android.net.NetworkInfo active = ((android.net.ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE)).getActiveNetworkInfo();
+            final android.content.Intent[] returned = new android.content.Intent[1];
+            returned[0] = registerReceiver(new android.content.BroadcastReceiver() {
+                private int calls;
+
+                @Override
+                public void onReceive(Context context, android.content.Intent intent) {
+                    calls++;
+                    android.net.NetworkInfo info = intent.getParcelableExtra(android.net.ConnectivityManager.EXTRA_NETWORK_INFO);
+                    boolean same = android.net.ConnectivityManager.CONNECTIVITY_ACTION.equals(intent.getAction()) && info != null && info.isConnected()
+                            && intent.getIntExtra(android.net.ConnectivityManager.EXTRA_NETWORK_TYPE, -1) == info.getType()
+                            && !intent.getBooleanExtra(android.net.ConnectivityManager.EXTRA_NO_CONNECTIVITY, false);
+                    Log.i("DataTest", "connectivity-received " + (same && calls == 1 && doneLogged && android.os.Looper.myLooper() == android.os.Looper.getMainLooper() ? "ok" : "FAILED"));
+                    unregisterReceiver(this);
+                }
+            }, filter);
+            android.net.NetworkInfo info = sticky == null ? null : (android.net.NetworkInfo) sticky.getParcelableExtra(android.net.ConnectivityManager.EXTRA_NETWORK_INFO);
+            detail = sticky == null ? "no sticky intent" : "type=" + sticky.getIntExtra(android.net.ConnectivityManager.EXTRA_NETWORK_TYPE, -1) + " info=" + (info != null);
+            return sticky != null && returned[0] != null && info != null && active != null && info.getType() == active.getType() && info.isConnected() == active.isConnected()
+                    && sticky.getIntExtra(android.net.ConnectivityManager.EXTRA_NETWORK_TYPE, -1) == active.getType()
+                    && !sticky.getBooleanExtra(android.net.ConnectivityManager.EXTRA_NO_CONNECTIVITY, false);
+        });
     }
 
     /**
