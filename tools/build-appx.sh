@@ -83,8 +83,11 @@
 #   MEGLER_SDK_LIB      SDK the executable links against (10.0.15063.0)
 #   MEGLER_JOBS         parallel compile jobs
 #   MEGLER_ANGLE        where libEGL.dll, libGLESv2.dll and mozglue.dll are
-#                          taken from (C:/rw-obj/dist/bin, gecko-w10m's build)
-#   MEGLER_ANGLE_MAPS   ANGLE's linker maps (<ANGLE>/../../third_party/angle)
+#                          taken from (build/angle/dist, Megler's own ANGLE, where
+#                          tools/build-angle.py has made it; else C:/rw-obj/dist/bin,
+#                          gecko-w10m's build)
+#   MEGLER_ANGLE_MAPS   ANGLE's linker maps (build/angle/maps for Megler's own;
+#                          else <ANGLE>/../../third_party/angle)
 #   MEGLER_GECKO        gecko-w10m's checkout, for its packaging scripts
 #                          (../gecko-w10m)
 #   MEGLER_LLVM         LLVM bin, for lld-link (C:/Program Files/LLVM/bin)
@@ -540,10 +543,19 @@ fi
 # Without any of the pieces the package is built all the same, with no ANGLE:
 # the app then says "ANGLE missing" and nothing can draw.
 stage_angle() {
-  local angle="${MEGLER_ANGLE:-/c/rw-obj/dist/bin}"
+  # Megler's own ANGLE where tools/build-angle.py has made one (gecko-w10m's with Megler's changes, angle/*.patch), else
+  # gecko-w10m's as its build left it.
+  local own="$ROOT/build/angle/dist" angle maps_default
+  if [ -z "${MEGLER_ANGLE:-}" ] && [ -f "$own/libGLESv2.dll" ]; then
+    angle="$own"
+    maps_default="$ROOT/build/angle/maps"
+  else
+    angle="${MEGLER_ANGLE:-/c/rw-obj/dist/bin}"
+    maps_default="$angle/../../third_party/angle"
+  fi
   local gecko="${MEGLER_GECKO:-$(dirname "$ROOT")/gecko-w10m}"
   local llvm="${MEGLER_LLVM:-/c/Program Files/LLVM/bin}"
-  local maps="${MEGLER_ANGLE_MAPS:-$angle/../../third_party/angle}"
+  local maps="${MEGLER_ANGLE_MAPS:-$maps_default}"
   local vclibs="/c/Program Files (x86)/Microsoft SDKs/Windows Kits/10/ExtensionSDKs/Microsoft.VCLibs/14.0/Appx/Retail/ARM/Microsoft.VCLibs.arm.14.00.appx"
   local dll script
   for dll in libEGL.dll libGLESv2.dll mozglue.dll; do
