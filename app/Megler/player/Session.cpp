@@ -6,6 +6,7 @@
 #include "player/CodecHost.h"
 #include "player/GfxHost.h"
 #include "player/KeyboardHost.h"
+#include "player/LocationHost.h"
 #include "player/MediaHost.h"
 #include "player/PhoneState.h"
 #include "player/StorageHost.h"
@@ -202,6 +203,9 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
                                        platform::isMobile());
         config.camera = CameraHost::shared().callbacks();
         config.storage = StorageHost::shared().callbacks();
+        // A Java app's LocationManager: the phone's location through Windows.Devices.Geolocation, or the place set in Settings
+        // (player/LocationHost.h).
+        config.location = LocationHost::shared().callbacks();
         // For an app that is Java: its drawing, and where Android's libcore and the framework are -- NULL is the folder
         // `android` of the installed package, which is where tools/build-appx.sh --libcore (or --java) puts them. An app
         // with a native engine uses neither.

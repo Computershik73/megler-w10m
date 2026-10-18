@@ -64,3 +64,30 @@ void set(const std::string& key, const std::string& value) {
 }
 
 } // namespace megler::app::settings
+
+namespace megler::app::settings::location {
+
+bool parsePlace(const std::string& text, double& latitude, double& longitude) {
+    const size_t comma = text.find(',');
+    if (comma == std::string::npos) return false;
+    const std::string a = text.substr(0, comma), b = text.substr(comma + 1);
+    char* endA = nullptr;
+    char* endB = nullptr;
+    const double lat = strtod(a.c_str(), &endA), lon = strtod(b.c_str(), &endB);
+    auto rest = [](const char* p) {
+        while (p && (*p == ' ' || *p == '\t')) p++;
+        return p && *p == 0;
+    };
+    if (endA == a.c_str() || endB == b.c_str() || !rest(endA) || !rest(endB)) return false;
+    if (!(lat >= -90.0 && lat <= 90.0) || !(lon >= -180.0 && lon <= 180.0)) return false;
+    latitude = lat;
+    longitude = lon;
+    return true;
+}
+
+bool setPlace(double& latitude, double& longitude) {
+    if (get(locationSource, "phone") != "set") return false;
+    return parsePlace(get(locationPlace, locationPlaceDefault), latitude, longitude);
+}
+
+} // namespace megler::app::settings::location

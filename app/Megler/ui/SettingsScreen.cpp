@@ -1,5 +1,6 @@
-// Settings: the size of the surface apps draw to, the phone's folders that
-// are in Android's storage, and what this build and this phone are.
+// Settings: the size of the surface apps draw to, where apps are told the
+// phone is, the phone's folders that are in Android's storage, and what this
+// build and this phone are.
 #include "pch.h"
 
 #include "player/Session.h"
@@ -218,6 +219,92 @@ private:
         rebuild();
     }
 
+    /// A row of a list of choices: its title, a line under it, and a checkmark when it is the one chosen.
+    Grid choiceRow(const std::string& title, const std::string& detail, bool chosen) {
+        const auto& p = palette();
+        Grid row;
+        ColumnDefinition c0, c1;
+        c0.Width(GridLengthHelper::FromValueAndType(1, GridUnitType::Star));
+        c1.Width(GridLengthHelper::Auto());
+        row.ColumnDefinitions().Append(c0);
+        row.ColumnDefinitions().Append(c1);
+        auto titles = vstack(2);
+        add(titles, text(title, font::body, weightNormal(), p.label));
+        add(titles, text(detail, font::caption, weightNormal(), p.secondaryLabel));
+        row.Children().Append(titles);
+        if (chosen) {
+            auto mark = glyph(glyphs::checkmark, font::body, p.accentText);
+            Grid::SetColumn(mark, 1);
+            row.Children().Append(mark);
+        }
+        row.Padding(ThicknessHelper::FromLengths(16, 10, 16, 10));
+        return row;
+    }
+
+    /// Where apps are told the phone is (player/LocationHost.h): the phone's location, or a place set here.
+    UIElement locationSection() {
+        const bool set = settings::get(settings::locationSource, "phone") == "set";
+        double latitude = 0, longitude = 0;
+        std::string place = settings::get(settings::locationPlace, settings::locationPlaceDefault);
+        if (settings::location::parsePlace(place, latitude, longitude)) place = format("%.6f, %.6f", latitude, longitude);
+        std::vector<UIElement> rows;
+        rows.push_back(button(choiceRow("The Phone's Location", "Where Windows finds it: satellites, Wi-Fi, the cell network", !set), [this] {
+            settings::set(settings::locationSource, "phone");
+            shellLog::write("settings: location: the phone's");
+            rebuild();
+        }, ButtonKind::plain, "The Phone's Location"));
+        rows.push_back(button(choiceRow("A Place Set Here", place + " (tap to change)", set), [this] { setPlace(); }, ButtonKind::plain, "A Place Set Here"));
+        return listSection("Location", rows,
+                           "Where an app is told the phone is when it asks. Windows asks once whether Megler may have the phone's location. "
+                           "A place set here is what every app is told instead, the location on, for trying an app somewhere else. "
+                           "It applies to the next app started.");
+    }
+
+    /// The place set here: latitude and longitude typed in, checked, kept, and chosen.
+    winrt::fire_and_forget setPlace() {
+        // (A second dialog while one is up throws.)
+        if (adding_) co_return;
+        adding_ = true;
+        const std::shared_ptr<Page> keep = shared_from_this();
+        std::string error;
+        try {
+            ContentDialog dialog;
+            dialog.Title(box_value(hs("A Place for Apps")));
+            auto content = vstack(10);
+            auto about = text("Latitude and longitude in degrees, north and east positive, as 55.751244, 37.618423. Every app is told the phone is there.",
+                              font::subheadline, weightNormal(), palette().secondaryLabel);
+            about.TextWrapping(TextWrapping::Wrap);
+            add(content, about);
+            TextBox box;
+            box.Text(hs(settings::get(settings::locationPlace, settings::locationPlaceDefault)));
+            box.MaxLength(60);
+            box.IsSpellCheckEnabled(false);
+            add(content, box);
+            dialog.Content(content);
+            dialog.PrimaryButtonText(L"Use This Place");
+            dialog.SecondaryButtonText(L"Cancel");
+            dialog.RequestedTheme(ElementTheme::Dark);
+            dialog.Background(brush(palette().card));
+            dialog.Foreground(brush(palette().label));
+            if (co_await dialog.ShowAsync() == ContentDialogResult::Primary) {
+                const std::string typed = narrow(std::wstring(box.Text()));
+                double latitude = 0, longitude = 0;
+                if (settings::location::parsePlace(typed, latitude, longitude)) {
+                    settings::set(settings::locationPlace, format("%.6f,%.6f", latitude, longitude));
+                    settings::set(settings::locationSource, "set");
+                    shellLog::write(format("settings: location: the place %.6f,%.6f", latitude, longitude));
+                } else {
+                    error = "\"" + typed + "\" is not a latitude (-90 to 90) and a longitude (-180 to 180) with a comma between them.";
+                }
+            }
+        } catch (const hresult_error& e) {
+            error = format("0x%08X %s", unsigned(e.code()), narrow(e.message()).c_str());
+        }
+        adding_ = false;
+        if (!error.empty()) shell_.alert("The Place Was Not Set", error);
+        rebuild();
+    }
+
     void rebuild() {
         const auto& p = palette();
         auto column = vstack(0);
@@ -226,22 +313,7 @@ private:
         const int current = settings::getInt(settings::renderCap, settings::renderCapDefault);
         std::vector<UIElement> choices;
         for (const RenderChoice& choice : renderChoices) {
-            Grid row;
-            ColumnDefinition c0, c1;
-            c0.Width(GridLengthHelper::FromValueAndType(1, GridUnitType::Star));
-            c1.Width(GridLengthHelper::Auto());
-            row.ColumnDefinitions().Append(c0);
-            row.ColumnDefinitions().Append(c1);
-            auto titles = vstack(2);
-            add(titles, text(choice.title, font::body, weightNormal(), p.label));
-            add(titles, text(choice.detail, font::caption, weightNormal(), p.secondaryLabel));
-            row.Children().Append(titles);
-            if (choice.cap == current) {
-                auto mark = glyph(glyphs::checkmark, font::body, p.accentText);
-                Grid::SetColumn(mark, 1);
-                row.Children().Append(mark);
-            }
-            row.Padding(ThicknessHelper::FromLengths(16, 10, 16, 10));
+            Grid row = choiceRow(choice.title, choice.detail, choice.cap == current);
             const int cap = choice.cap;
             choices.push_back(button(row, [this, cap] {
                 settings::set(settings::renderCap, std::to_string(cap));
@@ -252,6 +324,8 @@ private:
         add(column, listSection("Render Size", choices,
                                 "The longer side of the picture an app draws, in pixels; the phone scales it to the screen. "
                                 "Smaller is faster. It applies to the next app started."));
+
+        add(column, locationSection());
 
         add(column, storageSection());
 

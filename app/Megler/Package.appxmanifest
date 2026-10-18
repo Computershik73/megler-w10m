@@ -99,5 +99,10 @@
          the user the first time an app opens one; until the user says yes,
          and after a no, the app is told it cannot connect to the camera. -->
     <DeviceCapability Name="webcam" />
+    <!-- The phone's location for an Android app's LocationManager
+         (player/LocationHost.cpp): Android's ACCESS_FINE_LOCATION. Windows
+         asks the user the first time an app wants it; after a no, the app is
+         told the location is off. -->
+    <DeviceCapability Name="location" />
   </Capabilities>
 </Package>

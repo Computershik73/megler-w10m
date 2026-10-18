@@ -20,4 +20,21 @@ void set(const std::string& key, const std::string& value);
 constexpr const char* renderCap = "megler.renderCap";
 constexpr int renderCapDefault = 1280;
 
+/// Where an app is told the phone is (player/LocationHost.h): "phone", where
+/// Windows finds it, or "set", the place in locationPlace instead -- for
+/// testing an app somewhere else than where the phone is.
+constexpr const char* locationSource = "megler.location";
+/// The place set by hand: "latitude,longitude" in degrees, as 55.751244,37.618423.
+constexpr const char* locationPlace = "megler.location.place";
+constexpr const char* locationPlaceDefault = "55.751244,37.618423";
+
 } // namespace megler::app::settings
+
+namespace megler::app::settings::location {
+
+/// The place set by hand, when one is to be used: true with its latitude and longitude.
+bool setPlace(double& latitude, double& longitude);
+/// "latitude,longitude" read back: false when it is not two numbers on Earth.
+bool parsePlace(const std::string& text, double& latitude, double& longitude);
+
+} // namespace megler::app::settings::location
