@@ -1768,6 +1768,9 @@ static int run_data(void)
      */
     if (run == 2 && want == 2) {
         CHECK(find_line("network: TCP to [0:0:0:0:0:ffff:7f00:1]:", 0) >= 0 && find_line("network: the name 127.0.0.1: 1 addresses, the first 127.0.0.1", 0) >= 0);
+        /* And what went over a connection, said when the app closes it: the TLS client of "tls-loopback" sent a handshake record first (16 03). */
+        if (find_line("I/DataTest: tls-is conscrypt", 0) >= 0)
+            CHECK(find_line(": closed by the app after ", 0) >= 0 && find_line(" calls (first 1603", 0) >= 0);
         CHECK(find_line("dvm: thrown on thread ", 0) >= 0 && find_line("android/database/sqlite/SQLiteConstraintException: UNIQUE constraint failed", 0) >= 0);
         CHECK(find_line("stacks: round 1, ", 0) >= 0 && find_line("\"main\"", find_line("stacks: round 1, ", 0)) >= 0 && find_line("stacks:   ", 0) >= 0
               && find_line("stacks: thread ", 0) >= 0 && find_line("\" ends, ", 0) >= 0);

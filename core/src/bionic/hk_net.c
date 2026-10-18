@@ -156,6 +156,15 @@ typedef struct gsock {
     bool traced;                       /* a connection the flag trace-net is to say the outcome of */
     char trace_to[56];
     u64 trace_from;
+    /* trace-net, once a traced connection is made: what went over it, said when it is closed (io_said). */
+    bool io_traced;
+    u64 io_from, io_first_in;          /* when it was made; when its first bytes came in (0: none yet) */
+    u64 sent, received;
+    u32 sends, recvs, would_block, timeouts;
+    int last_send_err, last_recv_err;
+    bool got_end;                      /* a read returned 0: the other end has closed or shut down writing */
+    u8 head_out[16], head_in[16];      /* the first bytes each way, for what the protocol is */
+    u8 head_out_len, head_in_len;
     u16 first_port;
     hk_sock *host;                     /* AF_INET and AF_INET6 */
     /* AF_UNIX, the app's own: all of what follows under the descriptor table's lock. */
@@ -340,11 +349,74 @@ static void first_connection_ended(gsock *s, int e)
     if (s->traced) {
         s->traced = false;
         hk_net_trace("TCP to %s: %s after %llu ms", s->trace_to, errno_name(e), (unsigned long long)((hk_time_monotonic_ns() - s->trace_from) / 1000000));
+        if (!e) {
+            s->io_traced = true;
+            s->io_from = hk_time_monotonic_ns();
+        }
     }
     if (!s->first) return;
     s->first = false;
     hk_atomic_xchg(&g_first_connection, 2);
     hk_info("network: the app's first connection, TCP to port %u%s: %s", (unsigned)s->first_port, s->first_own ? " of this phone itself" : "", errno_name(e));
+}
+
+/*
+ * trace-net: what a send or a receive on a traced connection did (`r` its result, errno its error), counted for io_said. The
+ * counts are a diagnosis's, kept without a lock: two threads at one socket at once may each miss the other's last call.
+ */
+static void io_note(gsock *s, bool sending, const void *buf, i32 r)
+{
+    u8 *head = sending ? s->head_out : s->head_in, *len = sending ? &s->head_out_len : &s->head_in_len;
+    if (!s->io_traced) return;
+    if (r > 0) {
+        u32 take = (u32)r < (u32)(sizeof(s->head_out) - *len) ? (u32)r : (u32)(sizeof(s->head_out) - *len);
+        if (take && buf) memcpy(head + *len, buf, take);
+        *len = (u8)(*len + take);
+        if (sending) {
+            s->sent += (u32)r;
+            s->sends++;
+        } else {
+            if (!s->io_first_in) s->io_first_in = hk_time_monotonic_ns();
+            s->received += (u32)r;
+            s->recvs++;
+        }
+    } else if (r == 0 && !sending) {
+        s->got_end = true;
+    } else if (r < 0) {
+        int e = *hk_errno_ptr();
+        if (e == GE_AGAIN && (sending ? s->sndtimeo : s->rcvtimeo)) s->timeouts++;
+        else if (e == GE_AGAIN) s->would_block++;
+        else if (sending) s->last_send_err = e;
+        else s->last_recv_err = e;
+    }
+}
+
+static void hex_of(const u8 *p, u32 n, char *out, size_t size)
+{
+    u32 i;
+    size_t k = 0;
+    out[0] = 0;
+    for (i = 0; i < n && k + 3 < size; i++) k += (size_t)snprintf(out + k, size - k, "%02x", p[i]);
+    if (!n) snprintf(out, size, "none");
+}
+
+/* trace-net: a traced connection closed by the app -- how long it lasted and what went over it. */
+static void io_said(gsock *s)
+{
+    char out[40], in[40], send_err[40] = "", recv_err[40] = "", first_in[40] = "";
+    u64 now = hk_time_monotonic_ns();
+    if (!s->io_traced) return;
+    s->io_traced = false;
+    hex_of(s->head_out, s->head_out_len, out, sizeof(out));
+    hex_of(s->head_in, s->head_in_len, in, sizeof(in));
+    if (s->last_send_err) snprintf(send_err, sizeof(send_err), ", the last send's error %d", s->last_send_err);
+    if (s->last_recv_err) snprintf(recv_err, sizeof(recv_err), ", the last receive's error %d", s->last_recv_err);
+    if (s->io_first_in) snprintf(first_in, sizeof(first_in), ", %llu ms after it was made", (unsigned long long)((s->io_first_in - s->io_from) / 1000000));
+    hk_net_trace("TCP to %s: closed by the app after %llu ms; sent %llu bytes in %u calls (first %s)%s; received %llu bytes in %u calls (first %s%s)%s%s; "
+                 "%u reads or writes would have blocked, %u ran out of SO_RCVTIMEO/SO_SNDTIMEO (%llu/%llu ms)",
+                 s->trace_to, (unsigned long long)((now - s->io_from) / 1000000), (unsigned long long)s->sent, s->sends, out, send_err,
+                 (unsigned long long)s->received, s->recvs, in, first_in, s->got_end ? ", then the other end's close" : "", recv_err,
+                 s->would_block, s->timeouts, (unsigned long long)(s->rcvtimeo / 1000000), (unsigned long long)(s->sndtimeo / 1000000));
 }
 
 static u64 deadline_of(u64 timeo) { return timeo ? hk_time_monotonic_ns() + timeo : 0; }
@@ -965,7 +1037,11 @@ static i32 send_any(gsock *s, const void *buf, u32 n, int flags, const void *to,
     if (to) {
         if ((e = hk_net_sockaddr_in(to, tolen, &a)) != 0 || (e = addr_fits(s, &a, true)) != 0) return fail(e);
     }
-    return host_send(s, (const u8 *)buf, n, flags, to ? &a : NULL, nonblock);
+    {
+        i32 r = host_send(s, (const u8 *)buf, n, flags, to ? &a : NULL, nonblock);
+        io_note(s, true, buf, r);
+        return r;
+    }
 }
 
 /* `from`, `fromlen`: where the sender's address goes; a stream has none to say (length 0). `said`: 1 when a message was cut short. */
@@ -984,6 +1060,7 @@ static i32 recv_any(gsock *s, void *buf, u32 n, int flags, void *from, u32 *from
         }
     } else {
         r = host_recv(s, (u8 *)buf, n, flags, &a, &cut, nonblock);
+        if (!(flags & G_MSG_PEEK)) io_note(s, false, buf, r);
         if (r >= 0 && from && fromlen) {
             if (s->type == G_SOCK_STREAM || !a.family) *fromlen = 0;
             else give_addr(s, &a, from, fromlen);
@@ -1847,6 +1924,7 @@ static void sock_close(void *obj)
     gsock *s = (gsock *)obj;
     /* (A first connection closed before anyone learnt how it went is not said: the next one is.) */
     if (s->first) hk_atomic_xchg(&g_first_connection, 0);
+    io_said(s);
     if (s->host) hk_sock_close(s->host);
     else local_close(s);
     free(s);
