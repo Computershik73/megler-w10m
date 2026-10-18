@@ -94,5 +94,10 @@
     <uap:Capability Name="removableStorage" />
     <!-- Making an Android library's code executable. -->
     <rescap:Capability Name="codeGeneration" />
+    <!-- The phone's cameras for an Android app's android.hardware.Camera
+         (player/CameraHost.cpp): Android's CAMERA permission. Windows asks
+         the user the first time an app opens one; until the user says yes,
+         and after a no, the app is told it cannot connect to the camera. -->
+    <DeviceCapability Name="webcam" />
   </Capabilities>
 </Package>

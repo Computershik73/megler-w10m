@@ -1095,6 +1095,8 @@ static void main_thread(void *arg)
         hk_dvm_register(hk_java_audio_natives());
         hk_java_media_set_host(&J.config->codec);
         hk_dvm_register(hk_java_media_natives());
+        hk_java_camera_set_host(&J.config->camera);
+        hk_dvm_register(hk_java_camera_natives());
         hk_java_gfx_set_host(&J.config->gfx);
         hk_java_gfx_set_present(present, NULL);
         hk_java_gfx_set_present_canvas(present_canvas, NULL);
@@ -1133,6 +1135,8 @@ static void main_thread(void *arg)
     }
     free(framework);
     free(res);
+    /* A camera the app left open is let go of: its light off, the phone's camera free for whatever comes next. */
+    hk_java_camera_close_all();
     J.end_status = why[0] ? -1 : 0;
     hk_strlcpy(J.end_reason, why[0] ? why : J.stop ? "stopped" : "", sizeof(J.end_reason));
     hk_atomic_xchg(&J.ended, 1);

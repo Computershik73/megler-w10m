@@ -56,6 +56,11 @@
  *       (core/tests/app/data/assets), and, with a third folder, how fast they decode the streams there
  *       (tools/media-test-streams.py --speed). Only in the build tools/build-tests.sh win makes; any other says so and does
  *       nothing
+ *   hk_tests --camera-windows <scratch dir>
+ *       the shell's cameras (app/Megler/player/CameraHost.cpp: Windows.Media.Capture) through megler_camera_host, under the
+ *       core's camera for android.hardware.Camera: the PC's first camera opened, a few pictures taken at its smallest size and
+ *       checked, focus and the light where it has them, stop and close. A PC without a camera says so and has nothing to
+ *       check. Only in the build tools/build-tests.sh win makes; any other says so and does nothing
  *   hk_tests --run <apk> <data dir> [milliseconds]
  *       start the APK with a stand-in for OpenGL ES, touch it, press Back, and say what happened
  *   hk_tests --load <dir> <library>...
@@ -67,7 +72,9 @@
 #include <string.h>
 
 #include "../include/megler.h"
+#include "../src/drivers/hk_java.h"
 #include "../src/dvm/hk_dvm_internal.h"
+#include "../src/host/hk_host.h"
 #include "../src/hk_core.h"
 #include "../src/jni/hk_jni.h"
 #include "../src/ld/hk_ld.h"
@@ -739,11 +746,140 @@ static int codec_windows_mode(int argc, char **argv)
 #endif
 }
 
+/* ------------------------------------------------------- --camera-windows */
+
+#ifdef HK_CAMERA_WINDOWS
+/* hk_camera_windows.cpp: the shell's own megler_camera_host. */
+const megler_camera_host *hk_camera_windows_host(void);
+void hk_camera_windows_summary(char *out, size_t size);
+
+static int g_cam_checks, g_cam_failed;
+
+static void cam_check(bool ok, const char *what)
+{
+    g_cam_checks++;
+    if (!ok) g_cam_failed++;
+    printf("  %s %s\n", ok ? "ok" : "FAIL", what);
+}
+
+/* News from the camera, gathered until one of `want` comes or `ms` pass. */
+static int cam_news(hk_jcamera *c, int want, int ms)
+{
+    int news = 0, i;
+    for (i = 0; i < ms / 50 && !(news & want); i++) news |= hk_jcamera_wait(c, 50);
+    return news;
+}
+#endif
+
+/*
+ * The PC's first camera through the shell's host and the core's camera code, as an app's Camera uses them: opened, started
+ * at its smallest size, ten pictures of that size taken in order of their times, each copied as NV21 and drawn turned for a
+ * view; focused once where it focuses, its light on and off where it has one; stopped, after which nothing comes; closed.
+ */
+static int camera_windows_mode(int argc, char **argv)
+{
+#ifdef HK_CAMERA_WINDOWS
+    megler_config config;
+    char summary[1200], what[200];
+    const megler_camera_caps *caps;
+    hk_jcamera *c;
+    megler_camera_info info;
+    int err = 0, i, w, h, frames = 0, news;
+    i64 last = -1;
+    bool ordered = true, copied = true, drawn = true;
+    u8 *nv21, *bgra;
+    (void)argc;
+    memset(&config, 0, sizeof(config));
+    config.data_dir = argv[2];
+    config.package_dir = argv[2];
+    megler_init(&config);
+    hk_java_camera_set_host(hk_camera_windows_host());
+    hk_camera_windows_summary(summary, sizeof(summary));
+    printf("  Windows' cameras: %s\n", summary);
+    if (hk_jcamera_count() == 0) {
+        printf("(no camera on this PC: --camera-windows has nothing to open, and nothing is checked)\n0 checks, 0 failed\n");
+        return 0;
+    }
+    cam_check(hk_jcamera_info(0, &info), "camera 0 is described");
+    c = hk_jcamera_open(0, &err);
+    if (!c && err == MEGLER_CAMERA_DENIED) {
+        printf("(Windows refused this program the camera: the privacy setting for desktop apps' cameras says no; nothing more is checked)\n");
+        printf("%d checks, %d failed\n", g_cam_checks, g_cam_failed);
+        return g_cam_failed ? 1 : 0;
+    }
+    cam_check(c != NULL, "camera 0 opens");
+    if (!c) {
+        printf("%d checks, %d failed\n", g_cam_checks, g_cam_failed);
+        return 1;
+    }
+    caps = hk_jcamera_caps(c);
+    cam_check(caps->size_count > 0, "it offers sizes");
+    if (caps->size_count > 0) {
+        const megler_camera_size *s = &caps->sizes[caps->size_count - 1];
+        w = s->width;
+        h = s->height;
+        cam_check(hk_jcamera_start(c, w, h, s->max_fps), "it streams at its smallest size");
+        nv21 = (u8 *)malloc(hk_jcamera_frame_bytes(w, h, 17));
+        bgra = (u8 *)malloc((size_t)w * (size_t)h * 4);
+        for (i = 0; i < 100 && frames < 10; i++) {
+            news = cam_news(c, HK_JCAMERA_FRAME | HK_JCAMERA_GONE, 1000);
+            if (news & HK_JCAMERA_GONE) break;
+            if (!(news & HK_JCAMERA_FRAME)) continue;
+            frames++;
+            if (hk_jcamera_size(c) != (w << 16 | h)) copied = false;
+            if (hk_jcamera_time(c) <= last) ordered = false;
+            last = hk_jcamera_time(c);
+            if (hk_jcamera_copy(c, nv21, hk_jcamera_frame_bytes(w, h, 17), 17) != (i32)hk_jcamera_frame_bytes(w, h, 17)) copied = false;
+            if (!hk_jcamera_render(c, bgra, h, w, h * 4, 90, info.facing == MEGLER_CAMERA_FRONT)) drawn = false;
+        }
+        if (frames > 0 && hk_jcamera_render(c, bgra, w, h, w * 4, 0, false)) {
+            /* The last picture as it came, to be looked at: <scratch dir>/camera-0.bmp. */
+            char path[1024];
+            hk_path_mkdirs(argv[2]);
+            snprintf(path, sizeof(path), "%s/camera-0.bmp", argv[2]);
+            if (hk_gfx_write_bmp(path, bgra, w, h, w * 4)) printf("  the last picture: %s\n", path);
+        }
+        snprintf(what, sizeof(what), "ten pictures of %dx%d came (%d)", w, h, frames);
+        cam_check(frames == 10, what);
+        cam_check(ordered, "each taken after the one before");
+        cam_check(copied, "each copied as NV21 at its size");
+        cam_check(drawn, "each drawn turned for a view");
+        if (caps->focus) {
+            cam_check(hk_jcamera_focus(c, MEGLER_CAMERA_FOCUS_ONCE), "it is asked to focus");
+            news = cam_news(c, HK_JCAMERA_FOCUSED | HK_JCAMERA_NOT_FOCUSED, 10000);
+            printf("  focusing ended %s\n", news & HK_JCAMERA_FOCUSED ? "in focus" : news & HK_JCAMERA_NOT_FOCUSED ? "out of focus" : "not at all");
+            cam_check((news & (HK_JCAMERA_FOCUSED | HK_JCAMERA_NOT_FOCUSED)) != 0, "focusing ends");
+        } else {
+            printf("  (it does not focus)\n");
+        }
+        if (caps->torch) {
+            hk_jcamera_torch(c, true);
+            hk_jcamera_torch(c, false);
+        } else {
+            printf("  (it has no light)\n");
+        }
+        hk_jcamera_stop(c);
+        cam_check(!(cam_news(c, HK_JCAMERA_FRAME, 500) & HK_JCAMERA_FRAME), "stopped, nothing comes");
+        free(nv21);
+        free(bgra);
+    }
+    hk_jcamera_close(c);
+    printf("%d checks, %d failed\n", g_cam_checks, g_cam_failed);
+    return g_cam_failed ? 1 : 0;
+#else
+    (void)argc;
+    (void)argv;
+    printf("(the shell's cameras -- Windows.Media.Capture -- are not in this build of the tests: --camera-windows does nothing here; tools/build-tests.sh win runs it)\n");
+    return 0;
+#endif
+}
+
 int main(int argc, char **argv)
 {
     if (argc >= 3 && !strcmp(argv[1], "--gfx-windows")) return gfx_windows_mode(argc, argv);
     if (argc >= 3 && !strcmp(argv[1], "--storage-windows")) return storage_windows_mode(argv);
     if (argc >= 4 && !strcmp(argv[1], "--codec-windows")) return codec_windows_mode(argc, argv);
+    if (argc >= 3 && !strcmp(argv[1], "--camera-windows")) return camera_windows_mode(argc, argv);
     if (argc >= 5 && !strcmp(argv[1], "--gfx-replay")) return gfx_replay_mode(argc, argv);
     if (argc >= 7 && !strcmp(argv[1], "--gfx-record")) {
         megler_config config;

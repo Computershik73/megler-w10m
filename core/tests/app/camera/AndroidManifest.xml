@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The test app for the cameras (tools/build-test-app.sh): the old android.hardware.Camera as a code scanner uses it: the
+     permission, the features, the cameras' information, the parameters, a preview on a SurfaceView with frames in callback
+     buffers, autofocus, the torch, preview callbacks, and the front camera on a TextureView. Each step is a line of the log,
+     which the test (core/tests/hk_java_tests.c, run_camera) reads, with the pictures. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="megler.test.camera" android:versionCode="1" android:versionName="1.0">
+    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <application android:label="@string/app_name">
+        <activity android:name=".Main" android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

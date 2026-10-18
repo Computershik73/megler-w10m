@@ -1,6 +1,9 @@
 // megler-w10m overlay of Megler/src/java-framework/gen-src/android/hardware/camera2/CameraManager.java (tools/build-framework.sh).
 // It differs in getCameraIdList and getCameraIdListNoLazy, which were generated signatures that answered null: they answer
-// an empty list, what the platform gives on a device without a camera. The phone's cameras are not offered to an app here.
+// an empty list, what the platform gives on a device without a camera. The phone's cameras are not offered to an app here:
+// they are through the old android.hardware.Camera (the overlay's). camera2's devices, capture sessions and image readers
+// are not built, and a list of cameras that cannot be opened would send an app that asks camera2 first down a way that
+// fails, where an empty list sends it to the old API.
 //
 // Why. Android's System WebView asks it how many cameras there are as soon as a page enumerates its media devices
 // (org.chromium.media.VideoCaptureFactory.getNumberOfCameras, getCameraIdList().length); VK's check that a visitor is no

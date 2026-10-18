@@ -36,10 +36,11 @@ void write(const std::string& line) {
 } // namespace shellLog
 
 // LocalState, which a test program has none of: no flag is on, and the codec host's list of decoders that hung
-// (codec-hung.txt) is not there and is not written.
+// (codec-hung.txt) is not there and is not written, nor is what the camera host learnt of the cameras (camera.txt).
 namespace files {
 bool exists(const std::wstring&) { return false; }
 bool read(const std::wstring&, std::string&) { return false; }
+bool write(const std::wstring&, std::string_view) { return false; }
 bool append(const std::wstring&, std::string_view) { return false; }
 } // namespace files
 

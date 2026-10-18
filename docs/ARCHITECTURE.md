@@ -575,6 +575,73 @@ docs/JAVA.md, "Decoders for MediaCodec", has the details and the tests. What
 a phone's decoders are and how fast they go is what a package built with
 `tools/build-appx.sh arm --auto codec` finds out, into `megler-auto.log`.
 
+## Cameras
+
+An app whose Java opens a camera (`android.hardware.Camera`, the old API that
+code scanners use) gets the phone's own, through a call of the shell's,
+`megler_camera_host` in `megler.h`: the cameras by number, which way each faces
+and how far its picture is turned, open (with the sizes it streams at and
+whether it focuses and has a light), start with NV12 pictures to a callback,
+stop, focus, torch, close. Everything Android about it -- the parameters, the
+buffers, the threads the callbacks run on, the picture turned and mirrored for
+the view -- is the core's and the framework's (docs/JAVA.md, "The cameras").
+
+The shell's side is `player/CameraHost.cpp`, over Windows.Media.Capture with
+what 1703 has (frame readers and source groups came with 1607):
+
+- **The cameras** are the colour streams of the media frame source groups
+  (`MediaFrameSourceGroup`), or the video capture devices where there are no
+  groups; the back panel's first, as Android numbers them. Which way a camera
+  faces is its enclosure's panel. How far its picture is turned: on a device
+  upright by nature (a phone) the sensor is read a quarter turn off the
+  screen's upright, which with the rotation the camera is mounted at
+  (`EnclosureLocation.RotationAngleInDegreesClockwise`) is the 90 a back
+  camera and the 270 a front camera of an Android phone say; a camera with no
+  panel (on a stand) is 0. A flag file `camera-orientation-<n>-<degrees>`
+  puts another number in its place, should a phone's pictures come turned
+  some other way.
+- **Opening** is `MediaCapture.InitializeAsync` with the camera's source group,
+  exclusive control, video only and frames in memory. It is made on the UI
+  thread, because the first time that is where Windows asks the user whether
+  Megler may use the camera (the package declares `webcam`). A refusal is
+  `E_ACCESSDENIED`, which the core turns into Android's "Fail to connect to
+  camera service", and the log has Windows' answer and what its privacy
+  setting for the camera says of the app ("not yet asked", "allowed",
+  "denied by the user", "denied by the system").
+- **Streaming**: the format of the size the app chose, NV12 where the camera
+  has it, at the nearest rate; a `MediaFrameReader` asked for NV12; each
+  picture handed to the core while its `SoftwareBitmap`'s buffer is locked,
+  one at a time, and none once stop has begun (a driver that hands pictures
+  over on the graphics processor all the same has each copied to memory,
+  said once in the log). The sizes offered go up to
+  1280 x 720, since every picture is copied into the app's Java (the flag
+  file `camera-large-sizes` offers up to 1920 x 1080).
+- **Focus** is the `FocusControl`'s: once (`FocusMode::Single`), close up
+  (`AutoFocusRange::Macro`), continuous, its answer passed on unless something
+  was asked since; **the light** is the `TorchControl`'s.
+- What a camera was seen to do when opened (focus, a light) is kept in
+  `LocalState\camera.txt`, so that an app that asks the package manager
+  before it opens one is told on the next start.
+- **Threads.** The core's calls come on the app's threads, which have no COM
+  apartment: each is done on a thread of the host's own in the multithreaded
+  apartment while the caller waits (and given up on after 15 s, three minutes
+  for an open, which includes the user's answer). Pictures and focus's
+  answers come on Windows' own threads.
+
+*Proven:* under qemu and on this PC, the core's side and the framework's on a
+stand-in for the shell's cameras (`core/tests/hk_camera_standin.c`: the core's
+tests, and the test app `camera` under qemu, whose previews' pictures are
+checked in the window). `tools/build-tests.sh win` builds `CameraHost.cpp`
+into the test program and runs `hk_tests --camera-windows`, which opens the
+PC's first camera through it and the core's camera code: on the PC this was
+written on, Windows' one camera is DroidCam's virtual one, which the host
+finds as a source group with no panel, opens, and streams from (640 x 480 at
+30 frames a second, RGB24 turned into NV12 by the frame reader): ten
+pictures, 9 checks. *Expected:* that a phone's
+cameras are found as source groups, open after the prompt, and stream NV12
+in memory at the sizes they list, turned as said above. None of it has run on
+a phone.
+
 ## Files and the shared storage
 
 Android's paths are looked up in a mount table (`bionic/hk_libc_io.c`). What an

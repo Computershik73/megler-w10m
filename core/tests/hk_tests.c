@@ -11,6 +11,7 @@
  * A guest function with floating-point parameters is called here through a
  * pointer typed with u32/u64 -- the softfp convention, spelled out.
  */
+#include "hk_camera_standin.h"
 #include "hk_codec_standin.h"
 #include "hk_gfx_tests.h"
 #include "hk_net_tests.h"
@@ -1154,6 +1155,188 @@ static void test_codecs(void)
     hk_java_media_set_host(NULL);
 }
 
+/* ---------------------------------------------------------------- cameras */
+
+enum { CAM_R, CAM_G, CAM_B, CAM_W };
+
+/* The stand-in's picture as the core holds it (NV21, 320 x 240): every byte of the luma and of the V, U pairs what its quarter says. */
+static bool camera_nv21_right(const u8 *p, int w, int h)
+{
+    static const u8 q[4][3] = { { HK_CAMERA_STANDIN_RED }, { HK_CAMERA_STANDIN_GREEN }, { HK_CAMERA_STANDIN_BLUE }, { HK_CAMERA_STANDIN_WHITE } };
+    int x, y;
+    for (y = 0; y < h; y++)
+        for (x = y ? 0 : 4; x < w; x++)
+            if (p[y * w + x] != q[(y < h / 2 ? 0 : 2) + (x < w / 2 ? 0 : 1)][0]) return false;
+    for (y = 0; y < h / 2; y++)
+        for (x = 0; x < w / 2; x++) {
+            const u8 *want = q[(y < h / 4 ? 0 : 2) + (x < w / 4 ? 0 : 1)], *vu = p + w * h + (y * (w / 2) + x) * 2;
+            if (vu[0] != want[2] || vu[1] != want[1]) return false;
+        }
+    return true;
+}
+
+/* Whether the four quarters' middles of a picture in the bitmaps' order (B, G, R, A) are the colours named, each channel within 2. */
+static bool camera_quarters(const u8 *bgra, int w, int h, const int want[4])
+{
+    static const int rgb[4][3] = { { 255, 0, 0 }, { 0, 255, 0 }, { 0, 0, 255 }, { 255, 255, 255 } };
+    int i;
+    for (i = 0; i < 4; i++) {
+        const u8 *p = bgra + ((size_t)((i / 2) * h / 2 + h / 4) * (size_t)w + (size_t)((i % 2) * w / 2 + w / 4)) * 4;
+        const int *c = rgb[want[i]];
+        if (abs(p[2] - c[0]) > 2 || abs(p[1] - c[1]) > 2 || abs(p[0] - c[2]) > 2 || p[3] != 255) return false;
+    }
+    return true;
+}
+
+/* News from the camera, gathered until one of `want` comes or `ms` pass. */
+static int camera_news(hk_jcamera *c, int want, int ms)
+{
+    int news = 0, i;
+    for (i = 0; i < ms / 20 && !(news & want); i++) news |= hk_jcamera_wait(c, 20);
+    return news;
+}
+
+static i32 camera_number(const u8 *p) { return (i32)(p[0] | p[1] << 8 | p[2] << 16 | (u32)p[3] << 24); }
+
+/*
+ * The cameras behind a Java app's android.hardware.Camera (drivers/hk_java_camera.c), over the stand-in for the shell's
+ * (hk_camera_standin.c): what the cameras are, opening (refused, busy, no such camera), the stand-in's pictures held as
+ * NV21 byte for byte from rows longer than the picture, copied as NV21 and YV12, drawn for a view in the four turns with
+ * and without mirroring, focusing and its cancelling, the torch, the pictures' end with stop, and no more pictures than the
+ * rate the camera was started at.
+ */
+static void test_camera(void)
+{
+    /* The quarters' colours (top left, top right, bottom left, bottom right) after each turn, without and with the mirror. */
+    static const int turned[4][4] = { { CAM_R, CAM_G, CAM_B, CAM_W }, { CAM_B, CAM_R, CAM_W, CAM_G }, { CAM_W, CAM_B, CAM_G, CAM_R }, { CAM_G, CAM_W, CAM_R, CAM_B } };
+    static const int mirrored[4][4] = { { CAM_G, CAM_R, CAM_W, CAM_B }, { CAM_W, CAM_G, CAM_B, CAM_R }, { CAM_B, CAM_W, CAM_R, CAM_G }, { CAM_R, CAM_B, CAM_G, CAM_W } };
+    megler_camera_info info;
+    hk_camera_standin_counts k0, k1;
+    hk_jcamera *c, *front;
+    u8 *nv21, *yv12, *bgra;
+    int err = -1, r, m, news;
+    i32 first, second;
+    bool all;
+    say("the cameras behind a Java app's android.hardware.Camera, over a stand-in for the shell's");
+    hk_java_camera_set_host(NULL);
+    CHECK(hk_jcamera_count() == 0 && hk_jcamera_features() == 0 && !hk_jcamera_open(0, &err));
+    hk_java_camera_set_host(hk_camera_standin());
+    CHECK_INT(hk_jcamera_count(), 2);
+    CHECK(hk_jcamera_info(0, &info) && info.facing == MEGLER_CAMERA_BACK && info.orientation == 90 && info.focus == 1 && info.light == 1);
+    CHECK(hk_jcamera_info(1, &info) && info.facing == MEGLER_CAMERA_FRONT && info.orientation == 270 && info.focus == 0 && info.light == 0);
+    CHECK(!hk_jcamera_info(2, &info) && !hk_jcamera_info(-1, &info));
+    CHECK_INT(hk_jcamera_features(), HK_JCAMERA_ANY | HK_JCAMERA_HAS_BACK | HK_JCAMERA_HAS_FRONT | HK_JCAMERA_HAS_AUTOFOCUS | HK_JCAMERA_HAS_FLASH);
+    hk_camera_standin_counts_get(&k0);
+    c = hk_jcamera_open(0, &err);
+    CHECK(c && err == MEGLER_CAMERA_OK);
+    if (!c) return;
+    CHECK(hk_jcamera_caps(c)->size_count == 3 && hk_jcamera_caps(c)->sizes[0].width == 1280 && hk_jcamera_caps(c)->sizes[2].height == 240 &&
+          hk_jcamera_caps(c)->sizes[2].max_fps == 30 && hk_jcamera_caps(c)->focus && hk_jcamera_caps(c)->torch);
+    /* The same camera again is busy; a camera there is not is no camera. */
+    CHECK(!hk_jcamera_open(0, &err) && err == MEGLER_CAMERA_BUSY);
+    CHECK(!hk_jcamera_open(7, &err) && err == MEGLER_CAMERA_FAILED);
+    /* Nothing comes and nothing is held before it streams; focusing is refused. */
+    CHECK(hk_jcamera_wait(c, 50) == 0 && hk_jcamera_size(c) == 0 && !hk_jcamera_focus(c, MEGLER_CAMERA_FOCUS_ONCE));
+    CHECK(hk_jcamera_start(c, 320, 240, 30));
+    news = camera_news(c, HK_JCAMERA_FRAME, 5000);
+    CHECK((news & HK_JCAMERA_FRAME) && hk_jcamera_size(c) == (320 << 16 | 240));
+    nv21 = (u8 *)hk_alloc(320 * 240 * 3 / 2);
+    yv12 = (u8 *)hk_alloc(320 * 240 * 3 / 2);
+    bgra = (u8 *)hk_alloc(320 * 240 * 4);
+    CHECK_INT(hk_jcamera_frame_bytes(320, 240, 17), 115200);
+    CHECK_INT(hk_jcamera_copy(c, nv21, 115199, 17), -1);
+    CHECK_INT(hk_jcamera_copy(c, nv21, 115200, 17), 115200);
+    first = camera_number(nv21);
+    CHECK(first >= 1 && camera_nv21_right(nv21, 320, 240));
+    /* YV12: rows of 320 and 160 (both 16-byte aligned here; 100 wide has 112 and 64), V's plane before U's. */
+    CHECK_INT(hk_jcamera_frame_bytes(320, 240, 0x32315659), 115200);
+    CHECK_INT(hk_jcamera_frame_bytes(100, 10, 0x32315659), 112 * 10 + 64 * 5 * 2);
+    CHECK_INT(hk_jcamera_copy(c, yv12, 115200, 0x32315659), 115200);
+    CHECK(!memcmp(yv12, nv21, 320 * 240) && yv12[76800] == 240 && yv12[76800 + 159] == 34 && yv12[76800 + 160 * 119] == 110 && yv12[76800 + 19200] == 90 &&
+          yv12[76800 + 19200 + 160 * 119 + 159] == 128);
+    /* For a view: each turn, mirrored and not, the quarters where the turn puts them; a bitmap of the wrong size refused. */
+    all = true;
+    for (m = 0; m < 2; m++)
+        for (r = 0; r < 4; r++) {
+            int w = r % 2 ? 240 : 320, h = r % 2 ? 320 : 240;
+            memset(bgra, 0, 320 * 240 * 4);
+            if (!hk_jcamera_render(c, bgra, w, h, w * 4, r * 90, m == 1) || !camera_quarters(bgra, w, h, m ? mirrored[r] : turned[r])) {
+                all = false;
+                say("  the picture turned %d degrees%s is not as it should be", r * 90, m ? ", mirrored," : "");
+            }
+        }
+    CHECK(all);
+    CHECK(!hk_jcamera_render(c, bgra, 320, 240, 320 * 4, 90, false));
+    /* The next picture has a higher number. */
+    news = camera_news(c, HK_JCAMERA_FRAME, 5000);
+    CHECK((news & HK_JCAMERA_FRAME) && hk_jcamera_copy(c, nv21, 115200, 17) == 115200 && (second = camera_number(nv21)) > first && camera_nv21_right(nv21, 320, 240));
+    /* Focusing once: in focus. Asked and cancelled: no answer after the cancel. */
+    CHECK(hk_jcamera_focus(c, MEGLER_CAMERA_FOCUS_ONCE));
+    CHECK(camera_news(c, HK_JCAMERA_FOCUSED, 5000) & HK_JCAMERA_FOCUSED);
+    CHECK(hk_jcamera_focus(c, MEGLER_CAMERA_FOCUS_MACRO) && hk_jcamera_focus(c, MEGLER_CAMERA_FOCUS_NONE));
+    CHECK(!(camera_news(c, HK_JCAMERA_FOCUSED, 300) & (HK_JCAMERA_FOCUSED | HK_JCAMERA_NOT_FOCUSED)));
+    CHECK(hk_jcamera_focus(c, MEGLER_CAMERA_FOCUS_CONTINUOUS) && (camera_news(c, HK_JCAMERA_FOCUSED, 5000) & HK_JCAMERA_FOCUSED));
+    /* The torch, on and off; and off when the camera stops. */
+    hk_jcamera_torch(c, true);
+    hk_camera_standin_counts_get(&k1);
+    CHECK(k1.torch);
+    hk_jcamera_stop(c);
+    hk_camera_standin_counts_get(&k1);
+    CHECK(!k1.torch && k1.stopped == k0.stopped + 1 && k1.width == 320 && k1.height == 240 && k1.fps == 30);
+    /* Stopped: no more pictures. */
+    hk_sleep_ns(100000000ull);
+    hk_camera_standin_counts_get(&k0);
+    CHECK(!(camera_news(c, HK_JCAMERA_FRAME, 200) & HK_JCAMERA_FRAME));
+    hk_camera_standin_counts_get(&k1);
+    CHECK_INT(k1.frames, k0.frames);
+    /* The front camera beside it: fixed focus, no torch; its picture mirrored and turned as an app shows it (90 for 270). */
+    front = hk_jcamera_open(1, &err);
+    CHECK(front && !hk_jcamera_caps(front)->focus && !hk_jcamera_caps(front)->torch && hk_jcamera_caps(front)->size_count == 2);
+    if (front) {
+        CHECK(hk_jcamera_start(front, 640, 480, 15));
+        CHECK((camera_news(front, HK_JCAMERA_FRAME, 5000) & HK_JCAMERA_FRAME) && hk_jcamera_size(front) == (640 << 16 | 480));
+        free(bgra);
+        bgra = (u8 *)hk_alloc(640 * 480 * 4);
+        CHECK(hk_jcamera_render(front, bgra, 480, 640, 480 * 4, 90, true) && camera_quarters(bgra, 480, 640, mirrored[1]));
+        CHECK(!hk_jcamera_focus(front, MEGLER_CAMERA_FOCUS_ONCE));
+        hk_jcamera_close(front);
+    }
+    hk_jcamera_close(c);
+    /*
+     * Closed, a camera opens again. Started at 10 frames a second, which the stand-in's slowest (15) is faster than: the pictures
+     * that come sooner than the rate asked for are dropped before they are copied, and each picture is kept or dropped.
+     */
+    c = hk_jcamera_open(0, &err);
+    CHECK(c != NULL);
+    if (c) {
+        i64 kept, dropped;
+        hk_camera_standin_counts_get(&k0);
+        CHECK(hk_jcamera_start(c, 320, 240, 10));
+        hk_sleep_ns(1500000000ull);
+        hk_jcamera_stop(c);
+        hk_camera_standin_counts_get(&k1);
+        hk_jcamera_counts(c, &kept, &dropped);
+        say("  started at 10 frames a second on a camera of 15: %lld pictures kept, %lld dropped", (long long)kept, (long long)dropped);
+        CHECK(k1.fps == 15 && kept > 0 && dropped > 0 && kept + dropped == k1.frames - k0.frames);
+        hk_jcamera_close(c);
+    }
+    /* Refused, it does not open, and says so. */
+    hk_camera_standin_refuse(true);
+    CHECK(!hk_jcamera_open(0, &err) && err == MEGLER_CAMERA_DENIED);
+    hk_camera_standin_refuse(false);
+    /* What the app leaves open is closed when it ends. */
+    hk_camera_standin_counts_get(&k0);
+    c = hk_jcamera_open(0, &err);
+    CHECK(c && hk_jcamera_start(c, 640, 480, 30));
+    hk_java_camera_close_all();
+    hk_camera_standin_counts_get(&k1);
+    CHECK(k1.closed == k0.closed + 1 && k1.stopped == k0.stopped + 1 && (hk_jcamera_wait(c, 10) & HK_JCAMERA_GONE));
+    free(nv21);
+    free(yv12);
+    free(bgra);
+    hk_java_camera_set_host(NULL);
+}
+
 /* The battery the core answers for (run/hk_run.h): a full one on mains until one is set, then the one set, made safe to divide by and to read as text. */
 static void test_battery(void)
 {
@@ -2146,6 +2329,7 @@ int hk_tests_run(const char *libdir, const char *scratch, hk_test_sink sink, voi
     test_textures();
     test_media(scratch);
     test_codecs();
+    test_camera();
     test_battery();
     test_libc_odds();
     test_mmap_commit();

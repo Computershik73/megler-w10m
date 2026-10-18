@@ -73,6 +73,43 @@ void hk_mcodec_destroy(hk_mcodec *c);
 /* width << 16 | height: as configured, then the latest picture's. */
 i32 hk_mcodec_size(hk_mcodec *c);
 
+/*
+ * megler.CameraNative: the cameras behind android.hardware.Camera, over the shell's (megler_camera_host; hk_java_camera.c). The
+ * host is copied; NULL or one left zero has no camera. Set it before the app's code runs. When the app ends, whatever it left
+ * open is closed (hk_java_camera_close_all).
+ */
+const hk_jhle *hk_java_camera_natives(void);
+void hk_java_camera_set_host(const megler_camera_host *host);
+void hk_java_camera_close_all(void);
+/*
+ * The same without Java, as the natives use them, for the tests. A camera is opened by its number and started at one of its
+ * sizes; hk_jcamera_wait waits for news, and HK_JCAMERA_FRAME in it means a new picture is held, which the calls after it
+ * read until the next: copied as NV21 or YV12 (Android's ImageFormat numbers, 17 and 0x32315659; -1 when `size` is too
+ * small), or drawn into memory of the core's bitmaps mirrored and turned as a preview is shown.
+ */
+enum { HK_JCAMERA_FRAME = 1, HK_JCAMERA_FOCUSED = 2, HK_JCAMERA_NOT_FOCUSED = 4, HK_JCAMERA_GONE = 8 };
+enum { HK_JCAMERA_ANY = 1, HK_JCAMERA_HAS_BACK = 2, HK_JCAMERA_HAS_FRONT = 4, HK_JCAMERA_HAS_AUTOFOCUS = 8, HK_JCAMERA_HAS_FLASH = 16 };
+typedef struct hk_jcamera hk_jcamera;
+int hk_jcamera_count(void);
+bool hk_jcamera_info(int index, megler_camera_info *out);
+int hk_jcamera_features(void);
+hk_jcamera *hk_jcamera_open(int index, int *error);
+const megler_camera_caps *hk_jcamera_caps(hk_jcamera *c);
+bool hk_jcamera_start(hk_jcamera *c, int width, int height, int fps);
+void hk_jcamera_stop(hk_jcamera *c);
+int hk_jcamera_wait(hk_jcamera *c, int ms);
+/* The picture held: width << 16 | height, and when it was taken. */
+i32 hk_jcamera_size(hk_jcamera *c);
+i64 hk_jcamera_time(hk_jcamera *c);
+size_t hk_jcamera_frame_bytes(i32 width, i32 height, int format);
+i32 hk_jcamera_copy(hk_jcamera *c, u8 *dst, size_t size, int format);
+bool hk_jcamera_render(hk_jcamera *c, void *bgra, i32 width, i32 height, i32 stride, int rotation, bool mirror);
+/* Since it was last started: the pictures kept, and those dropped for coming sooner than the rate it was started at. */
+void hk_jcamera_counts(hk_jcamera *c, i64 *kept, i64 *dropped);
+bool hk_jcamera_focus(hk_jcamera *c, int mode);
+void hk_jcamera_torch(hk_jcamera *c, bool on);
+void hk_jcamera_close(hk_jcamera *c);
+
 /* hk_java_webview.c: what Android's platform gives the WebView besides Java (its library loader, its platform support). */
 const hk_jhle *hk_java_webview_natives(void);
 
