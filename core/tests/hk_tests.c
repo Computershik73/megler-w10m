@@ -392,6 +392,7 @@ static void f_compressed_2d(u32 t, i32 level, u32 internal, i32 w, i32 h, i32 bo
 static void f_compressed_sub_2d(u32 t, i32 level, i32 x, i32 y, i32 w, i32 h, u32 format, i32 size, const void *data) { (void)t; (void)x; (void)y; tex_got(format, level, w, h, size, data); }
 static void f_storage_2d(u32 t, i32 levels, u32 internal, i32 w, i32 h) { (void)t; tex_got(internal, levels, w, h, 0, NULL); }
 static void f_bind_texture(u32 t, u32 name) { (void)t; (void)name; }
+static void f_delete_textures(i32 n, const u32 *names) { (void)n; (void)names; }
 static const u8 *f_get_string(u32 name) { return name == 0x1F03 ? (const u8 *)g_tex_ext : NULL; }
 static void *f_tex_resolve(const char *name)
 {
@@ -410,7 +411,8 @@ static void *f_tex_resolve(const char *name)
  * says what it was given: RGBA8 ETC2 EAC as DXT5, its blocks transcoded, at the first level and the next; ETC2 RGB8 as
  * ANGLE's lossy-decode format, the data as it was; a texture whose base level is not whole blocks as the app gave it, all
  * its levels; storage of sRGB RGBA8 ETC2 EAC as sRGB DXT5 and a part of a level uploaded into it so; without ANGLE's
- * lossy decoding, the RGB ones as they are.
+ * lossy decoding, the RGB ones as they are. And what the textures held come to: the levels made as ANGLE keeps them (four
+ * bytes a pixel for the ETC it decodes), a texture's storage, less a texture deleted.
  */
 static void test_etc(void)
 {
@@ -418,6 +420,7 @@ static void test_etc(void)
     typedef void (*sub_fn)(u32, i32, i32, i32, i32, i32, u32, i32, const void *);
     typedef void (*storage_fn)(u32, i32, u32, i32, i32);
     typedef void (*bind_fn)(u32, u32);
+    typedef void (*delete_fn)(i32, const u32 *);
     u32 s = 0x12345678u, hash = 2166136261u;
     u8 block[64], px[16][4], packed[64], again[16];
     char report[600];
@@ -425,6 +428,8 @@ static void test_etc(void)
     sub_fn sub;
     storage_fn storage;
     bind_fn bind;
+    delete_fn del;
+    u32 eight = 8;
     int n, i;
     say("textures: ETC2 given to ANGLE as BC1 and DXT5");
     for (n = 0; n < 65536; n++) {
@@ -481,6 +486,11 @@ static void test_etc(void)
     CHECK(g_tex_got.internal == 0x8C4F && !memcmp(g_tex_got.first, packed, 16));
     hk_gltex_report(report, sizeof(report));
     CHECK(strstr(report, "ETC2/EAC in 6 (0 MB of it in 4 given to ANGLE as BC1 or DXT5") != NULL);
+    /* Held: 64 + 16 (texture 5), 32 (6), 256 + 64 (7, decoded by ANGLE), 352 (8's storage); and without 8 once it is deleted. */
+    CHECK_INT((long)hk_gltex_held_bytes(), 784);
+    del = (delete_fn)hk_gltex_wrap("glDeleteTextures", (void *)f_delete_textures);
+    del(1, &eight);
+    CHECK_INT((long)hk_gltex_held_bytes(), 432);
 
     hk_gltex_reset();
     g_tex_ext = "GL_EXT_texture_compression_s3tc";

@@ -1684,6 +1684,8 @@ void *hk_egl_host(const char *name)
 
 u32 hk_egl_device_removed(void) { return hk_host_d3d11_removed_reason(g_d3d_device); }
 
+bool hk_egl_gpu_memory(u32 *used_mb, u32 *budget_mb) { return g_d3d_device && hk_host_gpu_memory(g_d3d_device, budget_mb, used_mb); }
+
 /* ------------------------------------------------------ external textures */
 
 bool hk_egl_external_upload(u32 external, u32 *helper, void **image, int *helper_w, int *helper_h, const u8 *rgba, int w, int h)

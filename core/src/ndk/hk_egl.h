@@ -66,6 +66,8 @@ void *hk_egl_webview_display(void);
 /* What ANGLE gives on this device -- display, Direct3D feature level, GL version and limits -- a line at a time. */
 /* Why ANGLE's Direct3D device is gone (an HRESULT), or 0 while it is there or there is none. */
 u32 hk_egl_device_removed(void);
+/* The graphics memory ANGLE's device (the app's display) has used, and its budget, in MB; false while there is no device. */
+bool hk_egl_gpu_memory(u32 *used_mb, u32 *budget_mb);
 void hk_egl_probe(void (*line)(const char *fmt, ...));
 
 /*
@@ -92,6 +94,8 @@ void hk_egl_ahb_forget(struct hk_ahb *b);
 /* hk_gltex.c: the wrapper a texture-making function goes through (or `host` itself for any other), and what has been asked for so far. */
 void *hk_gltex_wrap(const char *name, void *host);
 void hk_gltex_report(char *out, size_t size);
+/* What the app's textures held now come to as ANGLE keeps them (the levels made, less the textures deleted). */
+u64 hk_gltex_held_bytes(void);
 /* Where hk_gltex.c finds the OpenGL functions it calls for itself (ANGLE's own, by name). */
 void hk_gltex_set_host(void *(*resolve)(const char *name));
 /* RGBA8 pixels (rows `stride` bytes apart) to DXT5 blocks; a width or height that is not a multiple of four is padded with its edge. */

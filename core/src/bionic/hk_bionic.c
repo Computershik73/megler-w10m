@@ -4,6 +4,7 @@
 #include "../hk_core.h"
 
 #include "../ld/hk_ld_internal.h"
+#include "../ndk/hk_egl.h"
 
 /* --------------------------------------------------------------- registry */
 
@@ -131,7 +132,10 @@ hk_thread *hk_gthread_host_of_tid(i32 tid)
  * process, in the phone's cores -- and the eight of its threads that had the most, each by its id and name as a share of
  * one core. Whether an app that is slow is held by one thread (near a whole core, while the process has a quarter of a
  * four-core phone) or by all of them. A thread is counted here once it has run guest code (a Java thread that never
- * called native code is in the process's figure only). At most 2000 lines a run.
+ * called native code is in the process's figure only). And the memory then: what the app has in use against its limit,
+ * what its textures held come to (ndk/hk_gltex.c), its address space (free, the largest free stretch, committed), and the
+ * graphics memory ANGLE's device has used against its budget -- an app that ends out of memory is followed there. At most
+ * 2000 lines a run.
  */
 #define CPU_TOP 8
 
@@ -182,7 +186,7 @@ static void cpu_observer(void *unused)
     cpu_round(before, host, NULL, &threads);
     while (lines++ < 2000) {
         cpu_use top[CPU_TOP];
-        char text[700];
+        char text[900];
         size_t at;
         u64 now, process, span;
         int n, i;
@@ -197,6 +201,16 @@ static void cpu_observer(void *unused)
         /* (A thread with less than a hundredth of a core is not named.) */
         for (i = 0; i < n && at + 64 < sizeof(text) && (i == 0 || top[i].ns * 100 >= span); i++)
             at += (size_t)snprintf(text + at, sizeof(text) - at, "%s %d \"%s\" %.2f", i ? "," : "", (int)top[i].tid, top[i].name, (double)top[i].ns / (double)span);
+        {
+            u32 free_mb = 0, largest = 0, reserved = 0, committed = 0, gpu_used = 0, gpu_budget = 0;
+            at += (size_t)snprintf(text + at, sizeof(text) - at, "; memory: %u MB in use of %u, textures held %u MB", (unsigned)(hk_mem_usage() >> 20),
+                                   (unsigned)(hk_mem_limit() >> 20), (unsigned)(hk_gltex_held_bytes() >> 20));
+            if (hk_host_address_space(&free_mb, &largest, &reserved, &committed) && at < sizeof(text))
+                at += (size_t)snprintf(text + at, sizeof(text) - at, ", addresses %u MB free (the largest stretch %u), %u committed", (unsigned)free_mb,
+                                       (unsigned)largest, (unsigned)committed);
+            if (hk_egl_gpu_memory(&gpu_used, &gpu_budget) && at < sizeof(text))
+                snprintf(text + at, sizeof(text) - at, ", graphics memory %u of %u MB", (unsigned)gpu_used, (unsigned)gpu_budget);
+        }
         hk_info("%s", text);
         last = now;
         last_process = process;
