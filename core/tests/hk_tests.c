@@ -1202,7 +1202,8 @@ static i32 camera_number(const u8 *p) { return (i32)(p[0] | p[1] << 8 | p[2] << 
  * The cameras behind a Java app's android.hardware.Camera (drivers/hk_java_camera.c), over the stand-in for the shell's
  * (hk_camera_standin.c): what the cameras are, opening (refused, busy, no such camera), the stand-in's pictures held as
  * NV21 byte for byte from rows longer than the picture, copied as NV21 and YV12, drawn for a view in the four turns with
- * and without mirroring, focusing and its cancelling, the torch, and the pictures' end with stop.
+ * and without mirroring, focusing and its cancelling, the torch, the pictures' end with stop, and no more pictures than the
+ * rate the camera was started at.
  */
 static void test_camera(void)
 {
@@ -1301,10 +1302,25 @@ static void test_camera(void)
         hk_jcamera_close(front);
     }
     hk_jcamera_close(c);
-    /* Closed, a camera opens again; refused, it does not, and says so. */
+    /*
+     * Closed, a camera opens again. Started at 10 frames a second, which the stand-in's slowest (15) is faster than: the pictures
+     * that come sooner than the rate asked for are dropped before they are copied, and each picture is kept or dropped.
+     */
     c = hk_jcamera_open(0, &err);
     CHECK(c != NULL);
-    hk_jcamera_close(c);
+    if (c) {
+        i64 kept, dropped;
+        hk_camera_standin_counts_get(&k0);
+        CHECK(hk_jcamera_start(c, 320, 240, 10));
+        hk_sleep_ns(1500000000ull);
+        hk_jcamera_stop(c);
+        hk_camera_standin_counts_get(&k1);
+        hk_jcamera_counts(c, &kept, &dropped);
+        say("  started at 10 frames a second on a camera of 15: %lld pictures kept, %lld dropped", (long long)kept, (long long)dropped);
+        CHECK(k1.fps == 15 && kept > 0 && dropped > 0 && kept + dropped == k1.frames - k0.frames);
+        hk_jcamera_close(c);
+    }
+    /* Refused, it does not open, and says so. */
     hk_camera_standin_refuse(true);
     CHECK(!hk_jcamera_open(0, &err) && err == MEGLER_CAMERA_DENIED);
     hk_camera_standin_refuse(false);

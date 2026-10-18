@@ -8,7 +8,8 @@
  * - A camera's pictures, as they come from the shell on a thread of its own, copied at once (the shell's memory is its own
  *   for the call alone) and turned from NV12 into NV21, which is what Android hands an app: three buffers, the one the
  *   shell's thread fills, the latest whole one, and the one the app's preview thread works from, so that neither waits
- *   for the other and a picture the app was slow to take is replaced by the next.
+ *   for the other and a picture the app was slow to take is replaced by the next. No more pictures are kept than the rate
+ *   the camera was started at, whatever rate the shell's camera streams at.
  * - The news the app's preview thread waits for (hk_jcamera_wait): a new picture, a focus that ended, the camera gone.
  * - A picture for the app: copied into its buffer as NV21 or YV12 (Android's two preview formats), or into a Bitmap for
  *   the view the preview is shown on, mirrored first for a front camera and then turned by the display orientation, as
@@ -62,6 +63,9 @@ struct hk_jcamera {
     i32 width, height, fps;            /* as started */
     i64 frames, taken, started_ns;
     bool first_said;
+    /* The shell's thread's alone: when the last picture kept was taken, and how many came sooner than the rate asked for. */
+    i64 kept_us, dropped;
+    bool kept_any;
 };
 
 /* The cameras open now, so that the app's end closes them (hk_java_camera_close_all). */
@@ -196,6 +200,18 @@ static void on_frame(void *core, const megler_camera_frame *f)
     w = f->width;
     h = f->height;
     if (w <= 0 || h <= 0 || !f->y || !f->uv || f->y_stride < w || f->uv_stride < (w + 1) / 2 * 2) return;
+    /*
+     * No more pictures than were asked for. The shell takes the nearest rate its camera has, which may be faster (a phone's
+     * preview streams at 30 frames a second, and the app is started at 15 where its range allows: Camera.startPreview); a
+     * picture that comes sooner than four fifths of the asked period after the last one kept is dropped before it is copied.
+     * Times that do not go forward are taken as no measure, and nothing is dropped by them.
+     */
+    if (c->fps > 0 && c->kept_any && f->time_us > c->kept_us && f->time_us - c->kept_us < (i64)800000 / c->fps) {
+        c->dropped++;
+        return;
+    }
+    c->kept_us = f->time_us;
+    c->kept_any = true;
     cw = (w + 1) / 2;
     ch = (h + 1) / 2;
     need = (size_t)w * (size_t)h + (size_t)cw * (size_t)ch * 2;
@@ -254,7 +270,8 @@ bool hk_jcamera_start(hk_jcamera *c, int width, int height, int fps)
     c->focus_news = 0;
     c->gone = false;
     c->first_said = false;
-    c->frames = c->taken = 0;
+    c->frames = c->taken = c->dropped = 0;
+    c->kept_any = false;
     c->started_ns = (i64)hk_time_monotonic_ns();
     c->width = width;
     c->height = height;
@@ -287,7 +304,8 @@ void hk_jcamera_stop(hk_jcamera *c)
     frames = c->frames;
     hk_cond_broadcast(&c->news);
     hk_lock_release(&c->lock);
-    hk_info("camera: camera %d stopped after %lld pictures, %lld of them taken by the app", c->index, (long long)frames, (long long)c->taken);
+    hk_info("camera: camera %d stopped after %lld pictures, %lld of them taken by the app (and %lld that came sooner than asked for, dropped)", c->index,
+            (long long)frames, (long long)c->taken, (long long)c->dropped);
 }
 
 int hk_jcamera_wait(hk_jcamera *c, int ms)
@@ -318,6 +336,16 @@ int hk_jcamera_wait(hk_jcamera *c, int ms)
     }
     hk_lock_release(&c->lock);
     return news;
+}
+
+void hk_jcamera_counts(hk_jcamera *c, i64 *kept, i64 *dropped)
+{
+    *kept = *dropped = 0;
+    if (!c) return;
+    hk_lock_acquire(&c->lock);
+    *kept = c->frames;
+    *dropped = c->dropped;
+    hk_lock_release(&c->lock);
 }
 
 i32 hk_jcamera_size(hk_jcamera *c) { return c && c->held.data ? c->held.width << 16 | (c->held.height & 0xffff) : 0; }

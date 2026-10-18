@@ -238,7 +238,10 @@ public class Camera {
         int[] fps = new int[2];
         mParams.getPreviewFpsRange(fps);
         int format = mParams.getPreviewFormat();
-        if (size == null || !megler.CameraNative.start(h, size.width, size.height, Math.max(1, (fps[1] + 999) / 1000))) throw new RuntimeException("startPreview failed");
+        // A camera may run anywhere in the range: here at its slow end, but not below 15 frames a second unless the range's top
+        // is. A scanner's usual (15000,30000) is then 15 a second, half the pictures to copy into the app's Java and to show.
+        int rate = Math.max(fps[0], Math.min(fps[1], 15000));
+        if (size == null || !megler.CameraNative.start(h, size.width, size.height, Math.max(1, (rate + 999) / 1000))) throw new RuntimeException("startPreview failed");
         synchronized (mLock) { mFrameInFlight = false; }
         mPreview = new Preview(h, format);
         mPreview.start();

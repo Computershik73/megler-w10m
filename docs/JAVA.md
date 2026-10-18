@@ -90,13 +90,13 @@ the decoder 40 fewer, and the script says which is missing.
 
 ```
 bash tools/build-tests.sh win      (MSVC x64, run on the PC; libcore's native libraries cannot run there)
-    4537 checks, 0 failed          on the built-in java.lang (OpenGL ES from Java's 117 among them)
-    4590 checks, 0 failed          on libcore, its bytecode alone (OpenGL ES from Java's 136 among them)
+    4539 checks, 0 failed          on the built-in java.lang (OpenGL ES from Java's 117 among them)
+    4592 checks, 0 failed          on libcore, its bytecode alone (OpenGL ES from Java's 136 among them)
     (then the shell's own drawing and the storage on Windows' own folders, which are not this document's: 294, 264, 264, 294, 294, 441, 110, 12, 8, 8, 8, 6 and 6 checks)
 
 bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-float, under qemu-arm)
-    4792 checks, 0 failed          on the built-in java.lang
-    4890 checks, 0 failed          on libcore with its native libraries
+    4794 checks, 0 failed          on the built-in java.lang
+    4892 checks, 0 failed          on libcore with its native libraries
       50 checks, 0 failed          the Java test app hello, through megler_run
      121 checks, 0 failed          the Java test app demos, the keyboard's 25 and the frame meter's 3 among them
       47 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
@@ -4201,11 +4201,17 @@ code among them (budiyev's code-scanner over ZXing) -- is the overlay's
   failed")`, the key and the value in the log), and applies the focus mode
   and the torch at once while the camera previews.
 - **The preview.** `startPreview` starts the shell's camera at the preview
-  size and the range's top rate, and a thread of the camera's own
+  size and at the slow end of the preview's frame rate range, but not below
+  15 frames a second unless the range's top is (a camera may run anywhere in
+  its range; a scanner's usual 15 to 30 is then 15, half the pictures to copy
+  into the app's Java and to show), and a thread of the camera's own
   ("Camera preview N") waits for its news (`waitNews`): a picture, an end
-  of focusing, the camera gone. The core copies each picture as it comes
-  (the shell's memory is its own for the call alone), NV12 into NV21, in
-  three buffers -- the one the shell's thread fills, the latest whole one,
+  of focusing, the camera gone. A camera that streams faster than it was
+  started at (the shell takes the nearest rate it has, and a phone's preview
+  may have only 30) has the pictures that come sooner than four fifths of the
+  period after the last one kept dropped before they are copied. The core
+  copies each picture it keeps as it comes (the shell's memory is its own for
+  the call alone), NV12 into NV21, in three buffers -- the one the shell's thread fills, the latest whole one,
   the one the preview thread works from -- so that neither waits for the
   other and a picture not taken in time is replaced by the next. For the
   view the picture is drawn into a `Bitmap` of the turned size, mirrored
@@ -4254,7 +4260,7 @@ code among them (budiyev's code-scanner over ZXing) -- is the overlay's
 
 The tests:
 - the core's ("the cameras behind a Java app's android.hardware.Camera",
-  both hosts and the phone's Self-test, 42 checks), on
+  both hosts and the phone's Self-test, 44 checks), on
   `core/tests/hk_camera_standin.c`, which stands in for the shell's cameras:
   a back camera turned 90 degrees with focus and a torch, a front one turned
   270 without, each at a few sizes, a picture every 1/fps of a second on a
@@ -4267,8 +4273,10 @@ The tests:
   before U's); the picture drawn for a view in the four turns, mirrored and
   not; the next picture numbered higher; focusing once, close up and
   cancelled, continuous; the torch on, and off at stop; nothing after stop;
-  the front camera beside the back one; closing and opening again; and a
-  camera left open closed at the app's end.
+  the front camera beside the back one; closing and opening again; started
+  at 10 frames a second on the stand-in's slowest 15, pictures dropped and
+  kept, each one or the other; and a camera left open closed at the app's
+  end.
 - the test app `camera` under qemu with the same stand-in
   (`core/tests/app/camera`, 35 checks): the permission; the features; the
   cameras' information and an unknown one refused; `open()` on a

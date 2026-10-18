@@ -104,6 +104,8 @@ i64 hk_jcamera_time(hk_jcamera *c);
 size_t hk_jcamera_frame_bytes(i32 width, i32 height, int format);
 i32 hk_jcamera_copy(hk_jcamera *c, u8 *dst, size_t size, int format);
 bool hk_jcamera_render(hk_jcamera *c, void *bgra, i32 width, i32 height, i32 stride, int rotation, bool mirror);
+/* Since it was last started: the pictures kept, and those dropped for coming sooner than the rate it was started at. */
+void hk_jcamera_counts(hk_jcamera *c, i64 *kept, i64 *dropped);
 bool hk_jcamera_focus(hk_jcamera *c, int mode);
 void hk_jcamera_torch(hk_jcamera *c, bool on);
 void hk_jcamera_close(hk_jcamera *c);
