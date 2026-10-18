@@ -126,6 +126,97 @@ hk_thread *hk_gthread_host_of_tid(i32 tid)
     return h;
 }
 
+/*
+ * The flag trace-cpu (hk_run.c starts it with the app): every five seconds, how much of the processor the app had -- the
+ * process, in the phone's cores -- and the eight of its threads that had the most, each by its id and name as a share of
+ * one core. Whether an app that is slow is held by one thread (near a whole core, while the process has a quarter of a
+ * four-core phone) or by all of them. A thread is counted here once it has run guest code (a Java thread that never
+ * called native code is in the process's figure only). At most 2000 lines a run.
+ */
+#define CPU_TOP 8
+
+typedef struct cpu_use {
+    i32 tid;
+    u64 ns;
+    char name[32];
+} cpu_use;
+
+/* Each live guest thread's processor time now, by id; `before` and `host` keep the last round's, `top` the most since. */
+static int cpu_round(u64 *before, hk_thread **host, cpu_use *top, int *threads)
+{
+    int i, k, n = 0;
+    *threads = 0;
+    hk_lock_acquire(&g_thread_lock);
+    for (i = 1; i < (int)HK_COUNT(g_tid_thread); i++) {
+        hk_gthread *g = g_tid_thread[i];
+        hk_thread *h = g ? g->sig_thread : NULL;
+        u64 ns, d;
+        if (!h) continue;
+        ++*threads;
+        ns = hk_thread_cpu_ns(h);
+        /* (An id used again by another thread: that thread's time from its start, which is within the round.) */
+        d = host[i] == h && ns >= before[i] ? ns - before[i] : ns;
+        before[i] = ns;
+        host[i] = h;
+        if (!top) continue;
+        for (k = n; k > 0 && top[k - 1].ns < d; k--)
+            if (k < CPU_TOP) top[k] = top[k - 1];
+        if (k < CPU_TOP) {
+            top[k].tid = i;
+            top[k].ns = d;
+            hk_strlcpy(top[k].name, g->name, sizeof(top[k].name));
+            if (n < CPU_TOP) n++;
+        }
+    }
+    hk_lock_release(&g_thread_lock);
+    return n;
+}
+
+static void cpu_observer(void *unused)
+{
+    u64 *before = (u64 *)hk_alloc(sizeof(u64) * HK_COUNT(g_tid_thread));
+    hk_thread **host = (hk_thread **)hk_alloc(sizeof(hk_thread *) * HK_COUNT(g_tid_thread));
+    u64 last = hk_time_monotonic_ns(), last_process = hk_process_cpu_ns();
+    int lines = 0, cores = hk_cpu_count(), threads;
+    (void)unused;
+    cpu_round(before, host, NULL, &threads);
+    while (lines++ < 2000) {
+        cpu_use top[CPU_TOP];
+        char text[700];
+        size_t at;
+        u64 now, process, span;
+        int n, i;
+        hk_sleep_ns(5000000000ull);
+        n = cpu_round(before, host, top, &threads);
+        now = hk_time_monotonic_ns();
+        process = hk_process_cpu_ns();
+        span = now - last > 0 ? now - last : 1;
+        at = (size_t)snprintf(text, sizeof(text), "cpu: %.1f s: the process had %.2f of the phone's %d cores (%.0f %%); of its %d threads that ran guest code, the most:",
+                              (double)span / 1e9, (double)(process - last_process) / (double)span, cores,
+                              100.0 * (double)(process - last_process) / (double)span / (cores > 0 ? cores : 1), threads);
+        /* (A thread with less than a hundredth of a core is not named.) */
+        for (i = 0; i < n && at + 64 < sizeof(text) && (i == 0 || top[i].ns * 100 >= span); i++)
+            at += (size_t)snprintf(text + at, sizeof(text) - at, "%s %d \"%s\" %.2f", i ? "," : "", (int)top[i].tid, top[i].name, (double)top[i].ns / (double)span);
+        hk_info("%s", text);
+        last = now;
+        last_process = process;
+    }
+    free(before);
+    free(host);
+}
+
+void hk_bionic_cpu_trace_start(void)
+{
+    static volatile i32 started;
+    hk_thread *t;
+    if (hk_atomic_xchg(&started, 1)) return;
+    t = hk_thread_start(cpu_observer, NULL, 64u * 1024u, "cpu-observer");
+    if (t) {
+        hk_thread_detach(t);
+        hk_info("cpu: every five seconds, the processor the app had and its busiest threads (the flag trace-cpu)");
+    }
+}
+
 bool hk_app_threads_give_way(void)
 {
     static int give_way = -1;

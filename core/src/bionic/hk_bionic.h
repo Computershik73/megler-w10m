@@ -164,6 +164,8 @@ bool hk_gwait(volatile i32 *addr, i32 expect, u64 timeout_ns);
 void hk_gsleep(u64 ns);
 /* Whether the app's threads give way to the shell's (hk_thread_runs_app_code): off with the flag "normal-priority". */
 bool hk_app_threads_give_way(void);
+/* The flag trace-cpu: a thread that says every five seconds how much of the processor the app had, and its busiest threads. */
+void hk_bionic_cpu_trace_start(void);
 /* The thread is ending: nothing more is sent its way. */
 void hk_signals_thread_gone(hk_gthread *t);
 
