@@ -270,6 +270,7 @@ void Library::added(const std::string& id) {
         ApkEntry entry;
         entry.id = id;
         entry.path = path;
+        entry.replaces = true;
         entry.size = files::size(path);
         if (files::exists(splitsDirFor(path))) {
             entry.splitsDir = splitsDirFor(path);
@@ -323,16 +324,22 @@ bool Library::addDemo() {
     return true;
 }
 
-void Library::remove(const std::string& id) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    auto it = std::find_if(entries_.begin(), entries_.end(), [&](const ApkEntry& e) { return e.id == id; });
-    if (it == entries_.end()) return;
+void Library::eraseLocked(std::vector<ApkEntry>::iterator it) {
     files::remove(it->path);
     files::remove(it->path + L".json");
     files::remove(it->path + L".icon");
     if (!it->splitsDir.empty()) files::removeTree(it->splitsDir);
+    // Not read after it has gone: its report would describe a file that is not there.
+    queue_.erase(std::remove(queue_.begin(), queue_.end(), it->id), queue_.end());
     entries_.erase(it);
     ++generation_;
+}
+
+void Library::remove(const std::string& id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = std::find_if(entries_.begin(), entries_.end(), [&](const ApkEntry& e) { return e.id == id; });
+    if (it == entries_.end()) return;
+    eraseLocked(it);
     shellLog::write("library: removed " + id);
 }
 
@@ -404,13 +411,32 @@ void Library::analyse(const std::string& id) {
                            parsed.engine.empty() ? "?" : parsed.engine.c_str(),
                            parsed.splits.empty() ? "" : format(", with %u splits", unsigned(parsed.splits.size())).c_str(), parsed.status().c_str()));
     std::lock_guard<std::mutex> lock(mutex_);
+    std::string package;
+    bool replaces = false;
     for (auto& entry : entries_) {
         if (entry.id != id) continue;
+        replaces = entry.replaces;
+        entry.replaces = false;
+        package = parsed.package;
         entry.report = std::move(parsed);
         entry.analysed = true;
         entry.analysing = false;
         entry.iconPath = iconPath;
         break;
+    }
+    // Added just now, for a package already in the library: it replaces the entries that were there, whatever their file
+    // names, versions or signatures (none is compared); the app's own files stay. Not when the report names no package.
+    if (replaces && !package.empty()) {
+        for (auto it = entries_.begin(); it != entries_.end();) {
+            if (it->id != id && it->report.package == package) {
+                shellLog::write(format("library: %s replaces %s, the same package %s (its version and signature not compared; the app's files kept)",
+                                       id.c_str(), it->id.c_str(), package.c_str()));
+                eraseLocked(it);
+                it = entries_.begin();
+            } else {
+                ++it;
+            }
+        }
     }
     ++generation_;
 }

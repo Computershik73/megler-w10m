@@ -469,6 +469,11 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   `Android/data/<its package>/files`), and `Music`, `Pictures`, `Movies`, `DCIM` and
   whatever the user adds in Settings being the phone's own folders. `statfs`
   answers the phone's real room (34.9 GB free of 56.7 on that phone).
+  **One package, one entry** (2026-10-18): an APK or bundle added for a
+  package the library already has replaces what was there once its report
+  names the package, whatever its file's name, version or signature (none is
+  compared: a debug build over a release one and back); the app's own files
+  stay (`app/Megler/library/Library.cpp`, `analyse`).
   **Apps in several APKs** (2026-10-18; docs/JAVA.md, "Split APKs and
   bundles"): the library takes .apks and .xapk files beside plain APKs. Such
   a bundle is unpacked by the core into the base and the splits this phone

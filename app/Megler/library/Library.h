@@ -17,6 +17,13 @@
 // The core is given both, for the report (megler_apk_report_splits) and to run
 // the app (megler_run_config.splits_dir), and they go together.
 //
+// One package, one entry: an APK added for a package the library already has
+// replaces what was there once its report names the package, whatever its
+// file's name, its version or its signature -- a debug build over a release
+// one and back, as `adb install -r -d` with the signature check left out
+// would. The app's own files (LocalState\apps\<package>) are kept, as an
+// install over an installed app keeps them.
+//
 // -- so the list opens at once from the cache. Reading an APK takes a moment
 // (its libraries are scanned), so it happens on a worker thread: when an APK
 // is added, when its cache is missing, and for every APK after an update of
@@ -82,6 +89,7 @@ struct ApkEntry {
     uint64_t size = 0;     // the copy's, with its splits'
     bool analysed = false; // false until a report has been read or made
     bool analysing = false;
+    bool replaces = false; // just added: once read, the other entries of its package go
     ApkReport report;
     std::wstring iconPath; // empty when the APK has no icon the core finds
 
@@ -111,7 +119,9 @@ public:
     static bool isBundle(const std::string& pickedName);
     /// The folder a copy's splits are in, whether or not it is there.
     static std::wstring splitsDirFor(const std::wstring& path) { return path + L".splits"; }
-    /// A complete copy now lies at directory()\id: lists it and reads it.
+    /// A complete copy now lies at directory()\id: lists it and reads it; once
+    /// read, the entries of the same package that were there before go (their
+    /// copies, splits and caches; the app's own files stay).
     void added(const std::string& id);
     /// The demo the package carries (demo\megler-demo.apk: a picture, touch and
     /// sound to judge by eye and ear), copied into the library. False when
@@ -131,6 +141,8 @@ public:
 
 private:
     void queue(const std::string& id);
+    /// Under mutex_: the entry at `it` goes, its copy, splits and cache with it.
+    void eraseLocked(std::vector<ApkEntry>::iterator it);
     void work();
     void analyse(const std::string& id);
 
