@@ -41,6 +41,37 @@ bool hk_flag(const char *name)
     if (on) hk_warn("flag: %s is on (a file of that name is in the data folder's flags)", name);
     return on;
 }
+
+struct flags_each {
+    const char *prefix;
+    void (*fn)(const char *rest, void *user);
+    void *user;
+};
+
+static void flags_each_one(const char *name, bool is_dir, void *user)
+{
+    struct flags_each *e = (struct flags_each *)user;
+    size_t n = strlen(e->prefix);
+    if (!is_dir && !strncmp(name, e->prefix, n) && name[n]) {
+        hk_warn("flag: %s is on (a file of that name is in the data folder's flags)", name);
+        e->fn(name + n, e->user);
+    }
+}
+
+/* Flags whose names carry what they are about (trace-calls-<class name prefix>): every one that starts with `prefix`. */
+void hk_flags_each(const char *prefix, void (*fn)(const char *rest, void *user), void *user)
+{
+    char path[700];
+    struct flags_each e;
+    int err = 0;
+    if (!g_data_dir[0]) return;
+    e.prefix = prefix;
+    e.fn = fn;
+    e.user = user;
+    snprintf(path, sizeof(path), "%s/flags", g_data_dir);
+    hk_path_list(path, flags_each_one, &e, &err);
+}
+
 const char *megler_package_dir(void) { return g_package_dir; }
 
 static void copy_dir(char *out, size_t cap, const char *in)

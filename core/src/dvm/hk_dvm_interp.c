@@ -72,6 +72,72 @@ static HK_NOINLINE hk_dvm_frame *stack_full(hk_dvm_thread *t, hk_dvm_method *m, 
     return NULL;
 }
 
+/*
+ * The flags trace-calls-<prefix> (hk_java.c reads them; the prefix a class name with dots, "com.example.Auth"): every call
+ * of a method of a class whose name starts with one of the prefixes is said in the log, with its thread and depth, and so
+ * is its return, with the value it returns, or the exception it ends with. What an app does between two things it logs,
+ * when it logs nothing in between: VK mp3 mod's sign-in thread ended with no exception and nothing after it ran. Classes
+ * are looked at once each (hk_dvm_class.call_traced). At most 8000 lines a run.
+ */
+static volatile bool g_call_trace;
+static char g_call_prefixes[8][160];
+static int g_ncall_prefixes;
+static volatile i32 g_call_lines;
+
+void hk_dvm_call_trace_add(const char *prefix)
+{
+    char *p;
+    if (g_ncall_prefixes == (int)HK_COUNT(g_call_prefixes) || !*prefix) return;
+    hk_strlcpy(g_call_prefixes[g_ncall_prefixes], prefix, sizeof(g_call_prefixes[0]));
+    for (p = g_call_prefixes[g_ncall_prefixes]; *p; p++)
+        if (*p == '.') *p = '/';
+    hk_info("calls: every call of a method of a class whose name starts with %s is said", g_call_prefixes[g_ncall_prefixes]);
+    g_ncall_prefixes++;
+    g_call_trace = true;
+}
+
+static bool call_traced(hk_dvm_method *m)
+{
+    hk_dvm_class *c = m->cls;
+    if (!c->call_traced) {
+        int i;
+        u8 v = 2;
+        for (i = 0; i < g_ncall_prefixes; i++)
+            if (!strncmp(c->name, g_call_prefixes[i], strlen(g_call_prefixes[i]))) v = 1;
+        c->call_traced = v;
+    }
+    return c->call_traced == 1 && hk_atomic_add(&g_call_lines, 1) <= 8000;
+}
+
+static void call_trace_enter(hk_dvm_thread *t, hk_dvm_method *m, const char *how)
+{
+    if (call_traced(m)) hk_info("calls: thread %u depth %d: %s.%s%s%s", (unsigned)t->id, t->depth, m->cls->name, m->name, m->sig, how);
+}
+
+static void call_trace_return(hk_dvm_thread *t, hk_dvm_method *m, const hk_jvalue *v)
+{
+    const char *r;
+    if (!call_traced(m)) return;
+    r = strchr(m->sig, ')');
+    switch (r ? r[1] : 'V') {
+    case 'V': hk_info("calls: thread %u depth %d: %s.%s returns", (unsigned)t->id, t->depth, m->cls->name, m->name); break;
+    case 'L':
+    case '[':
+        hk_info("calls: thread %u depth %d: %s.%s returns %s", (unsigned)t->id, t->depth, m->cls->name, m->name, v->l ? hk_dvm_class_of(v->l)->name : "null");
+        break;
+    case 'J': hk_info("calls: thread %u depth %d: %s.%s returns %lld", (unsigned)t->id, t->depth, m->cls->name, m->name, (long long)v->j); break;
+    case 'F': hk_info("calls: thread %u depth %d: %s.%s returns %g", (unsigned)t->id, t->depth, m->cls->name, m->name, (double)v->f); break;
+    case 'D': hk_info("calls: thread %u depth %d: %s.%s returns %g", (unsigned)t->id, t->depth, m->cls->name, m->name, v->d); break;
+    default: hk_info("calls: thread %u depth %d: %s.%s returns %d", (unsigned)t->id, t->depth, m->cls->name, m->name, (int)v->i); break;
+    }
+}
+
+static void call_trace_unwind(hk_dvm_thread *t, hk_dvm_method *m, hk_jobj *e)
+{
+    if (call_traced(m))
+        hk_info("calls: thread %u depth %d: %s.%s ends with %s", (unsigned)t->id, t->depth, m->cls->name, m->name, e ? hk_dvm_class_of(e)->name : "?");
+}
+
 /* A frame for `m` with `words` registers on the thread's stack, made the method being run. NULL when the stack is full (thrown). */
 static inline hk_dvm_frame *push_frame(hk_dvm_thread *t, hk_dvm_method *m, size_t words)
 {
@@ -204,6 +270,7 @@ static bool invoke_native(hk_dvm_thread *t, hk_dvm_method *m, hk_jobj *self, con
         hk_dvm_monitor_enter(sync);
     }
     if (g_dvm.trace >= 2) hk_info("dvm: %*s-> %s.%s%s (native)", t->depth, "", m->cls->name, m->name, m->sig);
+    if (g_call_trace) call_trace_enter(t, m, " (native)");
     if (g_dvm.profiling) native_started = hk_time_monotonic_ns();
     /* The always-on count (hk_dvm_thread_costs): the outermost native method's time; one called back from it is in it. */
     outermost = t->native_depth++ == 0;
@@ -875,6 +942,7 @@ bool hk_dvm_invoke(hk_dvm_method *m, hk_jobj *self, const hk_jvalue *params, hk_
             if (f->sync) hk_dvm_monitor_enter(f->sync);
         }
         if (g_dvm.trace >= 2) hk_info("dvm: %*s-> %s.%s%s (from C)", t->depth, "", m->cls->name, m->name, m->sig);
+        if (g_call_trace) call_trace_enter(t, m, " (from C)");
         ok = interpret(t, f, ret);
     }
     t->c_depth--;

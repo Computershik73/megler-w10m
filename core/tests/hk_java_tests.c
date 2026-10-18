@@ -1531,13 +1531,18 @@ static int run_data(void)
      * The second run has the flags trace-net, trace-exceptions and trace-stacks on (tools/build-tests.sh puts them in its
      * data folder): the network steps' connections are said with where to and how they ended, the names looked up with their
      * addresses, the exceptions the steps throw and catch with their messages, and five seconds in, every thread's stack, the
-     * main thread's among them, and the network steps' threads as they end.
+     * main thread's among them, and the network steps' threads as they end; and with trace-calls-android.media.session.PlaybackState,
+     * the calls the playback-state step makes of that class and its nested ones, with what they return.
      */
     if (run == 2 && want == 2) {
         CHECK(find_line("network: TCP to [0:0:0:0:0:ffff:7f00:1]:", 0) >= 0 && find_line("network: the name 127.0.0.1: 1 addresses, the first 127.0.0.1", 0) >= 0);
         CHECK(find_line("dvm: thrown on thread ", 0) >= 0 && find_line("android/database/sqlite/SQLiteConstraintException: UNIQUE constraint failed", 0) >= 0);
         CHECK(find_line("stacks: round 1, ", 0) >= 0 && find_line("\"main\"", find_line("stacks: round 1, ", 0)) >= 0 && find_line("stacks:   ", 0) >= 0
               && find_line("stacks: thread ", 0) >= 0 && find_line("\" ends, ", 0) >= 0);
+        CHECK(find_line("calls: every call of a method of a class whose name starts with android/media/session/PlaybackState is said", 0) >= 0
+              && find_line("android/media/session/PlaybackState$CustomAction$Builder.<init>(Ljava/lang/String;Ljava/lang/CharSequence;I)V", 0) >= 0
+              && find_line("android/media/session/PlaybackState$Builder.build returns android/media/session/PlaybackState", 0) >= 0
+              && find_line("android/media/session/PlaybackState.writeToParcel returns", 0) >= 0);
     }
     /* The core's own word that it is its SQLite, on its files. */
     CHECK(find_line("sqlite: SQLite 3.", 0) >= 0);

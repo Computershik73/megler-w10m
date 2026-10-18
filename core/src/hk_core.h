@@ -29,6 +29,8 @@ u32 hk_core_wx_flips(void);
 int hk_core_arm_state(void);
 /* A switch set by a file's presence in <data_dir>/flags (hk_api.c): for trying things on a device. Says so in the log when on. */
 bool hk_flag(const char *name);
+/* Every flag whose name starts with `prefix`, the rest of its name given to `fn` (hk_api.c). */
+void hk_flags_each(const char *prefix, void (*fn)(const char *rest, void *user), void *user);
 void hk_core_set_arm_state(int state);
 
 /* Called with a description of a fault in guest code that nothing could repair, before the process ends. */

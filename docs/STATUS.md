@@ -246,8 +246,12 @@ or not; `dvm/hk_dvm_interp.c`), at most 1000 and 2000 lines a run; and
 `trace-stacks` (five seconds in, every Java thread's stack, its 24 top frames;
 then every two seconds those whose stack changed, the others counted; threads as
 they end, and any that could not be stopped; each thread stopped only while its
-frames are copied; at most 6000 lines; `dvm/hk_dvm_object.c`). The
-data app's second run under qemu has all three on, and the test finds their lines.
+frames are copied; at most 6000 lines; `dvm/hk_dvm_object.c`); and
+`trace-calls-<prefix>`, the prefix a class name with dots (every call of a method
+of a class whose name starts with it, with its thread and depth, and its return
+with the value or the exception it ends with; up to eight such flags; at most 8000
+lines; `dvm/hk_dvm_interp.c`, the flags read by `hk_flags_each`). The
+data app's second run under qemu has all four on, and the test finds their lines.
 
 **Sound.** FMOD said "Error initializing output device" twice and made no player.
 It had not got as far as OpenSL ES: before that it asks `AudioManager.getProperty`

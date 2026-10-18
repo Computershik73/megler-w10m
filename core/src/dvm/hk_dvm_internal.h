@@ -160,6 +160,7 @@ enum { DVM_CS_FAILED = -1, DVM_CS_LINKED = 0, DVM_CS_INITIALIZING = 1, DVM_CS_IN
 
 struct hk_dvm_class {
     const char *name;                  /* "java/lang/String", "[I", "int"; interned */
+    u8 call_traced;                    /* under a flag trace-calls-<prefix> (hk_dvm_interp.c): 0 not yet looked at, 1 traced, 2 not */
     hk_dvm_dex *dex;                   /* NULL for array and primitive classes */
     u32 def;                           /* class_def index */
     u32 flags;
@@ -427,6 +428,7 @@ const char *hk_dvm_defined_name(u32 i, hk_dvm_dex **dex);
 hk_dvm_thread *hk_dvm_self(void);
 void hk_dvm_monitor_trace_start(void);
 void hk_dvm_stacks_trace_start(void);
+void hk_dvm_call_trace_add(const char *prefix);
 /* For the collector, with the runtime's lock held: every thread there is, and every interned string. */
 void hk_dvm_threads_each(void (*fn)(hk_dvm_thread *t, void *user), void *user);
 void hk_dvm_interned_each(void (*fn)(hk_jobj *s, void *user), void *user);

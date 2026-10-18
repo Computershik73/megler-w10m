@@ -564,6 +564,7 @@ int DVM_LOOP(hk_dvm_thread *t, hk_dvm_frame *f, hk_jvalue *ret)
         if (g_dvm.trace >= 2) hk_info("dvm: %*s-> %s.%s%s", t->depth, "", target->cls->name, target->name, target->sig);
         nf = push_frame(t, target, target->regs);
         if (!nf) goto exception;
+        if (g_call_trace) call_trace_enter(t, target, "");
         /*
          * The arguments are the callee's last registers, in the order and the widths the caller's hold them; the others
          * start at zero. (Loops, not memset and memcpy: a call has a few registers, and the C library's calls cost more.)
@@ -588,6 +589,7 @@ int DVM_LOOP(hk_dvm_thread *t, hk_dvm_frame *f, hk_jvalue *ret)
     }
 
     do_return:
+        if (g_call_trace) call_trace_return(t, f->m, &result);
         if (f->sync) hk_dvm_monitor_exit(f->sync);
         if (f->entry) {
             *ret = result;
@@ -615,6 +617,7 @@ int DVM_LOOP(hk_dvm_thread *t, hk_dvm_frame *f, hk_jvalue *ret)
                 pc = target_pc;
                 break;
             }
+            if (g_call_trace) call_trace_unwind(t, f->m, e);
             if (f->sync) hk_dvm_monitor_exit(f->sync);
             if (f->entry) {
                 pop_frame(t);

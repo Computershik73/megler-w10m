@@ -1044,6 +1044,13 @@ static void shorten(char *what)
     snprintf(what, 340, "%s, caused by %s", first, last);
 }
 
+/* A flag trace-calls-<prefix>: the calls of the classes under that prefix are said (hk_dvm_call_trace_add). */
+static void call_trace_flag(const char *rest, void *user)
+{
+    (void)user;
+    hk_dvm_call_trace_add(rest);
+}
+
 static void main_thread(void *arg)
 {
     char *framework = hk_sprintf("%s/framework/megler-framework.dex", J.root), *res = hk_sprintf("%s/framework/framework-res.apk", J.root);
@@ -1061,6 +1068,7 @@ static void main_thread(void *arg)
         hk_jvalue sdk;
         if (hk_flag("trace-monitors")) hk_dvm_monitor_trace_start();
         if (hk_flag("trace-stacks")) hk_dvm_stacks_trace_start();
+        hk_flags_each("trace-calls-", call_trace_flag, NULL);
         /*
          * One process, one answer to "which Android is this": what the framework's Build.VERSION.SDK_INT tells the app's Java
          * is what its native code is told too (the property, android_get_device_api_level, AConfiguration_getSdkVersion).
