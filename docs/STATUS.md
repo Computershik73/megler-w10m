@@ -496,7 +496,9 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   (package 262): its window had focus, and lost it to its data installer,
   before the game it calls on a focus change was made; an activity that
   starts another for a result before it is shown now waits to be shown, as
-  on Android (docs/JAVA.md, `android/app/Activity.java`). Spotify's WebView
+  on Android (docs/JAVA.md, `android/app/Activity.java`). Its installer then
+  said the download had failed: `WifiManager` said the Wi-Fi was off; it is
+  on now (docs/JAVA.md, `android/net/wifi/WifiManager.java`). Spotify's WebView
   then (packages 252 and 254) ended out of memory on an image of 126 MB that
   Chromium decodes and maps twice, in a 2 GB address space whose largest
   free stretch was 135 MB (docs/JAVA.md, "Out of memory"); the layer's

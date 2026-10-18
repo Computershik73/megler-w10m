@@ -3209,7 +3209,7 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: a hundred and six files** in the overlay,
+**What differs from the original's framework: a hundred and seven files** in the overlay,
 most of them a statement or a few methods each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and eleven files of members added** to classes of the original's, **and four files of the original's taken
@@ -3829,6 +3829,23 @@ on a looper thread of its own and takes it back with `next()`.
   through a Parcel and reads one from a Bundle alone, as the compat class
   writes it.
 
+- `android/net/wifi/WifiManager.java`, the generated stub with the Wi-Fi on,
+  and `WifiInfo.java.members`. The stub answered from an empty map:
+  `isWifiEnabled()` false, `getWifiState()` 0, `getConnectionInfo()` and
+  `getDhcpInfo()` null, while `ConnectivityManager` says the phone is on
+  Wi-Fi and connected. Asphalt 9's installer asks both before it fetches its
+  data (`getNetworkInfo(TYPE_WIFI).isConnected() && isWifiEnabled()`), was
+  told there was no Wi-Fi and no mobile network, and showed that the
+  download had failed (package 264; the flag `trace-calls-...` on its
+  installer showed the two checks answering false). Now the Wi-Fi is on and
+  enabled; the connection is one the phone is connected to, as Android 9
+  tells an app without the location permission ("<unknown ssid>", BSSID
+  02:00:00:00:00:00), with the phone's IPv4 address from
+  `NetworkInterface`, which `getDhcpInfo()` has too, with its netmask; and
+  `calculateSignalLevel` is Android's formula. Which network the phone is
+  really on is not asked of Windows: the framework says Wi-Fi throughout.
+  The data app's step "wifi" asks as the installer does.
+
 - `android/media/session/PlaybackState.java`, in place of the generated stub,
   which dropped what `setState` and `addCustomAction` were given (the state,
   the position and the speed read back as 0), had a null `CREATOR`, and an
@@ -3913,7 +3930,7 @@ on a looper thread of its own and takes it back with `next()`.
   recording do not change the list, a bitmap does; two hundred nodes of
   1440 x 2560 take 110 KB, where the original's ran out of memory.
 
-The original has all forty-one faults; they are its author's to take back.
+The original has all forty-two faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in
