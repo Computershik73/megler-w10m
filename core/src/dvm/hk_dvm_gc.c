@@ -27,7 +27,8 @@
 
 /* ------------------------------------------------------------ the C roots */
 
-#define MAX_ROOTS 64
+/* (A Java app's GL threads take 32, the window's layers 8, native code's windows of SurfaceViews 48: 64 was not enough.) */
+#define MAX_ROOTS 256
 static hk_jobj **g_roots[MAX_ROOTS];
 static volatile i32 g_nroots;
 

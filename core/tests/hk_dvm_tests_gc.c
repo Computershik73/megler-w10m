@@ -86,12 +86,13 @@ static void test_gc_census(void)
  * and never used again, so an object freed too early would read as that.)
  */
 static hk_jobj *g_rooted;
+static hk_jobj *g_many_rooted[150];
 
 static void test_gc_collect(void)
 {
     hk_dvm_gc_result r;
     hk_jobj *volatile kept = hk_dvm_new_string("kept on the stack");
-    int i;
+    int i, unmarked;
     say("the collector: a collection frees what nothing holds");
     g_rooted = hk_dvm_new_string("kept by a root");
     hk_dvm_add_root(&g_rooted);
@@ -106,6 +107,14 @@ static void test_gc_collect(void)
     CHECK(r.freed_objects >= 1900);
     CHECK(!strcmp(hk_dvm_string_utf8(kept), "kept on the stack"));
     CHECK(!strcmp(hk_dvm_string_utf8(g_rooted), "kept by a root"));
+    /* As many C roots as a Java app's GL threads, its window's layers and native code's windows take together, each held. */
+    for (i = 0; i < (int)HK_COUNT(g_many_rooted); i++) {
+        g_many_rooted[i] = hk_dvm_new_array("[B", 16);
+        hk_dvm_add_root(&g_many_rooted[i]);
+    }
+    CHECK(hk_dvm_gc_census(&r));
+    for (i = 0, unmarked = 0; i < (int)HK_COUNT(g_many_rooted); i++) unmarked += !hk_dvm_gc_marked(g_many_rooted[i]);
+    CHECK(unmarked == 0);
     /* Nothing more to free a moment later, and what is held is still there. */
     CHECK(hk_dvm_gc("test again", &r));
     CHECK(r.freed_objects < 100);
