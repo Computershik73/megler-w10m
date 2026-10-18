@@ -335,6 +335,11 @@ void hk_bionic_native_stacks_start(void)
     static volatile i32 started;
     hk_thread *t;
     if (hk_atomic_xchg(&started, 1)) return;
+#if !defined(_WIN32)
+    /* (Said at once, not at the first round ten seconds on: a run may be over before it.) */
+    hk_info("stacks: native threads are not looked at on this host (a thread is stopped by a signal here, which it may hold back)");
+    return;
+#endif
     t = hk_thread_start(stacks_observer, NULL, 64u * 1024u, "native-stacks-observer");
     if (t) hk_thread_detach(t);
 }
