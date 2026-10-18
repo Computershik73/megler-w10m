@@ -531,6 +531,10 @@ one size: so the app's `EGLSurface` for such a window is an entry of the
 layer's (`ndk/hk_egl.c`), which stands for the window's pbuffer now; a swap
 that finds the size changed makes a new pbuffer, current in the old one's
 place, and EGL's calls that take a surface are given whichever it stands for.
+A `SurfaceTexture`'s `Surface` (a `TextureView`'s) has a window of the texture
+the same way; its EGL surface is a pbuffer on no layer, whose frame is read
+back at each swap and handed to the texture in memory, as Java's EGL on a
+`TextureView` does.
 
 ## Sound
 

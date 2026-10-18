@@ -20,4 +20,8 @@ final class Windows {
     static native void stop();
     /** The lock view's surface drawn in software, in quarters of four colours. What the buffer was. */
     static native String lockPaint(Surface surface);
+    /** A TextureView's surface drawn in software, in quarters of the same colours. What the buffer was. */
+    static native String textureLock(Surface surface);
+    /** The same drawn once with EGL on the calling thread. What the surface was. */
+    static native String textureEgl(Surface surface);
 }

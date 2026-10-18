@@ -47,7 +47,7 @@ where; **expected** and **not verified** mean what they say.
 | `core/src/jni/hk_jni.c` | the JNI layer, which is now also the runtime's JNI: see "One Java world" below |
 | `core/src/drivers/hk_java.c` | the driver for an app that is Java: starts the runtime, the framework and the app; `megler.Native` (the log, the APK's files, the screen, input, the end) |
 | `core/src/drivers/hk_java_gfx.c` | `megler.Gfx`: bitmaps as memory, and `android.graphics` handed to the shell through `megler_gfx_host` |
-| `core/src/drivers/hk_java_ndk.c` | the NDK's functions that are about the framework's objects: libjnigraphics on its `Bitmap`; `ANativeWindow_fromSurface` on a `SurfaceView`'s `Surface`, and that window's EGL surfaces and software buffers ("A SurfaceView drawn by native code") |
+| `core/src/drivers/hk_java_ndk.c` | the NDK's functions that are about the framework's objects: libjnigraphics on its `Bitmap`; `ANativeWindow_fromSurface` on a `SurfaceView`'s or a `SurfaceTexture`'s `Surface`, and that window's EGL surfaces and software buffers ("A SurfaceView drawn by native code") |
 | `core/src/drivers/hk_java_sqlite.c` | `megler.Sqlite`: an app's databases |
 | `core/src/drivers/hk_java_camera.c` | `megler.CameraNative`: the phone's cameras behind the overlay's `android.hardware.Camera`, over the shell's (`megler_camera_host`): pictures copied as NV21, drawn for a view mirrored and turned, the news a preview thread waits for ("The cameras") |
 | `core/src/drivers/hk_java_webview.c` | what Android's platform gives the WebView besides Java: `WebViewLibraryLoader`'s natives (address space reserved, the library loaded into it from the WebView APK) and `libwebviewchromium_plat_support.so`'s tables, which are none ("The WebView") |
@@ -100,7 +100,7 @@ bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-f
     4892 checks, 0 failed          on libcore with its native libraries
       50 checks, 0 failed          the Java test app hello, through megler_run
      121 checks, 0 failed          the Java test app demos, the keyboard's 25 and the frame meter's 3 among them
-      72 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK; native code drawing on SurfaceViews
+      78 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK; native code drawing on SurfaceViews and a TextureView
       16 checks, 0 failed          the Java test app crash: an exception nothing catches, launcher aliases, an app written for Android 6
       19 checks, 0 failed          the Java test app gc: references, finalizers, threads allocating, a heap that stays small
       49 checks, 0 failed          the Java test app gl: a GLSurfaceView, EGL14 on a pbuffer, EGL10 on a SurfaceView, on a stand-in for OpenGL ES that draws
@@ -110,7 +110,7 @@ bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-f
       35 checks, 0 failed          the Java test app camera: the old android.hardware.Camera on a stand-in for the shell's cameras, the previews' pictures in the window
       13 checks, 0 failed          camera again, every camera refused
       50 checks, 0 failed          gl again, the window composed by the core
-      72 checks, 0 failed          natives again, the window composed by the core
+      78 checks, 0 failed          natives again, the window composed by the core
       50 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
     (then each app once more, its drawing recorded for the PC's run to draw again)
 ```
@@ -501,14 +501,15 @@ and, from outside: the library's own `__android_log_print` line, and the bitmap
 it painted on the picture, pixel for pixel where the app drew it. The picture
 is `build/java-pictures/natives-1.bmp`.
 
-Then native code on two `SurfaceView`s side by side, under the picture
-(`WindowTest`, and a second library of the app's, `libwindows.so` from
-`jni/windows.c`, which needs EGL and OpenGL ES): the left one drawn with EGL
-from a render thread of the library's own, Asphalt 9's way ("A SurfaceView
-drawn by native code" below), the right one in software. Each frame is a colour
-with its left half drawn in another, so the four quarters of the view say
-where each half of the frame went; the test looks at the window after each
-phase the app says and taps for the next. 25 checks more (72 in all), twice:
+Then native code on two `SurfaceView`s and a `TextureView` side by side, under
+the picture (`WindowTest`, and a second library of the app's, `libwindows.so`
+from `jni/windows.c`, which needs EGL and OpenGL ES): the left one drawn with
+EGL from a render thread of the library's own, Asphalt 9's way ("A SurfaceView
+drawn by native code" below), the middle one in software, the `TextureView`'s
+texture in software and then once with EGL. Each frame is a colour with its top
+left quarter drawn in another, so the four quarters of the view say where the
+frame went and which way up; the test looks at the window after each phase the
+app says and taps for the next. 31 checks more (78 in all), twice:
 with the test's shell composing the window and with the core composing it
 (`readback`):
 
@@ -518,11 +519,17 @@ with the test's shell composing the window and with the core composing it
   format back with the geometry, makes a window surface on it of the view's
   size, current for drawing and reading (`eglGetCurrentSurface` gives its
   handle back), and a lock of the window is refused (-22) while EGL draws on
-  it. Thirty frames are in the view's place in the window, the right halves
-  through the hole, the left halves yellow over magenta.
+  it. Thirty frames are in the view's place in the window, seen through the
+  hole the right way up: the top left quarter yellow, the rest magenta.
 - The right view, `ANativeWindow_setBuffersGeometry(32, 16, RGB_565)` and
   `ANativeWindow_lock`: a 32 x 16 buffer of stride 32 in format 4, written at
   its stride and posted; its four colours in the view's quarters, scaled.
+- The `TextureView`'s texture through a `Surface` made on it: a window of the
+  texture's size, `setBuffersGeometry` to `RGBX_8888`, the buffer of that
+  format and stride, its four colours in the view's quarters; after the first
+  tap one frame drawn with EGL on the main thread, read back and given to the
+  texture the right way up (its top left quarter red, the rest green), and
+  still so, scaled, when the `TextureView` is wider later.
 - A fixed size of half the view's (`setFixedSize`): `surfaceChanged` gets the
   same window, whose size is now that; the renderer's surface is that size from
   its next swap (`eglQuerySurface`), and the picture the same, scaled.
@@ -532,8 +539,8 @@ with the test's shell composing the window and with the core composing it
   -19; the renderer destroys its surface. The right view, now the whole row,
   drawn again at its new size.
 - The view put back: a new window, the renderer's new surface 64 x 32 as the
-  geometry it asked for says, and that in the view's place, scaled (blue
-  over cyan).
+  geometry it asked for says, and that in the view's place, scaled (a blue
+  quarter, the rest cyan).
 - Back: the renderer, swapping when the activity went, ends with it, and nothing
   threw. Pictures `natives-2.bmp` to `natives-5.bmp`.
 
@@ -2189,9 +2196,9 @@ native code: the framework's `Build.VERSION.SDK_INT` (34) is put into
 `android_get_device_api_level` and `AConfiguration_getSdkVersion` read that.
 `ANativeWindow_fromSurface` gives the window a `Surface` of the engine drivers'
 carries, and for the framework's `Surface` of a `SurfaceView` a window of the
-view's surface, which native code draws on with EGL or in software: "A
-SurfaceView drawn by native code" below. A `SurfaceTexture`'s `Surface` is
-still NULL.
+view's surface (of a `SurfaceTexture`, a window of the texture), which native
+code draws on with EGL or in software: "A SurfaceView drawn by native code"
+below.
 
 **The JNI functions on the runtime's objects**, down the table. "app": a step
 of the `natives` test app calls it from a library built by the NDK; "core":
@@ -2345,13 +2352,26 @@ view has said its surface is gone, so a frame swapped in that moment is not
 shown and the next swap is refused; the render thread then destroys its
 surface when it likes. Nothing of this waits for the main thread.
 
+**A `SurfaceTexture`'s `Surface`** (a `TextureView`'s, or one an app made on a
+texture of its own) has a window of the texture: its size the texture's default
+buffer size (a `TextureView` sets it to its own), `RGBA_8888`, valid until the
+texture is released. Its frames go to the texture through the framework's way
+in for a native producer's frame (`SurfaceTexture.meglerPostRgba`), as `MeglerEGL`'s
+read-back for a `TextureView` goes in through the texture's canvas: an EGL
+surface on it is a pbuffer on no view, whose frame is read back at each swap as
+R, G, B, A and handed over the right way up; a software buffer is handed over as R, G, B, A (565 and RGBX
+turned to it, opaque). The `TextureView` draws the texture's front buffer
+scaled to its size. Read back from the graphics processor at each frame and
+drawn again by the shell, this is the slow way, as it is for Java's EGL on a
+`TextureView`.
+
 Pausing the app here (the shell's `megler_set_paused`) is `onPause` alone and
 destroys no surface; the surface goes when the view leaves its window (the
 activity stopped, finished, or the view taken out of its layout), which is
 when Android destroys it too.
 
-Not there: a `SurfaceTexture`'s `Surface` (NULL); attributes set with
-`eglSurfaceAttrib` are lost when a resize makes the next pbuffer;
+Not there: attributes set with `eglSurfaceAttrib` are lost when a resize
+makes the next pbuffer;
 `ANativeWindow_setBuffersTransform` and `_setFrameRate` change nothing; a
 surface above the window (`setZOrderOnTop` without a `GLSurfaceView`) is not
 composed, as for Java's EGL.
@@ -3288,8 +3308,7 @@ native code is.
 - **OpenGL ES from Java on a phone has not run.** Under qemu and on the PC it
   runs on a stand-in that draws. A `SurfaceView` that the app's *native*
   code draws on is there now (above, "A SurfaceView drawn by native code"),
-  likewise only under qemu; a `SurfaceTexture`'s `Surface` still gives native
-  code no window. Not there at all: `setZOrderOnTop` with a translucent surface (a
+  a `SurfaceTexture`'s too, likewise only under qemu. Not there at all: `setZOrderOnTop` with a translucent surface (a
   surface is always composed under the views, opaque), more than eight
   views with EGL at once, `GLES32.glDebugMessageCallback` and the other
   calls Android's own glue leaves "not yet implemented" (the same exception

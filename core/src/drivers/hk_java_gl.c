@@ -1324,26 +1324,32 @@ N(EN_forget)
  * An EGL window surface native code made on a SurfaceView's window (eglCreateWindowSurface on what ANativeWindow_fromSurface
  * gave it: hk_java_ndk.c, ndk/hk_egl.c). It is what a window surface made from Java on the view is -- a pbuffer on the view's
  * layer, swapped by swap() -- with what that one has from megler.EGLNative instead: the configuration it is made with, and the
- * context it is drawn in, which is whatever the app made current, read at each swap for what a read-back needs of it.
+ * context it is drawn in, which is whatever the app made current, read at each swap for what a read-back needs of it. On a
+ * SurfaceTexture's window it is on no view, and each frame is read back for the texture, as MeglerEGL reads one back for it.
  */
 typedef struct native_surf {
     gl_surf *s;                        /* the pbuffer now */
     EGLConfig config;
     gl_ctx ctx;                        /* of the context current at the last swap: its version and read-back format */
     EGLContext ctx_of;
+    u8 *frame;                         /* on no view: the last frame read back, R, G, B, A, rows bottom first */
+    size_t frame_size;
+    int fw, fh;
 } native_surf;
 
 void *hk_java_gl_window_surface(hk_jobj *view, int width, int height, void *const *configs, int count)
 {
     native_surf *n;
     gl_surf *s;
-    layer *l;
+    layer *l = NULL;
     hk_jvalue args[1];
-    if (!view || count <= 0 || !egl_ready()) return NULL;
-    hk_lock_acquire(&g_window_lock);
-    l = layer_of(view, true);
-    hk_lock_release(&g_window_lock);
-    if (!l) return NULL;
+    if (count <= 0 || !egl_ready()) return NULL;
+    if (view) {
+        hk_lock_acquire(&g_window_lock);
+        l = layer_of(view, true);
+        hk_lock_release(&g_window_lock);
+        if (!l) return NULL;
+    }
     s = surf_new_with(width, height, l, configs, count);
     if (!s) return NULL;
     n = (native_surf *)hk_alloc(sizeof(*n));
@@ -1352,10 +1358,12 @@ void *hk_java_gl_window_surface(hk_jobj *view, int width, int height, void *cons
     n->config = s->config;
     n->ctx.version = 2;
     n->ctx.bgra = -1;
-    /* The view keeps its area clear from now on and says where it is, as for a surface made from Java on it (MeglerEGL): the frames are under it. */
-    memset(args, 0, sizeof(args));
-    args[0].z = 1;
-    if (!hk_dvm_call_virtual(view, "meglerSetGL", "(Z)V", args, NULL)) hk_dvm_clear_pending();
+    if (view) {
+        /* The view keeps its area clear from now on and says where it is, as for a surface made from Java on it (MeglerEGL): the frames are under it. */
+        memset(args, 0, sizeof(args));
+        args[0].z = 1;
+        if (!hk_dvm_call_virtual(view, "meglerSetGL", "(Z)V", args, NULL)) hk_dvm_clear_pending();
+    }
     return n;
 }
 
@@ -1379,7 +1387,23 @@ void hk_java_gl_window_swap(void *surface, int width, int height)
         n->ctx.version = version >= 3 ? 3 : 2;
         n->ctx.bgra = -1;
     }
-    swap(n->s, &n->ctx);
+    if (n->s->layer) {
+        swap(n->s, &n->ctx);
+    } else {
+        /* On no view: the frame read back for the texture, R, G, B, A as SurfaceTexture.meglerPostRgba takes it, and the swap paced. */
+        n->ctx.bgra = 0;
+        if (read_back(n->s, &n->ctx)) {
+            u8 *spare = n->frame;
+            size_t spare_size = n->frame_size;
+            n->frame = n->s->pixels;
+            n->frame_size = n->s->pixels_size;
+            n->fw = n->s->width;
+            n->fh = n->s->height;
+            n->s->pixels = spare;
+            n->s->pixels_size = spare_size;
+        }
+        pace(n->s);
+    }
     if (width > 0 && height > 0 && (width != n->s->width || height != n->s->height)) {
         /* The window's buffers are another size now: so is the surface, from the next frame on (the caller makes this one current). */
         gl_surf *fresh = surf_new_with(width, height, n->s->layer, &n->config, 1);
@@ -1391,11 +1415,20 @@ void hk_java_gl_window_swap(void *surface, int width, int height)
     }
 }
 
+const void *hk_java_gl_window_pixels(void *surface, int *width, int *height)
+{
+    native_surf *n = (native_surf *)surface;
+    *width = n->fw;
+    *height = n->fh;
+    return n->frame && n->fw > 0 ? n->frame : NULL;
+}
+
 void hk_java_gl_window_destroy(void *surface)
 {
     native_surf *n = (native_surf *)surface;
     if (!n) return;
     surf_free(n->s);
+    free(n->frame);
     free(n);
 }
 

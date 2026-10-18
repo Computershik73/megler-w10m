@@ -15,8 +15,9 @@
  * documentation has it do, is told the truth.
  *
  * libandroid: ANativeWindow_fromSurface on the framework's Surface of a
- * SurfaceView (its meglerView): a window of the view's surface, below. A
- * Surface a driver made carries its window as it always did.
+ * SurfaceView (its meglerView) or of a SurfaceTexture (its meglerTexture): a
+ * window of the view's surface or of the texture, below. A Surface a driver
+ * made carries its window as it always did.
  */
 #include "../bionic/hk_bionic.h"
 #include "../dvm/hk_dvm_internal.h"
@@ -98,6 +99,11 @@ static int g_bitmap_unlock(void *env, hk_jobj *bitmap)
  * is in effect (it copies the last frame back); a post turns it into one of two Bitmaps in turn, B, G, R, A, opaque, and hands
  * that to the view as a whole frame (SurfaceView.meglerPostBitmap, which the camera's preview uses too), which the view draws in
  * its place scaled to it. Posts are paced at sixty a second, as a swap is.
+ *
+ * A SurfaceTexture's Surface (a TextureView's, or one an app made) has a window of the texture: its size the texture's default
+ * buffer size, its format RGBA_8888, valid until the texture is released. Its frames go to the texture through the framework's
+ * way in for a native producer's frame (SurfaceTexture.meglerPostRgba): an EGL surface on it is a pbuffer on no view whose frame
+ * is read back at each swap, R, G, B, A, and handed over the right way up; a software buffer is handed over as R, G, B, A.
  */
 
 #define MAX_WINDOWS 16
@@ -108,8 +114,9 @@ enum { FORMAT_RGBA_8888 = 1, FORMAT_RGBX_8888 = 2, FORMAT_RGB_565 = 4 };
 
 typedef struct view_window {
     hk_nwindow base;                   /* first: what native code holds */
-    hk_jobj *view;                     /* the SurfaceView (a root of the collector's); NULL: a free slot */
-    volatile i32 valid;                /* until the view's surface is destroyed */
+    hk_jobj *view;                     /* the SurfaceView (a root of the collector's), or NULL for a SurfaceTexture's window */
+    hk_jobj *texture;                  /* the SurfaceTexture (a root); NULL for a SurfaceView's; both NULL: a free slot */
+    volatile i32 valid;                /* until the view's surface is destroyed (a texture's: released) */
     volatile i32 egl;                  /* EGL window surfaces on it now */
     volatile i32 locked;
     bool drawn_said;
@@ -118,6 +125,8 @@ typedef struct view_window {
     i32 bw, bh, bformat;               /* as it was last locked */
     hk_jobj *bitmaps[2];               /* roots: the posted buffer goes to the view in these, in turn */
     int next;
+    u8 *rgba;                          /* a texture's buffer turned to R, G, B, A for it, when it is not that already */
+    size_t rgba_size;
     u64 due;                           /* when the next post may return */
 } view_window;
 
@@ -136,6 +145,35 @@ static struct {
     volatile i32 state;                /* 0 not looked for, 1 found, 2 not there */
     u32 created, width, height, format;
 } SV;
+
+/* And the framework's SurfaceTexture's: its default buffer size and whether it is released. */
+static struct {
+    volatile i32 state;
+    u32 width, height, released;
+} ST;
+
+static bool surface_texture_fields(void)
+{
+    if (!ST.state) {
+        hk_dvm_class *c = hk_dvm_find_class("android/graphics/SurfaceTexture");
+        hk_dvm_field *width = c ? hk_dvm_find_field(c, "mW", false) : NULL, *height = c ? hk_dvm_find_field(c, "mH", false) : NULL;
+        hk_dvm_field *released = c ? hk_dvm_find_field(c, "mReleased", false) : NULL;
+        bool ok = width && height && released;
+        if (!c) hk_dvm_clear_pending();
+        if (ok) {
+            ST.width = width->slot;
+            ST.height = height->slot;
+            ST.released = released->slot;
+        } else {
+            hk_warn("java: the framework's SurfaceTexture has no mW, mH or mReleased: native code is given no window of one");
+        }
+        hk_atomic_xchg(&ST.state, ok ? 1 : 2);
+    }
+    return ST.state == 1;
+}
+
+/* What a window is of: its SurfaceView, or its SurfaceTexture. */
+static hk_jobj *owner_of(const view_window *w) { return w->view ? w->view : w->texture; }
 
 static bool surface_view_fields(void)
 {
@@ -161,15 +199,32 @@ static bool surface_view_fields(void)
 static void vw_size(const hk_nwindow *b, int *width, int *height)
 {
     const view_window *w = (const view_window *)b;
-    hk_jvalue *slots = hk_dvm_slots(w->view);
-    i32 sw = slots[SV.width].i, sh = slots[SV.height].i;
+    hk_jvalue *slots = hk_dvm_slots(owner_of(w));
+    i32 sw = w->view ? slots[SV.width].i : slots[ST.width].i, sh = w->view ? slots[SV.height].i : slots[ST.height].i;
     if (sw > 0 && sh > 0) {
         *width = sw;
         *height = sh;
     }
 }
 
-static bool vw_valid(const hk_nwindow *b) { return ((const view_window *)b)->valid != 0; }
+/* (A texture's window goes with the texture's release, which is for good.) */
+static bool vw_valid(const hk_nwindow *b)
+{
+    const view_window *w = (const view_window *)b;
+    return w->valid != 0 && (!w->texture || !hk_dvm_slots(w->texture)[ST.released].z);
+}
+
+/* A frame for a texture: w x h, R, G, B, A, rows bottom first when `flip` (as OpenGL reads them), handed to it. */
+static void post_rgba(hk_jobj *texture, const void *rgba, int width, int height, bool flip)
+{
+    hk_jvalue args[4];
+    memset(args, 0, sizeof(args));
+    args[0].j = (i64)(hk_addr)rgba;
+    args[1].i = width;
+    args[2].i = height;
+    args[3].z = flip;
+    if (!hk_dvm_call_virtual(texture, "meglerPostRgba", "(JIIZ)V", args, NULL)) hk_dvm_clear_pending();
+}
 
 static void *vw_egl_create(hk_nwindow *b, void *const *configs, int count)
 {
@@ -197,12 +252,19 @@ static bool vw_egl_swap(void *p)
 {
     view_surface *s = (view_surface *)p;
     int width, height;
-    if (!s->w->valid) {
-        hk_note_once("java: native code swapped an EGL surface whose SurfaceView's surface has gone: EGL_BAD_NATIVE_WINDOW, as on Android");
+    if (!vw_valid(&s->w->base)) {
+        hk_note_once("java: native code swapped an EGL surface whose window has gone (its SurfaceView's surface destroyed, or its SurfaceTexture released): "
+                     "EGL_BAD_NATIVE_WINDOW, as on Android");
         return false;
     }
     hk_nwindow_buffer_size(&s->w->base, &width, &height);
     hk_java_gl_window_swap(s->gl, width, height);
+    if (s->w->texture) {
+        /* (The frame read back is kept apart from the surface, which the swap may have replaced by one of a new size.) */
+        int fw, fh;
+        const void *rgba = hk_java_gl_window_pixels(s->gl, &fw, &fh);
+        if (rgba) post_rgba(s->w->texture, rgba, fw, fh, true);
+    }
     return true;
 }
 
@@ -229,7 +291,7 @@ static int vw_lock(hk_nwindow *b, void *buffer, i32 *dirty)
     size_t need;
     bool kept;
     if (!out) return NW_BAD_VALUE;
-    if (!w->valid) return NW_GONE;
+    if (!vw_valid(b)) return NW_GONE;
     if (w->egl) {
         hk_note_once("java: ANativeWindow_lock on a window with an EGL surface on it: refused, as on Android");
         return NW_BAD_VALUE;
@@ -265,7 +327,7 @@ static int vw_lock(hk_nwindow *b, void *buffer, i32 *dirty)
     }
     if (!w->drawn_said) {
         w->drawn_said = true;
-        hk_info("java: native code draws a window of %s in software (ANativeWindow_lock): %dx%d, format %d", hk_dvm_class_name(w->view), width, height, format);
+        hk_info("java: native code draws a window of %s in software (ANativeWindow_lock): %dx%d, format %d", hk_dvm_class_name(owner_of(w)), width, height, format);
     }
     return 0;
 }
@@ -303,6 +365,34 @@ static i64 post_bitmap(hk_jobj **slot, int width, int height, hk_java_gfx_bitmap
         if (!round) *slot = new_bitmap(width, height);
     }
     return 0;
+}
+
+/* A texture's buffer, as R, G, B, A (opaque but for an RGBA_8888 one), handed to the texture. */
+static void post_texture(view_window *w)
+{
+    size_t n = (size_t)w->bw * (size_t)w->bh, i;
+    const u8 *rgba = w->pixels;
+    if (w->bformat != FORMAT_RGBA_8888) {
+        if (w->rgba_size < n * 4) {
+            free(w->rgba);
+            w->rgba = (u8 *)hk_alloc(n * 4);
+            w->rgba_size = n * 4;
+        }
+        for (i = 0; i < n; i++) {
+            u8 *d = w->rgba + i * 4;
+            if (w->bformat == FORMAT_RGB_565) {
+                u32 v = ((const u16 *)(const void *)w->pixels)[i], r = (v >> 11) & 31, g = (v >> 5) & 63, bl = v & 31;
+                d[0] = (u8)((r << 3) | (r >> 2));
+                d[1] = (u8)((g << 2) | (g >> 4));
+                d[2] = (u8)((bl << 3) | (bl >> 2));
+            } else {
+                memcpy(d, w->pixels + i * 4, 3);
+            }
+            d[3] = 255;
+        }
+        rgba = w->rgba;
+    }
+    post_rgba(w->texture, rgba, w->bw, w->bh, false);
 }
 
 /* The buffer, as a whole frame of the view's: into the next Bitmap, B, G, R, A and opaque, which the view is handed. */
@@ -350,10 +440,11 @@ static int vw_unlock(hk_nwindow *b)
 {
     view_window *w = (view_window *)b;
     if (!w->locked) return NW_BAD_VALUE;
-    if (w->valid) {
+    if (vw_valid(b)) {
         const u64 period = 16666667ull;
         u64 now;
-        post(w);
+        if (w->texture) post_texture(w);
+        else post(w);
         /* No sooner than a sixtieth of a second after the post before, as a queued buffer is taken on Android. */
         now = hk_time_monotonic_ns();
         if (!w->due || now > w->due + 100000000ull) w->due = now;
@@ -361,7 +452,7 @@ static int vw_unlock(hk_nwindow *b)
         if (w->due > now) hk_sleep_ns(w->due - now);
     }
     hk_atomic_xchg(&w->locked, 0);
-    return w->valid ? 0 : NW_GONE;
+    return vw_valid(b) ? 0 : NW_GONE;
 }
 
 static void vw_gone(hk_nwindow *b)
@@ -369,6 +460,7 @@ static void vw_gone(hk_nwindow *b)
     view_window *w = (view_window *)b;
     hk_lock_acquire(&g_windows_lock);
     free(w->pixels);
+    free(w->rgba);
     /* (The slot is free with its view gone; the collector's roots in it now point at nothing.) */
     memset(w, 0, sizeof(*w));
     hk_lock_release(&g_windows_lock);
@@ -376,31 +468,36 @@ static void vw_gone(hk_nwindow *b)
 
 static const hk_nwindow_ops k_view_window = { vw_size, vw_valid, vw_lock, vw_unlock, vw_egl_create, vw_egl_handle, vw_egl_swap, vw_egl_destroy, vw_gone };
 
-/* The window of a SurfaceView's surface now, a reference of the caller's; NULL while it has none (Android's Surface is not valid then). */
-static hk_nwindow *view_window_of(hk_jobj *view)
+/*
+ * The window of a SurfaceView's surface now, or of a SurfaceTexture (one of the two is given), a reference of the caller's; NULL
+ * while the view has no surface or the texture is released (Android's Surface is not valid then).
+ */
+static hk_nwindow *window_of(hk_jobj *view, hk_jobj *texture)
 {
     view_window *w = NULL, *free_slot = NULL;
+    hk_jobj *owner = view ? view : texture;
     hk_jvalue *slots;
     i32 format;
     int i;
-    if (!surface_view_fields()) return NULL;
-    slots = hk_dvm_slots(view);
-    if (!slots[SV.created].z) {
-        hk_info("java: ANativeWindow_fromSurface: %s has no surface now: NULL", hk_dvm_class_name(view));
+    if (view ? !surface_view_fields() : !surface_texture_fields()) return NULL;
+    slots = hk_dvm_slots(owner);
+    if (view ? !slots[SV.created].z : slots[ST.released].z) {
+        hk_info("java: ANativeWindow_fromSurface: %s %s: NULL", hk_dvm_class_name(owner), view ? "has no surface now" : "is released");
         return NULL;
     }
     hk_lock_acquire(&g_windows_lock);
     if (!g_windows_rooted) {
         for (i = 0; i < MAX_WINDOWS; i++) {
             hk_dvm_add_root(&g_windows[i].view);
+            hk_dvm_add_root(&g_windows[i].texture);
             hk_dvm_add_root(&g_windows[i].bitmaps[0]);
             hk_dvm_add_root(&g_windows[i].bitmaps[1]);
         }
         g_windows_rooted = true;
     }
     for (i = 0; i < MAX_WINDOWS && !w; i++) {
-        if (g_windows[i].view == view && g_windows[i].valid) w = &g_windows[i];
-        else if (!g_windows[i].view && !free_slot) free_slot = &g_windows[i];
+        if (owner_of(&g_windows[i]) == owner && g_windows[i].valid) w = &g_windows[i];
+        else if (!owner_of(&g_windows[i]) && !free_slot) free_slot = &g_windows[i];
     }
     if (w) {
         hk_nwindow_acquire(&w->base);
@@ -416,15 +513,23 @@ static hk_nwindow *view_window_of(hk_jobj *view)
     memset(w, 0, sizeof(*w));
     w->base.refs = 1;
     w->base.ops = &k_view_window;
-    /* PixelFormat: OPAQUE (-1) is RGBX_8888 as Android's compositor makes it, TRANSLUCENT and TRANSPARENT RGBA_8888, the rest themselves. */
-    format = slots[SV.format].i;
-    w->base.format = format > 0 ? format : format == -1 ? FORMAT_RGBX_8888 : FORMAT_RGBA_8888;
-    w->base.width = slots[SV.width].i;
-    w->base.height = slots[SV.height].i;
+    if (view) {
+        /* PixelFormat: OPAQUE (-1) is RGBX_8888 as Android's compositor makes it, TRANSLUCENT and TRANSPARENT RGBA_8888, the rest themselves. */
+        format = slots[SV.format].i;
+        w->base.format = format > 0 ? format : format == -1 ? FORMAT_RGBX_8888 : FORMAT_RGBA_8888;
+        w->base.width = slots[SV.width].i;
+        w->base.height = slots[SV.height].i;
+    } else {
+        w->base.format = FORMAT_RGBA_8888;
+        w->base.width = slots[ST.width].i > 0 ? slots[ST.width].i : 1;
+        w->base.height = slots[ST.height].i > 0 ? slots[ST.height].i : 1;
+    }
     w->view = view;
+    w->texture = texture;
     w->valid = 1;
     hk_lock_release(&g_windows_lock);
-    hk_info("java: ANativeWindow_fromSurface: a window of %s's surface, %dx%d, format %d", hk_dvm_class_name(view), w->base.width, w->base.height, w->base.format);
+    hk_info("java: ANativeWindow_fromSurface: a window of %s%s, %dx%d, format %d", hk_dvm_class_name(owner), view ? "'s surface" : "", w->base.width,
+            w->base.height, w->base.format);
     return &w->base;
 }
 
@@ -454,10 +559,11 @@ static hk_nwindow *g_window_from_surface(void *env, hk_jobj *surface)
     }
     v.j = 0;
     if (!hk_dvm_get_field(surface, "meglerView", &v)) hk_dvm_clear_pending();
-    if (v.l) return view_window_of(v.l);
+    if (v.l) return window_of(v.l, NULL);
     v.j = 0;
     if (!hk_dvm_get_field(surface, "meglerTexture", &v)) hk_dvm_clear_pending();
-    hk_note_once("java: ANativeWindow_fromSurface on a Surface %s: no window of it here, NULL", v.l ? "of a SurfaceTexture" : "of neither a SurfaceView nor a SurfaceTexture");
+    if (v.l) return window_of(NULL, v.l);
+    hk_note_once("java: ANativeWindow_fromSurface on a Surface of neither a SurfaceView nor a SurfaceTexture: no window of it here, NULL");
     return NULL;
 }
 

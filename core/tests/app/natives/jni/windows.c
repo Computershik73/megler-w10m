@@ -4,12 +4,13 @@
  * window handed to a render thread of the library's own (a pthread, never attached to Java), which picks an EGL
  * configuration out of eglGetConfigs, makes an OpenGL ES 3 context, gives the window its buffers' geometry, makes a window
  * surface on it and swaps it continuously; surfaceDestroyed lets go of the window without waiting for the renderer, which
- * finds out at its next swap. And ANativeWindow_lock on another SurfaceView, in RGB 565 at a size of its own.
+ * finds out at its next swap. And ANativeWindow_lock on another SurfaceView, in RGB 565 at a size of its own; and a TextureView's
+ * SurfaceTexture drawn through its Surface's window, first in software (RGBX_8888), then once with EGL.
  *
  * The renderer says what it saw in the log and how far it has come in `phase`, which the Java side (WindowTest) reads:
  * 1 thirty frames on the first window; 2 its surface resized by the window and ten frames at the new size; 3 the window gone
  * (a swap refused) and the surface destroyed; 4 thirty frames on the second window. Each frame is cleared to one colour
- * and its left half drawn in another (a triangle pair), so that the picture shows where the frame's halves went.
+ * and its top left quarter drawn in another (a triangle pair), so that the picture shows where the frame went and which way up.
  */
 #include <jni.h>
 
@@ -72,7 +73,7 @@ static EGLConfig choose(EGLDisplay d, EGLint *count)
 static void *render_main(void *arg)
 {
     static const EGLint es3[] = { EGL_CONTEXT_CLIENT_VERSION, 3, 0x30FB /* EGL_CONTEXT_MINOR_VERSION_KHR */, 0, EGL_NONE };
-    static const GLfloat left[] = { -1, -1, 0, -1, 0, 1, -1, -1, 0, 1, -1, 1 };
+    static const GLfloat quarter[] = { -1, 0, 0, 0, 0, 1, -1, 0, 0, 1, -1, 1 };
     EGLDisplay d = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     EGLint major = 0, minor = 0, configs = 0, version = 0;
     EGLConfig config;
@@ -148,7 +149,7 @@ static void *render_main(void *arg)
             glClear(GL_COLOR_BUFFER_BIT);
             glUseProgram(program);
             glUniform4fv(colour, 1, half);
-            glVertexAttribPointer((GLuint)position, 2, GL_FLOAT, GL_FALSE, 0, left);
+            glVertexAttribPointer((GLuint)position, 2, GL_FLOAT, GL_FALSE, 0, quarter);
             glEnableVertexAttribArray((GLuint)position);
             glDrawArrays(GL_TRIANGLES, 0, 6);
             if (!eglSwapBuffers(d, surf)) {
@@ -238,9 +239,93 @@ JNIEXPORT void JNICALL Java_megler_test_natives_Windows_stop(JNIEnv *env, jclass
     if (started) pthread_join(g_thread, NULL);
 }
 
+/* Red, green above, blue, white below: the quarters of a frame drawn in software. */
+static int quarter_of(int x, int y, int width, int height) { return (y < height / 2 ? 0 : 2) + (x < width / 2 ? 0 : 1); }
+
 /*
- * The lock view's surface, drawn in software: RGB 565 at 32 x 16 whatever the view's size, in quarters -- red, green above,
- * blue, white below -- written row by row at the buffer's stride, then posted.
+ * A TextureView's surface (a Surface made on its SurfaceTexture) drawn in software: RGBX_8888 at the texture's size, in the
+ * four quarters' colours, R, G, B and a byte the window ignores.
+ */
+JNIEXPORT jstring JNICALL Java_megler_test_natives_Windows_textureLock(JNIEnv *env, jclass cls, jobject surface)
+{
+    static const uint8_t colours[4][3] = { { 255, 0, 0 }, { 0, 255, 0 }, { 0, 0, 255 }, { 255, 255, 255 } };
+    ANativeWindow *win = ANativeWindow_fromSurface(env, surface);
+    ANativeWindow_Buffer buffer;
+    char text[120];
+    int geometry, rc, post = -99, x, y;
+    (void)cls;
+    if (!win) return (*env)->NewStringUTF(env, "no window");
+    geometry = ANativeWindow_setBuffersGeometry(win, 0, 0, WINDOW_FORMAT_RGBX_8888);
+    memset(&buffer, 0, sizeof(buffer));
+    rc = ANativeWindow_lock(win, &buffer, NULL);
+    if (rc == 0) {
+        for (y = 0; y < buffer.height; y++) {
+            uint8_t *row = (uint8_t *)buffer.bits + (size_t)y * (size_t)buffer.stride * 4;
+            for (x = 0; x < buffer.width; x++) {
+                memcpy(row + x * 4, colours[quarter_of(x, y, buffer.width, buffer.height)], 3);
+                row[x * 4 + 3] = 0;
+            }
+        }
+        post = ANativeWindow_unlockAndPost(win);
+    }
+    snprintf(text, sizeof(text), "%dx%d stride=%d format=%d geometry=%d rc=%d post=%d", buffer.width, buffer.height, buffer.stride, buffer.format, geometry, rc, post);
+    ANativeWindow_release(win);
+    return (*env)->NewStringUTF(env, text);
+}
+
+/*
+ * The same TextureView's surface drawn once with EGL, on the calling thread (the main one): an OpenGL ES 2 context, a window
+ * surface at the texture's size, the frame cleared to green with its top left quarter red, one swap, all of it ended.
+ */
+JNIEXPORT jstring JNICALL Java_megler_test_natives_Windows_textureEgl(JNIEnv *env, jclass cls, jobject surface)
+{
+    static const EGLint es2[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
+    static const GLfloat quarter[] = { -1, 0, 0, 0, 0, 1, -1, 0, 0, 1, -1, 1 }, red[] = { 1, 0, 0, 1 };
+    ANativeWindow *win = ANativeWindow_fromSurface(env, surface);
+    EGLDisplay d = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    EGLint configs = 0, w = 0, h = 0, error;
+    EGLConfig config;
+    EGLContext ctx;
+    EGLSurface surf;
+    GLuint program;
+    int made, swapped = 0;
+    char text[120];
+    (void)cls;
+    if (!win) return (*env)->NewStringUTF(env, "no window");
+    eglInitialize(d, NULL, NULL);
+    config = choose(d, &configs);
+    ctx = eglCreateContext(d, config, EGL_NO_CONTEXT, es2);
+    surf = eglCreateWindowSurface(d, config, win, NULL);
+    made = surf != EGL_NO_SURFACE && ctx != EGL_NO_CONTEXT && eglMakeCurrent(d, surf, surf, ctx);
+    if (made) {
+        eglQuerySurface(d, surf, EGL_WIDTH, &w);
+        eglQuerySurface(d, surf, EGL_HEIGHT, &h);
+        program = glCreateProgram();
+        glAttachShader(program, shader(GL_VERTEX_SHADER, "attribute vec4 aPosition;\nvoid main() { gl_Position = aPosition; }\n"));
+        glAttachShader(program, shader(GL_FRAGMENT_SHADER, "precision mediump float;\nuniform vec4 uColor;\nvoid main() { gl_FragColor = uColor; }\n"));
+        glLinkProgram(program);
+        glViewport(0, 0, w, h);
+        glClearColor(0, 1, 0, 1);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glUseProgram(program);
+        glUniform4fv(glGetUniformLocation(program, "uColor"), 1, red);
+        glVertexAttribPointer((GLuint)glGetAttribLocation(program, "aPosition"), 2, GL_FLOAT, GL_FALSE, 0, quarter);
+        glEnableVertexAttribArray((GLuint)glGetAttribLocation(program, "aPosition"));
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        swapped = eglSwapBuffers(d, surf);
+    }
+    error = eglGetError();
+    eglMakeCurrent(d, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    if (surf != EGL_NO_SURFACE) eglDestroySurface(d, surf);
+    if (ctx != EGL_NO_CONTEXT) eglDestroyContext(d, ctx);
+    ANativeWindow_release(win);
+    snprintf(text, sizeof(text), "surface %dx%d made=%d swapped=%d error=0x%x", w, h, made, swapped, error);
+    return (*env)->NewStringUTF(env, text);
+}
+
+/*
+ * The lock view's surface, drawn in software: RGB 565 at 32 x 16 whatever the view's size, in the quarters' colours, written
+ * row by row at the buffer's stride, then posted.
  */
 JNIEXPORT jstring JNICALL Java_megler_test_natives_Windows_lockPaint(JNIEnv *env, jclass cls, jobject surface)
 {
@@ -256,10 +341,8 @@ JNIEXPORT jstring JNICALL Java_megler_test_natives_Windows_lockPaint(JNIEnv *env
     if (rc == 0) {
         for (y = 0; y < buffer.height; y++) {
             uint16_t *row = (uint16_t *)buffer.bits + (size_t)y * (size_t)buffer.stride;
-            for (x = 0; x < buffer.width; x++) {
-                int top = y < buffer.height / 2, l = x < buffer.width / 2;
-                row[x] = top ? (l ? 0xF800 : 0x07E0) : (l ? 0x001F : 0xFFFF);
-            }
+            static const uint16_t colours[4] = { 0xF800, 0x07E0, 0x001F, 0xFFFF };
+            for (x = 0; x < buffer.width; x++) row[x] = colours[quarter_of(x, y, buffer.width, buffer.height)];
         }
         post = ANativeWindow_unlockAndPost(win);
     }

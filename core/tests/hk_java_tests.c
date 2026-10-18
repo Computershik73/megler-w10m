@@ -27,7 +27,10 @@
  * NDK, which a second library of the APK's is needed by. The app goes through
  * JNI and the NDK step by step (core/tests/app/natives) and says how each
  * went; the test reads that, and looks at the bitmap the library painted
- * where the app drew it. Only where guest code can run.
+ * where the app drew it. Then a second library of it draws on two
+ * SurfaceViews and a TextureView through ANativeWindow_fromSurface, with EGL
+ * from a thread of its own and in software, and the test looks at the window
+ * and taps through the surfaces' changes. Only where guest code can run.
  *
  * `gl` is OpenGL ES from Java: a GLSurfaceView's renderer on the layer's GL thread, EGL14 on a pbuffer, EGL10 and GL10 on a
  * SurfaceView from a thread of the app's, and the window composed of the views and the frames under them. OpenGL ES is the
@@ -1366,15 +1369,16 @@ static bool quarters_shown(const int r[4], const u32 want[4], int seconds)
  */
 static void natives_windows(const int tap_at[2])
 {
-    static const u32 first[4] = { 0xFFFF00, 0xFF00FF, 0xFFFF00, 0xFF00FF }, second[4] = { 0x0000FF, 0x00FFFF, 0x0000FF, 0x00FFFF };
-    static const u32 painted[4] = { 0xFF0000, 0x00FF00, 0x0000FF, 0xFFFFFF };
-    int line, egl[4], full[4], lock[4];
+    static const u32 first[4] = { 0xFFFF00, 0xFF00FF, 0xFF00FF, 0xFF00FF }, second[4] = { 0x0000FF, 0x00FFFF, 0x00FFFF, 0x00FFFF };
+    static const u32 painted[4] = { 0xFF0000, 0x00FF00, 0x0000FF, 0xFFFFFF }, texture_frame[4] = { 0xFF0000, 0x00FF00, 0x00FF00, 0x00FF00 };
+    int line, egl[4], full[4], lock[4], texture[4];
     char text[200];
     memset(egl, 0, sizeof(egl));
     memset(lock, 0, sizeof(lock));
-    /* Phase 1: thirty frames on the first window, at the view's size; the lock view painted. */
+    memset(texture, 0, sizeof(texture));
+    /* Phase 1: thirty frames on the first window, at the view's size; the lock view painted, and the TextureView's texture. */
     line = wait_line("I/NativesWindow: phase 1 ", 0, 120);
-    CHECK(line >= 0 && rect_in(line_at(line), "egl", egl) && rect_in(line_at(line), "lock", lock));
+    CHECK(line >= 0 && rect_in(line_at(line), "egl", egl) && rect_in(line_at(line), "lock", lock) && rect_in(line_at(line), "texture", texture));
     memcpy(full, egl, sizeof(full));
     CHECK(find_line("java: ANativeWindow_fromSurface: a window of android/view/SurfaceView's surface", 0) >= 0);
     snprintf(text, sizeof(text), "I/NativesWindow: surface-changed %dx%d window=1 same=0 %dx%d format=2 for %dx%d", egl[2], egl[3], egl[2], egl[3], egl[2], egl[3]);
@@ -1386,8 +1390,14 @@ static void natives_windows(const int tap_at[2])
     CHECK(find_line(text, 0) >= 0);
     snprintf(text, sizeof(text), "I/NativesWindow: lock %dx%d 32x16 stride=32 format=4 geometry=0 rc=0 post=0", lock[2], lock[3]);
     CHECK(find_line(text, 0) >= 0);
+    /* A SurfaceTexture's window: the texture's size, RGBX_8888 asked for and given, posted to the texture and drawn by the TextureView. */
+    CHECK(find_line("java: ANativeWindow_fromSurface: a window of android/graphics/SurfaceTexture, ", 0) >= 0);
+    snprintf(text, sizeof(text), "I/NativesWindow: texture-lock %dx%d %dx%d stride=%d format=2 geometry=0 rc=0 post=0", texture[2], texture[3], texture[2], texture[3],
+             texture[2]);
+    CHECK(find_line(text, 0) >= 0);
     CHECK(quarters_shown(egl, first, 30));
     CHECK(quarters_shown(lock, painted, 30));
+    CHECK(quarters_shown(texture, painted, 30));
     write_picture("natives-2");
     tap(tap_at[0], tap_at[1]);
     /* Phase 2: the surface half the view's size -- the same window, its size now that -- and the renderer's surface with it. */
@@ -1399,17 +1409,22 @@ static void natives_windows(const int tap_at[2])
     CHECK(find_line(text, 0) >= 0);
     CHECK(find_line("java: a window surface of native code's is ", 0) >= 0);
     CHECK(quarters_shown(egl, first, 30));
+    /* The texture drawn once with EGL from the main thread: read back, turned the right way up, given to the texture. */
+    snprintf(text, sizeof(text), "I/NativesWindow: texture-egl surface %dx%d made=1 swapped=1 error=0x3000", texture[2], texture[3]);
+    CHECK(find_line(text, 0) >= 0);
+    CHECK(quarters_shown(texture, texture_frame, 30));
     write_picture("natives-3");
     tap(tap_at[0], tap_at[1]);
     /* Phase 3: the view taken out while the renderer swaps: its window no longer valid, the next swap refused, the surface destroyed. */
     line = wait_line("I/NativesWindow: phase 3 ", 0, 120);
-    CHECK(line >= 0 && strstr(line_at(line), "egl=gone") && rect_in(line_at(line), "lock", lock));
+    CHECK(line >= 0 && strstr(line_at(line), "egl=gone") && rect_in(line_at(line), "lock", lock) && rect_in(line_at(line), "texture", texture));
     CHECK(find_line("I/NativesWindow: surface-destroyed", 0) >= 0);
     CHECK(find_line("java: the surface of android/view/SurfaceView has gone", 0) >= 0);
     line = find_line("I/NativesWindow: render: window 1 swap refused error=0x300b after ", 0);
     CHECK(line >= 0 && strstr(line_at(line), " width=-19"));
-    /* The lock view alone in the row, drawn again at its new size. */
+    /* The lock view and the TextureView alone in the row, the one drawn again at its new size, the other's frame scaled to it. */
     CHECK(quarters_shown(lock, painted, 30));
+    CHECK(quarters_shown(texture, texture_frame, 30));
     write_picture("natives-4");
     tap(tap_at[0], tap_at[1]);
     /* Phase 4: the view back: a new surface, a new window, the renderer's new surface at the geometry it asked for, 64 x 32. */
