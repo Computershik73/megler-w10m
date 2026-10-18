@@ -203,8 +203,9 @@ static bool on_fault(hk_fault *f)
                 u32 free_mb = 0, largest = 0, reserved = 0, committed = 0;
                 if (hk_host_address_space(&free_mb, &largest, &reserved, &committed)) {
                     n = strlen(report);
-                    snprintf(report + n, sizeof(report) - n, "\n  address space: %u MB free (the largest stretch %u MB), %u MB reserved, %u MB committed",
-                             (unsigned)free_mb, (unsigned)largest, (unsigned)reserved, (unsigned)committed);
+                    snprintf(report + n, sizeof(report) - n,
+                             "\n  address space: %u MB free (the largest stretch %u MB), %u MB reserved, %u MB committed; %u MB of it views of shared memory and files",
+                             (unsigned)free_mb, (unsigned)largest, (unsigned)reserved, (unsigned)committed, (unsigned)(hk_views_kb() >> 10));
                 }
             }
         }

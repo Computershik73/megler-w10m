@@ -715,6 +715,61 @@ static void test_mmap_file(const char *scratch)
 }
 
 /*
+ * Shared memory holds no address space of its own (bionic/hk_libc_io.c): a region made, written and read through its
+ * descriptor, and grown past its section, has no view until the app maps it; mapped, it is one view of its size; unmapped,
+ * none again. The views are counted by the host (hk_views_kb).
+ */
+static void test_shm_views(void)
+{
+    typedef void *(*mmap_fn)(void *, size_t, int, int, int, i32);
+    typedef int (*munmap_fn)(void *, size_t);
+    typedef int (*close_fn)(int);
+    typedef i32 (*pread_fn)(int, void *, u32, i32);
+    typedef i32 (*pwrite_fn)(int, const void *, u32, i32);
+    typedef int (*ftruncate_fn)(int, i32);
+    enum { MB = 1 << 20, SIZE = 24 * MB, RW = 3, SHARED = 1 };
+    mmap_fn mmap_ = (mmap_fn)hk_bionic_find("mmap");
+    munmap_fn munmap_ = (munmap_fn)hk_bionic_find("munmap");
+    close_fn close_ = (close_fn)hk_bionic_find("close");
+    pread_fn pread_ = (pread_fn)hk_bionic_find("pread");
+    pwrite_fn pwrite_ = (pwrite_fn)hk_bionic_find("pwrite");
+    ftruncate_fn ftruncate_ = (ftruncate_fn)hk_bionic_find("ftruncate");
+    u32 before = hk_views_kb(), made, written, grown, mapped = 0, unmapped = 0;
+    char back[4] = { 0 };
+    u8 *p;
+    int fd;
+    say("shared memory: no view of its own, one when mapped");
+    CHECK(mmap_ && munmap_ && close_ && pread_ && pwrite_ && ftruncate_);
+    if (!mmap_ || !munmap_ || !close_ || !pread_ || !pwrite_ || !ftruncate_) return;
+    fd = hk_fd_shm_create("views", SIZE);
+    CHECK(fd >= 0);
+    if (fd < 0) return;
+    made = hk_views_kb();
+    CHECK(pwrite_(fd, "abc", 3, SIZE - 3) == 3 && pread_(fd, back, 3, SIZE - 3) == 3 && !memcmp(back, "abc", 3));
+    written = hk_views_kb();
+    /* Past what its section holds: a new section, what there was copied in. */
+    CHECK(ftruncate_(fd, SIZE + MB) == 0);
+    memset(back, 0, sizeof(back));
+    CHECK(pread_(fd, back, 3, SIZE - 3) == 3 && !memcmp(back, "abc", 3));
+    grown = hk_views_kb();
+    p = (u8 *)mmap_(NULL, SIZE + MB, RW, SHARED, fd, 0);
+    CHECK(p && p != (u8 *)(hk_addr)-1);
+    if (p && p != (u8 *)(hk_addr)-1) {
+        mapped = hk_views_kb();
+        CHECK(p[SIZE - 3] == 'a' && p[SIZE - 1] == 'c' && p[SIZE] == 0);
+        p[7] = 5;
+        CHECK(pread_(fd, back, 1, 7) == 1 && back[0] == 5);
+        CHECK(munmap_(p, SIZE + MB) == 0);
+        unmapped = hk_views_kb();
+    }
+    close_(fd);
+    say("  views: %u KB before; made %+d, written and read %+d, grown %+d, mapped %+d, unmapped %+d", (unsigned)before, (int)(made - before),
+        (int)(written - before), (int)(grown - before), (int)(mapped - before), (int)(unmapped - before));
+    CHECK(made == before && written == before && grown == before && unmapped == before);
+    CHECK(mapped >= before + (SIZE + MB) / 1024 && mapped < before + (SIZE + MB) / 1024 + 64);
+}
+
+/*
  * Chromium's end out of memory, in the crash report (hk_core.c, hk_chromium_oom_global): OnNoMemoryInternal as the
  * WebView's library has it -- its bytes, libwebviewchromium.so+0x1f4c348 to +0x1f4c364 of 128.0.6613.88 -- with its
  * literal made to point at a global here. Found from its bkpt and from its udf; not from elsewhere, nor once changed.
@@ -2082,6 +2137,7 @@ int hk_tests_run(const char *libdir, const char *scratch, hk_test_sink sink, voi
     test_mmap_commit();
     test_mmap_file(scratch);
     test_chromium_oom_report();
+    test_shm_views();
     test_input();
     {
         /* The stand-in for the shell's drawing under a Java app: it is what the Java driver's tests see pictures through. */

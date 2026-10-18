@@ -64,6 +64,11 @@ hk_section *hk_section_create(u64 size);
 void *hk_section_map(hk_section *s, u64 offset, size_t size, bool writable, void **base);
 void hk_section_unmap(void *base, size_t size);
 void hk_section_close(hk_section *s);
+/*
+ * The address space that views hold now, in KB: those of sections and those of files (hk_file_map), mapped and not yet
+ * given to hk_section_unmap (which unmaps both kinds). The crash report says it; the shared memory tests count by it.
+ */
+u32 hk_views_kb(void);
 
 /* What the app may use before the OS ends it, and what it uses now; 0 when unknown. */
 u64 hk_mem_limit(void);

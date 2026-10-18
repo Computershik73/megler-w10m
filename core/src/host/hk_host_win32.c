@@ -83,6 +83,12 @@ struct hk_section {
     HANDLE handle;
 };
 
+static volatile i32 g_views_kb;
+
+static void views_count(size_t size, int sign) { hk_atomic_add(&g_views_kb, sign * (i32)((size + 1023) >> 10)); }
+
+u32 hk_views_kb(void) { return (u32)g_views_kb; }
+
 hk_section *hk_section_create(u64 size)
 {
     hk_section *s;
@@ -115,14 +121,16 @@ void *hk_section_map(hk_section *s, u64 offset, size_t size, bool writable, void
     v = MapViewOfFile(s->handle, writable ? FILE_MAP_WRITE : FILE_MAP_READ, (DWORD)(aligned >> 32), (DWORD)aligned, size + delta);
 #endif
     if (!v) return NULL;
+    views_count(size + delta, 1);
     if (base) *base = v;
     return (u8 *)v + delta;
 }
 
 void hk_section_unmap(void *base, size_t size)
 {
-    (void)size;
-    if (base) UnmapViewOfFile(base);
+    if (!base) return;
+    UnmapViewOfFile(base);
+    views_count(size, -1);
 }
 
 void hk_section_close(hk_section *s)
@@ -1019,6 +1027,7 @@ void *hk_file_map(hk_file *f, u64 offset, size_t size, void **base, size_t *mapp
 #endif
     CloseHandle(m);                    /* the view keeps the mapping */
     if (!v) return NULL;
+    views_count(size + delta, 1);
     *base = v;
     *mapped = size + delta;
     return (u8 *)v + delta;
