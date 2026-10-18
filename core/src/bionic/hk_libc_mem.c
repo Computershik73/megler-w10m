@@ -546,6 +546,15 @@ static int g_mprotect(void *addr, size_t len, int prot)
     if (!owned) owned = hk_ld_is_guest_code((hk_addr)p);
     hk_trace("mprotect(%p, %u, prot %d)%s", addr, (unsigned)len, prot, owned ? "" : " -- not the app's memory, left alone");
     if (!owned) {
+        /* An inline hook may target a bionic export implemented in the host
+         * executable. Do not promise executable access we cannot grant: the
+         * caller would then patch read-only host code (WhatsApp's abort hook).
+         * Keep the existing treatment of non-executable stack guard requests. */
+        if (prot & G_PROT_EXEC) {
+            hk_warn("mprotect(%p, %u, prot %d): host memory, executable access refused", addr, (unsigned)len, prot);
+            hk_set_errno(GE_ACCES);
+            return -1;
+        }
         /*
          * Memory the app did not get from mmap and that is not one of its
          * libraries: a thread's stack, where Android code puts a guard page
