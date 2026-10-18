@@ -1496,6 +1496,12 @@ bool hk_host_gpu_memory(void *device, u32 *budget_mb, u32 *used_mb)
     return false;
 }
 
+bool hk_host_free_stretches(u32 *mb, int n)
+{
+    (void)mb; (void)n;
+    return false;
+}
+
 u32 hk_host_d3d11_removed_reason(void *device)
 {
     (void)device;

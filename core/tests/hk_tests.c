@@ -769,6 +769,20 @@ static void test_shm_views(void)
     CHECK(mapped >= before + (SIZE + MB) / 1024 && mapped < before + (SIZE + MB) / 1024 + 64);
 }
 
+/* The largest free stretches of address space, which the crash report names (hk_host_free_stretches): largest first. */
+static void test_free_stretches(void)
+{
+    u32 s[4] = { 0, 0, 0, 0 }, free_mb = 0, largest = 0, reserved = 0, committed = 0;
+    if (!hk_host_free_stretches(s, 4)) {
+        say("(the address space's free stretches: the host does not say)");
+        return;
+    }
+    CHECK(hk_host_address_space(&free_mb, &largest, &reserved, &committed));
+    say("address space: the largest free stretches %u, %u, %u and %u MB, of %u MB free", (unsigned)s[0], (unsigned)s[1], (unsigned)s[2],
+        (unsigned)s[3], (unsigned)free_mb);
+    CHECK(s[0] == largest && s[0] >= s[1] && s[1] >= s[2] && s[2] >= s[3] && s[0] + s[1] + s[2] + s[3] <= free_mb);
+}
+
 /*
  * Chromium's end out of memory, in the crash report (hk_core.c, hk_chromium_oom_global): OnNoMemoryInternal as the
  * WebView's library has it -- its bytes, libwebviewchromium.so+0x1f4c348 to +0x1f4c364 of 128.0.6613.88 -- with its
@@ -2138,6 +2152,7 @@ int hk_tests_run(const char *libdir, const char *scratch, hk_test_sink sink, voi
     test_mmap_file(scratch);
     test_chromium_oom_report();
     test_shm_views();
+    test_free_stretches();
     test_input();
     {
         /* The stand-in for the shell's drawing under a Java app: it is what the Java driver's tests see pictures through. */

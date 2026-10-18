@@ -566,6 +566,12 @@ bool hk_host_gpu_memory(void *device, u32 *budget_mb, u32 *used_mb);
  * system's included -- can be made. False where it cannot be walked.
  */
 bool hk_host_address_space(u32 *free_mb, u32 *largest_free_mb, u32 *reserved_mb, u32 *committed_mb);
+/*
+ * The `n` largest free stretches of the address space, in megabytes, largest first, 0 past the last. Two allocations of
+ * one size need two stretches of it: Chromium in a single process maps each image it decodes twice. False where the
+ * address space cannot be walked.
+ */
+bool hk_host_free_stretches(u32 *mb, int n);
 
 /* Bytes from the OS's random source. */
 void hk_random(void *buf, size_t n);

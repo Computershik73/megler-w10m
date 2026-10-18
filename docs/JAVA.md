@@ -2680,7 +2680,26 @@ and reads the global: "Chromium ran out of memory asking for N bytes"
 (`hk_core.c`, `hk_chromium_oom_global`). Checked on the function's bytes in
 the core's tests, and under qemu by calling the library's own
 `TerminateBecauseOutOfMemory` in a child process (test_chromium_oom_end,
-with the Android root that carries the WebView).
+with the Android root that carries the WebView). The report also gives the
+address space views of shared memory and files hold, and the four largest
+free stretches of it.
+
+Spotify's WebView (packages 252 and 254) ended so, r4 holding 126,337,600,
+which looks like the size: 4 bytes a pixel of an image. The stack has
+Skia's cache of decoded images (`SkBitmapCache::Alloc`, its key tagged
+'bmap'): a page drawn in software, as every WebView here is drawn, decodes
+each image it draws at its full size, into Chromium's discardable memory. A
+region of the image's size and a page more is made and mapped twice, on two
+of Chromium's threads (the side that hands discardable memory out and the
+side that uses it, both in this one process; measured under qemu with a
+2048x2048 image: two views of 16 MB and 4 KB), and the descriptor's own view
+made a third, while the largest free stretch of the 2 GB was 135 MB. Now a
+descriptor keeps no view of its own (docs/ARCHITECTURE.md, the mmap row),
+and the WebView's library no longer sits in a 130 MB reservation (above);
+an image that big still needs two stretches its size. One view at one
+address for both of Chromium's mappings was tried: Chromium counts its
+mappings by address, and ended on its own check of that
+(`shared_memory_tracker.cc(68)`, "Check failed: it != usages_.end()").
 
 **What is not there.** Drawing on the graphics processor (the GL functor);
 `AImageReader` and the rest of the imports the layer does not provide (video,

@@ -2351,6 +2351,28 @@ bool hk_host_address_space(u32 *free_mb, u32 *largest_free_mb, u32 *reserved_mb,
     return true;
 }
 
+bool hk_host_free_stretches(u32 *mb, int n)
+{
+    MEMORY_BASIC_INFORMATION info;
+    SYSTEM_INFO si;
+    hk_addr at, end;
+    int i, k;
+    for (i = 0; i < n; i++) mb[i] = 0;
+    GetNativeSystemInfo(&si);
+    at = (hk_addr)si.lpMinimumApplicationAddress;
+    end = (hk_addr)si.lpMaximumApplicationAddress;
+    while (at < end && VirtualQuery((LPCVOID)at, &info, sizeof(info)) == sizeof(info) && info.RegionSize) {
+        u32 size = (u32)(info.RegionSize >> 20);
+        if (info.State == MEM_FREE && n > 0 && size > mb[n - 1]) {
+            /* In its place among the largest so far. */
+            for (k = n - 1; k > 0 && mb[k - 1] < size; k--) mb[k] = mb[k - 1];
+            mb[k] = size;
+        }
+        at = (hk_addr)info.BaseAddress + info.RegionSize;
+    }
+    return true;
+}
+
 /* (Spelled out: the library that holds DXGI's interface ids is not among those the app links.) */
 static const GUID g_iid_dxgi_device = { 0x54ec77fa, 0x1377, 0x44e6, { 0x8c, 0x32, 0x88, 0xfd, 0x5f, 0x44, 0xc8, 0x4c } };
 static const GUID g_iid_dxgi_adapter3 = { 0x645967a4, 0x1392, 0x4310, { 0xa7, 0x98, 0x80, 0x53, 0xce, 0x3e, 0x93, 0xfd } };
