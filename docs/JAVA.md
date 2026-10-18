@@ -2258,6 +2258,15 @@ where the original leaned on CoreGraphics without saying.
   `Paint` for every call into a heap whose collector is the slow part on
   the phone, and drawing a node would run the interpreter over every call
   of every list at every frame; here drawing a node is one native call.
+  Compose records a node for each graphics layer here too, where no
+  window's canvas is hardware-accelerated, but draws a layer's content
+  straight onto such a canvas (its `GraphicsLayer`'s software path): under
+  qemu no node or list of Spotify's reached the window, and what the
+  bitmaps had cost was the recordings'. `hk_gfx_natives_tests.c` draws
+  every part of a `Paint`, and Spotify's play button (a white disc and a
+  glyph of a face from a file's bytes, 224 px high under a scale of 0.46),
+  directly, through a list and in a node, on the stand-in and, in the
+  Windows build, on the shell: the same pixels every way.
 
 ### The keyboard
 
