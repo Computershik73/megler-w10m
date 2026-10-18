@@ -346,6 +346,16 @@ public class Main extends Activity {
             detail = "version=" + v;
             return v == 60;
         });
+        step("abi", () -> {
+            /*
+             * What SoLoader asks to choose an app's libraries: the hidden ApplicationInfo.primaryCpuAbi by reflection, then
+             * Build.SUPPORTED_ABIS kept to those of the process's width (Process.is64Bit). Both must say 32-bit ARM.
+             */
+            Object primary = android.content.pm.ApplicationInfo.class.getDeclaredField("primaryCpuAbi").get(getApplicationInfo());
+            detail = "primary=" + primary + " is64=" + android.os.Process.is64Bit() + " supported=" + java.util.Arrays.toString(android.os.Build.SUPPORTED_ABIS);
+            return "armeabi-v7a".equals(primary) && !android.os.Process.is64Bit() && "armeabi-v7a".equals(android.os.Build.SUPPORTED_ABIS[0])
+                    && android.os.Build.SUPPORTED_64_BIT_ABIS.length == 0;
+        });
         step("string-alloc", () -> {
             /* A string AllocObject made and a String constructor called on it through JNI, as an app-lock library makes its hashes. */
             String s = Lib.allocatedString("hash\u00e9".getBytes(java.nio.charset.StandardCharsets.UTF_8), new char[] { 'a', 'b', 'c' });

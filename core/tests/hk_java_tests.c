@@ -1454,7 +1454,7 @@ static int run_natives(void)
     static const char *const steps[] = { "load", "registered", "primitives", "stack-mix", "overloads", "arrays", "bounds", "strings", "callback", "throw-native",
                                          "throw-java", "find-class", "references", "reflection", "monitor", "thread", "thread-daemon", "needed-library", "asset",
                                          "bitmap", "direct-buffer", "configuration", "library-folder", "loaded-once", "own-file", "missing-library",
-                                         "missing-method", "looper-watched", "gc-held", "system-icu", "string-alloc" };
+                                         "missing-method", "looper-watched", "gc-held", "system-icu", "abi", "string-alloc" };
     int at = -1, layout, pic[4], i;
     char want[120];
     memset(pic, 0, sizeof(pic));

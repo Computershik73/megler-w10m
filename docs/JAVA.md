@@ -3552,7 +3552,7 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: a hundred and ten files** in the overlay,
+**What differs from the original's framework: a hundred and twelve files** in the overlay,
 most of them a statement or a few methods each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and thirteen files of members added** to classes of the original's, **and four files of the original's taken
@@ -3827,6 +3827,18 @@ on a looper thread of its own and takes it back with `next()`.
   C library's properties say, and as the driver places an app's libraries.
   The original names a 64-bit one only, and MX Player, which checks the
   processor against the decoders it carries, logged "ABIs=[arm64-v8a]".
+- `android/os/Process.java` and `android/content/pm/ApplicationInfo.java`
+  (one fault, two files), the same processor told two more ways:
+  `Process.is64Bit()` is false, where the original, written for 64-bit iOS,
+  said true; and the app's own `ApplicationInfo.primaryCpuAbi`, hidden API,
+  is armeabi-v7a when the app has native libraries in its
+  `nativeLibraryDir`, null when it has none, as the package manager records
+  it at install. Facebook's SoLoader (WhatsApp, React Native apps) reads
+  `primaryCpuAbi` by reflection and, finding null, keeps of
+  `Build.SUPPORTED_ABIS` those of the process's width, which it asks
+  `Process.is64Bit`: told 64 bits it kept nothing of the two 32-bit ones,
+  and WhatsApp 2.26 ended at its start with "No supported ABIs found on this
+  device" (package 270). The natives app's step "abi" asks as SoLoader does.
 - `android/content/res/ResTable.java`, two methods: a resource is found by
   its name without indexing the whole package ("What an AlertDialog cost").
 - `android/content/res/Resources.java`, the class `Bag`: a style's items are
@@ -4333,7 +4345,7 @@ on a looper thread of its own and takes it back with `next()`.
   test app frames its `TextureView` as VK does, and the test finds the
   camera's picture in it and the white corner.
 
-The original has all forty-four faults; they are its author's to take back.
+The original has all forty-five faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in
