@@ -474,6 +474,14 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   no hardware buffers; those are there since (`ndk/hk_ahb.c`), as is the
   WebView on a `RenderNode`'s canvas that ended Spotify; neither tried on a
   phone yet.
+  **RenderNode and Picture** (2026-10-18; docs/JAVA.md, "Drawing"): display
+  lists the core records and draws again with what each node has when it is
+  drawn, as on Android, where each node had been a bitmap of its size, and
+  Spotify, a Compose app, had ended with an `OutOfMemoryError` for one of
+  1650 x 2560. Under qemu (the data app's `render-node` steps) nodes are
+  drawn as their bitmaps were, pixel for pixel, children moved and made
+  translucent without the parent recorded again, and 200 nodes of
+  1440 x 2560 take 110 KB. Not tried on a phone.
   Not there: garbage collection (an app that animates lasts minutes); sound
   from Java; a `SurfaceView` drawn by native code; method
   handles; other apps (the

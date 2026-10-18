@@ -296,6 +296,15 @@ contract, and keeps the software way for when there is no device for it.
   ArithmeticComposite, Flood, GaussianBlur); what is left reads back the box it
   changes, is put on in memory as before, and is uploaded again. GfxHost.cpp
   lists which is which.
+- **Display lists.** A `RenderNode` or a `Picture` is a list of the calls
+  recorded on its canvas, kept by the core (`hk_java_gfx.c`), and drawing it
+  is those calls again on the canvas that draws it: the shell sees only
+  ordinary drawing calls, and no canvas, target or read-back for a node.
+  Before, every node was a bitmap of its size, drawn into through a canvas
+  of its own (a target of that size on the processor, read back to memory)
+  and uploaded again to be drawn: Compose's screen-sized layers cost that
+  each, in the app's memory and on the processor, and Spotify ran out of
+  both (`EndDraw` failing with `E_OUTOFMEMORY`, then an `OutOfMemoryError`).
 - **Threads.** The Direct2D factory is the multithreaded kind: it serialises
   every call, contexts' and the device's included, and with them Direct2D's use
   of the Direct3D device, which the shell never calls itself. Each canvas is

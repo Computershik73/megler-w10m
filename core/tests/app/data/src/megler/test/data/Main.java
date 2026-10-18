@@ -310,6 +310,7 @@ public class Main extends Activity {
         sound();
         mediaCodec();
         network();
+        renderNodes();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
         new android.os.Handler().postDelayed(this::popup, 700);
@@ -1802,6 +1803,300 @@ public class Main extends Activity {
             detail = info == null ? "no active network" : info.getTypeName() + " connected=" + info.isConnected();
             /* What the framework says: connected, over Wi-Fi. */
             return info != null && info.isConnected() && info.getType() == android.net.ConnectivityManager.TYPE_WIFI && cm.getActiveNetwork() != null;
+        });
+    }
+
+    // ---- RenderNodes and Pictures, as Compose uses them: display lists, drawn again with what the nodes have when drawn
+
+    private android.graphics.Bitmap nodePic;
+    private android.graphics.RenderNode[] kids;
+    private android.graphics.Bitmap[] kidBitmaps;
+    private android.graphics.RenderNode parent, grand, mid, top;
+    private static final int NODES_W = 240, NODES_H = 240, KIDS = 12;
+
+    /** A plain bitmap of that size. */
+    private static android.graphics.Bitmap bitmap(int w, int h) {
+        return android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
+    }
+
+    /** What a node draws: a background, an oval, a line, a label and a small bitmap, all inside (0, 0, w, h). Flat: the background alone. */
+    private void content(android.graphics.Canvas c, int i, int w, int h, boolean flat) {
+        android.graphics.Paint p = new android.graphics.Paint();
+        p.setColor(0xFF000000 | ((i + 1) * 0x3B5A17 & 0xFFFFFF));
+        c.drawRect(0, 0, w, h, p);
+        if (flat) return;
+        p.setColor(0xFFFFFFFF);
+        c.drawOval(w / 4f, h / 4f, w * 3 / 4f, h * 3 / 4f, p);
+        p.setColor(0xFF202020);
+        p.setStrokeWidth(2);
+        c.drawLine(1, h - 2, w - 1, h - 2, p);
+        p.setTextSize(Math.min(12, h / 2f));
+        c.drawText("n" + i, 2, h / 2f, p);
+        c.drawBitmap(nodePic, w - 5, 1, null);
+    }
+
+    /** Kids 5, 6 and 7 draw flat: they are made translucent and scaled, where a layer and a scaled bitmap give the same pixels only for a picture of one colour. */
+    private static boolean flat(int i) {
+        return i >= 5 && i <= 7;
+    }
+
+    /**
+     * A node drawn as the framework drew nodes before display lists, from a bitmap of its content: moved to its place,
+     * through its matrix, at its alpha. What a list gives must be that, pixel for pixel, where both are the same picture.
+     */
+    private static void drawAsBitmap(android.graphics.Canvas c, android.graphics.RenderNode n, android.graphics.Bitmap made) {
+        int save = c.save();
+        c.translate(n.getLeft(), n.getTop());
+        if (!n.hasIdentityMatrix()) {
+            android.graphics.Matrix m = new android.graphics.Matrix();
+            n.getMatrix(m);
+            c.concat(m);
+        }
+        android.graphics.Paint p = null;
+        if (n.getAlpha() < 1f) {
+            p = new android.graphics.Paint();
+            p.setAlpha(Math.round(n.getAlpha() * 255));
+        }
+        c.drawBitmap(made, 0, 0, p);
+        c.restoreToCount(save);
+    }
+
+    /** How many pixels differ between two bitmaps of one size. */
+    private static int differ(android.graphics.Bitmap a, android.graphics.Bitmap b) {
+        int w = a.getWidth(), h = a.getHeight(), n = 0;
+        int[] pa = new int[w * h], pb = new int[w * h];
+        a.getPixels(pa, 0, w, 0, 0, w, h);
+        b.getPixels(pb, 0, w, 0, 0, w, h);
+        for (int i = 0; i < pa.length; i++) if (pa[i] != pb[i]) n++;
+        return n;
+    }
+
+    private static int count(android.graphics.Bitmap a, int color) {
+        int w = a.getWidth(), h = a.getHeight(), n = 0;
+        int[] pa = new int[w * h];
+        a.getPixels(pa, 0, w, 0, 0, w, h);
+        for (int v : pa) if (v == color) n++;
+        return n;
+    }
+
+    /** A node drawn on a bitmap's canvas, as the window's canvas draws Compose's top layer. */
+    private static android.graphics.Bitmap drawn(android.graphics.RenderNode n, int w, int h) {
+        android.graphics.Bitmap b = bitmap(w, h);
+        android.graphics.Canvas c = new android.graphics.Canvas(b);
+        c.drawRenderNode(n);
+        return b;
+    }
+
+    /** The parent's picture as the kids' bitmaps give it, and the three screen-sized nodes' squares. */
+    private android.graphics.Bitmap kidsAsBitmaps() {
+        android.graphics.Bitmap want = bitmap(NODES_W, NODES_H);
+        android.graphics.Canvas c = new android.graphics.Canvas(want);
+        for (int i = 0; i < KIDS; i++) drawAsBitmap(c, kids[i], kidBitmaps[i]);
+        android.graphics.Paint p = new android.graphics.Paint();
+        for (int j = 0; j < 3; j++) {
+            p.setColor(0xFF000000 | (0x40 << (8 * j)));
+            c.drawRect(200, 10 + 20 * j, 206, 16 + 20 * j, p);
+        }
+        return want;
+    }
+
+    private void renderNodes() {
+        /*
+         * Twelve nodes and three the size of a phone's screen, recorded once, drawn by a parent recorded once: the picture is
+         * what the framework's bitmap of each node gave, pixel for pixel, and a screen-sized node takes a few hundred bytes
+         * (its bitmap was 14 MB).
+         */
+        step("render-nodes", () -> {
+            nodePic = bitmap(4, 4);
+            nodePic.eraseColor(0xFF00FFFF);
+            nodePic.setPixel(0, 0, 0xFFFF00FF);
+            kids = new android.graphics.RenderNode[KIDS];
+            kidBitmaps = new android.graphics.Bitmap[KIDS];
+            for (int i = 0; i < KIDS; i++) {
+                int w = 20 + 7 * i + (i & 1), h = 16 + 5 * i, x = (i % 4) * 60, y = (i / 4) * 80;
+                kids[i] = new android.graphics.RenderNode("kid" + i);
+                kids[i].setPosition(x, y, x + w, y + h);
+                if (i == 5) kids[i].setAlpha(0.5f);
+                android.graphics.RecordingCanvas rc = kids[i].beginRecording(w, h);
+                content(rc, i, w, h, flat(i));
+                kids[i].endRecording();
+                kidBitmaps[i] = bitmap(w, h);
+                content(new android.graphics.Canvas(kidBitmaps[i]), i, w, h, flat(i));
+            }
+            android.graphics.RenderNode[] big = new android.graphics.RenderNode[3];
+            for (int j = 0; j < 3; j++) {
+                big[j] = new android.graphics.RenderNode("screen" + j);
+                big[j].setPosition(0, 0, 1440, 2560);
+                android.graphics.RecordingCanvas rc = big[j].beginRecording(1440, 2560);
+                android.graphics.Paint p = new android.graphics.Paint();
+                p.setColor(0xFF000000 | (0x40 << (8 * j)));
+                rc.drawRect(200, 10 + 20 * j, 206, 16 + 20 * j, p);
+                big[j].endRecording();
+            }
+            parent = new android.graphics.RenderNode("parent");
+            parent.setPosition(0, 0, NODES_W, NODES_H);
+            android.graphics.RecordingCanvas prc = parent.beginRecording(NODES_W, NODES_H);
+            boolean hardware = prc.isHardwareAccelerated() && prc.getWidth() == NODES_W && prc.getHeight() == NODES_H;
+            for (int i = 0; i < KIDS; i++) prc.drawRenderNode(kids[i]);
+            for (int j = 0; j < 3; j++) prc.drawRenderNode(big[j]);
+            parent.endRecording();
+            android.graphics.Bitmap got = drawn(parent, NODES_W, NODES_H), want = kidsAsBitmaps();
+            int d = differ(got, want), green = count(got, 0xFF004000);
+            long bytes = big[0].computeApproximateMemoryUsage();
+            detail = "differ=" + d + " screen-node-bytes=" + bytes + " hardware=" + hardware + " green=" + green;
+            return d == 0 && green == 36 && hardware && parent.hasDisplayList() && bytes > 0 && bytes < 4096;
+        });
+        /* The kids' properties changed and nothing recorded again: the parent draws them as they are now, as their bitmaps drawn so give them. */
+        step("render-node-props", () -> {
+            android.graphics.Bitmap before = drawn(parent, NODES_W, NODES_H);
+            kids[1].setTranslationX(13);
+            kids[2].setTranslationY(-7);
+            kids[4].setPosition(150, 150, 150 + kids[4].getWidth(), 150 + kids[4].getHeight());
+            kids[5].setAlpha(0.75f);
+            kids[6].setScaleX(2);
+            kids[7].setTranslationX(-20);
+            kids[7].setAlpha(0.25f);
+            kids[9].setAlpha(0);
+            android.graphics.Bitmap got = drawn(parent, NODES_W, NODES_H), want = kidsAsBitmaps();
+            int d = differ(got, want), moved = differ(got, before);
+            detail = "differ=" + d + " changed=" + moved;
+            return d == 0 && moved > 1000;
+        });
+        /* A node in a node in a node, each moved by its own place; the innermost and the middle moved, nothing recorded again. */
+        step("render-node-nested", () -> {
+            android.graphics.Paint p = new android.graphics.Paint();
+            grand = new android.graphics.RenderNode("grand");
+            grand.setPosition(2, 3, 10, 9);
+            android.graphics.RecordingCanvas rc = grand.beginRecording(8, 6);
+            p.setColor(0xFF00FF00);
+            rc.drawRect(0, 0, 8, 6, p);
+            grand.endRecording();
+            mid = new android.graphics.RenderNode("mid");
+            mid.setPosition(20, 30, 60, 70);
+            rc = mid.beginRecording(40, 40);
+            p.setColor(0xFF333333);
+            rc.drawRect(0, 0, 40, 40, p);
+            rc.drawRenderNode(grand);
+            mid.endRecording();
+            top = new android.graphics.RenderNode("top");
+            top.setPosition(0, 0, 100, 100);
+            rc = top.beginRecording(100, 100);
+            rc.drawRenderNode(mid);
+            top.endRecording();
+            android.graphics.Bitmap first = drawn(top, 100, 100);
+            boolean firstAt = first.getPixel(23, 34) == 0xFF00FF00 && count(first, 0xFF00FF00) == 48;
+            grand.setTranslationX(20);
+            grand.setTranslationY(10);
+            mid.setTranslationX(5);
+            android.graphics.Bitmap got = drawn(top, 100, 100), want = bitmap(100, 100);
+            android.graphics.Canvas c = new android.graphics.Canvas(want);
+            p.setColor(0xFF333333);
+            c.drawRect(25, 30, 65, 70, p);
+            p.setColor(0xFF00FF00);
+            c.drawRect(47, 43, 55, 49, p);
+            int d = differ(got, want);
+            detail = "first=" + firstAt + " differ=" + d;
+            return firstAt && d == 0;
+        });
+        /* The innermost discarded: drawn as nothing; recorded again with something else: the outer lists, not recorded again, draw that. */
+        step("render-node-rerecord", () -> {
+            grand.discardDisplayList();
+            android.graphics.Bitmap none = drawn(top, 100, 100);
+            boolean gone = !grand.hasDisplayList() && count(none, 0xFF00FF00) == 0 && count(none, 0xFF333333) == 1600;
+            android.graphics.RecordingCanvas rc = grand.beginRecording(8, 6);
+            rc.drawColor(0xFFFF0000);
+            grand.endRecording();
+            android.graphics.Bitmap again = drawn(top, 100, 100);
+            int red = count(again, 0xFFFF0000);
+            detail = "gone=" + gone + " red=" + red + " at=" + Integer.toHexString(again.getPixel(50, 45));
+            return gone && red == 48 && again.getPixel(50, 45) == 0xFFFF0000 && grand.hasDisplayList();
+        });
+        /*
+         * What a list keeps: a paint, a path and a matrix as they were when recorded, whatever the app does to them afterwards;
+         * a bitmap as it is when the list is drawn; a picture as it was when it was drawn into the list, whatever it records
+         * afterwards.
+         */
+        step("render-node-snapshots", () -> {
+            android.graphics.Paint p = new android.graphics.Paint();
+            p.setColor(0xFFFF0000);
+            android.graphics.Path path = new android.graphics.Path();
+            path.addRect(0, 0, 10, 10, android.graphics.Path.Direction.CW);
+            android.graphics.Matrix m = new android.graphics.Matrix();
+            m.setTranslate(5, 5);
+            android.graphics.Bitmap src = bitmap(4, 4);
+            src.eraseColor(0xFF0000FF);
+            android.graphics.Picture pic = new android.graphics.Picture();
+            android.graphics.Canvas pc = pic.beginRecording(6, 6);
+            android.graphics.Paint pp = new android.graphics.Paint();
+            pp.setColor(0xFFFF00FF);
+            pc.drawRect(0, 0, 6, 6, pp);
+            pic.endRecording();
+            android.graphics.RenderNode n = new android.graphics.RenderNode("snap");
+            n.setPosition(0, 0, 40, 40);
+            android.graphics.RecordingCanvas rc = n.beginRecording(40, 40);
+            rc.save();
+            rc.concat(m);
+            rc.drawPath(path, p);
+            rc.restore();
+            rc.drawBitmap(src, 20, 20, null);
+            rc.save();
+            rc.translate(30, 30);
+            rc.drawPicture(pic);
+            rc.restore();
+            n.endRecording();
+            p.setColor(0xFF00FF00);
+            path.reset();
+            path.addRect(30, 0, 40, 10, android.graphics.Path.Direction.CW);
+            m.setTranslate(0, 0);
+            src.eraseColor(0xFFFFFF00);
+            pc = pic.beginRecording(6, 6);
+            pp.setColor(0xFF00FFFF);
+            pc.drawRect(0, 0, 6, 6, pp);
+            pic.endRecording();
+            android.graphics.Bitmap got = drawn(n, 40, 40), alone = bitmap(6, 6);
+            new android.graphics.Canvas(alone).drawPicture(pic);
+            detail = "path=" + Integer.toHexString(got.getPixel(6, 6)) + " moved=" + Integer.toHexString(got.getPixel(31, 1)) + " bitmap="
+                    + Integer.toHexString(got.getPixel(21, 21)) + " picture=" + Integer.toHexString(got.getPixel(32, 32)) + " picture-now="
+                    + Integer.toHexString(alone.getPixel(3, 3)) + " red=" + count(got, 0xFFFF0000);
+            return got.getPixel(6, 6) == 0xFFFF0000 && got.getPixel(14, 14) == 0xFFFF0000 && count(got, 0xFFFF0000) == 100 && got.getPixel(31, 1) == 0
+                    && got.getPixel(21, 21) == 0xFFFFFF00 && got.getPixel(32, 32) == 0xFFFF00FF && alone.getPixel(3, 3) == 0xFF00FFFF;
+        });
+        /*
+         * Two hundred nodes the size of a phone's screen, as a Compose screen of that many layers: recorded and drawn without
+         * running out of memory. The framework's nodes took a bitmap each, 14 MB, and the app ended with an OutOfMemoryError.
+         */
+        step("render-node-memory", () -> {
+            java.util.ArrayList<android.graphics.RenderNode> many = new java.util.ArrayList<>();
+            android.graphics.Paint p = new android.graphics.Paint();
+            long bytes = 0, started = System.nanoTime();
+            String error = null;
+            boolean shown = false;
+            try {
+                for (int i = 0; i < 200; i++) {
+                    android.graphics.RenderNode n = new android.graphics.RenderNode("screen" + i);
+                    n.setPosition(0, 0, 1440, 2560);
+                    android.graphics.RecordingCanvas rc = n.beginRecording(1440, 2560);
+                    rc.drawColor(0x08FFFFFF);
+                    p.setColor(0xFF000000 | i);
+                    rc.drawRect(i, 0, i + 1, 2560, p);
+                    rc.drawText("layer " + i, 20, 40 + i, p);
+                    n.endRecording();
+                    many.add(n);
+                    bytes += n.computeApproximateMemoryUsage();
+                }
+                android.graphics.RenderNode all = new android.graphics.RenderNode("all");
+                all.setPosition(0, 0, 1440, 2560);
+                android.graphics.RecordingCanvas rc = all.beginRecording(1440, 2560);
+                for (android.graphics.RenderNode n : many) rc.drawRenderNode(n);
+                all.endRecording();
+                shown = drawn(all, 100, 100).getPixel(50, 50) != 0;
+            } catch (OutOfMemoryError e) {
+                error = e.toString();
+            }
+            long ms = (System.nanoTime() - started) / 1000000;
+            detail = "nodes=" + many.size() + " bytes=" + bytes + " ms=" + ms + (error == null ? "" : " " + error);
+            Log.i("DataTest", "render-node-memory nodes=" + many.size() + " bytes=" + bytes + " ms=" + ms + (error == null ? "" : " " + error));
+            return error == null && many.size() == 200 && bytes < 200 * 2048 && shown;
         });
     }
 

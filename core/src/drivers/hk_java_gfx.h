@@ -28,6 +28,8 @@ void hk_java_gfx_set_present(void (*fn)(void *user, const void *pixels, int widt
 void hk_java_gfx_set_present_canvas(bool (*fn)(void *user, void *canvas, int width, int height), void *user);
 /* Bytes of bitmap memory now allocated and bitmaps alive, for the memory report. */
 void hk_java_gfx_stats(uint64_t *bitmap_bytes, uint32_t *bitmaps);
+/* Bytes the display lists of RenderNodes and Pictures now take, how many lists there are, and how many nodes. */
+void hk_java_gfx_list_stats(uint64_t *bytes, uint32_t *lists, uint32_t *nodes);
 /* Nanoseconds the calling thread has spent in the shell's drawing (the megler_gfx_host's calls), summed: the frame meter's. */
 u64 hk_java_gfx_host_ns(void);
 

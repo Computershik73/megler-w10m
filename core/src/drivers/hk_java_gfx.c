@@ -10,8 +10,9 @@
  * that side and says what each call means). This comment is the other side:
  * what the Java passes.
  *
- * Handles are Java longs. A bitmap, a canvas and a typeface are objects of
- * this file; a shader is the shell's own pointer. 0 is "none" everywhere.
+ * Handles are Java longs. A bitmap, a canvas, a typeface, a shader, a
+ * display list and a node are objects of this file; a shader holds the
+ * shell's own. 0 is "none" everywhere.
  *
  * A bitmap is 4 * width * height bytes from calloc, B, G, R, A premultiplied,
  * top row first: what Direct2D, WIC and the phone's swap chain take as it
@@ -80,6 +81,27 @@
  * pixels, which is what cvClipBounds and the booleans of cvClipRect and
  * cvClipPath answer from. It is the box of the boxes: exact while clips are
  * rectangles under a matrix that does not rotate, and never too small.
+ *
+ * DISPLAY LISTS. A RenderNode's canvas and a Picture's record what is drawn
+ * instead of drawing it, as Android's do, and the list is drawn again
+ * wherever the node or the picture is drawn (cvRecord, cvEndRecord,
+ * cvDrawNode, cvDrawList). A recording canvas is a canvas of this file with
+ * no bitmap and no shell's half: it keeps its save count, matrix and clip as
+ * any canvas does (they start as the identity and (0, 0, width, height)),
+ * and each call that would reach the shell is written to the list instead,
+ * with its arguments as they are then: the paint unpacked, the path built,
+ * the matrix, the text. What a call refers to is referred to, as on Android:
+ * a bitmap (its pixels as they are when the list is drawn), a shader (with
+ * its local matrix as it was when recorded), a node, another list. Each of
+ * those is kept alive by the lists that refer to it, whatever the Java does
+ * with its own object.
+ *
+ * A node (rnNew) is a list and the properties it is drawn with, which the
+ * Java keeps and hands over whole (rnSet) before anything is drawn that may
+ * draw the node: its place, its matrix, alpha, clips, outline and layer. A
+ * node drawn into another's list is that node, not a copy of it: a node
+ * drawn later is drawn with its list and properties as they are then. A
+ * picture's list is the one it had when drawn into another list.
  */
 #include <math.h>
 #include <stdio.h>
@@ -94,8 +116,12 @@
 #define BM_MAGIC 0x31504d42u
 #define CV_MAGIC 0x31564e43u
 #define TF_MAGIC 0x31434654u
+#define SH_MAGIC 0x31444853u
+#define DL_MAGIC 0x31534c44u
+#define RN_MAGIC 0x31444e52u
 
 typedef struct gcanvas gcanvas;
+typedef struct gdlist gdlist;
 
 typedef struct gbitmap {
     u32 magic;
@@ -104,6 +130,8 @@ typedef struct gbitmap {
     gcanvas *canvases;
     u32 id, version;                   /* for a shell that keeps textures: megler_gfx_image */
     i32 rgba_locks;                    /* above zero: the memory is in Android's order (hk_java_gfx_lock_rgba) */
+    i32 refs;                          /* display lists that draw it: it outlives the Java's bmFree until the last goes */
+    bool released;                     /* the Java has freed it (bmFree), and only lists keep it */
 } gbitmap;
 
 typedef struct gstate {
@@ -124,6 +152,7 @@ struct gcanvas {
     gstate *st;                        /* st[depth] is the current one */
     i32 depth, cap;
     float sent[6];                     /* the matrix the shell has */
+    gdlist *rec;                       /* a recording canvas's list (no bitmap, no shell's half): what is drawn is written there */
 };
 
 typedef struct gface {
@@ -173,6 +202,72 @@ static bool missing(const char *fn)
 
 static i64 handle(const void *p) { return (i64)(hk_addr)p; }
 static void *pointer(i64 h) { return (void *)(hk_addr)h; }
+
+/*
+ * A shader as the Java holds it: the shell's, and what a display list needs
+ * to know of it. Its local matrix can change after a list drew with it
+ * (Shader.setLocalMatrix), and the Java can free it while a list still
+ * draws with it; a list keeps it alive and remembers the matrix it had.
+ */
+typedef struct gshader {
+    u32 magic;
+    void *host;
+    float m[6];
+    bool has_m;                        /* m is its local matrix (shMatrix); without, it has none */
+    bool released;                     /* the Java is done with it (shFree) */
+    i32 refs;                          /* display lists that draw with it */
+} gshader;
+
+static gshader *sh_new(void *host)
+{
+    gshader *s;
+    if (!host) return NULL;
+    s = (gshader *)hk_alloc(sizeof(*s));
+    s->magic = SH_MAGIC;
+    s->host = host;
+    return s;
+}
+
+static gshader *sh_of(i64 h)
+{
+    gshader *s = (gshader *)pointer(h);
+    return s && s->magic == SH_MAGIC ? s : NULL;
+}
+
+static void *sh_host(const gshader *s) { return s ? s->host : NULL; }
+
+static void sh_destroy(gshader *s)
+{
+    if (HAS(shader_free)) GFX(G.shader_free(G.user, s->host));
+    s->magic = 0;
+    free(s);
+}
+
+static void sh_release(gshader *s)
+{
+    bool last;
+    hk_lock_acquire(&g_lock);
+    s->released = true;
+    last = s->refs == 0;
+    hk_lock_release(&g_lock);
+    if (last) sh_destroy(s);
+}
+
+static void sh_ref(gshader *s)
+{
+    hk_lock_acquire(&g_lock);
+    s->refs++;
+    hk_lock_release(&g_lock);
+}
+
+static void sh_unref(gshader *s)
+{
+    bool last;
+    hk_lock_acquire(&g_lock);
+    last = --s->refs == 0 && s->released;
+    hk_lock_release(&g_lock);
+    if (last) sh_destroy(s);
+}
 
 /* The elements of a primitive array of that type with at least that many of them; NULL for anything else. */
 static void *elements(hk_jobj *a, char etype, u32 at_least)
@@ -341,10 +436,26 @@ static void bm_changed(gbitmap *b)
     hk_lock_release(&g_lock);
 }
 
+/* The memory itself goes: nothing refers to the bitmap any more, neither the Java nor a display list. */
+static void bm_destroy(gbitmap *b)
+{
+    if (G.bitmap_gone) GFX(G.bitmap_gone(G.user, b->id));
+    b->magic = 0;
+    free(b->px);
+    free(b);
+}
+
+/*
+ * The Java is done with the bitmap (bmFree: recycle() or the collector), or
+ * the core with one it made. While a display list still draws it, its
+ * pixels stay (it is counted until then) and the list draws them as they
+ * are, as on Android; the last list to go frees it (bm_unref).
+ */
 static void bm_free(gbitmap *b)
 {
     gcanvas *v;
     i32 i;
+    bool kept;
     hk_lock_acquire(&g_lock);
     /*
      * A Canvas can outlive its Bitmap (recycle() while a Canvas still holds
@@ -362,13 +473,36 @@ static void bm_free(gbitmap *b)
         v->bm = NULL;
         v->dirty = false;
     }
-    g_bytes -= (u64)b->stride * (u64)b->h;
-    g_count--;
+    b->canvases = NULL;
+    kept = b->refs > 0;
+    b->released = true;
+    if (!kept) {
+        g_bytes -= (u64)b->stride * (u64)b->h;
+        g_count--;
+    }
     hk_lock_release(&g_lock);
-    if (G.bitmap_gone) GFX(G.bitmap_gone(G.user, b->id));
-    b->magic = 0;
-    free(b->px);
-    free(b);
+    if (!kept) bm_destroy(b);
+}
+
+/* A display list draws the bitmap, or no longer does. */
+static void bm_ref(gbitmap *b)
+{
+    hk_lock_acquire(&g_lock);
+    b->refs++;
+    hk_lock_release(&g_lock);
+}
+
+static void bm_unref(gbitmap *b)
+{
+    bool last;
+    hk_lock_acquire(&g_lock);
+    last = --b->refs == 0 && b->released;
+    if (last) {
+        g_bytes -= (u64)b->stride * (u64)b->h;
+        g_count--;
+    }
+    hk_lock_release(&g_lock);
+    if (last) bm_destroy(b);
 }
 
 static void image_of(const gbitmap *b, megler_gfx_image *out)
@@ -520,9 +654,8 @@ static int blend_number(i32 mode) { return mode >= 0 && mode <= MEGLER_GFX_BLEND
  * The paint of a drawing call, unpacked and made safe to hand on. No array
  * is the default paint: what drawBitmap(bitmap, ..., null) draws with.
  */
-static void paint_of(hk_jobj *array, gpaint *out)
+static void paint_unpack(const i32 *a, gpaint *out)
 {
-    const i32 *a = (const i32 *)elements(array, 'I', P_COUNT);
     megler_gfx_paint *p = &out->p;
     memset(out, 0, sizeof(*out));
     p->color = 0xFF000000u;
@@ -561,6 +694,8 @@ static void paint_of(hk_jobj *array, gpaint *out)
     p->shadow_dy = number(hk_f((u32)a[P_SHDY]), 0);
     p->shadow_color = (u32)a[P_SHCOL];
 }
+
+static void paint_of(hk_jobj *array, gpaint *out) { paint_unpack((const i32 *)elements(array, 'I', P_COUNT), out); }
 
 /*
  * The paint for one drawing call. False when the call draws nothing: DST
@@ -1110,6 +1245,271 @@ static bool path_of(hk_jobj *array, i32 n, gpath *p)
     return true;
 }
 
+/* ---------------------------------------------------------- display lists */
+
+/*
+ * A display list: the calls a recording canvas was given, one after
+ * another, each a dl_head and what that kind of call carries, a multiple of
+ * eight bytes long. It is written once, by its canvas, and read from then on
+ * by whoever draws it; it goes when the last of its owners does -- the Java's
+ * Picture or the node it was recorded for, and the lists that draw it.
+ */
+struct gdlist {
+    u32 magic;
+    i32 refs;
+    u8 *ops;
+    size_t n, cap;
+    i32 width, height;                 /* the size it was recorded at */
+};
+
+/* A RenderNode: the list it draws and what it draws it with, as the Java last handed it over (rnSet). */
+typedef struct gnode {
+    u32 magic;
+    i32 refs;                          /* the Java's RenderNode, and each list that draws the node */
+    gdlist *list;                      /* NULL: none recorded, or discarded */
+    float left, top, right, bottom;
+    float m[6];                        /* its transform, applied after the move to (left, top) */
+    float alpha;
+    float clip[4];                     /* setClipRect's rectangle, in the node's own coordinates */
+    float outline[4], radius;          /* the outline's rectangle and corner radius (outline_kind 1) */
+    float *outline_path;               /* the outline's path, built (outline_kind 2) */
+    i32 outline_n, outline_fill, outline_kind;
+    i32 flags;                         /* RN_* */
+    i32 layer_alpha;                   /* 0..255: the alpha a layer of the node is put on with */
+    i32 layer_paint[P_COUNT];          /* the layer's paint, as Paint.mP (RN_LAYER_PAINT) */
+} gnode;
+
+/* gnode.flags, as the Java packs them (android.graphics.RenderNode, megler-w10m's overlay). */
+enum { RN_IDENTITY = 1, RN_CLIP_BOUNDS = 2, RN_CLIP_RECT = 4, RN_CLIP_OUTLINE = 8, RN_LAYER = 16, RN_LAYER_PAINT = 32 };
+
+typedef struct dl_head {
+    u16 kind;
+    u16 spare;
+    u32 size;                          /* of the whole call, this head included */
+} dl_head;
+
+enum {
+    DL_SAVE = 1, DL_SAVE_LAYER, DL_RESTORE, DL_MATRIX, DL_CLIP_RECT, DL_CLIP_PATH, DL_COLOR, DL_RECT, DL_RRECT, DL_OVAL, DL_PATH, DL_LINES,
+    DL_BITMAP, DL_BITMAP_M, DL_TEXT, DL_NODE, DL_LIST
+};
+
+/* A shader as a call drew with it: the shader, and the local matrix it had then. */
+typedef struct gshot {
+    gshader *sh;
+    float m[6];
+    bool has_m;
+} gshot;
+
+typedef struct dl_layer {
+    dl_head h;
+    float bounds[4];
+    i32 bounded, alpha, blend;
+} dl_layer;
+
+typedef struct dl_matrix {
+    dl_head h;
+    float m[6];
+    i32 set;
+} dl_matrix;
+
+typedef struct dl_rect {               /* DL_CLIP_RECT (r[0..3], op), DL_RECT and DL_OVAL (r[0..3]), DL_RRECT (r[0..5]) */
+    dl_head h;
+    float r[6];
+    i32 op;
+    gpaint p;
+    gshot s;
+} dl_rect;
+
+typedef struct dl_path {               /* DL_CLIP_PATH (fill, op), DL_PATH (fill, p, s), DL_LINES (points, p, s); n floats follow */
+    dl_head h;
+    i32 fill, op, points, n;
+    gpaint p;
+    gshot s;
+} dl_path;
+
+typedef struct dl_color {
+    dl_head h;
+    u32 color;
+    i32 blend;
+} dl_color;
+
+typedef struct dl_bitmap {             /* DL_BITMAP (src, dst), DL_BITMAP_M (m) */
+    dl_head h;
+    gbitmap *b;
+    float src[4], dst[4], m[6];
+    gpaint p;
+} dl_bitmap;
+
+typedef struct dl_text {               /* count UTF-16 units follow */
+    dl_head h;
+    float x, y;
+    void *face;
+    i32 count;
+    gpaint p;
+    gshot s;
+} dl_text;
+
+typedef struct dl_node {
+    dl_head h;
+    gnode *node;
+} dl_node;
+
+typedef struct dl_list {
+    dl_head h;
+    gdlist *list;
+} dl_list;
+
+/* How deep nodes and lists may be drawn inside each other: deeper is taken for a list that draws itself. */
+#define DL_DEPTH 200
+
+static u64 g_dl_bytes;
+static u32 g_dl_count, g_rn_count;
+
+static gdlist *dl_new(i32 width, i32 height)
+{
+    gdlist *l = (gdlist *)hk_alloc(sizeof(*l));
+    l->magic = DL_MAGIC;
+    l->refs = 1;
+    l->width = width;
+    l->height = height;
+    hk_lock_acquire(&g_lock);
+    g_dl_count++;
+    hk_lock_release(&g_lock);
+    return l;
+}
+
+static gdlist *dl_of(i64 h)
+{
+    gdlist *l = (gdlist *)pointer(h);
+    return l && l->magic == DL_MAGIC ? l : NULL;
+}
+
+static gnode *rn_of(i64 h)
+{
+    gnode *n = (gnode *)pointer(h);
+    return n && n->magic == RN_MAGIC ? n : NULL;
+}
+
+static void dl_ref(gdlist *l)
+{
+    hk_lock_acquire(&g_lock);
+    l->refs++;
+    hk_lock_release(&g_lock);
+}
+
+static void rn_ref(gnode *n)
+{
+    hk_lock_acquire(&g_lock);
+    n->refs++;
+    hk_lock_release(&g_lock);
+}
+
+static void rn_unref(gnode *n);
+
+/* The last owner is gone: what the list refers to is let go of, and the list goes. */
+static void dl_unref(gdlist *l)
+{
+    size_t at;
+    bool last;
+    if (!l) return;
+    hk_lock_acquire(&g_lock);
+    last = --l->refs == 0;
+    if (last) {
+        g_dl_bytes -= l->cap;
+        g_dl_count--;
+    }
+    hk_lock_release(&g_lock);
+    if (!last) return;
+    for (at = 0; at < l->n; at += ((const dl_head *)(const void *)(l->ops + at))->size) {
+        const dl_head *h = (const dl_head *)(const void *)(l->ops + at);
+        switch (h->kind) {
+        case DL_RECT:
+        case DL_RRECT:
+        case DL_OVAL:
+            if (((const dl_rect *)h)->s.sh) sh_unref(((const dl_rect *)h)->s.sh);
+            break;
+        case DL_PATH:
+        case DL_LINES:
+            if (((const dl_path *)h)->s.sh) sh_unref(((const dl_path *)h)->s.sh);
+            break;
+        case DL_TEXT:
+            if (((const dl_text *)h)->s.sh) sh_unref(((const dl_text *)h)->s.sh);
+            break;
+        case DL_BITMAP:
+        case DL_BITMAP_M: bm_unref(((const dl_bitmap *)h)->b); break;
+        case DL_NODE: rn_unref(((const dl_node *)h)->node); break;
+        case DL_LIST: dl_unref(((const dl_list *)h)->list); break;
+        default: break;
+        }
+    }
+    l->magic = 0;
+    free(l->ops);
+    free(l);
+}
+
+static void rn_unref(gnode *n)
+{
+    bool last;
+    hk_lock_acquire(&g_lock);
+    last = --n->refs == 0;
+    if (last) g_rn_count--;
+    hk_lock_release(&g_lock);
+    if (!last) return;
+    dl_unref(n->list);
+    free(n->outline_path);
+    n->magic = 0;
+    free(n);
+}
+
+/* Room for one more call of `size` bytes and `extra` after them, zeroed, its head filled in. Valid until the next. */
+static void *dl_put(gdlist *l, int kind, size_t size, size_t extra)
+{
+    size_t whole = (size + extra + 7) & ~(size_t)7;
+    dl_head *h;
+    if (l->n + whole > l->cap) {
+        size_t cap = l->cap * 2 > l->n + whole ? l->cap * 2 : l->n + whole + 256;
+        l->ops = (u8 *)hk_realloc(l->ops, cap);
+        hk_lock_acquire(&g_lock);
+        g_dl_bytes += cap - l->cap;
+        hk_lock_release(&g_lock);
+        /* The collector counts it as it counts pixels: a RenderNode or a Picture let go of is what frees it. */
+        hk_dvm_gc_native((i64)(cap - l->cap));
+        l->cap = cap;
+    }
+    h = (dl_head *)(void *)(l->ops + l->n);
+    memset(h, 0, whole);
+    h->kind = (u16)kind;
+    h->size = (u32)whole;
+    l->n += whole;
+    return h;
+}
+
+/* The shader of a call being recorded, as it is now. */
+static void shot_of(gshader *s, gshot *out)
+{
+    memset(out, 0, sizeof(*out));
+    if (!s) return;
+    sh_ref(s);
+    out->sh = s;
+    out->has_m = s->has_m;
+    memcpy(out->m, s->m, sizeof(out->m));
+}
+
+/* Before a recorded call is drawn again: its shader given the matrix it had then, when it has another now. True when it was. */
+static bool shot_on(const gshot *s)
+{
+    gshader *sh = s->sh;
+    if (!sh || !G.shader_matrix || (sh->has_m == s->has_m && (!s->has_m || !memcmp(sh->m, s->m, sizeof(s->m))))) return false;
+    GFX(G.shader_matrix(G.user, sh->host, s->has_m ? s->m : NULL));
+    return true;
+}
+
+/* And after it: the shader's own matrix back. */
+static void shot_off(const gshot *s, bool was)
+{
+    if (was) GFX(G.shader_matrix(G.user, s->sh->host, s->sh->has_m ? s->sh->m : NULL));
+}
+
 /* --------------------------------------------------------------- canvases */
 
 static gcanvas *cv_of(i64 h)
@@ -1263,6 +1663,17 @@ static i32 cv_save(gcanvas *v, const float *bounds, bool layer, int alpha, int b
         if (layer && HAS(save_layer)) GFX(G.save_layer(G.user, v->host, bounds, alpha, blend));
         else if (HAS(save)) GFX(G.save(G.user, v->host));
     }
+    if (v->rec) {
+        if (layer) {
+            dl_layer *o = (dl_layer *)dl_put(v->rec, DL_SAVE_LAYER, sizeof(*o), 0);
+            if (bounds) memcpy(o->bounds, bounds, sizeof(o->bounds));
+            o->bounded = bounds != NULL;
+            o->alpha = alpha;
+            o->blend = blend;
+        } else {
+            dl_put(v->rec, DL_SAVE, sizeof(dl_head), 0);
+        }
+    }
     /* What Canvas.save returns: the count before it, the number restoreToCount takes to undo it. */
     return v->depth;
 }
@@ -1273,6 +1684,7 @@ static void cv_restore(gcanvas *v)
     if (v->depth <= 0) return;
     layer = cv_state(v)->layer;
     v->depth--;
+    if (v->rec) dl_put(v->rec, DL_RESTORE, sizeof(dl_head), 0);
     if (v->host) {
         /* A layer ending is drawing: it is put onto the picture now. */
         if (layer && v->bm) cv_changes(v, false);
@@ -1284,6 +1696,9 @@ static void cv_restore(gcanvas *v)
 static void cv_free(gcanvas *v)
 {
     gcanvas **link;
+    /* A recording canvas freed before cvEndRecord: what it recorded goes with it. */
+    dl_unref(v->rec);
+    v->rec = NULL;
     while (v->depth > 0) cv_restore(v);
     hk_lock_acquire(&g_lock);
     if (v->bm) {
@@ -1610,22 +2025,27 @@ N(G_bmCopy)
 
 /* ----------------------------------------------------------- Gfx: canvases */
 
-N(G_cvNew)
+/* A canvas's own half: nothing saved, the identity, the clip (0, 0, width, height). */
+static gcanvas *cv_alloc(i32 width, i32 height)
 {
-    gbitmap *b = bm_of(c->args[0].j);
-    gcanvas *v;
+    gcanvas *v = (gcanvas *)hk_alloc(sizeof(*v));
     gstate *s;
-    if (!b) return;
-    v = (gcanvas *)hk_alloc(sizeof(*v));
     v->magic = CV_MAGIC;
-    v->bm = b;
     v->cap = 8;
     v->st = (gstate *)hk_alloc(sizeof(gstate) * (size_t)v->cap);
     s = cv_state(v);
     matrix_identity(s->m);
     matrix_identity(v->sent);
-    s->clip[2] = (float)b->w;
-    s->clip[3] = (float)b->h;
+    s->clip[2] = (float)width;
+    s->clip[3] = (float)height;
+    if (!(s->clip[2] > 0) || !(s->clip[3] > 0)) s->empty = true;
+    return v;
+}
+
+static gcanvas *cv_make(gbitmap *b)
+{
+    gcanvas *v = cv_alloc(b->w, b->h);
+    v->bm = b;
     /* What other canvases have drawn is in the memory before the shell reads it as this one's picture. */
     bm_settle(b);
     /* Without the shell's half the canvas still counts saves and keeps its matrix and clip, so that the Java's bookkeeping holds; it draws nothing. */
@@ -1634,8 +2054,51 @@ N(G_cvNew)
     v->next = b->canvases;
     b->canvases = v;
     hk_lock_release(&g_lock);
+    return v;
+}
+
+N(G_cvNew)
+{
+    gbitmap *b = bm_of(c->args[0].j);
+    if (b) c->ret.j = handle(cv_make(b));
+}
+
+/*
+ * (int width, int height) -> long: a canvas that records (RenderNode.beginRecording, Picture.beginRecording). Its clip
+ * starts as (0, 0, width, height), as a RecordingCanvas's does, for what the Java asks of it; nothing is left out of the
+ * list for being outside it, as nothing is on Android.
+ */
+N(G_cvRecord)
+{
+    i32 w = c->args[0].i, h = c->args[1].i;
+    gcanvas *v = cv_alloc(w, h);
+    v->rec = dl_new(w, h);
     c->ret.j = handle(v);
 }
+
+/*
+ * (long cv) -> long: the list a recording canvas has made, for the caller to keep and free (dlFree); the canvas records no
+ * more, and the Java frees it as any other (cvFree). 0 for a canvas that was not recording.
+ */
+static gdlist *cv_end_record(gcanvas *v)
+{
+    gdlist *l;
+    if (!v || !v->rec) return NULL;
+    l = v->rec;
+    v->rec = NULL;
+    /* The list is not written to again: what was allocated beyond it is given back. */
+    if (l->cap > l->n + 64) {
+        size_t cap = l->n ? l->n : 8;
+        l->ops = (u8 *)hk_realloc(l->ops, cap);
+        hk_lock_acquire(&g_lock);
+        g_dl_bytes -= l->cap - cap;
+        hk_lock_release(&g_lock);
+        l->cap = cap;
+    }
+    return l;
+}
+
+N(G_cvEndRecord) { c->ret.j = handle(cv_end_record(cv_of(c->args[0].j))); }
 
 N(G_cvFree)
 {
@@ -1693,20 +2156,34 @@ N(G_cvSaveCount)
     c->ret.i = v ? v->depth + 1 : 1;
 }
 
+/*
+ * The canvas's matrix set to `m`, or `m` concatenated to it. A list drawn again sets its matrices relative to the one the
+ * canvas had when the list began (`base`), as Android plays a recorded setMatrix; the Java's own setMatrix has none.
+ */
+static void cv_matrix(gcanvas *v, const float *m, bool set, const float *base)
+{
+    gstate *s = cv_state(v);
+    if (set && base) matrix_concat(base, m, s->m);
+    else if (set) memcpy(s->m, m, sizeof(s->m));
+    else matrix_concat(s->m, m, s->m);
+    cv_send_matrix(v, s->m);
+    if (v->rec) {
+        dl_matrix *o = (dl_matrix *)dl_put(v->rec, DL_MATRIX, sizeof(*o), 0);
+        memcpy(o->m, m, sizeof(o->m));
+        o->set = set;
+    }
+}
+
 /* (long, float[6], boolean set): Canvas.setMatrix, or concat and with it translate, scale, rotate and skew. */
 N(G_cvMatrix)
 {
     gcanvas *v = cv_of(c->args[0].j);
     const float *m = (const float *)elements(c->args[1].l, 'F', 6);
-    gstate *s;
     int i;
     if (!v || !m) return;
     for (i = 0; i < 6; i++)
         if (!isfinite(m[i])) return;
-    s = cv_state(v);
-    if (c->args[2].z) memcpy(s->m, m, sizeof(s->m));
-    else matrix_concat(s->m, m, s->m);
-    cv_send_matrix(v, s->m);
+    cv_matrix(v, m, c->args[2].z != 0, NULL);
 }
 
 N(G_cvGetMatrix)
@@ -1716,16 +2193,11 @@ N(G_cvGetMatrix)
     if (v && m) memcpy(m, cv_state(v)->m, sizeof(float) * 6);
 }
 
-/* (long, l, t, r, b, int op: 1 intersect, 0 difference) -> whether anything is left of the clip. The Java passes no other op. */
-N(G_cvClipRect)
+/* A rectangle taken as the clip (MEGLER_GFX_CLIP_INTERSECT) or out of it. Whether anything is left of the clip. */
+static bool cv_clip_rect(gcanvas *v, float l, float t, float r, float b, int op)
 {
-    gcanvas *v = cv_of(c->args[0].j);
-    float l = c->args[1].f, t = c->args[2].f, r = c->args[3].f, b = c->args[4].f, box[4], swap;
-    int op = c->args[5].i == 0 ? MEGLER_GFX_CLIP_DIFFERENCE : MEGLER_GFX_CLIP_INTERSECT;
-    gstate *s;
-    c->ret.z = 1;
-    if (!v) return;
-    s = cv_state(v);
+    gstate *s = cv_state(v);
+    float box[4], swap;
     if (l > r) {
         swap = l;
         l = r;
@@ -1741,24 +2213,34 @@ N(G_cvClipRect)
     if (op == MEGLER_GFX_CLIP_INTERSECT) clip_intersect(s, box);
     else if (s->m[1] == 0 && s->m[3] == 0) clip_difference(s, box);
     if (v->host && HAS(clip_rect)) GFX(G.clip_rect(G.user, v->host, l, t, r, b, op));
-    c->ret.z = !s->empty;
+    if (v->rec) {
+        dl_rect *o = (dl_rect *)dl_put(v->rec, DL_CLIP_RECT, sizeof(*o), 0);
+        o->r[0] = l;
+        o->r[1] = t;
+        o->r[2] = r;
+        o->r[3] = b;
+        o->op = op;
+    }
+    return !s->empty;
 }
 
-/* (long, float[] path, int n, int fill, int op) -> whether anything is left of the clip */
-N(G_cvClipPath)
+/* (long, l, t, r, b, int op: 1 intersect, 0 difference) -> whether anything is left of the clip. The Java passes no other op. */
+N(G_cvClipRect)
 {
     gcanvas *v = cv_of(c->args[0].j);
-    int fill = c->args[3].i == 1 ? MEGLER_GFX_EVEN_ODD : MEGLER_GFX_WINDING, op = c->args[4].i == 0 ? MEGLER_GFX_CLIP_DIFFERENCE : MEGLER_GFX_CLIP_INTERSECT;
-    gstate *s;
-    gpath p;
+    c->ret.z = 1;
+    if (v) c->ret.z = cv_clip_rect(v, c->args[1].f, c->args[2].f, c->args[3].f, c->args[4].f, c->args[5].i == 0 ? MEGLER_GFX_CLIP_DIFFERENCE : MEGLER_GFX_CLIP_INTERSECT);
+}
+
+/* A built path taken as the clip or out of it. Whether anything is left of the clip. */
+static bool cv_clip_path(gcanvas *v, const gpath *p, int fill, int op)
+{
+    gstate *s = cv_state(v);
     gbox o;
     float box[4];
-    c->ret.z = 1;
-    if (!v || !path_of(c->args[1].l, c->args[2].i, &p)) return;
-    s = cv_state(v);
     s->clipped = true;
     if (op == MEGLER_GFX_CLIP_INTERSECT) {
-        path_bounds(&p, &o);
+        path_bounds(p, &o);
         /* Nothing is inside a path with nothing in it. */
         if (!o.any) {
             s->empty = true;
@@ -1767,9 +2249,27 @@ N(G_cvClipPath)
             clip_intersect(s, box);
         }
     }
-    if (v->host && HAS(clip_path)) GFX(G.clip_path(G.user, v->host, p.v, p.n, fill, op));
+    if (v->host && HAS(clip_path)) GFX(G.clip_path(G.user, v->host, p->v, p->n, fill, op));
+    if (v->rec) {
+        dl_path *d = (dl_path *)dl_put(v->rec, DL_CLIP_PATH, sizeof(*d), sizeof(float) * (size_t)p->n);
+        d->fill = fill;
+        d->op = op;
+        d->n = p->n;
+        if (p->n) memcpy(d + 1, p->v, sizeof(float) * (size_t)p->n);
+    }
+    return !s->empty;
+}
+
+/* (long, float[] path, int n, int fill, int op) -> whether anything is left of the clip */
+N(G_cvClipPath)
+{
+    gcanvas *v = cv_of(c->args[0].j);
+    int fill = c->args[3].i == 1 ? MEGLER_GFX_EVEN_ODD : MEGLER_GFX_WINDING, op = c->args[4].i == 0 ? MEGLER_GFX_CLIP_DIFFERENCE : MEGLER_GFX_CLIP_INTERSECT;
+    gpath p;
+    c->ret.z = 1;
+    if (!v || !path_of(c->args[1].l, c->args[2].i, &p)) return;
+    c->ret.z = cv_clip_path(v, &p, fill, op);
     path_free(&p);
-    c->ret.z = !s->empty;
 }
 
 /*
@@ -1796,15 +2296,22 @@ N(G_cvClipBounds)
     c->ret.z = 1;
 }
 
-/* (long, int color, int mode): Canvas.drawColor. */
-N(G_cvDrawColor)
+static void draw_color(gcanvas *v, u32 color, int blend)
 {
-    gcanvas *v = cv_of(c->args[0].j);
-    int blend = blend_number(c->args[2].i);
     bool replaces = blend == MEGLER_GFX_BLEND_SRC || blend == MEGLER_GFX_BLEND_CLEAR;
-    if (blend == MEGLER_GFX_BLEND_DST || !v || !v->host || !HAS(draw_color) || !cv_draw(v, replaces && cv_whole(v))) return;
-    GFX(G.draw_color(G.user, v->host, (u32)c->args[1].i, blend));
+    if (blend == MEGLER_GFX_BLEND_DST || !v) return;
+    if (v->rec) {
+        dl_color *o = (dl_color *)dl_put(v->rec, DL_COLOR, sizeof(*o), 0);
+        o->color = color;
+        o->blend = blend;
+        return;
+    }
+    if (!v->host || !HAS(draw_color) || !cv_draw(v, replaces && cv_whole(v))) return;
+    GFX(G.draw_color(G.user, v->host, color, blend));
 }
+
+/* (long, int color, int mode): Canvas.drawColor. */
+N(G_cvDrawColor) { draw_color(cv_of(c->args[0].j), (u32)c->args[1].i, blend_number(c->args[2].i)); }
 
 static void draw_rect(gcanvas *v, float l, float t, float r, float b, const gpaint *p, void *shader)
 {
@@ -1829,22 +2336,44 @@ static void draw_path(gcanvas *v, const gpath *path, int fill, const gpaint *p, 
     GFX(G.draw_path(G.user, v->host, path->v, path->n, fill, &p->p, shader));
 }
 
+/* A call with a rectangle's numbers, written to a recording canvas's list. */
+static void rec_rect(gdlist *l, int kind, const float *r, int count, const gpaint *p, gshader *sh)
+{
+    dl_rect *o = (dl_rect *)dl_put(l, kind, sizeof(*o), 0);
+    memcpy(o->r, r, sizeof(float) * (size_t)count);
+    o->p = *p;
+    shot_of(sh, &o->s);
+}
+
+/* A built path written to a recording canvas's list (DL_PATH), or the points of drawLines and drawPoints (DL_LINES). */
+static void rec_path(gdlist *l, int kind, const float *f, i32 n, int fill, bool points, const gpaint *p, gshader *sh)
+{
+    dl_path *o = (dl_path *)dl_put(l, kind, sizeof(*o), sizeof(float) * (size_t)n);
+    o->fill = fill;
+    o->points = points;
+    o->n = n;
+    o->p = *p;
+    shot_of(sh, &o->s);
+    if (n) memcpy(o + 1, f, sizeof(float) * (size_t)n);
+}
+
 /* (long, l, t, r, b, int[] paint, long shader) */
 N(G_cvDrawRect)
 {
-    void *shader = pointer(c->args[6].j);
+    gcanvas *v = cv_of(c->args[0].j);
+    gshader *sh = sh_of(c->args[6].j);
+    float r[4];
     gpaint p;
-    if (paint_for(c->args[5].l, !shader, &p)) draw_rect(cv_of(c->args[0].j), c->args[1].f, c->args[2].f, c->args[3].f, c->args[4].f, &p, shader);
+    int i;
+    if (!paint_for(c->args[5].l, !sh, &p)) return;
+    for (i = 0; i < 4; i++) r[i] = c->args[1 + i].f;
+    if (v && v->rec) rec_rect(v->rec, DL_RECT, r, 4, &p, sh);
+    else draw_rect(v, r[0], r[1], r[2], r[3], &p, sh_host(sh));
 }
 
-/* (long, l, t, r, b, rx, ry, int[] paint, long shader) */
-N(G_cvDrawRRect)
+static void draw_round_rect(gcanvas *v, float l, float t, float r, float b, float rx, float ry, const gpaint *p, void *shader)
 {
-    gcanvas *v = cv_of(c->args[0].j);
-    float l = c->args[1].f, t = c->args[2].f, r = c->args[3].f, b = c->args[4].f, rx = c->args[5].f, ry = c->args[6].f, swap;
-    void *shader = pointer(c->args[8].j);
-    gpaint p;
-    if (!paint_for(c->args[7].l, !shader, &p)) return;
+    float swap;
     if (l > r) {
         swap = l;
         l = r;
@@ -1859,21 +2388,30 @@ N(G_cvDrawRRect)
     if (ry > (b - t) / 2) ry = (b - t) / 2;
     /* Without both radii the corners are square. */
     if (!(rx > 0) || !(ry > 0)) {
-        draw_rect(v, l, t, r, b, &p, shader);
+        draw_rect(v, l, t, r, b, p, shader);
         return;
     }
     if (!v || !v->host || !HAS(draw_round_rect) || !cv_draw(v, false)) return;
-    GFX(G.draw_round_rect(G.user, v->host, l, t, r, b, rx, ry, &p.p, shader));
+    GFX(G.draw_round_rect(G.user, v->host, l, t, r, b, rx, ry, &p->p, shader));
 }
 
-/* (long, l, t, r, b, int[] paint, long shader) */
-N(G_cvDrawOval)
+/* (long, l, t, r, b, rx, ry, int[] paint, long shader) */
+N(G_cvDrawRRect)
 {
     gcanvas *v = cv_of(c->args[0].j);
-    float l = c->args[1].f, t = c->args[2].f, r = c->args[3].f, b = c->args[4].f, swap;
-    void *shader = pointer(c->args[6].j);
+    gshader *sh = sh_of(c->args[8].j);
+    float r[6];
     gpaint p;
-    if (!paint_for(c->args[5].l, !shader, &p)) return;
+    int i;
+    if (!paint_for(c->args[7].l, !sh, &p)) return;
+    for (i = 0; i < 6; i++) r[i] = c->args[1 + i].f;
+    if (v && v->rec) rec_rect(v->rec, DL_RRECT, r, 6, &p, sh);
+    else draw_round_rect(v, r[0], r[1], r[2], r[3], r[4], r[5], &p, sh_host(sh));
+}
+
+static void draw_oval(gcanvas *v, float l, float t, float r, float b, const gpaint *p, void *shader)
+{
+    float swap;
     if (l > r) {
         swap = l;
         l = r;
@@ -1885,17 +2423,32 @@ N(G_cvDrawOval)
         b = swap;
     }
     if (!v || !v->host || !HAS(draw_oval) || !cv_draw(v, false)) return;
-    GFX(G.draw_oval(G.user, v->host, l, t, r, b, &p.p, shader));
+    GFX(G.draw_oval(G.user, v->host, l, t, r, b, &p->p, shader));
+}
+
+/* (long, l, t, r, b, int[] paint, long shader) */
+N(G_cvDrawOval)
+{
+    gcanvas *v = cv_of(c->args[0].j);
+    gshader *sh = sh_of(c->args[6].j);
+    float r[4];
+    gpaint p;
+    int i;
+    if (!paint_for(c->args[5].l, !sh, &p)) return;
+    for (i = 0; i < 4; i++) r[i] = c->args[1 + i].f;
+    if (v && v->rec) rec_rect(v->rec, DL_OVAL, r, 4, &p, sh);
+    else draw_oval(v, r[0], r[1], r[2], r[3], &p, sh_host(sh));
 }
 
 /* (long, l, t, r, b, float start, float sweep, boolean useCenter, int[] paint, long shader): the arc alone, or the wedge to the oval's centre. */
 N(G_cvDrawArc)
 {
+    gcanvas *v = cv_of(c->args[0].j);
     float l = c->args[1].f, t = c->args[2].f, r = c->args[3].f, b = c->args[4].f;
-    void *shader = pointer(c->args[9].j);
+    gshader *sh = sh_of(c->args[9].j);
     gpaint p;
     gpath path;
-    if (!paint_for(c->args[8].l, !shader, &p)) return;
+    if (!paint_for(c->args[8].l, !sh, &p)) return;
     path_init(&path);
     if (c->args[7].z) {
         path_move(&path, (l + r) / 2, (t + b) / 2);
@@ -1904,50 +2457,50 @@ N(G_cvDrawArc)
     } else {
         path_arc(&path, l, t, r, b, c->args[5].f, c->args[6].f, true);
     }
-    draw_path(cv_of(c->args[0].j), &path, MEGLER_GFX_WINDING, &p, shader);
+    if (v && v->rec) rec_path(v->rec, DL_PATH, path.v, path.n, MEGLER_GFX_WINDING, false, &p, sh);
+    else draw_path(v, &path, MEGLER_GFX_WINDING, &p, sh_host(sh));
     path_free(&path);
 }
 
 /* (long, float[] path, int n, int fill, int[] paint, long shader) */
 N(G_cvDrawPath)
 {
-    void *shader = pointer(c->args[5].j);
+    gcanvas *v = cv_of(c->args[0].j);
+    gshader *sh = sh_of(c->args[5].j);
+    int fill = c->args[3].i == 1 ? MEGLER_GFX_EVEN_ODD : MEGLER_GFX_WINDING;
     gpaint p;
     gpath path;
-    if (!paint_for(c->args[4].l, !shader, &p) || !path_of(c->args[1].l, c->args[2].i, &path)) return;
-    draw_path(cv_of(c->args[0].j), &path, c->args[3].i == 1 ? MEGLER_GFX_EVEN_ODD : MEGLER_GFX_WINDING, &p, shader);
+    if (!paint_for(c->args[4].l, !sh, &p) || !path_of(c->args[1].l, c->args[2].i, &path)) return;
+    if (v && v->rec) rec_path(v->rec, DL_PATH, path.v, path.n, fill, false, &p, sh);
+    else draw_path(v, &path, fill, &p, sh_host(sh));
     path_free(&path);
 }
 
 /*
- * (long, float[] pts, int offset, int count, int[] paint, long shader, boolean points)
- *
  * drawLines: every four floats a line, stroked whatever the paint's style.
  * drawPoints: every two floats a point as wide as the stroke -- a square, or
- * a circle when the cap is round --, filled. A hairline point is a pixel.
+ * a circle when the cap is round --, filled. A hairline point is a pixel, by
+ * the matrix the canvas has when it is drawn.
  */
-N(G_cvDrawLines)
+static void draw_lines(gcanvas *v, const float *f, i32 n, bool points, const gpaint *paint, void *shader)
 {
-    gcanvas *v = cv_of(c->args[0].j);
-    const float *f = (const float *)elements(c->args[1].l, 'F', 0);
-    i64 off = c->args[2].i, n = c->args[3].i, i;
-    void *shader = pointer(c->args[5].j);
-    gpaint p;
+    gpaint p = *paint;
     gpath path;
     float half;
-    if (!v || !f || off < 0 || n < 0 || off + n > length_of(c->args[1].l) || !paint_for(c->args[4].l, !shader, &p)) return;
+    i32 i;
+    if (!v) return;
     path_init(&path);
-    if (c->args[6].z) {
+    if (points) {
         const float *m = cv_state(v)->m;
         double det = fabs((double)m[0] * m[4] - (double)m[1] * m[3]);
         half = p.p.stroke_width > 0 ? p.p.stroke_width / 2 : det > 0 ? (float)(0.5 / sqrt(det)) : 0.5f;
-        for (i = off; i + 1 < off + n; i += 2) {
+        for (i = 0; i + 1 < n; i += 2) {
             if (p.p.cap == MEGLER_GFX_CAP_ROUND) path_oval(&path, f[i] - half, f[i + 1] - half, f[i] + half, f[i + 1] + half);
             else path_rect(&path, f[i] - half, f[i + 1] - half, f[i] + half, f[i + 1] + half);
         }
         p.p.style = MEGLER_GFX_FILL;
     } else {
-        for (i = off; i + 3 < off + n; i += 4) {
+        for (i = 0; i + 3 < n; i += 4) {
             path_move(&path, f[i], f[i + 1]);
             path_line(&path, f[i + 2], f[i + 3]);
         }
@@ -1957,19 +2510,29 @@ N(G_cvDrawLines)
     path_free(&path);
 }
 
+/* (long, float[] pts, int offset, int count, int[] paint, long shader, boolean points) */
+N(G_cvDrawLines)
+{
+    gcanvas *v = cv_of(c->args[0].j);
+    const float *f = (const float *)elements(c->args[1].l, 'F', 0);
+    i64 off = c->args[2].i, n = c->args[3].i;
+    gshader *sh = sh_of(c->args[5].j);
+    gpaint p;
+    if (!v || !f || off < 0 || n < 0 || off + n > length_of(c->args[1].l) || !paint_for(c->args[4].l, !sh, &p)) return;
+    if (v->rec) rec_path(v->rec, DL_LINES, f + off, (i32)n, MEGLER_GFX_WINDING, c->args[6].z != 0, &p, sh);
+    else draw_lines(v, f + off, (i32)n, c->args[6].z != 0, &p, sh_host(sh));
+}
+
 /*
  * A part of one bitmap onto a rectangle of a canvas. As Android has it: a
  * source or a destination with no area draws nothing, and a source that
  * reaches outside the bitmap is cut to it, the destination with it.
  */
-static void draw_bitmap(gcanvas *v, gbitmap *b, float *src, float *dst, hk_jobj *paint)
+static void draw_bitmap(gcanvas *v, gbitmap *b, float *src, float *dst, const gpaint *p)
 {
     megler_gfx_image image;
-    gpaint p;
     float sw = src[2] - src[0], sh = src[3] - src[1], dw = dst[2] - dst[0], dh = dst[3] - dst[1], cut;
-    if (!v || !v->host || !b || !(sw > 0) || !(sh > 0) || !(dw > 0) || !(dh > 0) || !paint_for(paint, false, &p)) return;
-    /* drawBitmap without a Paint samples smoothly, as the original has it. */
-    if (!paint) p.p.flags |= MEGLER_GFX_FILTER_BITMAP;
+    if (!v || !v->host || !b || !(sw > 0) || !(sh > 0) || !(dw > 0) || !(dh > 0)) return;
     if (src[0] < 0) {
         cut = -src[0];
         src[0] = 0;
@@ -1995,39 +2558,81 @@ static void draw_bitmap(gcanvas *v, gbitmap *b, float *src, float *dst, hk_jobj 
     bm_settle(b);
     if (!cv_draw(v, false)) return;
     image_of(b, &image);
-    GFX(G.draw_bitmap(G.user, v->host, &image, src, dst, &p.p));
+    GFX(G.draw_bitmap(G.user, v->host, &image, src, dst, &p->p));
+}
+
+/* The paint of a call that draws a bitmap. drawBitmap without a Paint samples smoothly, as the original has it. False: it draws nothing. */
+static bool bitmap_paint(hk_jobj *paint, gpaint *p)
+{
+    if (!paint_for(paint, false, p)) return false;
+    if (!paint) p->p.flags |= MEGLER_GFX_FILTER_BITMAP;
+    return true;
+}
+
+/* A bitmap drawn, written to a recording canvas's list: the bitmap itself, whose pixels are those it has when the list is drawn. */
+static dl_bitmap *rec_bitmap(gdlist *l, int kind, gbitmap *b, const gpaint *p)
+{
+    dl_bitmap *o = (dl_bitmap *)dl_put(l, kind, sizeof(*o), 0);
+    bm_ref(b);
+    o->b = b;
+    o->p = *p;
+    return o;
 }
 
 /* (long cv, long bm, sl, st, sr, sb, dl, dt, dr, db, int[] paint or null) */
 N(G_cvDrawBitmap)
 {
+    gcanvas *v = cv_of(c->args[0].j);
+    gbitmap *b = bm_of(c->args[1].j);
     float src[4], dst[4];
+    gpaint p;
     int i;
     for (i = 0; i < 4; i++) {
         src[i] = c->args[2 + i].f;
         dst[i] = c->args[6 + i].f;
     }
-    draw_bitmap(cv_of(c->args[0].j), bm_of(c->args[1].j), src, dst, c->args[10].l);
+    if (!v || !b || !bitmap_paint(c->args[10].l, &p)) return;
+    if (v->rec) {
+        dl_bitmap *o = rec_bitmap(v->rec, DL_BITMAP, b, &p);
+        memcpy(o->src, src, sizeof(src));
+        memcpy(o->dst, dst, sizeof(dst));
+        return;
+    }
+    draw_bitmap(v, b, src, dst, &p);
 }
 
-/* (long cv, long bm, float[6] matrix, int[] paint or null): the whole bitmap through a matrix of its own, which is the canvas's for the one call. */
-N(G_cvDrawBitmapM)
+/* The whole bitmap through a matrix of its own, which is the canvas's for the one call. */
+static void draw_bitmap_m(gcanvas *v, gbitmap *b, const float *m, const gpaint *p)
 {
-    gcanvas *v = cv_of(c->args[0].j);
-    gbitmap *b = bm_of(c->args[1].j);
-    const float *m = (const float *)elements(c->args[2].l, 'F', 6);
     float src[4], dst[4], through[6];
-    int i;
-    if (!v || !v->host || !b || !m) return;
-    for (i = 0; i < 6; i++)
-        if (!isfinite(m[i])) return;
+    if (!v || !v->host || !b) return;
     src[0] = src[1] = dst[0] = dst[1] = 0;
     src[2] = dst[2] = (float)b->w;
     src[3] = dst[3] = (float)b->h;
     matrix_concat(cv_state(v)->m, m, through);
     cv_send_matrix(v, through);
-    draw_bitmap(v, b, src, dst, c->args[3].l);
+    draw_bitmap(v, b, src, dst, p);
     cv_send_matrix(v, cv_state(v)->m);
+}
+
+/* (long cv, long bm, float[6] matrix, int[] paint or null) */
+N(G_cvDrawBitmapM)
+{
+    gcanvas *v = cv_of(c->args[0].j);
+    gbitmap *b = bm_of(c->args[1].j);
+    const float *m = (const float *)elements(c->args[2].l, 'F', 6);
+    gpaint p;
+    int i;
+    if (!v || !b || !m) return;
+    for (i = 0; i < 6; i++)
+        if (!isfinite(m[i])) return;
+    if (!bitmap_paint(c->args[3].l, &p)) return;
+    if (v->rec) {
+        dl_bitmap *o = rec_bitmap(v->rec, DL_BITMAP_M, b, &p);
+        memcpy(o->m, m, sizeof(o->m));
+        return;
+    }
+    draw_bitmap_m(v, b, m, &p);
 }
 
 /* -------------------------------------------------------------- Gfx: text */
@@ -2067,23 +2672,16 @@ static float text_width(const u16 *text, i32 count, const gpaint *p, void *face)
 }
 
 /*
- * (long cv, String, int start, int end, float x, float y, int[] paint, long typeface, long shader)
- *
- * Canvas.drawText: the part of the string as one run, its baseline at y and
- * x by the paint's alignment. An underline and a strike-through are bars
- * drawn here, where the original puts them: a ninth of the text's size below
- * the baseline and three tenths above it, an eighteenth thick.
+ * A run of text, its baseline at y and x by the paint's alignment. An
+ * underline and a strike-through are bars drawn here, where the original
+ * puts them: a ninth of the text's size below the baseline and three tenths
+ * above it, an eighteenth thick.
  */
-N(G_cvDrawText)
+static void draw_text(gcanvas *v, const u16 *text, i32 count, float x, float y, const gpaint *paint, void *face, void *shader)
 {
-    gcanvas *v = cv_of(c->args[0].j);
-    void *face = tf_host(c->args[7].j), *shader = pointer(c->args[8].j);
-    float x = c->args[4].f, y = c->args[5].f, width, size, thick;
-    const u16 *text;
-    i32 count;
-    gpaint p;
-    text = text_of(c->args[1].l, c->args[2].i, c->args[3].i, &count);
-    if (!v || !v->host || !text || count <= 0 || !paint_for(c->args[6].l, !shader, &p)) return;
+    gpaint p = *paint;
+    float width, size, thick;
+    if (!v || !v->host || !text || count <= 0) return;
     if (HAS(draw_text) && cv_draw(v, false)) GFX(G.draw_text(G.user, v->host, text, count, x, y, &p.p, face, shader));
     if (!p.underline && !p.strike) return;
     width = text_width(text, count, &p, face);
@@ -2094,6 +2692,405 @@ N(G_cvDrawText)
     p.p.style = MEGLER_GFX_FILL;
     if (p.underline) draw_rect(v, x, y + size / 9, x + width, y + size / 9 + thick, &p, shader);
     if (p.strike) draw_rect(v, x, y - size * 0.3f, x + width, y - size * 0.3f + thick, &p, shader);
+}
+
+/* (long cv, String, int start, int end, float x, float y, int[] paint, long typeface, long shader): Canvas.drawText, the part of the string as one run. */
+N(G_cvDrawText)
+{
+    gcanvas *v = cv_of(c->args[0].j);
+    void *face = tf_host(c->args[7].j);
+    gshader *sh = sh_of(c->args[8].j);
+    const u16 *text;
+    i32 count;
+    gpaint p;
+    text = text_of(c->args[1].l, c->args[2].i, c->args[3].i, &count);
+    if (!v || !text || count <= 0 || !paint_for(c->args[6].l, !sh, &p)) return;
+    if (v->rec) {
+        dl_text *o = (dl_text *)dl_put(v->rec, DL_TEXT, sizeof(*o), sizeof(u16) * (size_t)count);
+        o->x = c->args[4].f;
+        o->y = c->args[5].f;
+        o->face = face;
+        o->count = count;
+        o->p = p;
+        shot_of(sh, &o->s);
+        memcpy(o + 1, text, sizeof(u16) * (size_t)count);
+        return;
+    }
+    draw_text(v, text, count, c->args[4].f, c->args[5].f, &p, face, sh_host(sh));
+}
+
+/* ------------------------------------------------- Gfx: display lists drawn */
+
+static void node_play(gcanvas *v, gnode *n, int depth);
+
+/* A recorded path as the functions that take a built one take it. */
+static void path_view(gpath *p, const float *f, i32 n)
+{
+    memset(p, 0, offsetof(gpath, fixed));
+    p->v = (float *)(hk_addr)f;
+    p->n = n;
+    p->cap = n;
+    p->any = n > 0;
+}
+
+/* The calls of a list that draw or clip with a path, each on a frame of its own: a path is large, and lists are drawn inside each other. */
+static HK_NOINLINE void play_path(gcanvas *v, const dl_path *o, int kind)
+{
+    gpath p;
+    bool was;
+    path_view(&p, (const float *)(o + 1), o->n);
+    if (kind == DL_CLIP_PATH) {
+        cv_clip_path(v, &p, o->fill, o->op);
+        return;
+    }
+    was = shot_on(&o->s);
+    if (kind == DL_PATH) draw_path(v, &p, o->fill, &o->p, sh_host(o->s.sh));
+    else draw_lines(v, (const float *)(o + 1), o->n, o->points != 0, &o->p, sh_host(o->s.sh));
+    shot_off(&o->s, was);
+}
+
+/*
+ * A list drawn on a canvas: every call again, on this canvas, from the
+ * matrix and clip it has now. It is drawn inside a save of its own, as
+ * Android draws a picture or a node's list, so that whatever the list left
+ * saved or set is undone after it; a restore it has beyond its own saves is
+ * not done.
+ */
+static void list_play(gcanvas *v, gdlist *l, int depth)
+{
+    float base[6], src[4], dst[4];
+    i32 floor_depth;
+    size_t at;
+    bool was;
+    if (!v || !l) return;
+    if (depth > DL_DEPTH) {
+        hk_note_once("gfx: display lists drawn inside each other more than %d deep, which is a list that draws itself: what is deeper is left out", DL_DEPTH);
+        return;
+    }
+    dl_ref(l);
+    cv_save(v, NULL, false, 255, MEGLER_GFX_BLEND_SRC_OVER);
+    floor_depth = v->depth;
+    memcpy(base, cv_state(v)->m, sizeof(base));
+    for (at = 0; at < l->n; at += ((const dl_head *)(const void *)(l->ops + at))->size) {
+        const dl_head *h = (const dl_head *)(const void *)(l->ops + at);
+        switch (h->kind) {
+        case DL_SAVE: cv_save(v, NULL, false, 255, MEGLER_GFX_BLEND_SRC_OVER); break;
+        case DL_SAVE_LAYER: {
+            const dl_layer *o = (const dl_layer *)h;
+            cv_save(v, o->bounded ? o->bounds : NULL, true, o->alpha, o->blend);
+            break;
+        }
+        case DL_RESTORE:
+            if (v->depth > floor_depth) cv_restore(v);
+            break;
+        case DL_MATRIX: {
+            const dl_matrix *o = (const dl_matrix *)h;
+            cv_matrix(v, o->m, o->set != 0, base);
+            break;
+        }
+        case DL_CLIP_RECT: {
+            const dl_rect *o = (const dl_rect *)h;
+            cv_clip_rect(v, o->r[0], o->r[1], o->r[2], o->r[3], o->op);
+            break;
+        }
+        case DL_CLIP_PATH:
+        case DL_PATH:
+        case DL_LINES: play_path(v, (const dl_path *)h, h->kind); break;
+        case DL_COLOR: draw_color(v, ((const dl_color *)h)->color, ((const dl_color *)h)->blend); break;
+        case DL_RECT:
+        case DL_RRECT:
+        case DL_OVAL: {
+            const dl_rect *o = (const dl_rect *)h;
+            was = shot_on(&o->s);
+            if (h->kind == DL_RECT) draw_rect(v, o->r[0], o->r[1], o->r[2], o->r[3], &o->p, sh_host(o->s.sh));
+            else if (h->kind == DL_RRECT) draw_round_rect(v, o->r[0], o->r[1], o->r[2], o->r[3], o->r[4], o->r[5], &o->p, sh_host(o->s.sh));
+            else draw_oval(v, o->r[0], o->r[1], o->r[2], o->r[3], &o->p, sh_host(o->s.sh));
+            shot_off(&o->s, was);
+            break;
+        }
+        case DL_BITMAP: {
+            const dl_bitmap *o = (const dl_bitmap *)h;
+            memcpy(src, o->src, sizeof(src));
+            memcpy(dst, o->dst, sizeof(dst));
+            draw_bitmap(v, o->b, src, dst, &o->p);
+            break;
+        }
+        case DL_BITMAP_M: draw_bitmap_m(v, ((const dl_bitmap *)h)->b, ((const dl_bitmap *)h)->m, &((const dl_bitmap *)h)->p); break;
+        case DL_TEXT: {
+            const dl_text *o = (const dl_text *)h;
+            was = shot_on(&o->s);
+            draw_text(v, (const u16 *)(const void *)(o + 1), o->count, o->x, o->y, &o->p, o->face, sh_host(o->s.sh));
+            shot_off(&o->s, was);
+            break;
+        }
+        case DL_NODE: node_play(v, ((const dl_node *)h)->node, depth + 1); break;
+        case DL_LIST: list_play(v, ((const dl_list *)h)->list, depth + 1); break;
+        default: break;
+        }
+    }
+    while (v->depth >= floor_depth) cv_restore(v);
+    dl_unref(l);
+}
+
+/* A node's outline as the clip: its rectangle, with round corners when it has a radius, or its path. */
+static HK_NOINLINE void node_clip_outline(gcanvas *v, const gnode *n)
+{
+    gpath p;
+    float rad[8];
+    int i;
+    if (n->outline_kind == 2) {
+        path_view(&p, n->outline_path, n->outline_n);
+        cv_clip_path(v, &p, n->outline_fill, MEGLER_GFX_CLIP_INTERSECT);
+    } else if (n->radius > 0) {
+        for (i = 0; i < 8; i++) rad[i] = n->radius;
+        path_init(&p);
+        path_round_rect(&p, n->outline[0], n->outline[1], n->outline[2], n->outline[3], rad);
+        cv_clip_path(v, &p, MEGLER_GFX_WINDING, MEGLER_GFX_CLIP_INTERSECT);
+        path_free(&p);
+    } else {
+        cv_clip_rect(v, n->outline[0], n->outline[1], n->outline[2], n->outline[3], MEGLER_GFX_CLIP_INTERSECT);
+    }
+}
+
+/*
+ * A node whose layer has a colour filter, which a layer of the shell's
+ * cannot have (save_layer takes an alpha and a mode): drawn into a bitmap of
+ * the node's size and the bitmap put on with the layer's paint, as every
+ * node was drawn before nodes kept lists.
+ */
+static HK_NOINLINE void node_through_bitmap(gcanvas *v, const gnode *n, gdlist *l, float w, float h, int depth)
+{
+    i32 bw = (i32)ceil(w), bh = (i32)ceil(h);
+    float src[4], dst[4];
+    gbitmap *b;
+    gcanvas *t;
+    gpaint p;
+    b = bm_new(bw > 0 ? bw : 1, bh > 0 ? bh : 1);
+    if (!b) return;
+    t = cv_make(b);
+    list_play(t, l, depth);
+    paint_unpack(n->layer_paint, &p);
+    p.p.color = (p.p.color & 0x00FFFFFFu) | (u32)n->layer_alpha << 24;
+    src[0] = src[1] = dst[0] = dst[1] = 0;
+    src[2] = dst[2] = (float)b->w;
+    src[3] = dst[3] = (float)b->h;
+    draw_bitmap(v, b, src, dst, &p);
+    cv_free(t);
+    bm_free(b);
+}
+
+/*
+ * A node drawn on a canvas as Android's RenderNodeDrawable draws it, with
+ * the properties it has now: moved to (left, top), through its matrix; a
+ * layer when it has one or is translucent, bounded by its own rectangle (and
+ * its clip rectangle), put on with its alpha and the layer paint's mode;
+ * otherwise clipped to its bounds when it clips to them, and to its clip
+ * rectangle; then to its outline; then its list. Nothing is drawn of a node
+ * with no list, no alpha, or an outline to clip to that is empty.
+ */
+static void node_play(gcanvas *v, gnode *n, int depth)
+{
+    float w, h, through[6], at[6] = { 1, 0, 0, 0, 1, 0 }, bounds[4];
+    i32 d0, flags, blend = MEGLER_GFX_BLEND_SRC_OVER, filter = -1;
+    gdlist *l;
+    if (!v || !n) return;
+    hk_lock_acquire(&g_lock);
+    l = n->list;
+    if (l) l->refs++;
+    hk_lock_release(&g_lock);
+    flags = n->flags;
+    if (flags & RN_LAYER_PAINT) {
+        blend = blend_number(n->layer_paint[P_XFER]);
+        filter = n->layer_paint[P_CFMODE];
+    }
+    if (!l || !(n->alpha > 0) || ((flags & RN_CLIP_OUTLINE) && !n->outline_kind) || ((flags & RN_LAYER) && blend == MEGLER_GFX_BLEND_DST)) {
+        dl_unref(l);
+        return;
+    }
+    w = n->right - n->left;
+    h = n->bottom - n->top;
+    d0 = v->depth;
+    cv_save(v, NULL, false, 255, MEGLER_GFX_BLEND_SRC_OVER);
+    at[2] = n->left;
+    at[5] = n->top;
+    if (flags & RN_IDENTITY) memcpy(through, at, sizeof(through));
+    else matrix_concat(at, n->m, through);
+    cv_matrix(v, through, false, NULL);
+    if (flags & RN_LAYER) {
+        bounds[0] = bounds[1] = 0;
+        bounds[2] = w;
+        bounds[3] = h;
+        if (flags & RN_CLIP_RECT) {
+            if (n->clip[0] > bounds[0]) bounds[0] = n->clip[0];
+            if (n->clip[1] > bounds[1]) bounds[1] = n->clip[1];
+            if (n->clip[2] < bounds[2]) bounds[2] = n->clip[2];
+            if (n->clip[3] < bounds[3]) bounds[3] = n->clip[3];
+        }
+        if (filter >= 0) {
+            cv_clip_rect(v, bounds[0], bounds[1], bounds[2], bounds[3], MEGLER_GFX_CLIP_INTERSECT);
+            if (flags & RN_CLIP_OUTLINE) node_clip_outline(v, n);
+            node_through_bitmap(v, n, l, w, h, depth);
+            while (v->depth > d0) cv_restore(v);
+            dl_unref(l);
+            return;
+        }
+        /* A layer with no area is no layer to cv_save: the node then draws nothing. */
+        if (!(bounds[2] > bounds[0]) || !(bounds[3] > bounds[1])) cv_clip_rect(v, 0, 0, 0, 0, MEGLER_GFX_CLIP_INTERSECT);
+        else cv_save(v, bounds, true, n->layer_alpha, blend);
+    } else {
+        if (flags & RN_CLIP_BOUNDS) cv_clip_rect(v, 0, 0, w, h, MEGLER_GFX_CLIP_INTERSECT);
+        if (flags & RN_CLIP_RECT) cv_clip_rect(v, n->clip[0], n->clip[1], n->clip[2], n->clip[3], MEGLER_GFX_CLIP_INTERSECT);
+    }
+    if (flags & RN_CLIP_OUTLINE) node_clip_outline(v, n);
+    list_play(v, l, depth);
+    while (v->depth > d0) cv_restore(v);
+    dl_unref(l);
+}
+
+/* ---------------------------------------------- Gfx: display lists natives */
+
+/* (long cv, long node): Canvas.drawRenderNode. A recording canvas writes the node itself to its list; any other draws it now. */
+N(G_cvDrawNode)
+{
+    gcanvas *v = cv_of(c->args[0].j);
+    gnode *n = rn_of(c->args[1].j);
+    if (!v || !n) return;
+    if (v->rec) {
+        dl_node *o = (dl_node *)dl_put(v->rec, DL_NODE, sizeof(*o), 0);
+        rn_ref(n);
+        o->node = n;
+        return;
+    }
+    node_play(v, n, 0);
+}
+
+/* (long cv, long list): a Picture drawn. A recording canvas writes the list to its own, as it is; any other draws it now. */
+N(G_cvDrawList)
+{
+    gcanvas *v = cv_of(c->args[0].j);
+    gdlist *l = dl_of(c->args[1].j);
+    if (!v || !l) return;
+    if (v->rec) {
+        dl_list *o = (dl_list *)dl_put(v->rec, DL_LIST, sizeof(*o), 0);
+        dl_ref(l);
+        o->list = l;
+        return;
+    }
+    list_play(v, l, 0);
+}
+
+/* (long list): the Java's Picture is done with the list it had (a new recording, close(), the collector). */
+N(G_dlFree) { dl_unref(dl_of(c->args[0].j)); }
+
+/* () -> long: a RenderNode's native half, with Android's defaults: at (0, 0) with no size, no transform, opaque, clipping to its bounds. */
+N(G_rnNew)
+{
+    gnode *n = (gnode *)hk_alloc(sizeof(*n));
+    n->magic = RN_MAGIC;
+    n->refs = 1;
+    matrix_identity(n->m);
+    n->alpha = 1;
+    n->flags = RN_IDENTITY | RN_CLIP_BOUNDS;
+    n->layer_alpha = 255;
+    hk_lock_acquire(&g_lock);
+    g_rn_count++;
+    hk_lock_release(&g_lock);
+    c->ret.j = handle(n);
+}
+
+/* (long node): the Java's RenderNode is gone. The node stays while a list draws it. */
+N(G_rnFree)
+{
+    gnode *n = rn_of(c->args[0].j);
+    if (n) rn_unref(n);
+}
+
+/* (long node, long cv): endRecording. What the canvas recorded is the node's list from now on; the one it had goes. */
+N(G_rnEnd)
+{
+    gnode *n = rn_of(c->args[0].j);
+    gdlist *l = cv_end_record(cv_of(c->args[1].j)), *old;
+    if (!n) {
+        dl_unref(l);
+        return;
+    }
+    hk_lock_acquire(&g_lock);
+    old = n->list;
+    n->list = l;
+    hk_lock_release(&g_lock);
+    dl_unref(old);
+}
+
+/* (long node): discardDisplayList. */
+N(G_rnDiscard)
+{
+    gnode *n = rn_of(c->args[0].j);
+    gdlist *old;
+    if (!n) return;
+    hk_lock_acquire(&g_lock);
+    old = n->list;
+    n->list = NULL;
+    hk_lock_release(&g_lock);
+    dl_unref(old);
+}
+
+/*
+ * (long node, float[20] f, int[5] i, float[] outline path or null, int[] layer paint or null): the node's properties, as
+ * android.graphics.RenderNode (megler-w10m's overlay) packs them before anything is drawn that may draw the node:
+ *
+ *   f  0-3 left, top, right, bottom; 4-9 its matrix (RN_IDENTITY: none); 10 alpha; 11-14 setClipRect's rectangle
+ *      (RN_CLIP_RECT); 15-18 the outline's rectangle and 19 its corner radius (outline kind 1)
+ *   i  0 the RN_* flags; 1 the outline's kind: 0 none or empty, 1 a rectangle, 2 a path; 2 the alpha a layer is put
+ *      on with, 0..255; 3 the path's fill rule (1 even-odd); 4 how many floats of the path count
+ *
+ * The path is the framework's operations (android.graphics.Path.ops), built here. The layer paint is Paint.mP, read for
+ * its mode and colour filter (RN_LAYER_PAINT).
+ */
+N(G_rnSet)
+{
+    gnode *n = rn_of(c->args[0].j);
+    const float *f = (const float *)elements(c->args[1].l, 'F', 20);
+    const i32 *k = (const i32 *)elements(c->args[2].l, 'I', 5), *paint = (const i32 *)elements(c->args[4].l, 'I', P_COUNT);
+    gpath p;
+    int i;
+    if (!n || !f || !k) return;
+    n->left = f[0];
+    n->top = f[1];
+    n->right = f[2];
+    n->bottom = f[3];
+    for (i = 0; i < 6; i++) n->m[i] = number(f[4 + i], i == 0 || i == 4 ? 1.0f : 0.0f);
+    n->alpha = number(f[10], 1);
+    for (i = 0; i < 4; i++) {
+        n->clip[i] = f[11 + i];
+        n->outline[i] = f[15 + i];
+    }
+    n->radius = number(f[19], 0);
+    n->flags = k[0];
+    n->outline_kind = k[1] == 1 || k[1] == 2 ? k[1] : 0;
+    n->layer_alpha = k[2] < 0 ? 0 : k[2] > 255 ? 255 : k[2];
+    free(n->outline_path);
+    n->outline_path = NULL;
+    n->outline_n = 0;
+    if (n->outline_kind == 2) {
+        if (!path_of(c->args[3].l, k[4], &p)) {
+            n->outline_kind = 0;
+        } else {
+            n->outline_fill = k[3] == 1 ? MEGLER_GFX_EVEN_ODD : MEGLER_GFX_WINDING;
+            n->outline_n = p.n;
+            n->outline_path = (float *)hk_alloc(sizeof(float) * (size_t)(p.n > 0 ? p.n : 1));
+            if (p.n) memcpy(n->outline_path, p.v, sizeof(float) * (size_t)p.n);
+            path_free(&p);
+        }
+    }
+    if (paint) memcpy(n->layer_paint, paint, sizeof(n->layer_paint));
+    else n->flags &= ~RN_LAYER_PAINT;
+}
+
+/* (long node) -> long: the bytes its list takes (computeApproximateMemoryUsage). */
+N(G_rnBytes)
+{
+    gnode *n = rn_of(c->args[0].j);
+    if (n) c->ret.j = (i64)sizeof(*n) + (n->list ? (i64)(sizeof(gdlist) + n->list->cap) : 0);
 }
 
 /* (String, int start, int end, int[] paint, long typeface) -> float: the run's advance width */
@@ -2317,14 +3314,18 @@ static void stops_free(gstops *s)
 /* Shader.TileMode as the Java numbers it: 0 CLAMP (and DECAL), 1 REPEAT, 2 MIRROR. */
 static int tile_number(i32 tile) { return tile == 1 || tile == 2 ? (int)tile : MEGLER_GFX_TILE_CLAMP; }
 
+/* A shader handle as the Java keeps it: the shell's shader inside one of this file's (gshader, by the canvases' section). */
+static i64 shader_handle(void *host) { return handle(sh_new(host)); }
+
 /* (x0, y0, x1, y1, int[] colors, float[] positions, int tile) -> long */
 N(G_shLinear)
 {
     gstops s;
+    void *made;
     if (!HAS(shader_linear)) return;
     stops_of(c->args[4].l, c->args[5].l, &s);
-    GFX(c->ret.j = handle(G.shader_linear(G.user, c->args[0].f, c->args[1].f, c->args[2].f, c->args[3].f, s.colors, s.positions, s.count,
-                                          tile_number(c->args[6].i))));
+    GFX(made = G.shader_linear(G.user, c->args[0].f, c->args[1].f, c->args[2].f, c->args[3].f, s.colors, s.positions, s.count, tile_number(c->args[6].i)));
+    c->ret.j = shader_handle(made);
     stops_free(&s);
 }
 
@@ -2332,9 +3333,11 @@ N(G_shLinear)
 N(G_shRadial)
 {
     gstops s;
+    void *made;
     if (!HAS(shader_radial)) return;
     stops_of(c->args[3].l, c->args[4].l, &s);
-    GFX(c->ret.j = handle(G.shader_radial(G.user, c->args[0].f, c->args[1].f, c->args[2].f, s.colors, s.positions, s.count, tile_number(c->args[5].i))));
+    GFX(made = G.shader_radial(G.user, c->args[0].f, c->args[1].f, c->args[2].f, s.colors, s.positions, s.count, tile_number(c->args[5].i)));
+    c->ret.j = shader_handle(made);
     stops_free(&s);
 }
 
@@ -2342,9 +3345,11 @@ N(G_shRadial)
 N(G_shSweep)
 {
     gstops s;
+    void *made;
     if (!HAS(shader_sweep)) return;
     stops_of(c->args[2].l, c->args[3].l, &s);
-    GFX(c->ret.j = handle(G.shader_sweep(G.user, c->args[0].f, c->args[1].f, s.colors, s.positions, s.count)));
+    GFX(made = G.shader_sweep(G.user, c->args[0].f, c->args[1].f, s.colors, s.positions, s.count));
+    c->ret.j = shader_handle(made);
     stops_free(&s);
 }
 
@@ -2353,28 +3358,32 @@ N(G_shBitmap)
 {
     gbitmap *b = bm_of(c->args[0].j);
     megler_gfx_image image;
+    void *made;
     if (!b || !HAS(shader_bitmap)) return;
     bm_settle(b);
     image_of(b, &image);
-    GFX(c->ret.j = handle(G.shader_bitmap(G.user, &image, tile_number(c->args[1].i))));
+    GFX(made = G.shader_bitmap(G.user, &image, tile_number(c->args[1].i)));
+    c->ret.j = shader_handle(made);
 }
 
-/* (long shader, float[6] or null): Shader.setLocalMatrix */
+/* (long shader, float[6] or null): Shader.setLocalMatrix. Kept here as well, for the lists that drew with the matrix before. */
 N(G_shMatrix)
 {
-    void *shader = pointer(c->args[0].j);
+    gshader *s = sh_of(c->args[0].j);
     const float *m = (const float *)elements(c->args[1].l, 'F', 6);
     int i;
-    if (!shader || !HAS(shader_matrix)) return;
+    if (!s || !HAS(shader_matrix)) return;
     for (i = 0; m && i < 6; i++)
         if (!isfinite(m[i])) return;
-    GFX(G.shader_matrix(G.user, shader, m));
+    s->has_m = m != NULL;
+    if (m) memcpy(s->m, m, sizeof(s->m));
+    GFX(G.shader_matrix(G.user, s->host, m));
 }
 
 N(G_shFree)
 {
-    void *shader = pointer(c->args[0].j);
-    if (shader && HAS(shader_free)) GFX(G.shader_free(G.user, shader));
+    gshader *s = sh_of(c->args[0].j);
+    if (s) sh_release(s);
 }
 
 /* ------------------------------------------------------------- Gfx: paths */
@@ -2553,6 +3562,17 @@ static const hk_jhle k_gfx[] = {
     { "megler/Gfx", "pathContains", "([FIIFF)Z", G_pathContains },
     { "megler/Gfx", "pathLength", "([FI[F)F", G_pathLength },
     { "megler/Gfx", "present", "(J)V", G_present },
+    { "megler/Gfx", "cvRecord", "(II)J", G_cvRecord },
+    { "megler/Gfx", "cvEndRecord", "(J)J", G_cvEndRecord },
+    { "megler/Gfx", "cvDrawNode", "(JJ)V", G_cvDrawNode },
+    { "megler/Gfx", "cvDrawList", "(JJ)V", G_cvDrawList },
+    { "megler/Gfx", "dlFree", "(J)V", G_dlFree },
+    { "megler/Gfx", "rnNew", "()J", G_rnNew },
+    { "megler/Gfx", "rnFree", "(J)V", G_rnFree },
+    { "megler/Gfx", "rnEnd", "(JJ)V", G_rnEnd },
+    { "megler/Gfx", "rnDiscard", "(J)V", G_rnDiscard },
+    { "megler/Gfx", "rnSet", "(J[F[I[F[I)V", G_rnSet },
+    { "megler/Gfx", "rnBytes", "(J)J", G_rnBytes },
     { NULL, NULL, NULL, NULL },
 };
 
@@ -2567,6 +3587,15 @@ void hk_java_gfx_set_host(const megler_gfx_host *host)
 }
 
 u64 hk_java_gfx_host_ns(void) { return t_host_ns; }
+
+void hk_java_gfx_list_stats(uint64_t *bytes, uint32_t *lists, uint32_t *nodes)
+{
+    hk_lock_acquire(&g_lock);
+    if (bytes) *bytes = g_dl_bytes;
+    if (lists) *lists = g_dl_count;
+    if (nodes) *nodes = g_rn_count;
+    hk_lock_release(&g_lock);
+}
 
 void hk_java_gfx_set_present(void (*fn)(void *user, const void *pixels, int width, int height, int stride), void *user)
 {
