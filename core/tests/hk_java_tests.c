@@ -1142,7 +1142,7 @@ static void answer_dialog(const u8 *list, int *at, const char *picture)
 static int run_demos(void)
 {
     static const char *const chain[] = {
-        "I/DemoTest: preferences: runs=1 name=h\xc3\xa9llo flag=true big=1099511627776 ratio=0.25 missing=default contains=true committed=true keys=6",
+        "I/DemoTest: preferences: runs=1 name=h\xc3\xa9llo flag=true big=1099511627776 ratio=0.25 missing=default contains=true committed=true keys=6 file=true new=false",
         "I/DemoTest: delayed: order=abc after the delay on the main thread",
         "I/DemoTest: task: background sum=500500 progress=pre;500;1000; delivered on the main thread",
         "I/DemoTest: second: asked for",

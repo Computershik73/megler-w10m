@@ -149,9 +149,11 @@ public class ListDemo extends Activity implements AdapterView.OnItemClickListene
         prefs.edit().putInt("runs", runs + 1).putString("name", "héllo").putBoolean("flag", true).putLong("big", 1L << 40).putFloat("ratio", 0.25f).apply();
         SharedPreferences again = getSharedPreferences("demo", MODE_PRIVATE);
         boolean committed = again.edit().putString("second", "two").commit();
+        // What commit() left on disk: the file with every key in it, and no ".new" file it was written to first.
+        java.io.File file = new java.io.File(getDataDir(), "shared_prefs/demo.xml");
         say("preferences: runs=" + again.getInt("runs", -1) + " name=" + again.getString("name", null) + " flag=" + again.getBoolean("flag", false) + " big=" + again.getLong("big", 0)
                 + " ratio=" + again.getFloat("ratio", 0) + " missing=" + again.getString("missing", "default") + " contains=" + again.contains("second") + " committed=" + committed
-                + " keys=" + again.getAll().size());
+                + " keys=" + again.getAll().size() + " file=" + (file.length() > 0) + " new=" + new java.io.File(file.getPath() + ".new").exists());
         next();
     }
 
