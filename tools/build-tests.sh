@@ -57,7 +57,9 @@
 # the framework's android.database.sqlite, twice, the second run on what the
 # first left, where the core has SQLite in it (build/sqlite). And `webview`,
 # Android's System WebView on pages of the app's own server, where the
-# Android root carries the WebView (tools/webview-fetch.sh). Their
+# Android root carries the WebView (tools/webview-fetch.sh). And `camera`, the
+# old android.hardware.Camera on a stand-in for the shell's cameras, twice: the
+# second time with every camera refused. Their
 # pictures are written to build/java-pictures as BMP files. Each is then run
 # once more with its calls of the shell's drawing recorded
 # (build/gfx-records/<app>.rec), for the Windows build to draw again.
@@ -192,6 +194,17 @@ EOF
         MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/webview.apk' $WB/webview.apk && rm -rf $WB/java-data-webview && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --java webview $WB/webview.apk $WB/java-data-webview $WB/android-root '$WROOT/build/java-pictures' 0 480x800@160 2>&1" || STATUS=1
       else
         echo "(the Java test app webview is not run: no WebView in the Android root -- tools/webview-fetch.sh fetches it)"
+      fi
+      # The camera app: the old android.hardware.Camera on a stand-in for the shell's cameras (core/tests/hk_camera_standin.c),
+      # its previews' pictures checked in the window; and once more with every camera refused, as Windows refuses Megler the
+      # camera when the user has said no.
+      if [ -f "$ROOT/build/guest/java/camera.apk" ]; then
+        for run in 1 2; do
+          SCRIPT=""
+          [ "$run" = 2 ] && SCRIPT="denied"
+          echo "the Java test app camera (build/guest/java/camera.apk), through megler_run${SCRIPT:+, every camera refused}"
+          MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/camera.apk' $WB/camera.apk && rm -rf $WB/java-data-camera && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --java camera $WB/camera.apk $WB/java-data-camera $WB/android-root '$WROOT/build/java-pictures' 0 480x800@160 $SCRIPT 2>&1" || STATUS=1
+        done
       fi
       # The GL app again with a shell that does not compose the window (gl_frame says no): the core reads the frames back and
       # composes the window itself, the way taken where EGL shares no textures; the same checks of the picture.

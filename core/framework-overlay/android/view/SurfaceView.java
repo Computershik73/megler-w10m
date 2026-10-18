@@ -15,6 +15,11 @@
 // surfaceCreated was null (a frame drawn there was never drawn). And, for the window the core composes of the views and the
 // frames of EGL surfaces (core/src/drivers/hk_java_gl.c): the view says where its hole is each time it draws it
 // (EGLNative.place), and that its surface is gone when it is (EGLNative.forget, where the original hid every view's).
+// And a frame that is a whole bitmap already, which the camera's preview posts (android.hardware.Camera, the overlay's):
+// meglerPostBitmap makes it the front buffer as it is, without drawing it into a canvas of the surface's, which on the
+// graphics processor would cost a canvas's read-back for every picture; onDraw scales it to the view as it does any frame.
+// meglerFrameDrawn says whether the window has drawn the last one, so that a camera faster than the window skips pictures
+// the window would never show.
 // Everything else is the original's, unchanged.
 package android.view;
 
@@ -34,7 +39,7 @@ public class SurfaceView extends View {
     private final Object mLock = new Object();
     private Bitmap mFront, mBack;
     private Canvas mBackCanvas;
-    private boolean mCreated, mLocked, mZOnTop, mFixed, mHasFrame;
+    private boolean mCreated, mLocked, mZOnTop, mFixed, mHasFrame, mDrawn = true;
     private int mFixedW, mFixedH, mFormat = PixelFormat.OPAQUE, mSurfaceW, mSurfaceH;
     private final Paint mClear = new Paint(), mBlit = new Paint(Paint.FILTER_BITMAP_FLAG);
     private final SurfaceHolder mHolder = new SurfaceHolder() {
@@ -149,6 +154,26 @@ public class SurfaceView extends View {
         }
         postInvalidate();
     }
+    /**
+     * A frame that is a whole bitmap (the camera's preview): the front buffer from now on, drawn scaled to the view; the
+     * next lockCanvas starts from a copy of it. The producer must not write into it again while it is the front. False when
+     * there is no surface, or a canvas of it is locked.
+     */
+    public boolean meglerPostBitmap(Bitmap b) {
+        synchronized (mLock) {
+            if (!mCreated || mLocked || b == null) return false;
+            mFront = b;
+            if (mBackCanvas != null) mBackCanvas.meglerRelease();
+            mBack = null;
+            mBackCanvas = null;
+            mHasFrame = true;
+            mDrawn = false;
+        }
+        postInvalidate();
+        return true;
+    }
+    /** Whether the window has drawn the last frame posted as a bitmap (true when none waits). */
+    public boolean meglerFrameDrawn() { synchronized (mLock) { return mDrawn || !mCreated; } }
     @Override public void draw(Canvas c) {
         super.draw(c);
     }
@@ -157,6 +182,7 @@ public class SurfaceView extends View {
             if (mHasFrame && mFront != null && !mGL) {
                 if (mFront.getWidth() == getWidth() && mFront.getHeight() == getHeight()) c.drawBitmap(mFront, 0, 0, mBlit);
                 else c.drawBitmap(mFront, null, new Rect(0, 0, getWidth(), getHeight()), mBlit);
+                mDrawn = true;
                 return;
             }
         }

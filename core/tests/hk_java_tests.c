@@ -33,6 +33,11 @@
  * SurfaceView from a thread of the app's, and the window composed of the views and the frames under them. OpenGL ES is the
  * stand-in that draws (hk_gl_standin.c), for every app here.
  *
+ * `camera` is the old android.hardware.Camera as a code scanner uses it, on a stand-in for the shell's cameras
+ * (hk_camera_standin.c): the cameras, their parameters, a preview on a SurfaceView with frames in the app's buffers, focus,
+ * the torch, preview callbacks, the front camera on a TextureView, and the pictures the previews put in the window. Run a
+ * second time with every camera refused, as Windows refuses one the user said no to.
+ *
  * `app` is any APK at all: started, left to itself until it is still, its
  * picture written, then whatever the script on the command line says -- a
  * touch, a wait, Back, each followed by another picture -- and a summary of
@@ -57,6 +62,7 @@
 #include "../src/host/hk_host.h"
 #include "../src/ndk/hk_egl.h"
 #include "../src/run/hk_run.h"
+#include "hk_camera_standin.h"
 #include "hk_codec_standin.h"
 #include "hk_gfx_standin.h"
 #include "hk_gl_standin.h"
@@ -481,6 +487,8 @@ static bool g_portrait;
 /* Not one of the test apps: nothing is known of what its manifest says. */
 static bool g_any_app;
 static bool g_crash_app;
+/* The camera app: it alone has cameras (the stand-in), so that the others still see a phone without one. */
+static bool g_camera_app;
 static volatile i32 g_exited;
 static int g_status;
 static char g_reason[1600];
@@ -541,6 +549,7 @@ static bool start(const char *apk, const char *android_root)
     cfg.keyboard.hide = keyboard_hide;
     /* Decoders for MediaCodec that decode nothing but take samples only as a real one must have them (hk_codec_standin.c). */
     cfg.codec = *hk_codec_standin();
+    if (g_camera_app) cfg.camera = *hk_camera_standin();
     /* The framework says which window each touch went to when it finds this in the environment: asked for with verbose 2. */
     if (g_verbose >= 2 && hk_bionic_find("setenv")) ((int (*)(const char *, const char *, int))hk_bionic_find("setenv"))("TL_TOUCH_LOG", "1", 1);
     /* And every window's views with their frames, every three seconds while it lays out: verbose 3. */
@@ -1736,6 +1745,104 @@ static int run_gl(void)
     return g_failed;
 }
 
+/* ----------------------------------------------------------------- camera */
+
+enum { CQ_R, CQ_G, CQ_B, CQ_W };
+
+/* Whether the middles of the four quarters of a rectangle of the last picture are the colours named, each channel within 3. */
+static bool camera_quarters(const int r[4], const int want[4])
+{
+    static const u32 rgb[4] = { 0xFF0000, 0x00FF00, 0x0000FF, 0xFFFFFF };
+    int i;
+    for (i = 0; i < 4; i++) {
+        u32 p = pixel(r[0] + (i % 2) * r[2] / 2 + r[2] / 4, r[1] + (i / 2) * r[3] / 2 + r[3] / 4), c = rgb[want[i]];
+        int k;
+        for (k = 0; k < 24; k += 8)
+            if (abs((int)((p >> k) & 255) - (int)((c >> k) & 255)) > 3) return false;
+    }
+    return true;
+}
+
+/* Waits up to `seconds` for a rectangle of the window to show the quarters named. */
+static bool camera_shown(const int r[4], const int want[4], int seconds)
+{
+    int tries;
+    for (tries = 0; tries < seconds * 20 && running(); tries++) {
+        if (camera_quarters(r, want)) return true;
+        hk_sleep_ns(50000000ull);
+    }
+    return camera_quarters(r, want);
+}
+
+/*
+ * `camera` (core/tests/app/camera): the old camera API on the stand-in's two cameras, whose pictures are four quarters of
+ * known colours, numbered. The app checks what it is given -- the information, the parameters as Android keeps them, the
+ * buffers in their order (a too-small one taken off and the frame given as null, as Android's JNI does), each frame's every
+ * byte, the threads the callbacks come on (the opener's looper; the main one for an opener without), a slow preview callback
+ * missing frames rather than queueing them, autofocus and its cancelling, the torch, stop and release -- and says how each
+ * step went. The test looks at the window while each preview runs: the back camera's picture in the SurfaceView turned 90
+ * degrees (its orientation, as the app set the display's), the front camera's in the TextureView mirrored and then turned,
+ * as Android shows a front camera; then it taps, and the app goes on. With "denied" every camera is refused: the app's
+ * first open fails as Android's does ("Fail to connect to camera service") and the log says why.
+ */
+static int run_camera(void)
+{
+    static const char *const steps[] = { "permission", "features", "info", "open", "busy", "parameters", "orientation", "buffers" };
+    static const char *const after[] = { "preview", "autofocus", "torch", "callback", "one-shot", "stop", "release" };
+    /* Top left, top right, bottom left, bottom right: the back camera's quarters turned 90 degrees; the front's mirrored, then turned 90. */
+    static const int back[4] = { CQ_B, CQ_R, CQ_W, CQ_G }, front[4] = { CQ_W, CQ_G, CQ_B, CQ_R };
+    hk_camera_standin_counts k;
+    char text[120];
+    int at = -1, line, sv[4], tv[4], i;
+    memset(sv, 0, sizeof(sv));
+    memset(tv, 0, sizeof(tv));
+    expect_line("I/CameraTest: onCreate", &at, 120);
+    if (g_script_count && !strcmp(g_script[0], "denied")) {
+        expect_line("I/CameraTest: denied ok", &at, 120);
+        CHECK(find_line("camera: camera 0 could not be opened: the user or the system refused Megler the camera: the stand-in refuses", 0) >= 0);
+        CHECK(find_line("I/CameraTest: open refused java.lang.RuntimeException: Fail to connect to camera service cameras=2", 0) >= 0);
+        expect_line("I/CameraTest: done ok=1 failed=0", &at, 60);
+        back_and_end("I/CameraTest: onDestroy", &at);
+        say_app_lines("/CameraTest: ");
+        return g_failed;
+    }
+    line = wait_line("I/CameraTest: layout ", 0, 120);
+    CHECK(line >= 0 && rect_in(line_at(line), "surface", sv) && rect_in(line_at(line), "texture", tv) && sv[2] > 0 && tv[2] > 0);
+    for (i = 0; i < (int)HK_COUNT(steps); i++) {
+        snprintf(text, sizeof(text), "I/CameraTest: %s ok", steps[i]);
+        expect_line(text, &at, 120);
+    }
+    expect_line("I/CameraTest: preview running", &at, 120);
+    /* The back camera's preview in the SurfaceView: the sensor's picture turned 90 degrees and scaled to the view. */
+    CHECK(camera_shown(sv, back, 60));
+    write_picture("camera-back");
+    tap(sv[0] + sv[2] / 2, sv[1] + sv[3] / 2);
+    for (i = 0; i < (int)HK_COUNT(after); i++) {
+        snprintf(text, sizeof(text), "I/CameraTest: %s ok", after[i]);
+        expect_line(text, &at, 120);
+    }
+    /* The torch went on through the parameters while the camera streamed, and off again. */
+    CHECK(find_line("camera stand-in: the torch is on", 0) >= 0 && find_line("camera stand-in: the torch is off", 0) >= 0);
+    expect_line("I/CameraTest: front running", &at, 120);
+    /* The front camera's preview in the TextureView: mirrored, then turned as the app set it. */
+    CHECK(camera_shown(tv, front, 60));
+    write_picture("camera-front");
+    tap(tv[0] + tv[2] / 2, tv[1] + tv[3] / 2);
+    expect_line("I/CameraTest: front ok", &at, 120);
+    snprintf(text, sizeof(text), "I/CameraTest: done ok=%d failed=0", (int)(HK_COUNT(steps) + HK_COUNT(after) + 1));
+    expect_line(text, &at, 60);
+    /* Every camera opened was closed, the stand-in streamed at the size the app set, and what the core said of it. */
+    hk_camera_standin_counts_get(&k);
+    say("  the stand-in: %d opened, %d closed, %d started, %d stopped, %d pictures, %d focused, %d focusing cancelled", k.opened, k.closed, k.started, k.stopped,
+        k.frames, k.focused, k.cancelled);
+    CHECK(k.opened == k.closed && k.started == k.stopped && k.frames > 0 && k.focused >= 1 && !k.torch && k.width == 320 && k.height == 240);
+    CHECK(find_line("camera: camera 0's first picture, 320x240", 0) >= 0 && find_line("camera: camera 1 closed", 0) >= 0);
+    CHECK(find_line("FAILED", 0) < 0 && find_line("FATAL EXCEPTION", 0) < 0);
+    back_and_end("I/CameraTest: onDestroy", &at);
+    say_app_lines("/CameraTest: ");
+    return g_failed;
+}
+
 /* -------------------------------------------------------------- any app */
 
 /*
@@ -1890,6 +1997,9 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
     g_portrait = !strcmp(which, "demos");
     g_any_app = !strcmp(which, "app");
     g_crash_app = !strcmp(which, "crash");
+    g_camera_app = !strcmp(which, "camera");
+    /* The camera app's second run: every camera refused, as Windows refuses Megler the camera when the user has said no. */
+    hk_camera_standin_refuse(g_camera_app && g_script_count && !strcmp(g_script[0], "denied"));
     /* The shell does not compose the window ("readback"): the core reads the GL frames back and composes it, as before. */
     GL.refuse = g_script_count && !strcmp(g_script[0], "readback");
     /* The data app's second run is on another battery than the one the core has when nobody has said: what the app then reads is what was set here. */
@@ -1928,6 +2038,7 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
         else if (!strcmp(which, "gc")) run_gc();
         else if (!strcmp(which, "gl")) run_gl();
         else if (!strcmp(which, "webview")) run_webview();
+        else if (!strcmp(which, "camera")) run_camera();
         else if (g_any_app) run_app();
         else run_hello();
         if (running()) {

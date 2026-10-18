@@ -1,5 +1,9 @@
 // Overlay: PackageManager must supply its installer even when there are no
 // installation sessions. F-Droid registers callbacks during startup.
+// And hasSystemFeature says what cameras the phone has (android.hardware.camera,
+// .any, .front, .autofocus, .flash), from the shell's (megler.CameraNative): the
+// original said no camera at all, and a scanner that asks before it opens one
+// (VK mp3 mod's QR sign-in among them) would not offer to scan.
 package android.content.pm;
 
 import android.content.ComponentName;
@@ -110,6 +114,16 @@ public class PackageManager {
         if (name.startsWith("android.hardware.touchscreen") || name.equals(FEATURE_FAKETOUCH) || name.equals(FEATURE_SCREEN_PORTRAIT) || name.equals(FEATURE_SCREEN_LANDSCAPE)) return true;
         if (name.equals(FEATURE_WIFI) || name.equals(FEATURE_AUDIO_OUTPUT) || name.equals(FEATURE_OPENGLES_EXTENSION_PACK) || name.equals(FEATURE_SENSOR_ACCELEROMETER)) return true;
         if (name.equals(FEATURE_INPUT_METHODS) || name.equals(FEATURE_GAMEPAD)) return true;
+        // The phone's cameras, as the shell finds them (megler.CameraNative, core/src/drivers/hk_java_camera.c).
+        if (name.startsWith("android.hardware.camera")) {
+            int f = megler.CameraNative.features();
+            if (name.equals(FEATURE_CAMERA_ANY)) return (f & megler.CameraNative.FEATURE_ANY) != 0;
+            if (name.equals(FEATURE_CAMERA)) return (f & megler.CameraNative.FEATURE_BACK) != 0;
+            if (name.equals(FEATURE_CAMERA_FRONT)) return (f & megler.CameraNative.FEATURE_FRONT) != 0;
+            if (name.equals(FEATURE_CAMERA_AUTOFOCUS)) return (f & megler.CameraNative.FEATURE_AUTOFOCUS) != 0;
+            if (name.equals(FEATURE_CAMERA_FLASH)) return (f & megler.CameraNative.FEATURE_FLASH) != 0;
+            return false;
+        }
         return false;
     }
     public FeatureInfo[] getSystemAvailableFeatures() { return new FeatureInfo[0]; }

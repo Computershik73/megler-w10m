@@ -351,6 +351,123 @@ typedef struct megler_codec_host {
 } megler_codec_host;
 
 /*
+ * Cameras, for an app's Java android.hardware.Camera.
+ *
+ * An app that scans a code or shows what the camera sees opens a camera,
+ * picks a size from those it offers, has its pictures shown on a view and
+ * copied to it as they come (NV21), and asks it to focus. The layer is the
+ * Android side of all of that (core/src/drivers/hk_java_camera.c: the
+ * parameters, the rotation and mirroring for the view, the app's buffers and
+ * the threads its callbacks run on); what it asks of the shell is the camera
+ * itself (Windows.Media.Capture on a phone):
+ *
+ *   count        how many cameras there are.
+ *   info         what camera `index` (0 .. count - 1) is, without opening it:
+ *                which way it faces, MEGLER_CAMERA_BACK (away from the user) or
+ *                MEGLER_CAMERA_FRONT; `orientation`, how many degrees clockwise
+ *                its picture must be turned to stand upright on the phone
+ *                held in its natural position (Android's CameraInfo
+ *                .orientation: 90 for the back camera of most phones, whose
+ *                sensor is laid along the long side; 270 for most front
+ *                cameras; 0 for a camera on a stand); `focus` and `light`,
+ *                1 when it focuses or has a torch, 0 when not, -1 when that is
+ *                not known before it has been opened once; `name`, for the
+ *                log. False for an index that is no camera.
+ *   open         connects to camera `index`, for this app alone, and fills
+ *                *caps: the sizes it streams at (the largest first), each with
+ *                the slowest and fastest whole frames a second it offers, and
+ *                what it can do -- focus once and continuously, focus close
+ *                up, a torch. On a phone this is where Windows asks the user,
+ *                the first time, whether Megler may use the camera; it returns
+ *                when the user has answered. A handle, or NULL with *error
+ *                one of MEGLER_CAMERA_DENIED (the user or the system said no),
+ *                MEGLER_CAMERA_BUSY (something else has the camera),
+ *                MEGLER_CAMERA_FAILED, and caps->why a sentence for the log that
+ *                says what Windows said.
+ *   start        streams at `width` x `height`, one of caps' sizes, with at
+ *                most `fps` frames a second (the shell takes the nearest it
+ *                offers). Each picture comes to `frame`, called on a thread of
+ *                the shell's with `core` as its first argument, one call at a
+ *                time, until stop has returned; the picture is the shell's for
+ *                the call alone (the layer copies it). `frame` with NULL for
+ *                the picture: the camera stopped for good (it was taken away,
+ *                or unplugged); nothing comes after that. False when it would
+ *                not start; the shell's log says why.
+ *   stop         no more pictures: when this returns, no call of `frame` is
+ *                under way and none will come. Focusing (below) ends with it.
+ *   focus        MEGLER_CAMERA_FOCUS_ONCE: focus once (Android's autoFocus in its
+ *                "auto" mode); _MACRO: the same, close up; _CONTINUOUS: keep
+ *                focusing by itself from now on. `done` is called once, from
+ *                any thread, with `core` and whether the picture came into
+ *                focus (for _CONTINUOUS, when it first did or at once when it
+ *                already was). MEGLER_CAMERA_FOCUS_NONE: stop focusing, whatever
+ *                was asked; `done` of an earlier call is not called after this
+ *                returns. While streaming only. False when it cannot (and
+ *                `done` is not called).
+ *   torch        the light on or off. While streaming; the shell turns it off
+ *                when streaming stops.
+ *   close        the handle is done with (the layer stops it first).
+ *
+ * A picture is NV12: `width` x `height`, as the camera's sensor sees it (not
+ * turned: `orientation` says how far the layer turns it), `y` the luma of the
+ * top left pixel with rows `y_stride` bytes apart, `uv` the U, V pair of the
+ * top left 2 x 2 pixels with rows `uv_stride` apart. `time_us` is when it was
+ * taken, on any clock that only goes forward.
+ *
+ * The calls come from the app's threads (any of them, one at a time for a
+ * camera), never the shell's UI thread; open may wait for the user. All of it
+ * may be left zero: an app is then told there is no camera, as on a phone
+ * without one.
+ */
+enum { MEGLER_CAMERA_BACK = 0, MEGLER_CAMERA_FRONT = 1 };
+enum { MEGLER_CAMERA_OK = 0, MEGLER_CAMERA_DENIED, MEGLER_CAMERA_BUSY, MEGLER_CAMERA_FAILED };
+enum { MEGLER_CAMERA_FOCUS_NONE = 0, MEGLER_CAMERA_FOCUS_ONCE, MEGLER_CAMERA_FOCUS_MACRO, MEGLER_CAMERA_FOCUS_CONTINUOUS };
+#define MEGLER_CAMERA_MAX_SIZES 24
+
+typedef struct megler_camera_info {
+    int facing;                        /* MEGLER_CAMERA_BACK or MEGLER_CAMERA_FRONT */
+    int orientation;                   /* 0, 90, 180 or 270 */
+    int focus, light;                  /* 1, 0, or -1: not known yet */
+    char name[96];
+} megler_camera_info;
+
+typedef struct megler_camera_size {
+    int width, height;
+    int min_fps, max_fps;
+} megler_camera_size;
+
+typedef struct megler_camera_caps {
+    int size_count;
+    megler_camera_size sizes[MEGLER_CAMERA_MAX_SIZES];
+    bool focus;                        /* focuses once and continuously */
+    bool macro;                        /* focuses close up */
+    bool torch;
+    char why[256];                     /* open failed: why, for the log */
+} megler_camera_caps;
+
+typedef struct megler_camera_frame {
+    int width, height;
+    const uint8_t *y, *uv;
+    int y_stride, uv_stride;
+    int64_t time_us;
+} megler_camera_frame;
+
+typedef void (*megler_camera_frame_fn)(void *core, const megler_camera_frame *frame);
+typedef void (*megler_camera_focus_fn)(void *core, bool focused);
+
+typedef struct megler_camera_host {
+    void *user;
+    int (*count)(void *user);
+    bool (*info)(void *user, int index, megler_camera_info *info);
+    void *(*open)(void *user, int index, megler_camera_caps *caps, int *error);
+    bool (*start)(void *user, void *camera, int width, int height, int fps, megler_camera_frame_fn frame, void *core);
+    void (*stop)(void *user, void *camera);
+    bool (*focus)(void *user, void *camera, int mode, megler_camera_focus_fn done, void *core);
+    void (*torch)(void *user, void *camera, bool on);
+    void (*close)(void *user, void *camera);
+} megler_camera_host;
+
+/*
  * The phone's own folders in an app's storage.
  *
  * Android's shared storage (/sdcard, /storage/emulated/0) is one folder under
@@ -1116,6 +1233,8 @@ typedef struct megler_run_config {
     megler_media_host media;
     /* Decoders of samples for a Java app's MediaCodec (see megler_codec_host). May be left zero. */
     megler_codec_host codec;
+    /* The phone's cameras for a Java app's android.hardware.Camera (see megler_camera_host). May be left zero. */
+    megler_camera_host camera;
     /* The phone's own folders in the app's shared storage (see megler_storage_host). May be left zero. */
     megler_storage_host storage;
     /*
