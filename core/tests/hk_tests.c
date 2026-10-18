@@ -412,7 +412,11 @@ static void *f_tex_resolve(const char *name)
  * ANGLE's lossy-decode format, the data as it was; a texture whose base level is not whole blocks as the app gave it, all
  * its levels; storage of sRGB RGBA8 ETC2 EAC as sRGB DXT5 and a part of a level uploaded into it so; without ANGLE's
  * lossy decoding, the RGB ones as they are. And what the textures held come to: the levels made as ANGLE keeps them (four
- * bytes a pixel for the ETC it decodes), a texture's storage, less a texture deleted.
+ * bytes a pixel for the ETC it decodes), a texture's storage, less a texture deleted. And the RGB decoders (ETC2 RGB8, its
+ * punch-through kind) against ANGLE's own (LoadETC2RGB8ToRGBA8, LoadETC2RGB8A1ToRGBA8, the same way); a level halved, the
+ * encoding of the mean of its decoding; and textures from 1024 pixels a side given at half their size: storage, with a
+ * level fewer, a part of a level on whole blocks of the half and one that is not (not given), two levels, and a texture
+ * of 512 left whole.
  */
 static void test_etc(void)
 {
@@ -491,6 +495,79 @@ static void test_etc(void)
     del = (delete_fn)hk_gltex_wrap("glDeleteTextures", (void *)f_delete_textures);
     del(1, &eight);
     CHECK_INT((long)hk_gltex_held_bytes(), 432);
+
+    /* The RGB decoders against ANGLE's own over 65536 eight-byte blocks each: ETC2 RGB8 and its punch-through kind. */
+    {
+        static const struct { u32 format, hash; } k_ref[] = { { 0x9274, 0x52d1ffa6u }, { 0x9276, 0x2877c191u } };
+        int r;
+        for (r = 0; r < 2; r++) {
+            u32 hs = 0x12345678u, h = 2166136261u;
+            for (n = 0; n < 65536; n++) {
+                for (i = 0; i < 8; i++) {
+                    hs ^= hs << 13;
+                    hs ^= hs >> 17;
+                    hs ^= hs << 5;
+                    again[i] = (u8)(hs >> 24);
+                }
+                hk_gltex_etc_decode(k_ref[r].format, again, px);
+                for (i = 0; i < 64; i++) {
+                    h ^= ((const u8 *)px)[i];
+                    h *= 16777619u;
+                }
+            }
+            CHECK_INT((long)h, (long)k_ref[r].hash);
+        }
+    }
+    /* A level halved is the DXT5 (with alpha) or BC1 (without) of the mean of each 2x2 of what it decodes to. */
+    {
+        u8 big[8 * 8 * 4], small[4 * 4 * 4], want[16], got[16];
+        int f, bx, by, x, y, k;
+        for (f = 0; f < 2; f++) {
+            u32 format = f ? 0x9274 : 0x9278, bytes = f ? 8 : 16;
+            for (by = 0; by < 2; by++)
+                for (bx = 0; bx < 2; bx++) {
+                    hk_gltex_etc_decode(format, block + (by * 2 + bx) * bytes, px);
+                    for (y = 0; y < 4; y++) memcpy(big + ((by * 4 + y) * 8 + bx * 4) * 4, px[y * 4], 16);
+                }
+            for (y = 0; y < 4; y++)
+                for (x = 0; x < 4; x++)
+                    for (k = 0; k < 4; k++)
+                        small[(y * 4 + x) * 4 + k] = (u8)((big[((2 * y) * 8 + 2 * x) * 4 + k] + big[((2 * y) * 8 + 2 * x + 1) * 4 + k] +
+                                                           big[((2 * y + 1) * 8 + 2 * x) * 4 + k] + big[((2 * y + 1) * 8 + 2 * x + 1) * 4 + k] + 2) / 4);
+            if (f) hk_gltex_bc1(small, 4, 4, 16, want);
+            else hk_gltex_dxt5(small, 4, 4, 16, want);
+            CHECK(hk_gltex_etc_halve(format, block, 8, 8, got) == (f ? 8u : 16u) && !memcmp(got, want, f ? 8 : 16));
+        }
+    }
+
+    /* Textures from 1024 pixels a side, halved: storage, a part of a level, a level and the next, and one below the size left whole. */
+    {
+        u8 *level = (u8 *)malloc(1024 * 1024);
+        u8 sub_px[256];
+        if (level) {
+            for (i = 0; i < 1024 * 1024; i++) level[i] = block[i & 63];
+            memcpy(sub_px, level, sizeof(sub_px));
+            bind(0x0DE1, 11);
+            storage(0x0DE1, 11, 0x9278, 1024, 1024);
+            CHECK(g_tex_got.internal == 0x83F3 && g_tex_got.w == 512 && g_tex_got.h == 512 && g_tex_got.level == 10);
+            sub(0x0DE1, 0, 0, 0, 16, 16, 0x9278, 256, sub_px);
+            CHECK(g_tex_got.internal == 0x83F3 && g_tex_got.w == 8 && g_tex_got.h == 8 && g_tex_got.size == 64);
+            g_tex_got.internal = 0;
+            sub(0x0DE1, 0, 4, 0, 16, 16, 0x9278, 256, sub_px);
+            CHECK(g_tex_got.internal == 0);
+            bind(0x0DE1, 12);
+            compressed(0x0DE1, 0, 0x9274, 1024, 512, 0, 1024 * 512 / 2, level);
+            CHECK(g_tex_got.internal == 0x83F0 && g_tex_got.w == 512 && g_tex_got.h == 256 && g_tex_got.size == 512 * 256 / 2 && g_tex_got.data);
+            compressed(0x0DE1, 1, 0x9274, 512, 256, 0, 512 * 256 / 2, level);
+            CHECK(g_tex_got.internal == 0x83F0 && g_tex_got.level == 1 && g_tex_got.w == 256 && g_tex_got.h == 128 && g_tex_got.size == 256 * 128 / 2);
+            bind(0x0DE1, 13);
+            compressed(0x0DE1, 0, 0x9278, 512, 512, 0, 512 * 512, level);
+            CHECK(g_tex_got.internal == 0x83F3 && g_tex_got.w == 512 && g_tex_got.h == 512);
+            hk_gltex_report(report, sizeof(report));
+            CHECK(strstr(report, "halved: 3, ") != NULL);
+            free(level);
+        }
+    }
 
     hk_gltex_reset();
     g_tex_ext = "GL_EXT_texture_compression_s3tc";

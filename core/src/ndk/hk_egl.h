@@ -104,6 +104,16 @@ void hk_gltex_dxt5(const u8 *rgba, u32 w, u32 h, size_t stride, u8 *out);
 /* An RGBA8 ETC2 EAC block (sixteen bytes) decoded into sixteen pixels, rows of four, top first; and `blocks` of them packed again as as many DXT5 blocks. */
 void hk_gltex_etc2_eac_decode(const u8 block[16], u8 px[16][4]);
 void hk_gltex_etc2_eac_to_dxt5(const u8 *in, size_t blocks, u8 *out);
+/* RGBA8 pixels to BC1 blocks (opaque, four colours), as hk_gltex_dxt5 does DXT5. */
+void hk_gltex_bc1(const u8 *rgba, u32 w, u32 h, size_t stride, u8 *out);
+/* One block of an ETC format (ETC1, ETC2 RGB8, its punch-through kind, RGBA8 EAC, and their sRGB twins) decoded; false for another format. */
+bool hk_gltex_etc_decode(u32 format, const u8 *block, u8 px[16][4]);
+/*
+ * A level of an ETC format, w x h, at half its size (max(1, w/2) x max(1, h/2)): decoded, each 2x2 pixels averaged, packed
+ * again as DXT5 (the formats with alpha) or BC1; the bytes written (hk_gltex_etc_halved_size), 0 when it cannot be done.
+ */
+size_t hk_gltex_etc_halved_size(u32 format, u32 w, u32 h);
+size_t hk_gltex_etc_halve(u32 format, const u8 *in, u32 w, u32 h, u8 *out);
 /* Back to nothing known (tests): the functions it calls, the formats this OpenGL has, what was counted, the textures held, this thread's bindings. */
 void hk_gltex_reset(void);
 
