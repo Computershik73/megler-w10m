@@ -379,6 +379,12 @@ static EGLDisplay display(void)
             }
             hk_info("egl: ANGLE display as %s, EGL %d.%d, Direct3D feature level %d_%d", g_how, g_major, g_minor, g_d3d_level >> 12, (g_d3d_level >> 8) & 15);
             {
+                bool offsets = false, partial = false;
+                if (hk_host_d3d11_options(g_d3d_device, &offsets, &partial))
+                    hk_info("egl: the driver's Direct3D 11.1: constant buffers at an offset %s, updated in part %s%s", offsets ? "yes" : "no", partial ? "yes" : "no",
+                            offsets ? "" : " (ANGLE makes a buffer of its own for each range of a uniform buffer bound)");
+            }
+            {
                 fn_query_string qs = A(fn_query_string, "eglQueryString");
                 const char *ext = qs ? qs(g_display, EGL_EXTENSIONS) : NULL;
                 size_t n = ext ? strlen(ext) : 0, at = 0;

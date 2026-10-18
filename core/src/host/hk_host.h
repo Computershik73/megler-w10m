@@ -556,6 +556,12 @@ bool hk_host_module_at(hk_addr address, char *name, size_t size, hk_addr *base);
 int hk_host_d3d11_feature_level(void *device);
 /* Why a Direct3D 11 device is gone (an HRESULT such as DXGI_ERROR_DEVICE_HUNG), or 0 while it is still there. */
 u32 hk_host_d3d11_removed_reason(void *device);
+/*
+ * What Direct3D 11.1 a device's driver offers that ANGLE's speed depends on (D3D11_FEATURE_D3D11_OPTIONS): constant buffers
+ * bound at an offset (without them ANGLE makes a buffer of its own for each range of a uniform buffer an app binds), and
+ * constant buffers updated in part. False where it cannot be asked.
+ */
+bool hk_host_d3d11_options(void *device, bool *constant_buffer_offsets, bool *constant_buffer_partial_updates);
 /* How much graphics memory the process may use and does (megabytes), as the adapter of a Direct3D 11 device says; false where it cannot be asked. */
 bool hk_host_gpu_memory(void *device, u32 *budget_mb, u32 *used_mb);
 /*

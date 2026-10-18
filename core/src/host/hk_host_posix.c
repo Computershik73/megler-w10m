@@ -1514,6 +1514,13 @@ u32 hk_host_d3d11_removed_reason(void *device)
     return 0;
 }
 
+bool hk_host_d3d11_options(void *device, bool *constant_buffer_offsets, bool *constant_buffer_partial_updates)
+{
+    (void)device;
+    *constant_buffer_offsets = *constant_buffer_partial_updates = false;
+    return false;
+}
+
 int hk_host_d3d11_feature_level(void *device)
 {
     (void)device;

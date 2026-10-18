@@ -2324,6 +2324,16 @@ u32 hk_host_d3d11_removed_reason(void *device)
     return device ? (u32)ID3D11Device_GetDeviceRemovedReason((ID3D11Device *)device) : 0;
 }
 
+bool hk_host_d3d11_options(void *device, bool *constant_buffer_offsets, bool *constant_buffer_partial_updates)
+{
+    D3D11_FEATURE_DATA_D3D11_OPTIONS o;
+    memset(&o, 0, sizeof(o));
+    if (!device || FAILED(ID3D11Device_CheckFeatureSupport((ID3D11Device *)device, D3D11_FEATURE_D3D11_OPTIONS, &o, sizeof(o)))) return false;
+    *constant_buffer_offsets = o.ConstantBufferOffsetting != FALSE;
+    *constant_buffer_partial_updates = o.ConstantBufferPartialUpdate != FALSE;
+    return true;
+}
+
 bool hk_host_address_space(u32 *free_mb, u32 *largest_free_mb, u32 *reserved_mb, u32 *committed_mb)
 {
     MEMORY_BASIC_INFORMATION info;
