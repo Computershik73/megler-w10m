@@ -176,6 +176,18 @@ under "Films" below). What it took, beyond what qemu had shown:
     against ANGLE's own over 65536 blocks). A texture whose base level is not
     whole blocks stays as the app gave it. Flag `etc-by-angle` gives every ETC
     texture to ANGLE as the app gave it.
+  - (Asphalt 9, package 281, with `trace-cpu`'s memory figures.) At the same
+    size it still ran out in its first race: 1238 MB of 2048 in use, 254 MB of
+    textures held, 507 MB of graphics memory, and 442 MB of addresses free in
+    pieces of 31 MB at most; Direct3D could not make a texture (the road and
+    buildings untextured) and then a vertex buffer's mapping, whose null the
+    game wrote through. ANGLE over Direct3D 11 keeps a staging copy of a buffer
+    to map or update it and of a compressed texture until it is first drawn,
+    all in the same addresses. So an ETC texture of 1024 pixels a side or more
+    at its base now goes at half its size, a quarter of the memory: each level
+    decoded, each 2x2 averaged, packed as BC1 or DXT5, its level numbers kept
+    (`hk_gltex.c`; flag `full-textures` keeps them whole). The RGB decoders are
+    checked against ANGLE's own as the RGBA one is.
 
 Unity's frame pacing is `core/src/jni/hk_jni_loop.c`: Android's `Looper`,
 `Handler`, `HandlerThread`, `Message` and `Choreographer`, the boxed numbers, and
