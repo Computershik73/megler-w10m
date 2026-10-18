@@ -1,0 +1,12 @@
+    // megler-w10m: members added to the original's android.graphics.Canvas (tools/build-framework.sh, "X.java.members").
+    // A canvas that records: a RenderNode's (RecordingCanvas) or a Picture's, over the core's recording canvas
+    // (megler.Gfx.cvRecord), which writes down what it is given instead of drawing it (android/graphics/RenderNode.java says
+    // why). It has no bitmap; its subclasses say its size. And what RenderNode and Picture need of a canvas they are drawn
+    // on: whether it records, and the generation of the bitmap it draws into moved on, as any drawing call moves it.
+    private boolean mMeglerRecording;
+    /** Megler: a canvas over a recording canvas of the core's (megler.Gfx.cvRecord), whose native half it frees as any other. */
+    Canvas(long recording, boolean records) { mNative = recording; mMeglerRecording = records; }
+    /** Megler: whether what is drawn on this canvas is written down (a RenderNode's or a Picture's) rather than drawn. */
+    boolean meglerRecords() { return mMeglerRecording; }
+    /** Megler: something was drawn through this canvas by a native call of another class's (a node, a picture). */
+    void meglerDrawn() { touched(); }

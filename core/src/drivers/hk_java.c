@@ -782,8 +782,8 @@ static void meter_line(const char *what, const meter_window *w, u64 now)
     hk_dvm_stats s;
     u64 busy[PARTS], java = 0, host = 0, present = 0, waited = 0, executed = 0, elapsed = now - w->started, screen;
     u64 native = 0, natives = 0, alloc = 0, allocs = 0, blocked = 0, wall = 0, other, interpreted, live_bytes;
-    u64 bitmap_bytes = 0, process = hk_mem_usage(), collections = 0, collecting_ns = 0;
-    u32 bitmaps = 0, n = w->frames;
+    u64 bitmap_bytes = 0, list_bytes = 0, process = hk_mem_usage(), collections = 0, collecting_ns = 0;
+    u32 bitmaps = 0, nodes = 0, n = w->frames;
     char of[40], redrawn[60], rates[300], mem[40], gc[120];
     int i;
     for (i = 0; i < PARTS; i++) {
@@ -805,6 +805,8 @@ static void meter_line(const char *what, const meter_window *w, u64 now)
     hk_dvm_get_stats(&s);
     live_bytes = hk_dvm_live_bytes();
     hk_java_gfx_stats(&bitmap_bytes, &bitmaps);
+    /* And what RenderNodes and Pictures take: their display lists, which are the core's memory as bitmaps are. */
+    hk_java_gfx_list_stats(&list_bytes, NULL, &nodes);
     screen = (u64)(J.config->width > 0 ? J.config->width : 0) * (u64)(J.config->height > 0 ? J.config->height : 0);
     of[0] = 0;
     if (w->drawn != n) snprintf(of, sizeof(of), " of %u frames", (unsigned)n);
@@ -833,12 +835,12 @@ static void meter_line(const char *what, const meter_window *w, u64 now)
     hk_info("java: frames %s%.1f s: %u drawn%s, %.1f ms of work each on average (the longest frame %.1f without input and messages): Java %.1f "
             "(input and messages %.1f, measure and layout %.1f, "
             "draw traversal %.1f), of it in the shell's drawing %.1f, %s; present %.1f; idle %u%%; %s; heap %u MB (objects %u live, %u "
-            "made in these %.1f s; bitmaps %u)%s; %s",
+            "made in these %.1f s; bitmaps %u; display lists %u KB, %u nodes)%s; %s",
             what, (double)elapsed / 1e9, (unsigned)w->drawn, of, per_frame_ms(java + present, n), per_frame_ms(w->longest, 1), per_frame_ms(java, n),
             per_frame_ms(busy[PART_BETWEEN], n), per_frame_ms(busy[PART_LAYOUT], n), per_frame_ms(busy[PART_DRAW], n), per_frame_ms(host, n), rates,
             per_frame_ms(present, n), (unsigned)(elapsed ? waited * 100 / elapsed : 0), gc,
             (unsigned)((live_bytes + bitmap_bytes) >> 20), (unsigned)(live_bytes >> 20), (unsigned)((s.object_bytes - w->object_bytes) >> 20),
-            (double)elapsed / 1e9, (unsigned)(bitmap_bytes >> 20), mem, redrawn);
+            (double)elapsed / 1e9, (unsigned)(bitmap_bytes >> 20), (unsigned)(list_bytes >> 10), (unsigned)nodes, mem, redrawn);
 }
 
 /* megler.Native.frameMark(phase, redrawn), from megler.ViewRoot.doFrame on the main thread. */

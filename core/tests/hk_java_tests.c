@@ -1465,7 +1465,13 @@ static int run_data(void)
                                          "codec-mp3",
                                          /* And the network from Java, on loopback: names, an HTTP server of the app's own and HttpURLConnection, UDP, a server
                                             socket closed under the thread waiting in accept, a java.nio selector, the interfaces, ConnectivityManager. */
-                                         "net-localhost", "net-http", "net-udp", "net-close", "net-nio", "net-interfaces", "net-connectivity" };
+                                         "net-localhost", "net-http", "net-udp", "net-close", "net-nio", "net-interfaces", "net-connectivity",
+                                         /* And RenderNodes and Pictures as display lists, as Compose uses them: nodes recorded once and drawn as their
+                                            bitmaps were, three of a screen's size among them; the kids' properties changed and the parent not
+                                            recorded again; nodes nested and moved; one discarded and recorded again; what a list keeps (a paint, a
+                                            path, a matrix and a picture as they were, a bitmap as it is); two hundred nodes of 1440 x 2560. */
+                                         "render-nodes", "render-node-props", "render-node-nested", "render-node-rerecord", "render-node-snapshots",
+                                         "render-node-memory" };
     int at = -1, want = 0, run = 0, line, i;
     char text[120];
     if (g_script_count) sscanf(g_script[0], "run:%d", &want);

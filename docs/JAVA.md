@@ -88,23 +88,23 @@ the decoder 40 fewer, and the script says which is missing.
 
 ```
 bash tools/build-tests.sh win      (MSVC x64, run on the PC; libcore's native libraries cannot run there)
-    4264 checks, 0 failed          on the built-in java.lang (OpenGL ES from Java's 67 among them)
-    4297 checks, 0 failed          on libcore, its bytecode alone (OpenGL ES from Java's 86 among them)
-    (then the shell's own drawing and the storage on Windows' own folders, which are not this document's: 263, 263, 263, 441, 12, 8, 8 and 6 checks)
+    4454 checks, 0 failed          on the built-in java.lang (OpenGL ES from Java's 67 among them)
+    4507 checks, 0 failed          on libcore, its bytecode alone (OpenGL ES from Java's 86 among them)
+    (then the shell's own drawing and the storage on Windows' own folders, which are not this document's: 294, 264, 264, 294, 294, 441, 110, 12, 8, 8, 8, 6 and 6 checks)
 
 bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-float, under qemu-arm)
-    4460 checks, 0 failed          on the built-in java.lang
-    4534 checks, 0 failed          on libcore with its native libraries
-      49 checks, 0 failed          the Java test app hello, through megler_run
-      81 checks, 0 failed          the Java test app demos, the keyboard's 25 and the frame meter's 3 among them
-      46 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
-      15 checks, 0 failed          the Java test app crash: an exception nothing catches, launcher aliases, an app written for Android 6
-      18 checks, 0 failed          the Java test app gc: references, finalizers, threads allocating, a heap that stays small
+    4711 checks, 0 failed          on the built-in java.lang
+    4805 checks, 0 failed          on libcore with its native libraries
+      50 checks, 0 failed          the Java test app hello, through megler_run
+     121 checks, 0 failed          the Java test app demos, the keyboard's 25 and the frame meter's 3 among them
+      47 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
+      16 checks, 0 failed          the Java test app crash: an exception nothing catches, launcher aliases, an app written for Android 6
+      19 checks, 0 failed          the Java test app gc: references, finalizers, threads allocating, a heap that stays small
       49 checks, 0 failed          the Java test app gl: a GLSurfaceView, EGL14 on a pbuffer, EGL10 on a SurfaceView, on a stand-in for OpenGL ES that draws
-      65 checks, 0 failed          the Java test app data: a database, the storage, the battery, the time zone, TLS (conscrypt's, on loopback), key pairs, codecs and the network, the first run
-      66 checks, 0 failed          data again, on what the first run left, with another battery and a time zone that is none
+     104 checks, 0 failed          the Java test app data: a database, the storage, the battery, the time zone, TLS (conscrypt's, on loopback), key pairs, codecs, the network and RenderNodes, the first run
+     105 checks, 0 failed          data again, on what the first run left, with another battery and a time zone that is none
       27 checks, 0 failed          the Java test app webview: Android's System WebView from the Android root, on pages of the app's own server
-      49 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
+      50 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
     (then each app once more, its drawing recorded for the PC's run to draw again)
 ```
 
@@ -2207,8 +2207,8 @@ referenced, not with what ever was.
 
 ### Drawing: `megler.Gfx` and the shell
 
-`android.graphics` in the framework is Java over the 54 native methods of
-`megler.Gfx`. Here they are `core/src/drivers/hk_java_gfx.c`, and the drawing
+`android.graphics` in the framework is Java over the native methods of
+`megler.Gfx`: the original's 54, and 11 more for display lists (below). Here they are `core/src/drivers/hk_java_gfx.c`, and the drawing
 itself is the shell's, behind `megler_gfx_host` in `core/include/megler.h`, whose
 comment is the contract: every encoding that crosses it, and what is expected
 where the original leaned on CoreGraphics without saying.
@@ -2235,6 +2235,29 @@ where the original leaned on CoreGraphics without saying.
   for each letter with fixed metrics (advance 0.6 of the size, ascent 0.8,
   descent 0.2), images are PNG only. It is deterministic on every machine,
   which is what the tests want of it.
+- **Display lists.** A `RenderNode`'s canvas and a `Picture`'s record what
+  they are given instead of drawing it, as Android's do, and the list is
+  drawn again on whatever canvas draws the node or the picture. The core
+  does the recording, at the level of these natives: a recording canvas is
+  a canvas of `hk_java_gfx.c` with no bitmap (`cvRecord`), which keeps its
+  save count, matrix and clip as any canvas does and writes every call that
+  would reach the shell into its list, with the paint unpacked, the path
+  built, the matrix and the text copied. What a call refers to is referred
+  to: a bitmap is drawn with the pixels it has when the list is drawn, a
+  shader with the local matrix it had when it was recorded, a node drawn
+  into another's list is that node (`cvDrawNode`), drawn with its list and
+  properties as they are when the outer list is drawn. Each is kept alive
+  by the lists that refer to it. A node's properties (place, matrix, alpha,
+  clips, outline, layer) are the Java's, handed over whole (`rnSet`) before
+  anything is drawn that may draw the node. The original drew each node
+  into a bitmap of its size, and kept the bitmap: Compose has a node for
+  every graphics layer, dozens, many as large as the screen, and Spotify
+  ended with `OutOfMemoryError: Bitmap 1650x2560` (`megler/Gfx.java.members`
+  declares the natives; `android/graphics/RenderNode.java` below).
+  Recorded in the core and not in Java because a Java recorder would copy a
+  `Paint` for every call into a heap whose collector is the slow part on
+  the phone, and drawing a node would run the interpreter over every call
+  of every list at every frame; here drawing a node is one native call.
 
 ### The keyboard
 
@@ -3149,10 +3172,10 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: ninety-nine files** in the overlay,
+**What differs from the original's framework: a hundred and five files** in the overlay,
 most of them a statement or a few methods each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
-**and nine files of members added** to classes of the original's, **and four files of the original's taken
+**and eleven files of members added** to classes of the original's, **and four files of the original's taken
 away**.
 
 The second kind is for the platform's public members that the original's
@@ -3781,8 +3804,41 @@ on a looper thread of its own and takes it back with `next()`.
   WebView's code asks the package manager for its own package: Chromium's
   crash handling lists the WebView's APK and library folders at the
   browser's start, and ended the start on the null it got.
+- `android/graphics/RenderNode.java`, `RecordingCanvas.java`,
+  `BaseRecordingCanvas.java` and `Picture.java`, and
+  `android/graphics/Canvas.java.members`: a node and a picture are display
+  lists the core records ("Drawing: `megler.Gfx` and the shell", display
+  lists), where the original drew a node's content into a bitmap of its
+  size when it was recorded and drew that bitmap where the node was.
+  Compose makes a node for each graphics layer, dozens, many as large as
+  the screen; Spotify, a Compose app, ended on the phone with
+  `OutOfMemoryError: Bitmap 1650x2560` from `beginRecording`, after
+  Direct2D's `EndDraw` had failed for want of memory. A node's canvas is
+  over the core's recording canvas and `endRecording` gives the node its
+  list; `drawRenderNode` on a recording canvas writes the node itself into
+  the outer list, and on any other draws it now, with its list and
+  properties as they are. The properties stay in the Java's fields: a
+  setter that changes one marks the node, and the marked nodes hand theirs
+  to the core, one call each, before anything is drawn on a canvas that does
+  not record. The outline (with its path) and the layer paint are copied when
+  set, as Android copies them, and a layer is made as Android makes one,
+  for a translucent node or one asked to be composited (the original put
+  every node on with its layer paint). A picture drawn into a list is the
+  list it has then; `Picture(Picture)` copies it and `close()` frees it.
+  `Canvas.java.members` adds the constructor of a canvas over a recording
+  canvas, and what a node or a picture asks of the canvas it is drawn on:
+  whether it records, and that something was drawn. And the generated
+  `RenderNode.create(String, AnimationHost)`, which answered null, makes a
+  node. The data app's six `render-node` steps check it: twelve nodes and
+  three of 1440 x 2560 recorded once and drawn by a parent recorded once
+  give the picture the nodes' bitmaps gave, pixel for pixel; the children
+  moved, scaled, made translucent and invisible without the parent recorded
+  again give it again; nodes nested three deep and moved, one discarded and
+  recorded again; a paint, a path, a matrix and a picture changed after
+  recording do not change the list, a bitmap does; two hundred nodes of
+  1440 x 2560 take 110 KB, where the original's ran out of memory.
 
-The original has all thirty-eight faults; they are its author's to take back.
+The original has all thirty-nine faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in
