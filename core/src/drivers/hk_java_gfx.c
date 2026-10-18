@@ -66,8 +66,13 @@
  *                          and bottom left corner, then ccw
  *    9 TRANSFORM m0..m5    everything before it goes through the matrix
  *
- * with a fill rule beside it, 0 winding or 1 even-odd (the inverse rules
- * arrive as these two). The shell is not shown this: path_build turns it into
+ * with a fill rule beside it, 0 winding or 1 even-odd, and 2 more for
+ * Android's inverse rules (Path.meglerFill): filled, a path so is everything
+ * the path does not cover, within the clip; clipped by, it is the clip taken
+ * out (and taken out, the clip kept). The shell sees no inverse rule: a fill
+ * is given to it as a rectangle that holds the canvas's clip and the path
+ * inside it, by even-odd (draw_path), and a clip as the other op
+ * (cv_clip_path). The shell is not shown the stream: path_build turns it into
  * figures of lines and Beziers with every coordinate absolute, and the bounds,
  * the hit test and the length are worked out here from the same figures.
  *
@@ -715,6 +720,9 @@ static bool paint_for(hk_jobj *array, bool plain, gpaint *out)
 
 /* ------------------------------------------------------------------ paths */
 
+/* Path.meglerFill's second bit: the inverse of the fill rule in the first (MEGLER_GFX_WINDING or MEGLER_GFX_EVEN_ODD). The shell never sees it. */
+#define FILL_INVERSE 2
+
 /* What the shell is given (megler.h, draw_path), and what the questions about a path are answered from. */
 typedef struct gpath {
     float *v;
@@ -824,6 +832,13 @@ static void path_close(gpath *p)
     p->cx = p->sx;
     p->cy = p->sy;
     p->open = false;
+}
+
+/* Another built path's figures after this one's. A built path is verbs, each with its numbers after it, as path_put writes
+   them: the whole of it goes in as its first verb with everything after that as the verb's numbers. */
+static void path_append(gpath *p, const gpath *q)
+{
+    if (q->n) path_put(p, (int)q->v[0], q->v + 1, q->n - 1);
 }
 
 static void path_rect(gpath *p, float l, float t, float r, float b)
@@ -2239,6 +2254,11 @@ static bool cv_clip_path(gcanvas *v, const gpath *p, int fill, int op)
     gbox o;
     float box[4];
     s->clipped = true;
+    if (fill & FILL_INVERSE) {
+        /* Inside an inverse path is outside the path: clipping to it is taking the path out, and taking it out keeps it. */
+        op = op == MEGLER_GFX_CLIP_INTERSECT ? MEGLER_GFX_CLIP_DIFFERENCE : MEGLER_GFX_CLIP_INTERSECT;
+        fill &= ~FILL_INVERSE;
+    }
     if (op == MEGLER_GFX_CLIP_INTERSECT) {
         path_bounds(p, &o);
         /* Nothing is inside a path with nothing in it. */
@@ -2264,7 +2284,7 @@ static bool cv_clip_path(gcanvas *v, const gpath *p, int fill, int op)
 N(G_cvClipPath)
 {
     gcanvas *v = cv_of(c->args[0].j);
-    int fill = c->args[3].i == 1 ? MEGLER_GFX_EVEN_ODD : MEGLER_GFX_WINDING, op = c->args[4].i == 0 ? MEGLER_GFX_CLIP_DIFFERENCE : MEGLER_GFX_CLIP_INTERSECT;
+    int fill = c->args[3].i & (MEGLER_GFX_EVEN_ODD | FILL_INVERSE), op = c->args[4].i == 0 ? MEGLER_GFX_CLIP_DIFFERENCE : MEGLER_GFX_CLIP_INTERSECT;
     gpath p;
     c->ret.z = 1;
     if (!v || !path_of(c->args[1].l, c->args[2].i, &p)) return;
@@ -2330,10 +2350,35 @@ static void draw_rect(gcanvas *v, float l, float t, float r, float b, const gpai
     GFX(G.draw_rect(G.user, v->host, l, t, r, b, &p->p, shader));
 }
 
+/*
+ * A path filled or stroked. Filled by an inverse rule, it is everything within the clip that the path does not cover: what
+ * the shell is given is a rectangle a pixel larger than the clip's box, in the drawing's coordinates, and the path's own
+ * figures after it, by even-odd -- the path's inside then lies inside the rectangle twice, and is left out. That is exact for
+ * INVERSE_EVEN_ODD, and for INVERSE_WINDING wherever the path winds no more than once round a point (a rounded rectangle,
+ * a circle, any outline that does not cross itself), which is what an inverse path is used for: corners painted over to
+ * round a view. Whatever of the path lies outside the rectangle is outside the clip too. A stroke is drawn by the path's
+ * own rule, inverse or not (Android would stroke and then invert the outline of the stroke, which nothing has been seen to
+ * ask for).
+ */
 static void draw_path(gcanvas *v, const gpath *path, int fill, const gpaint *p, void *shader)
 {
+    if ((fill & FILL_INVERSE) && p->p.style != MEGLER_GFX_STROKE) {
+        gstate *s;
+        float inverse[6], box[4];
+        gpath whole;
+        if (!v || !v->host || !HAS(draw_path)) return;
+        s = cv_state(v);
+        if (s->empty || !matrix_invert(s->m, inverse)) return;
+        matrix_box(inverse, s->clip[0] - 1, s->clip[1] - 1, s->clip[2] + 1, s->clip[3] + 1, box);
+        path_init(&whole);
+        path_rect(&whole, box[0], box[1], box[2], box[3]);
+        path_append(&whole, path);
+        if (cv_draw(v, false)) GFX(G.draw_path(G.user, v->host, whole.v, whole.n, MEGLER_GFX_EVEN_ODD, &p->p, shader));
+        path_free(&whole);
+        return;
+    }
     if (!v || !v->host || !path_draws(path) || !HAS(draw_path) || !cv_draw(v, false)) return;
-    GFX(G.draw_path(G.user, v->host, path->v, path->n, fill, &p->p, shader));
+    GFX(G.draw_path(G.user, v->host, path->v, path->n, fill & MEGLER_GFX_EVEN_ODD, &p->p, shader));
 }
 
 /* A call with a rectangle's numbers, written to a recording canvas's list. */
@@ -2467,7 +2512,7 @@ N(G_cvDrawPath)
 {
     gcanvas *v = cv_of(c->args[0].j);
     gshader *sh = sh_of(c->args[5].j);
-    int fill = c->args[3].i == 1 ? MEGLER_GFX_EVEN_ODD : MEGLER_GFX_WINDING;
+    int fill = c->args[3].i & (MEGLER_GFX_EVEN_ODD | FILL_INVERSE);
     gpaint p;
     gpath path;
     if (!paint_for(c->args[4].l, !sh, &p) || !path_of(c->args[1].l, c->args[2].i, &path)) return;
@@ -3075,7 +3120,7 @@ N(G_rnSet)
         if (!path_of(c->args[3].l, k[4], &p)) {
             n->outline_kind = 0;
         } else {
-            n->outline_fill = k[3] == 1 ? MEGLER_GFX_EVEN_ODD : MEGLER_GFX_WINDING;
+            n->outline_fill = k[3] & (MEGLER_GFX_EVEN_ODD | FILL_INVERSE);
             n->outline_n = p.n;
             n->outline_path = (float *)hk_alloc(sizeof(float) * (size_t)(p.n > 0 ? p.n : 1));
             if (p.n) memcpy(n->outline_path, p.v, sizeof(float) * (size_t)p.n);
@@ -3413,7 +3458,8 @@ N(G_pathContains)
     h.x = c->args[3].f;
     h.y = c->args[4].f;
     path_edges(&p, true, hit_edge, &h);
-    c->ret.z = c->args[2].i == 1 ? (h.crossings & 1) != 0 : h.winding != 0;
+    c->ret.z = (c->args[2].i & MEGLER_GFX_EVEN_ODD) ? (h.crossings & 1) != 0 : h.winding != 0;
+    if (c->args[2].i & FILL_INVERSE) c->ret.z = !c->ret.z;
     path_free(&p);
 }
 

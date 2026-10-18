@@ -90,24 +90,24 @@ the decoder 40 fewer, and the script says which is missing.
 
 ```
 bash tools/build-tests.sh win      (MSVC x64, run on the PC; libcore's native libraries cannot run there)
-    4539 checks, 0 failed          on the built-in java.lang (OpenGL ES from Java's 117 among them)
-    4592 checks, 0 failed          on libcore, its bytecode alone (OpenGL ES from Java's 136 among them)
-    (then the shell's own drawing and the storage on Windows' own folders, which are not this document's: 294, 264, 264, 294, 294, 441, 110, 12, 8, 8, 8, 6 and 6 checks;
+    4575 checks, 0 failed          on the built-in java.lang (OpenGL ES from Java's 117 among them)
+    4628 checks, 0 failed          on libcore, its bytecode alone (OpenGL ES from Java's 136 among them)
+    (then the shell's own drawing and the storage on Windows' own folders, which are not this document's: 296, 266, 266, 296, 296, 451, 110, 12, 8, 8, 8, 6 and 6 checks;
      and the shell's cameras on this PC's one, DroidCam's virtual camera: 9 checks)
 
 bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-float, under qemu-arm)
-    4794 checks, 0 failed          on the built-in java.lang
-    4892 checks, 0 failed          on libcore with its native libraries
+    4817 checks, 0 failed          on the built-in java.lang
+    4915 checks, 0 failed          on libcore with its native libraries
       50 checks, 0 failed          the Java test app hello, through megler_run
      121 checks, 0 failed          the Java test app demos, the keyboard's 25 and the frame meter's 3 among them
       47 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK
-      16 checks, 0 failed          the Java test app crash: an exception nothing catches, launcher aliases, an app written for Android 6
+      18 checks, 0 failed          the Java test app crash: an exception nothing catches, launcher aliases, an app written for Android 6
       19 checks, 0 failed          the Java test app gc: references, finalizers, threads allocating, a heap that stays small
       49 checks, 0 failed          the Java test app gl: a GLSurfaceView, EGL14 on a pbuffer, EGL10 on a SurfaceView, on a stand-in for OpenGL ES that draws
-     105 checks, 0 failed          the Java test app data: a database, the storage, the battery, the time zone, TLS (conscrypt's, on loopback), key pairs, codecs, the network and RenderNodes, the first run
-     110 checks, 0 failed          data again, on what the first run left, with another battery and a time zone that is none
+     106 checks, 0 failed          the Java test app data: a database, the storage, the battery, the time zone, TLS (conscrypt's, on loopback), key pairs, codecs, the network and RenderNodes, the first run
+     111 checks, 0 failed          data again, on what the first run left, with another battery and a time zone that is none
       29 checks, 0 failed          the Java test app webview: Android's System WebView from the Android root, on pages of the app's own server
-      35 checks, 0 failed          the Java test app camera: the old android.hardware.Camera on a stand-in for the shell's cameras, the previews' pictures in the window
+      36 checks, 0 failed          the Java test app camera: the old android.hardware.Camera on a stand-in for the shell's cameras, the previews' pictures in the window
       13 checks, 0 failed          camera again, every camera refused
       50 checks, 0 failed          gl again, the window composed by the core
       50 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
@@ -3224,10 +3224,10 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: a hundred and nine files** in the overlay,
+**What differs from the original's framework: a hundred and ten files** in the overlay,
 most of them a statement or a few methods each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
-**and twelve files of members added** to classes of the original's, **and four files of the original's taken
+**and thirteen files of members added** to classes of the original's, **and four files of the original's taken
 away**.
 
 The second kind is for the platform's public members that the original's
@@ -3959,7 +3959,34 @@ on a looper thread of its own and takes it back with `next()`.
   recording do not change the list, a bitmap does; two hundred nodes of
   1440 x 2560 take 110 KB, where the original's ran out of memory.
 
-The original has all forty-two faults; they are its author's to take back.
+- `android/graphics/Path.java`, two methods: Android's inverse fill rules.
+  `toggleInverseFillType` did nothing, and what Canvas hands megler.Gfx with
+  a path (`meglerFill`) said only winding or even-odd, so a path set to
+  `INVERSE_WINDING` or `INVERSE_EVEN_ODD` was filled and clipped by as if
+  it were not inverse. An inverse path is how a view rounds its corners by
+  painting over them, and VK mp3 mod's QR sign-in does exactly that round
+  its camera's picture: its `BarcodeViewfinderLayout` toggles a rounded
+  rectangle to inverse in its constructor and, after its `TextureView` has
+  drawn, fills it in white -- the four corners. Taken as an ordinary path
+  the white filled the rectangle itself: on the phone (package 267) the
+  camera streamed, every picture was drawn, and the scanner showed white.
+  Now `meglerFill` has a second bit for inverse, and the core
+  (`drivers/hk_java_gfx.c`) fills an inverse path as a rectangle holding
+  the canvas's clip with the path inside it, by even-odd (exact for
+  `INVERSE_EVEN_ODD`, and for `INVERSE_WINDING` wherever the path winds no
+  more than once round a point, which a rounded rectangle or a circle does),
+  and clips by one as the other op (clipping to an inverse path is cutting
+  the path out). A stroke ignores the inverse, an empty inverse path draws
+  nothing (Java does not pass it on). The core's tests of megler.Gfx's
+  natives draw VK's frame over a picture on the stand-in and, on the PC, on
+  the shell's own Direct2D: by `INVERSE_WINDING` the picture shows with
+  white corners, straight, under a matrix and through a display list, and
+  by plain winding the white covers it; `INVERSE_EVEN_ODD` of two squares;
+  a rectangle clipped to and clipped out by `INVERSE_WINDING`. The camera
+  test app frames its `TextureView` as VK does, and the test finds the
+  camera's picture in it and the white corner.
+
+The original has all forty-three faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in
@@ -4218,7 +4245,13 @@ by `setPreviewDisplay`, `setPreviewCallback`, autofocus),
 and a ZXing scanner of its own in `BarcodeShareFragment` (`open()`, a
 `TextureView`'s `SurfaceTexture` by `setPreviewTexture`,
 `setPreviewCallbackWithBuffer` with a buffer added back after each frame,
-`autoFocus` straight after `startPreview`). Neither takes a picture.
+`autoFocus` straight after `startPreview`). Neither takes a picture. The QR
+sign-in is the second (seen on the phone, package 267: its
+`CameraConfigurationUtils` lines, "preview size = 640x640, view size=770"):
+a `DialogFragment` whose `TextureView`, 220 dp square, sits in a
+`BarcodeViewfinderLayout` that paints its corners over with an inverse
+path. That path was the white over the picture on the phone (`Path.java`
+in the overlay's list above).
 
 - **The cameras.** `getNumberOfCameras` and `getCameraInfo` (which way the
   camera faces, how many degrees its picture is turned) are the shell's
@@ -4330,7 +4363,7 @@ The tests:
   kept, each one or the other; and a camera left open closed at the app's
   end.
 - the test app `camera` under qemu with the same stand-in
-  (`core/tests/app/camera`, 35 checks): the permission; the features; the
+  (`core/tests/app/camera`, 36 checks): the permission; the features; the
   cameras' information and an unknown one refused; `open()` on a
   `HandlerThread`, `open(9)` refused, the same camera again refused; the
   parameters offered, read through Android's getters and `get`, flattened
@@ -4347,7 +4380,10 @@ The tests:
   again; release and use after release; and the front camera opened on a
   thread with no looper (its callbacks on the main thread), fixed focus
   answering at once, no flash modes, its preview on the `TextureView`, where
-  the test finds the picture mirrored and then turned. And once more with
+  the test finds the picture mirrored and then turned -- the `TextureView`
+  framed as VK mp3 mod frames its QR scanner's (corners painted white with a
+  rounded rectangle toggled to inverse, markers in a layer), so that the
+  test finds the picture under the frame and the frame's white corner. And once more with
   every camera refused (13 checks): the first open fails with "Fail to
   connect to camera service" and the core's log line says the user or the
   system refused it.

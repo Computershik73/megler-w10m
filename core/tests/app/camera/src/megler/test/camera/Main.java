@@ -2,9 +2,16 @@ package megler.test.camera;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.Context;
 import android.content.pm.PackageManager;
+import android.graphics.Canvas;
 import android.graphics.ImageFormat;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
 import android.os.Bundle;
@@ -17,6 +24,7 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.TextureView;
 import android.view.ViewGroup;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 
 import java.util.ArrayList;
@@ -33,6 +41,9 @@ import java.util.concurrent.TimeUnit;
  * half a TextureView for the front camera's. A thread of the app's goes through the steps and says how each went; the back
  * camera is opened on a HandlerThread, whose looper its callbacks must come on, the front one on that plain thread, whose
  * callbacks must come on the main looper. While a preview runs for the test to look at, the app waits for a tap.
+ *
+ * The TextureView is framed as VK mp3 mod frames its scanner's (BarcodeViewfinderLayout, below): its corners painted over
+ * with a path toggled to inverse, and a marker at each corner drawn in a layer.
  *
  * When the test has the stand-in refuse every camera (as Windows does when the user has said no), the first open fails as
  * Android's does, and that is the whole run.
@@ -69,7 +80,9 @@ public class Main extends Activity {
             public boolean onSurfaceTextureDestroyed(SurfaceTexture t) { return true; }
             public void onSurfaceTextureUpdated(SurfaceTexture t) {}
         });
-        root.addView(textureView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        Viewfinder frame = new Viewfinder(this);
+        frame.addView(textureView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        root.addView(frame, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         setContentView(root);
         HandlerThread looper = new HandlerThread("CameraLooper");
         looper.start();
@@ -103,6 +116,55 @@ public class Main extends Activity {
     protected void onDestroy() {
         super.onDestroy();
         Log.i(T, "onDestroy");
+    }
+
+    /**
+     * What VK mp3 mod's BarcodeViewfinderLayout does round its QR scanner's TextureView: once its children have drawn, it rounds
+     * the corners by filling a rounded rectangle the size of its canvas, toggled to inverse in its constructor, in white -- the
+     * four corners outside it -- and draws a marker at each corner in a layer of the canvas's size, turned about its middle,
+     * with a paint that clears under a translucent one. On Android the canvas is the view's own (a hardware-accelerated
+     * view draws into a display list of its size).
+     */
+    private static final class Viewfinder extends FrameLayout {
+        private final Path invRoundRect = new Path(), marker = new Path();
+        private final Paint white = new Paint(), fill = new Paint(), clear = new Paint(), stroke = new Paint();
+
+        Viewfinder(Context c) {
+            super(c);
+            setWillNotDraw(false);
+            white.setColor(0xFFFFFFFF);
+            fill.setColor(0x99FFFFFF);
+            clear.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
+            clear.setColor(0xFF000000);
+            stroke.setColor(0x26000000);
+            stroke.setStyle(Paint.Style.STROKE);
+            stroke.setStrokeWidth(2);
+            marker.moveTo(0, 0);
+            marker.rLineTo(30, 0);
+            marker.rLineTo(0, 8);
+            marker.rLineTo(-22, 0);
+            marker.rLineTo(0, 22);
+            marker.rLineTo(-8, 0);
+            marker.close();
+            invRoundRect.toggleInverseFillType();
+        }
+
+        @Override protected void dispatchDraw(Canvas canvas) {
+            super.dispatchDraw(canvas);
+            if (invRoundRect.isEmpty()) invRoundRect.addRoundRect(new RectF(0, 0, canvas.getWidth(), canvas.getHeight()), 24, 24, Path.Direction.CW);
+            canvas.drawPath(invRoundRect, white);
+            canvas.saveLayer(0, 0, canvas.getWidth(), canvas.getHeight(), null, Canvas.ALL_SAVE_FLAG);
+            for (int i = 0; i < 4; i++) {
+                canvas.save();
+                canvas.rotate(90 * i, canvas.getWidth() / 2f, canvas.getHeight() / 2f);
+                canvas.translate(16, 16);
+                canvas.drawPath(marker, stroke);
+                canvas.drawPath(marker, clear);
+                canvas.drawPath(marker, fill);
+                canvas.restore();
+            }
+            canvas.restore();
+        }
     }
 
     /* ------------------------------------------------------------ the steps */

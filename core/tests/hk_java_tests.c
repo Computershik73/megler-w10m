@@ -1788,7 +1788,9 @@ static bool camera_shown(const int r[4], const int want[4], int seconds)
  * missing frames rather than queueing them, autofocus and its cancelling, the torch, stop and release -- and says how each
  * step went. The test looks at the window while each preview runs: the back camera's picture in the SurfaceView turned 90
  * degrees (its orientation, as the app set the display's), the front camera's in the TextureView mirrored and then turned,
- * as Android shows a front camera; then it taps, and the app goes on. With "denied" every camera is refused: the app's
+ * as Android shows a front camera; then it taps, and the app goes on. The TextureView is framed as VK mp3 mod frames its QR
+ * scanner's camera picture: after it has drawn, its parent paints its corners white with a rounded rectangle toggled to an
+ * inverse path (on the phone, taken as an ordinary path, that white covered the whole picture). With "denied" every camera is refused: the app's
  * first open fails as Android's does ("Fail to connect to camera service") and the log says why.
  */
 static int run_camera(void)
@@ -1830,8 +1832,9 @@ static int run_camera(void)
     /* The torch went on through the parameters while the camera streamed, and off again. */
     CHECK(find_line("camera stand-in: the torch is on", 0) >= 0 && find_line("camera stand-in: the torch is off", 0) >= 0);
     expect_line("I/CameraTest: front running", &at, 120);
-    /* The front camera's preview in the TextureView: mirrored, then turned as the app set it. */
+    /* The front camera's preview in the TextureView: mirrored, then turned as the app set it, under its frame's white corners. */
     CHECK(camera_shown(tv, front, 60));
+    CHECK(pixel(tv[0] + tv[2] - 1, tv[1]) == 0xFFFFFF);
     write_picture("camera-front");
     tap(tv[0] + tv[2] / 2, tv[1] + tv[3] / 2);
     expect_line("I/CameraTest: front ok", &at, 120);

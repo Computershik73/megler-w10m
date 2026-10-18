@@ -2228,6 +2228,111 @@ static void test_lists(void)
     CHECK(thrown()[0] == 0);
 }
 
+/* ---------------------------------------------------------------- inverse fills */
+
+enum { INV_RED = (i32)0xFFFF0000u, INV_GREEN = (i32)0xFF00FF00u, INV_BLUE = (i32)0xFF0000FFu, INV_YELLOW = (i32)0xFFFFFF00u, INV_WHITE = (i32)0xFFFFFFFFu };
+
+static i32 pixel_of(i64 bm, int x, int y) { return call("bmGetPixel", 3, J(bm), I(x), I(y)).i; }
+
+/*
+ * A camera's picture framed as VK mp3 mod frames its QR scanner's (BarcodeViewfinderLayout): a picture of four colours, 40
+ * by 40 pixels, drawn over the whole of a canvas `w` x `h` (one picture's pixel to one of the canvas's, under whatever
+ * matrix the canvas has), and then a rounded rectangle the canvas's size filled in white by the path's fill rule `fill`
+ * (Path.meglerFill: 2 is INVERSE_WINDING), which with an inverse rule is the four corners outside it.
+ */
+static void viewfinder(i64 cv, i64 pic, int w, int h, int fill)
+{
+    float round[8] = { 8, 0, 0, (float)w, (float)h, 8, 8, 0 };
+    call("cvDrawColor", 3, J(cv), I((i32)0xFF000000u), I(3));
+    call("cvDrawBitmap", 11, J(cv), J(pic), F(0), F(0), F(40), F(40), F(0), F(0), F((float)w), F((float)h), L(NULL));
+    call("cvDrawPath", 6, J(cv), L(floats(round, 8)), I(8), I(fill), L(paint(0xFFFFFFFFu)), J(0));
+}
+
+/* The middles of the picture's four quarters are its colours, and the corner pixels white; what they are, when not. */
+static bool framed(i64 bm, int w, int h)
+{
+    static const i32 want[8] = { INV_RED, INV_GREEN, INV_BLUE, INV_YELLOW, INV_WHITE, INV_WHITE, INV_WHITE, INV_WHITE };
+    const int at[8][2] = { { w / 4, h / 4 }, { 3 * w / 4, h / 4 }, { w / 4, 3 * h / 4 }, { 3 * w / 4, 3 * h / 4 }, { 0, 0 }, { w - 1, 0 }, { 0, h - 1 }, { w - 1, h - 1 } };
+    bool all = true;
+    int i;
+    for (i = 0; i < 8; i++) {
+        i32 got = pixel_of(bm, at[i][0], at[i][1]);
+        if (got != want[i]) {
+            say("    at %d,%d: %08x, not %08x", at[i][0], at[i][1], (unsigned)got, (unsigned)want[i]);
+            all = false;
+        }
+    }
+    return all;
+}
+
+/*
+ * Android's inverse fill rules (Path.toggleInverseFillType, INVERSE_WINDING, INVERSE_EVEN_ODD), on whatever host is set:
+ * filled, a path so is everything within the clip that it does not cover; clipped by, the clip is what it does not cover.
+ * The viewfinder above, which on the phone showed white where the camera's picture was when the rule was taken as plain
+ * winding: by INVERSE_WINDING its picture shows and only its corners are white, also under a matrix and through a display
+ * list; by plain winding the white covers it. Two squares one in the other by INVERSE_EVEN_ODD: the ring between them left
+ * alone, the rest filled. A rectangle by INVERSE_WINDING clipped to (the outside kept) and clipped out (the inside kept).
+ */
+static void test_inverse(const char *on)
+{
+    static const float squares[12] = { 6, 8, 8, 32, 32, 0, 6, 14, 14, 26, 26, 0 }, box[6] = { 6, 10, 10, 30, 30, 0 }, twice[6] = { 2, 0, 0, 0, 2, 0 };
+    i64 pic = call("bmNew", 2, I(40), I(40)).j, a = call("bmNew", 2, I(40), I(40)).j, b = call("bmNew", 2, I(40), I(40)).j;
+    i64 ca = call("cvNew", 1, J(a)).j, cb = call("cvNew", 1, J(b)).j, cp = call("cvNew", 1, J(pic)).j, rc, list;
+    say("  inverse fill rules, %s", on);
+    call("cvDrawRect", 7, J(cp), F(0), F(0), F(20), F(20), L(paint((u32)INV_RED)), J(0));
+    call("cvDrawRect", 7, J(cp), F(20), F(0), F(40), F(20), L(paint((u32)INV_GREEN)), J(0));
+    call("cvDrawRect", 7, J(cp), F(0), F(20), F(20), F(40), L(paint((u32)INV_BLUE)), J(0));
+    call("cvDrawRect", 7, J(cp), F(20), F(20), F(40), F(40), L(paint((u32)INV_YELLOW)), J(0));
+    call("cvFree", 1, J(cp));
+    viewfinder(ca, pic, 40, 40, 2);
+    CHECK(framed(a, 40, 40));
+    /* Inside the rounded rectangle along its straight edges, the picture; just outside a rounded corner, white. */
+    CHECK(pixel_of(a, 12, 1) == INV_RED && pixel_of(a, 38, 30) == INV_YELLOW && pixel_of(a, 1, 1) == INV_WHITE);
+    /* The same rectangle by plain winding is white all over: what the phone showed. */
+    viewfinder(cb, pic, 40, 40, 0);
+    CHECK(pixel_of(b, 10, 10) == INV_WHITE && pixel_of(b, 30, 30) == INV_WHITE);
+    /* Through a display list, drawn on another canvas whose clip is its own: the same pixels as drawn straight. */
+    rc = call("cvRecord", 2, I(40), I(40)).j;
+    viewfinder(rc, pic, 40, 40, 2);
+    list = call("cvEndRecord", 1, J(rc)).j;
+    call("cvFree", 1, J(rc));
+    call("cvDrawColor", 3, J(cb), I(0), I(3));
+    call("cvDrawList", 2, J(cb), J(list));
+    CHECK_INT(differ(a, b), 0);
+    call("dlFree", 1, J(list));
+    /* Under a matrix that doubles everything: a canvas 20 x 20 in the drawing's own coordinates, framed the same way. */
+    call("cvDrawColor", 3, J(cb), I(0), I(3));
+    call("cvSave", 1, J(cb));
+    call("cvMatrix", 3, J(cb), L(floats(twice, 6)), Z(false));
+    viewfinder(cb, pic, 20, 20, 2);
+    call("cvRestore", 1, J(cb));
+    CHECK(framed(b, 40, 40));
+    /* INVERSE_EVEN_ODD of two squares one in the other: outside both and inside the inner one filled, the ring left. */
+    call("cvDrawColor", 3, J(cb), I(INV_RED), I(3));
+    call("cvDrawPath", 6, J(cb), L(floats(squares, 12)), I(12), I(3), L(paint(0xFFFFFFFFu)), J(0));
+    CHECK(pixel_of(b, 4, 4) == INV_WHITE && pixel_of(b, 10, 10) == INV_RED && pixel_of(b, 20, 20) == INV_WHITE && pixel_of(b, 36, 20) == INV_WHITE);
+    /* Clipped to a rectangle by INVERSE_WINDING, what is drawn lands outside it; clipped out of it, inside it. */
+    call("cvDrawColor", 3, J(cb), I(INV_RED), I(3));
+    call("cvSave", 1, J(cb));
+    call("cvClipPath", 5, J(cb), L(floats(box, 6)), I(6), I(2), I(1));
+    call("cvDrawColor", 3, J(cb), I(INV_BLUE), I(3));
+    call("cvRestore", 1, J(cb));
+    CHECK(pixel_of(b, 5, 5) == INV_BLUE && pixel_of(b, 20, 20) == INV_RED);
+    call("cvSave", 1, J(cb));
+    call("cvClipPath", 5, J(cb), L(floats(box, 6)), I(6), I(2), I(0));
+    call("cvDrawColor", 3, J(cb), I(INV_GREEN), I(3));
+    call("cvRestore", 1, J(cb));
+    CHECK(pixel_of(b, 5, 5) == INV_BLUE && pixel_of(b, 20, 20) == INV_GREEN);
+    /* Inside an inverse path is outside the path. */
+    CHECK(!call("pathContains", 5, L(floats(box, 6)), I(6), I(2), F(20), F(20)).z && call("pathContains", 5, L(floats(box, 6)), I(6), I(2), F(5), F(5)).z);
+    call("cvFree", 1, J(ca));
+    call("cvFree", 1, J(cb));
+    call("bmFree", 1, J(a));
+    call("bmFree", 1, J(b));
+    call("bmFree", 1, J(pic));
+    CHECK(thrown()[0] == 0);
+}
+
 #ifdef HK_GFX_WINDOWS
 /* hk_gfx_windows.cpp: the shell's own megler_gfx_host (app/Megler/player/GfxHost.cpp), in the Windows build of the tests. */
 const megler_gfx_host *hk_gfx_windows_host(void (*line)(const char *text, void *user), void *user, int way);
@@ -2265,6 +2370,8 @@ static void test_lists_on_shell(void)
     CHECK_INT(player_button_differ(face, &ink), 0);
     say("    the button's glyph: %d dark pixels, the least of the three ways", ink);
     CHECK(ink > 400);
+    /* And the inverse fill rules, as the phone's Direct2D draws them: VK mp3 mod's scanner frame over its camera's picture. */
+    test_inverse("on the shell's own drawing (Direct2D)");
     hk_java_gfx_set_host(hk_gfx_standin());
 }
 #endif
@@ -2297,6 +2404,7 @@ int hk_gfx_natives_tests_run(hk_test_sink sink, void *user, int *checks)
     test_shaders();
     test_paths();
     test_lists();
+    test_inverse("over the stand-in");
 #ifdef HK_GFX_WINDOWS
     test_lists_on_shell();
 #endif

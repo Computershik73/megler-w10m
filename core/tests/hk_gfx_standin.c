@@ -24,7 +24,10 @@
  *   - A clip is a rectangle of whole pixels: the box of what was asked for
  *     when the matrix rotates, and for a path the box of the path. A
  *     rectangle cut out of the clip is kept (eight of them at most) when the
- *     matrix does not rotate, and not otherwise; a path cut out is not kept.
+ *     matrix does not rotate, and not otherwise; a path cut out is kept the
+ *     same way, as its box (exact for a rectangle's path, which is what an
+ *     inverse path clipped to arrives as: the core turns that into cutting
+ *     the path out).
  *   - A layer is not a picture of its own: save_layer is a save, and its
  *     alpha multiplies what is drawn until the restore. That is the same
  *     only while what is drawn in the layer does not overlap itself, and the
@@ -641,7 +644,7 @@ static void s_draw_path(void *user, void *canvas, const float *path, int count, 
     draw_points((scanvas *)canvas, &p, fill, paint, shader);
 }
 
-/* The clip becomes what of it is in the box of the path: see the top of the file. */
+/* The clip becomes what of it is in the box of the path, or that box is cut out of it: see the top of the file. */
 static void s_clip_path(void *user, void *canvas, const float *path, int count, int fill, int op)
 {
     scanvas *v = (scanvas *)canvas;
@@ -651,7 +654,7 @@ static void s_clip_path(void *user, void *canvas, const float *path, int count, 
     i32 i, box[4];
     (void)user;
     (void)fill;
-    if (op != MEGLER_GFX_CLIP_INTERSECT) return;
+    if (op != MEGLER_GFX_CLIP_INTERSECT && (s->m[1] != 0 || s->m[3] != 0 || s->cuts >= MAX_CUTS)) return;
     memset(&p, 0, sizeof(p));
     points_path(&p, path, count);
     for (i = 0; i < p.n; i++) {
@@ -665,7 +668,8 @@ static void s_clip_path(void *user, void *canvas, const float *path, int count, 
     box[1] = pixel_at(ceil(y0 - 0.5));
     box[2] = pixel_at(ceil(x1 - 0.5));
     box[3] = pixel_at(ceil(y1 - 0.5));
-    clip_to(s, box);
+    if (op == MEGLER_GFX_CLIP_INTERSECT) clip_to(s, box);
+    else if (p.n) memcpy(s->cut[s->cuts++], box, sizeof(box));
     points_free(&p);
 }
 
