@@ -5,22 +5,28 @@
 // Why. The original is written for a 64-bit device and named arm64-v8a only. Here the Java driver places an app's
 // armeabi-v7a libraries, the C library says armeabi-v7a (ro.product.cpu.abi), and an app that checks the processor against
 // the native code it carries was told a 64-bit one. MX Player keeps its decoders per processor and checks Build.SUPPORTED_ABIS
-// at its start ("ABIs=[arm64-v8a]" in its own log), and showed a dialog instead of its media list. Everything else is the
-// original's, unchanged.
+// at its start ("ABIs=[arm64-v8a]" in its own log), and showed a dialog instead of its media list.
+//
+// It differs in the device it names, too: Google's Pixel of 2016 (sailfish: a Snapdragon 821 with an Adreno 530), the
+// original's Pixel 8 (a Tensor G3 of 2023) no longer. The phones this runs on have the graphics processor of 2016 -- the HP
+// Elite x3 a Snapdragon 820 and the same Adreno 530 -- and games choose their detail by the device they are told of
+// (Asphalt 9, told of a Pixel 8, drew a race at four frames a second with the graphics processor mostly idle). The system
+// properties native code reads (ro.product.*, ro.hardware, ro.board.platform: bionic/hk_bionic.c) name the same device.
+// The Android release stays 14: what an app does is chosen by SDK_INT. Everything else is the original's, unchanged.
 package android.os;
 
 public class Build {
-    public static final String MODEL = "Pixel 8", MANUFACTURER = "Google", BRAND = "google", DEVICE = "shiba", PRODUCT = "shiba";
-    public static final String HARDWARE = "megler", BOARD = "shiba", DISPLAY = "AP1A", ID = "AP1A", TAGS = "release-keys", TYPE = "user";
+    public static final String MODEL = "Pixel", MANUFACTURER = "Google", BRAND = "google", DEVICE = "sailfish", PRODUCT = "sailfish";
+    public static final String HARDWARE = "sailfish", BOARD = "sailfish", DISPLAY = "AP1A", ID = "AP1A", TAGS = "release-keys", TYPE = "user";
     /* Android 12's system-on-chip fields: engines print them (Unity reads SOC_MODEL into its device info and cannot take null). */
-    public static final String SOC_MANUFACTURER = "Google", SOC_MODEL = "Tensor G3", SKU = "shiba", ODM_SKU = "shiba";
+    public static final String SOC_MANUFACTURER = "Qualcomm", SOC_MODEL = "MSM8996pro", SKU = "sailfish", ODM_SKU = "sailfish";
     public static final String BRAND_FOR_ATTESTATION = BRAND, DEVICE_FOR_ATTESTATION = DEVICE, MANUFACTURER_FOR_ATTESTATION = MANUFACTURER,
                                MODEL_FOR_ATTESTATION = MODEL, PRODUCT_FOR_ATTESTATION = PRODUCT;
     public static final boolean IS_USER = true;
     public static String getRadioVersion() { return ""; }
     public static boolean is64BitAbi(String abi) { return abi != null && abi.contains("64"); }
     public static boolean isBuildConsistent() { return true; }
-    public static final String FINGERPRINT = "google/shiba/shiba:14/AP1A/1:user/release-keys", HOST = "megler", USER = "megler";
+    public static final String FINGERPRINT = "google/sailfish/sailfish:14/AP1A/1:user/release-keys", HOST = "megler", USER = "megler";
     public static final String SERIAL = "unknown", BOOTLOADER = "unknown", RADIO = "unknown";
     public static final String CPU_ABI = "armeabi-v7a", CPU_ABI2 = "armeabi";
     public static final String[] SUPPORTED_ABIS = { "armeabi-v7a", "armeabi" }, SUPPORTED_64_BIT_ABIS = {}, SUPPORTED_32_BIT_ABIS = { "armeabi-v7a", "armeabi" };

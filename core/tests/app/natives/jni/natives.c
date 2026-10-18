@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/system_properties.h>
 #include <unistd.h>
 
 #define TAG "NativesLib"
@@ -738,6 +739,19 @@ JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_allocatedString(JNIEnv *e
  * called, and ucsdet_open. The version of both, -1 when a library did not open, -2 when a function was not found, -3 when
  * u_strlen counted wrong or the two disagree.
  */
+/* A system property as native code reads it (__system_property_get): "" when there is none. */
+JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_systemProperty(JNIEnv *env, jclass cls, jstring name)
+{
+    char value[PROP_VALUE_MAX] = "";
+    const char *n = (*env)->GetStringUTFChars(env, name, NULL);
+    (void)cls;
+    if (n) {
+        __system_property_get(n, value);
+        (*env)->ReleaseStringUTFChars(env, name, n);
+    }
+    return (*env)->NewStringUTF(env, value);
+}
+
 JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_icuVersion(JNIEnv *env, jclass cls)
 {
     static const uint16_t text[] = { 'H', 'u', 's', 'k', 0 };

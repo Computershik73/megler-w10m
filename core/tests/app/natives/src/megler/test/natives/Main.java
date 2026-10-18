@@ -356,6 +356,15 @@ public class Main extends Activity {
             return "armeabi-v7a".equals(primary) && !android.os.Process.is64Bit() && "armeabi-v7a".equals(android.os.Build.SUPPORTED_ABIS[0])
                     && android.os.Build.SUPPORTED_64_BIT_ABIS.length == 0;
         });
+        step("device", () -> {
+            /* The device a game chooses its detail by: Build's fields and the properties native code reads name the same one. */
+            String model = Lib.systemProperty("ro.product.model"), device = Lib.systemProperty("ro.product.device"),
+                   maker = Lib.systemProperty("ro.product.manufacturer"), platform = Lib.systemProperty("ro.board.platform");
+            detail = "model=" + android.os.Build.MODEL + "/" + model + " device=" + android.os.Build.DEVICE + "/" + device + " maker="
+                    + android.os.Build.MANUFACTURER + "/" + maker + " platform=" + platform;
+            return "Pixel".equals(android.os.Build.MODEL) && android.os.Build.MODEL.equals(model) && android.os.Build.DEVICE.equals(device)
+                    && android.os.Build.MANUFACTURER.equals(maker) && "msm8996".equals(platform);
+        });
         step("string-alloc", () -> {
             /* A string AllocObject made and a String constructor called on it through JNI, as an app-lock library makes its hashes. */
             String s = Lib.allocatedString("hash\u00e9".getBytes(java.nio.charset.StandardCharsets.UTF_8), new char[] { 'a', 'b', 'c' });
