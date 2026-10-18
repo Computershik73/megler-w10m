@@ -7,6 +7,13 @@
 //    is clipped away, or a view that is not visible (Android's skipInvalidate), asks for nothing. A view with an Animation on
 //    the way asks for the whole window, since its transformation is known only while it is drawn.
 //  - drawFromParent skips a child whose box lies outside the canvas's clip while the window draws only part of itself.
+//  - drawFromParent has the screen's canvas (megler.ViewRoot.ScreenCanvas) say the child's size while the child draws: on
+//    Android a view draws into a display list of its own size (its RenderNode's RecordingCanvas, hardware acceleration
+//    being on for every app written for Android 4 or later), so an onDraw or a dispatchDraw that reads canvas.getWidth()
+//    and getHeight() is given the view's. Here every view draws into the one canvas of the screen, and was given the
+//    screen's size: VK mp3 mod's QR scanner frame, which rounds its corners with a rounded rectangle of the canvas's size
+//    and draws a marker at each corner in a layer of that size turned about its middle, rounded the screen's corners and
+//    drew its markers off the screen, and made a layer of the whole screen in every frame of the camera.
 //  - setScrollContainer is kept and isScrollContainer says it (the original said false whatever was set). ViewRoot asks it
 //    when a window's softInputMode leaves to the system whether the keyboard resizes or pans it, as Android's window
 //    manager does: a window with a scroll container is resized.
@@ -1101,7 +1108,13 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
             c.saveLayerAlpha(0, 0, w, h, a);
         }
         c.translate(-mScrollX, -mScrollY);
-        draw(c);
+        megler.ViewRoot.ScreenCanvas screen = c instanceof megler.ViewRoot.ScreenCanvas ? (megler.ViewRoot.ScreenCanvas) c : null;
+        long was = screen != null ? screen.meglerViewSize(w, h) : 0;
+        try {
+            draw(c);
+        } finally {
+            if (screen != null) screen.meglerViewSizeBack(was);
+        }
         c.restoreToCount(save);
     }
 

@@ -151,7 +151,10 @@ public class Main extends Activity {
 
         @Override protected void dispatchDraw(Canvas canvas) {
             super.dispatchDraw(canvas);
-            if (invRoundRect.isEmpty()) invRoundRect.addRoundRect(new RectF(0, 0, canvas.getWidth(), canvas.getHeight()), 24, 24, Path.Direction.CW);
+            if (invRoundRect.isEmpty()) {
+                Log.i(T, "viewfinder canvas=" + canvas.getWidth() + "x" + canvas.getHeight() + " view=" + getWidth() + "x" + getHeight());
+                invRoundRect.addRoundRect(new RectF(0, 0, canvas.getWidth(), canvas.getHeight()), 24, 24, Path.Direction.CW);
+            }
             canvas.drawPath(invRoundRect, white);
             canvas.saveLayer(0, 0, canvas.getWidth(), canvas.getHeight(), null, Canvas.ALL_SAVE_FLAG);
             for (int i = 0; i < 4; i++) {

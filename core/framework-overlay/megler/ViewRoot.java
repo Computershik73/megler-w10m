@@ -16,6 +16,10 @@
 // And in the frame the window's insets give (computeInsets; WindowInsets.getFrame, overlaid): the screen's size for an
 // activity's window, a dialog's or popup's own size once laid out.
 //
+// And in the size the screen's canvas says (ScreenCanvas): the window's while its views draw, and each view's own while it
+// draws (View.drawFromParent, overlaid), as Android's canvas of a view is a display list of the view's size; the original's
+// canvas said the screen's everywhere.
+//
 // And in keyFocus(), which the original does not have: the focused view of the window keys go to, which the overlay's
 // megler.InputMethods names in the log when typed text arrives.
 //
@@ -398,7 +402,7 @@ public final class ViewRoot implements ViewParent {
         if (sScreen == null || sScreen.getWidth() != sw || sScreen.getHeight() != sh) {
             if (sCanvas != null) sCanvas.meglerRelease();
             sScreen = Bitmap.createBitmap(sw, sh, Bitmap.Config.ARGB_8888);
-            sCanvas = new Canvas(sScreen);
+            sCanvas = new ScreenCanvas(sScreen);
             whole = true;
         }
         // What the windows asked for, on the screen
@@ -449,7 +453,7 @@ public final class ViewRoot implements ViewParent {
         if (sWhole == null || sWhole.getWidth() != sw || sWhole.getHeight() != sh) {
             if (sWholeCanvas != null) sWholeCanvas.meglerRelease();
             sWhole = Bitmap.createBitmap(sw, sh, Bitmap.Config.ARGB_8888);
-            sWholeCanvas = new Canvas(sWhole);
+            sWholeCanvas = new ScreenCanvas(sWhole);
         }
         sWhole.eraseColor(0);
         drawWindows(sWholeCanvas, roots, sw, sh);
@@ -467,6 +471,33 @@ public final class ViewRoot implements ViewParent {
         if (n != 0) android.util.Log.w("ViewRoot", "a frame drawn in part missed " + n + " pixels, in " + sBox[0] + "," + sBox[1] + "-" + sBox[2] + "," + sBox[3]
                 + " (the part drawn was " + part.toShortString() + ")");
     }
+    /**
+     * The screen's canvas. While a window's views draw on it, its width and height are the window's, and each view's own while
+     * that view draws (View.drawFromParent): on Android a view draws into a display list of its own size, and an onDraw that
+     * reads canvas.getWidth() means the view's width. Anything else of the canvas is the screen's, as before.
+     */
+    public static final class ScreenCanvas extends Canvas {
+        private int mViewW = -1, mViewH = -1;
+
+        ScreenCanvas(Bitmap b) { super(b); }
+
+        @Override public int getWidth() { return mViewW >= 0 ? mViewW : super.getWidth(); }
+        @Override public int getHeight() { return mViewH >= 0 ? mViewH : super.getHeight(); }
+
+        /** The size said from now on; what was said before, for meglerViewSizeBack. */
+        public long meglerViewSize(int w, int h) {
+            long was = ((long) mViewW << 32) | (mViewH & 0xFFFFFFFFL);
+            mViewW = w;
+            mViewH = h;
+            return was;
+        }
+
+        public void meglerViewSizeBack(long was) {
+            mViewW = (int) (was >> 32);
+            mViewH = (int) was;
+        }
+    }
+
     /** Every window, bottom first, into a canvas of the screen as it is clipped; whether any was drawn. */
     private static boolean drawWindows(Canvas c, ArrayList<ViewRoot> roots, int sw, int sh) {
         Paint dim = null;
@@ -483,10 +514,14 @@ public final class ViewRoot implements ViewParent {
             c.clipRect(0, 0, r.mW, r.mH);
             if (r.mLp.alpha < 1f) c.saveLayerAlpha(0, 0, r.mW, r.mH, Math.round(r.mLp.alpha * 255));
             drew = true;
+            ScreenCanvas screen = c instanceof ScreenCanvas ? (ScreenCanvas) c : null;
+            long was = screen != null ? screen.meglerViewSize(r.mW, r.mH) : 0;
             try {
                 r.mView.draw(c);
             } catch (RuntimeException e) {
                 android.util.Log.e("ViewRoot", "drawing the window threw", e);
+            } finally {
+                if (screen != null) screen.meglerViewSizeBack(was);
             }
             c.restoreToCount(save);
         }

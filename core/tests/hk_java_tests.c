@@ -1835,6 +1835,13 @@ static int run_camera(void)
     /* The front camera's preview in the TextureView: mirrored, then turned as the app set it, under its frame's white corners. */
     CHECK(camera_shown(tv, front, 60));
     CHECK(pixel(tv[0] + tv[2] - 1, tv[1]) == 0xFFFFFF);
+    /*
+     * The frame's canvas says the frame's size, as a view's does on Android, so that its rounded rectangle is the frame's and
+     * its bottom corners are white as well (with the screen's size they were the picture, the rectangle reaching past them).
+     */
+    snprintf(text, sizeof(text), "I/CameraTest: viewfinder canvas=%dx%d view=%dx%d", tv[2], tv[3], tv[2], tv[3]);
+    CHECK(find_line(text, 0) >= 0);
+    CHECK(pixel(tv[0] + tv[2] - 1, tv[1] + tv[3] - 1) == 0xFFFFFF && pixel(tv[0], tv[1] + tv[3] - 1) == 0xFFFFFF);
     write_picture("camera-front");
     tap(tv[0] + tv[2] / 2, tv[1] + tv[3] / 2);
     expect_line("I/CameraTest: front ok", &at, 120);

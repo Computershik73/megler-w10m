@@ -107,7 +107,7 @@ bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-f
      106 checks, 0 failed          the Java test app data: a database, the storage, the battery, the time zone, TLS (conscrypt's, on loopback), key pairs, codecs, the network and RenderNodes, the first run
      111 checks, 0 failed          data again, on what the first run left, with another battery and a time zone that is none
       29 checks, 0 failed          the Java test app webview: Android's System WebView from the Android root, on pages of the app's own server
-      36 checks, 0 failed          the Java test app camera: the old android.hardware.Camera on a stand-in for the shell's cameras, the previews' pictures in the window
+      38 checks, 0 failed          the Java test app camera: the old android.hardware.Camera on a stand-in for the shell's cameras, the previews' pictures in the window
       13 checks, 0 failed          camera again, every camera refused
       50 checks, 0 failed          gl again, the window composed by the core
       50 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
@@ -3606,6 +3606,23 @@ on a looper thread of its own and takes it back with `next()`.
   comparison of two bitmaps in C.)
   And `setScrollContainer`, which the original dropped: `isScrollContainer`
   now says what was set, which decides an unspecified `softInputMode`.
+  And, with `megler/ViewRoot.java`'s `ScreenCanvas`, the size a view's canvas
+  says while the view draws (the original's fault, counted as one): on
+  Android a view draws into a display list of its own size (hardware
+  acceleration is on for every app written for Android 4 or later), so
+  `canvas.getWidth()` and `getHeight()` in an `onDraw` or a `dispatchDraw`
+  are the view's. Here every view draws into the screen's one canvas, which
+  said the screen's size everywhere. Now `drawFromParent` has it say the
+  child's size while the child draws, and `ViewRoot.drawWindows` the
+  window's while its views draw; anything else of the canvas is the
+  screen's. VK mp3 mod's QR scanner frame (`Path.java` below) rounds its
+  corners with a rounded rectangle of the canvas's size and draws a marker
+  at each corner in a layer of that size, turned about its middle: with the
+  screen's size it rounded the screen's corners, drew its markers off the
+  screen and made a layer of the whole screen for every picture of the
+  camera. The camera test app's frame logs the size its canvas says, which
+  the test wants to be the frame's, and the test finds its bottom corners
+  white.
 - `megler/KeyStoreProvider.java`, one method, and this port's circumstance
   rather than the original's fault: `PairGen.generateKeyPair` takes another
   provider's key pair generator from its service, because
@@ -3986,7 +4003,7 @@ on a looper thread of its own and takes it back with `next()`.
   test app frames its `TextureView` as VK does, and the test finds the
   camera's picture in it and the white corner.
 
-The original has all forty-three faults; they are its author's to take back.
+The original has all forty-four faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in
@@ -4363,7 +4380,7 @@ The tests:
   kept, each one or the other; and a camera left open closed at the app's
   end.
 - the test app `camera` under qemu with the same stand-in
-  (`core/tests/app/camera`, 36 checks): the permission; the features; the
+  (`core/tests/app/camera`, 38 checks): the permission; the features; the
   cameras' information and an unknown one refused; `open()` on a
   `HandlerThread`, `open(9)` refused, the same camera again refused; the
   parameters offered, read through Android's getters and `get`, flattened
@@ -4383,7 +4400,8 @@ The tests:
   the test finds the picture mirrored and then turned -- the `TextureView`
   framed as VK mp3 mod frames its QR scanner's (corners painted white with a
   rounded rectangle toggled to inverse, markers in a layer), so that the
-  test finds the picture under the frame and the frame's white corner. And once more with
+  test finds the picture under the frame, the frame's canvas the frame's
+  size, and its white corners. And once more with
   every camera refused (13 checks): the first open fails with "Fail to
   connect to camera service" and the core's log line says the user or the
   system refused it.
