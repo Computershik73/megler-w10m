@@ -941,6 +941,21 @@ coming once in the run that started on the battery and not at all in the one
 that started on mains, each before the battery's own news, and all of it on
 the main thread (5 checks).
 
+**The network's sticky broadcast.** Android keeps `CONNECTIVITY_ACTION` as
+it keeps the battery's and gives it to whoever registers for it, the same
+two ways; `megler.Broadcasts` does too now (`Broadcasts.connectivity`). The
+intent says what `ConnectivityManager` says -- a connected Wi-Fi network --
+with Android's extras: `networkInfo`, `networkType`, `inetCondition`, and
+`noConnectivity` when there is no connection. Asphalt 9 registers a receiver
+for it in its activity's `onResume` and tells its native code the type of
+connection (`JNIBridge.SetConnectionType`) from that receiver and from
+nowhere else. Never told, the native code took the phone to have no network,
+opened no socket, and said "no network" over a loading screen that stood
+still (package 275), while the game's Java side reached its server. The data
+app's step "connectivity" reads the sticky intent and has a receiver called
+with it once, afterwards, on the main thread. A change of network is not
+broadcast: the framework says Wi-Fi throughout.
+
 ### The time zone (the runtime on libcore and the app, under qemu-arm)
 
 The shell names the phone's time zone before it starts an app
@@ -3732,6 +3747,10 @@ on a looper thread of its own and takes it back with `next()`.
   has become another, sends `ACTION_BATTERY_CHANGED` again and the charger's
   coming or going ("The battery", above).
   (Counted as one fault of the original's: the battery nobody could set.)
+  And the network's sticky `CONNECTIVITY_ACTION`, which the original did not
+  keep: a receiver registered for it heard nothing, and Asphalt 9's native
+  code, told the connection's type only from there, said there was no
+  network ("The battery", above). (Counted as one fault of the original's.)
   And `Broadcasts.send`, who hears a broadcast. An intent that names a
   component goes to that component alone, as on Android; the original gave
   it as well to every receiver registered for its action and to every
