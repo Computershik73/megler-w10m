@@ -486,7 +486,11 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   mod and Kate show VK ID's "not a robot" sheet in their WebViews, but the
   check in it did not load ("something went wrong") while its canvases had
   no hardware buffers; those are there since (`ndk/hk_ahb.c`, with fence
-  syncs), as is the WebView on a `RenderNode`'s canvas. Spotify's WebView
+  syncs), as is the WebView on a `RenderNode`'s canvas. Since (packages 256
+  to 261) VK mp3 mod's sign-in has asked for a confirmation code instead,
+  with a platform `DialogFragment`, which was a stub that showed nothing: a
+  black screen; it is Android's now (docs/JAVA.md), not yet tried on a
+  phone. Spotify's WebView
   then (packages 252 and 254) ended out of memory on an image of 126 MB that
   Chromium decodes and maps twice, in a 2 GB address space whose largest
   free stretch was 135 MB (docs/JAVA.md, "Out of memory"); the layer's

@@ -336,7 +336,56 @@ public class Main extends Activity {
             Log.i("DataTest", "popup " + (fits ? "ok" : "FAILED") + " rows=" + rows + (list == null ? "" : " list=" + list.getWidth() + "x" + list.getHeight() + " padding=" + list.getPaddingTop()
                     + "+" + list.getPaddingBottom()) + (last == null ? "" : " row=" + last.getHeight() + " last-bottom=" + last.getBottom()));
             popup.dismiss();
+            dialogFragment();
         }, 700);
+    }
+
+    /** A platform DialogFragment as VK mp3 mod's code check is one: an AlertDialog with a field, made by onCreateDialog. */
+    public static class CodeDialog extends android.app.DialogFragment {
+        static int created, started, dismissed;
+        static final int FIELD = android.view.View.generateViewId();
+
+        @Override
+        public android.app.Dialog onCreateDialog(android.os.Bundle saved) {
+            created++;
+            android.widget.EditText field = new android.widget.EditText(getActivity());
+            field.setId(FIELD);
+            return new android.app.AlertDialog.Builder(getActivity()).setTitle("Code").setView(field).setPositiveButton("OK", null).create();
+        }
+
+        @Override
+        public void onStart() {
+            super.onStart();
+            started++;
+        }
+
+        @Override
+        public void onDismiss(android.content.DialogInterface d) {
+            dismissed++;
+            super.onDismiss(d);
+        }
+    }
+
+    /**
+     * Shown with show(FragmentManager, tag), as an app shows one: onCreateDialog made its dialog, which is showing over the
+     * activity with the field in it, and the fragment is there by its tag; dismiss() takes the dialog and the fragment away.
+     */
+    private void dialogFragment() {
+        final CodeDialog d = new CodeDialog();
+        d.setArguments(new android.os.Bundle());
+        d.show(getFragmentManager(), "code");
+        new android.os.Handler().postDelayed(() -> {
+            final android.app.Dialog dialog = d.getDialog();
+            final boolean shown = CodeDialog.created == 1 && CodeDialog.started == 1 && dialog != null && dialog.isShowing() && d.isAdded()
+                    && getFragmentManager().findFragmentByTag("code") == d && dialog.findViewById(CodeDialog.FIELD) instanceof android.widget.EditText;
+            d.dismiss();
+            new android.os.Handler().postDelayed(() -> {
+                boolean gone = getFragmentManager().findFragmentByTag("code") == null && d.getDialog() == null && dialog != null && !dialog.isShowing()
+                        && CodeDialog.dismissed == 1;
+                Log.i("DataTest", "dialog-fragment " + (shown && gone ? "ok" : "FAILED") + " created=" + CodeDialog.created + " started=" + CodeDialog.started
+                        + " dismissed=" + CodeDialog.dismissed + " shown=" + shown + " gone=" + gone);
+            }, 300);
+        }, 500);
     }
 
     /**

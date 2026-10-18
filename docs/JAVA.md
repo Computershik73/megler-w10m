@@ -3209,7 +3209,7 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: a hundred and five files** in the overlay,
+**What differs from the original's framework: a hundred and six files** in the overlay,
 most of them a statement or a few methods each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and eleven files of members added** to classes of the original's, **and four files of the original's taken
@@ -3663,6 +3663,27 @@ on a looper thread of its own and takes it back with `next()`.
   fields it names and the framework lacks. The data app's step "tasks" reads
   its own task so.
 
+- `android/app/DialogFragment.java`, in place of the generated stub, whose
+  `show()` did nothing: `onCreateDialog` was never called and `getDialog()`
+  was null. VK mp3 mod's sign-in, when VK asks for a confirmation code, shows
+  `AuthCheckFragment`, a `DialogFragment` whose `onCreateDialog` builds an
+  `AlertDialog` with the code's field, over `TransientAuthActivity`, whose
+  window has nothing else: a black screen, and nothing more happened (the
+  flag `trace-calls-...` showed `Auth.doAuth` answering 4, "open the
+  browser" with type 2fa, and `open2FA` returning at once, package 261). Now
+  Android 9's class over the original's `FragmentManager`: `show()` adds the
+  fragment with no container and commits; the dialog gets the fragment's
+  view if it made one, is shown in `onStart`, hidden in `onStop`, dismissed
+  with the fragment's view; `dismiss()` takes the fragment away, by its back
+  stack entry where `show(FragmentTransaction, String)` put it on one. Where
+  the original's `FragmentManager` differs, so does this: it never asks a
+  fragment for its layout inflater, so the dialog is made in
+  `onActivityCreated` (and by `onGetLayoutInflater` for whoever asks), and it
+  calls `onDestroyView` only for a fragment with a view, so `onDestroy`
+  dismisses a dialog still there. The data app shows one after its popup:
+  `onCreateDialog` called once, the dialog showing with its field, the
+  fragment found by its tag, and both gone after `dismiss()`.
+
 - `android/view/WindowInsets.java`, `getFrame()` (Android 16): the size of
   the window the insets are relative to, which `megler/ViewRoot.java` gives the
   insets it makes. The insets carry it through copies, consuming, replacing
@@ -3875,7 +3896,7 @@ on a looper thread of its own and takes it back with `next()`.
   recording do not change the list, a bitmap does; two hundred nodes of
   1440 x 2560 take 110 KB, where the original's ran out of memory.
 
-The original has all thirty-nine faults; they are its author's to take back.
+The original has all forty faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in
