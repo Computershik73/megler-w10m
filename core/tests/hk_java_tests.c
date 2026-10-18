@@ -38,6 +38,13 @@
  * the torch, preview callbacks, the front camera on a TextureView, and the pictures the previews put in the window. Run a
  * second time with every camera refused, as Windows refuses one the user said no to.
  *
+ * `splits` is an app in several APKs (core/tests/app/splits): what it is given is a bundle of them, an .apks or an .xapk,
+ * which is unpacked as the shell unpacks one (megler_bundle_unpack, for this screen's density and English and Russian) and
+ * started from the base and the folder of splits that come out. The app's native library, its pictures for each density,
+ * its strings for each language, more code and an asset pack are all in its splits; it says in the log whether each was
+ * found, and what Android would tell it of its splits. Checked besides: the picture only a split has, in the window; and
+ * the .xapk's expansion file, which the app finds in its own Android/obb.
+ *
  * `app` is any APK at all: started, left to itself until it is still, its
  * picture written, then whatever the script on the command line says -- a
  * touch, a wait, Back, each followed by another picture -- and a summary of
@@ -494,6 +501,9 @@ static int g_status;
 static char g_reason[1600];
 /* Started by the test itself, past megler_run: see start(). */
 static bool g_direct;
+/* `splits`: the folder of splits the bundle was unpacked into, which the app is started with; and whether it was an .xapk. */
+static char *g_splits_dir;
+static bool g_xapk;
 
 /* Whether the app is still there to wait for. */
 static bool running(void)
@@ -533,6 +543,7 @@ static bool start(const char *apk, const char *android_root)
     g_android_root = android_root;
     memset(&cfg, 0, sizeof(cfg));
     cfg.apk_path = apk;
+    cfg.splits_dir = g_splits_dir;
     cfg.android_root = android_root;
     /* Unless another is asked for, a small phone at Android's base density: a dp is a pixel, and the layout's numbers can be read off the picture. */
     cfg.width = g_screen_w;
@@ -557,7 +568,7 @@ static bool start(const char *apk, const char *android_root)
     say("a Java app through megler_run (%s on the Android root %s)", apk, android_root);
     {
         /* What the shell reads before it starts an app: this is a Java app it can run, and how it asks to be held. */
-        char *report = megler_apk_report(apk);
+        char *report = g_splits_dir ? megler_apk_report_splits(apk, g_splits_dir) : megler_apk_report(apk);
         CHECK(report && strstr(report, "\"engine\":\"java\"") && strstr(report, "\"runnable\":true"));
         /* The app whose launcher entries are aliases, the first one disabled: what is started is what the enabled one stands for. */
         if (g_crash_app) CHECK(report && strstr(report, "\"activity\":\"megler.test.crash.First\""));
@@ -1371,6 +1382,71 @@ static int run_natives(void)
     return g_failed;
 }
 
+/* ----------------------------------------------------------------- splits */
+
+/* What the app is told its splits are: those the unpacking keeps at this density, in English and Russian, sorted. */
+static const char k_split_names[] = "I/SplitsTest: split-names config.armeabi_v7a,config.en,config.mdpi,config.ru,config.xxhdpi,extra,pack";
+
+/*
+ * The bundle unpacked as the shell unpacks one, into <data dir>/library: splits.apk and splits.apk.splits. False, with a
+ * failed check, when it does not come out.
+ */
+static bool unpack_bundle(const char *bundle, char **apk)
+{
+    char *dir = hk_sprintf("%s/library", megler_data_dir()), *json;
+    size_t n = strlen(bundle);
+    hk_path_mkdirs(dir);
+    *apk = hk_sprintf("%s/splits.apk", dir);
+    g_splits_dir = hk_sprintf("%s/splits.apk.splits", dir);
+    g_xapk = n > 5 && !strcmp(bundle + n - 5, ".xapk");
+    say("a bundle unpacked as the shell unpacks one: %s, for %d dpi, in English and Russian", bundle, g_screen_dpi);
+    json = megler_bundle_unpack(bundle, *apk, g_splits_dir, g_screen_dpi, "en,ru", NULL, NULL);
+    say("  %s", json ? json : "(nothing)");
+    CHECK(json && strstr(json, "\"ok\":true"));
+    free(dir);
+    if (!json || !strstr(json, "\"ok\":true")) {
+        megler_free(json);
+        return false;
+    }
+    megler_free(json);
+    return true;
+}
+
+static int run_splits(void)
+{
+    static const char *const steps[] = { "split-dirs", "package-info", "code-path", "native", "drawable", "drawable-mdpi", "string", "string-ru", "string-de",
+                                         "asset-base", "asset-pack", "feature", "obb" };
+    int at = -1, layout, pic[4], i;
+    char want[160];
+    memset(pic, 0, sizeof(pic));
+    expect_line("I/SplitsTest: onCreate", &at, 120);
+    expect_line(k_split_names, &at, 30);
+    for (i = 0; i < (int)HK_COUNT(steps); i++) {
+        snprintf(want, sizeof(want), "I/SplitsTest: %s ok", steps[i]);
+        expect_line(want, &at, 60);
+    }
+    snprintf(want, sizeof(want), "I/SplitsTest: done ok=%d failed=0", (int)HK_COUNT(steps));
+    expect_line(want, &at, 30);
+    /* The expansion file is there after the .xapk, and not after the .apks, which has none. */
+    CHECK(find_line(g_xapk ? "I/SplitsTest: obb present in /storage/emulated/0/Android/obb/megler.test.splits" : "I/SplitsTest: obb absent", 0) >= 0);
+    /* The library came out of the split, which the core says when it places it for the class loader; the split is mounted beside the base. */
+    CHECK(find_line("run: the app is in 8 APKs, its base and the splits config.armeabi_v7a, config.en, config.mdpi, config.ru, config.xxhdpi, extra, pack", 0) >= 0);
+    CHECK(find_line("java: the app's 1 native library (armeabi-v7a) is in /data/data/megler.test.splits/lib", 0) >= 0);
+    CHECK(find_line("I/SplitsLib: answer from the split's library", 0) >= 0);
+    CHECK(find_line("/data/app/megler.test.splits-1/split_config.armeabi_v7a.apk", 0) >= 0);
+    /* The picture only the density split has, drawn in the window: magenta all over its middle. */
+    layout = wait_line("I/SplitsTest: layout picture=", 0, 30);
+    CHECK(layout >= 0 && rect_in(line_at(layout), "picture", pic));
+    settle();
+    write_picture(g_xapk ? "splits-xapk" : "splits-apks");
+    CHECK(pic[2] > 2 && pic[3] > 2 && pixel(pic[0] + pic[2] / 2, pic[1] + pic[3] / 2) == 0xFF00FF && pixel(pic[0] + 1, pic[1] + 1) == 0xFF00FF);
+    for (i = 0; i < g_nlines; i++)
+        if (strstr(g_lines[i], "/SplitsTest: ") && strstr(g_lines[i], " FAILED")) say("  %s", g_lines[i]);
+    back_and_end("I/SplitsTest: onDestroy", &at);
+    say_app_lines("/SplitsTest: ");
+    return g_failed;
+}
+
 /* What the command line says after the screen's size: for `app` the steps of its script, for `data` the run it is to be. */
 static int g_script_count;
 static char **g_script;
@@ -2036,6 +2112,16 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
      * of OpenGL from Java gets the stand-in as it is, which says "no such function" for what it does not have.
      */
     hk_gl_standin_set_complete(g_any_app || !strcmp(which, "webview"));
+    /* `splits` is given a bundle, unpacked first as the shell unpacks one; the app is its base and the folder of its splits. */
+    if (!strcmp(which, "splits")) {
+        char *base = NULL;
+        if (!unpack_bundle(apk, &base)) {
+            free(base);
+            say("%d checks, %d failed", g_checks, g_failed);
+            return g_failed;
+        }
+        apk = base;
+    }
     if (start(apk, android_root)) {
         if (!strcmp(which, "demos")) run_demos();
         else if (!strcmp(which, "natives")) run_natives();
@@ -2045,6 +2131,7 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
         else if (!strcmp(which, "gl")) run_gl();
         else if (!strcmp(which, "webview")) run_webview();
         else if (!strcmp(which, "camera")) run_camera();
+        else if (!strcmp(which, "splits")) run_splits();
         else if (g_any_app) run_app();
         else run_hello();
         if (running()) {

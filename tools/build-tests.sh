@@ -39,6 +39,13 @@
 #       through the core's camera code and a few pictures taken, or, on a PC
 #       without one, a line that says so.
 #
+# Both builds unpack bundles of split APKs as the shell does (hk_tests
+# --bundles, core/tests/hk_bundle_tests.c): the test app `splits` as an .apks
+# and an .xapk (build/guest/java, made by tools/build-test-app.sh), and the
+# real bundles that are in build/bundles, which are not in the repository
+# (BiP, MangaDex and Magnit: copied there from where they were downloaded;
+# those missing are said and left out).
+#
 # The tests are run twice where Android 9's boot class path has been unpacked
 # (build/android9/boot): once with the Dalvik runtime on its built-in
 # java.lang, and once more, the whole of them, with the runtime on Android's
@@ -55,7 +62,9 @@
 # tools/build-test-app.sh; said and left out where they are not), and
 # `natives`, the one with a native library of its own, where there is an NDK
 # as well to build that (said and left out where there is none), and `crash`,
-# which ends on an exception nothing catches, and `gl`, OpenGL ES from Java (a
+# which ends on an exception nothing catches, and `splits`, an app in several
+# APKs, twice: given as its .apks and as its .xapk, each unpacked as the shell
+# unpacks it and started from its base and splits; and `gl`, OpenGL ES from Java (a
 # GLSurfaceView, EGL14, EGL10) on a stand-in that draws -- twice: with a test
 # shell that composes the window from the frames the core hands it, and with one
 # that refuses them, the core composing. And `data`, a database through
@@ -170,6 +179,8 @@ EOF
       # The folder is copied into WSL's own disk: the Windows drive is slow from there, and ICU maps 24 MB of it.
       MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "mkdir -p $WB/android-root && cp -ru '$WROOT/build/android9/root/.' $WB/android-root/ && rm -rf $WB/scratch && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests '$WROOT/build/guest/armeabi-v7a' $WB/scratch --dvm-android $WB/android-root \$([ -f $WB/hk.apk ] && echo --dvm-apk $WB/hk.apk) ${EXTRA[*]:-} 2>&1" || STATUS=1
     fi
+    # Bundles of split APKs, unpacked as the shell unpacks them.
+    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/scratch-bundles && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --bundles '$WROOT/build/guest/java' $WB/scratch-bundles '$WROOT/build/bundles' 2>&1; STATUS=\$?; rm -rf $WB/scratch-bundles; exit \$STATUS" || STATUS=1
     if [ "$JAVA" = 1 ]; then
       for app in hello demos natives crash gc gl; do
         if [ ! -f "$ROOT/build/guest/java/$app.apk" ]; then
@@ -178,6 +189,15 @@ EOF
         fi
         echo "the Java test app $app (build/guest/java/$app.apk), through megler_run"
         MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/$app.apk' $WB/$app.apk && rm -rf $WB/java-data-$app && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --java $app $WB/$app.apk $WB/java-data-$app $WB/android-root '$WROOT/build/java-pictures' 2>&1" || STATUS=1
+      done
+      # The app in several APKs, from each of its bundles: unpacked as the shell unpacks one, for a screen of 320 dpi, and run.
+      for bundle in apks xapk; do
+        if [ ! -f "$ROOT/build/guest/java/splits.$bundle" ]; then
+          echo "(the Java test app splits is not run from its .$bundle: build/guest/java/splits.$bundle was not built -- its native library needs the NDK)"
+          continue
+        fi
+        echo "the Java test app splits (build/guest/java/splits.$bundle), unpacked and run through megler_run"
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/splits.$bundle' $WB/splits.$bundle && rm -rf $WB/java-data-splits && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --java splits $WB/splits.$bundle $WB/java-data-splits $WB/android-root '$WROOT/build/java-pictures' 0 720x1280@320 2>&1" || STATUS=1
       done
       # The database app, twice: the second run on the data folder the first left, to find what it wrote. Only where the core has SQLite in it.
       if [ -n "$SQLITE_GCC" ] && [ -f "$ROOT/build/guest/java/data.apk" ]; then
@@ -361,6 +381,10 @@ elif [ "$MODE" = win ]; then
       echo "(the streams to time the decoders by could not be made: tools/media-test-streams.py --speed needs Python and ffmpeg)"
     fi
     "$OUT/hk_tests.exe" --codec-windows "$(w "$ROOT/core/tests/app/data/assets")" "$(w "$OUT/scratch-codec")" ${SPEED[@]+"${SPEED[@]}"} || STATUS=1
+    # Bundles of split APKs, unpacked as the shell unpacks them: the test app's and the real ones in build/bundles.
+    rm -rf "$OUT/scratch-bundles"
+    "$OUT/hk_tests.exe" --bundles "$(w "$ROOT/build/guest/java")" "$(w "$OUT/scratch-bundles")" "$(w "$ROOT/build/bundles")" || STATUS=1
+    rm -rf "$OUT/scratch-bundles"
     # The shell's cameras: the PC's first camera through the core's camera code, a few pictures taken; a PC without one says so.
     rm -rf "$OUT/scratch-camera"
     "$OUT/hk_tests.exe" --camera-windows "$(w "$OUT/scratch-camera")" || STATUS=1

@@ -19,6 +19,9 @@
 
 static megler_run_config g_config;
 static char *g_apk_path;
+/* The app's splits as one list, what megler_run_config gave in a folder and as paths (g_config.split_apks points here). */
+static char **g_splits;
+static int g_nsplits;
 static char g_error[400];
 static volatile i32 g_active, g_ended, g_frames;
 static const hk_driver *g_driver;
@@ -266,15 +269,17 @@ static void other_app(const char *name, bool is_dir, void *user)
     if (!is_dir || name[0] == '.' || !name[0]) return;
     for (c = name; *c; c++)
         if (!((*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9') || *c == '.' || *c == '_')) return;
-    own = hk_sprintf("%s/apps/%s/sdcard", o->data_dir, name);
+    own = hk_run_own_storage(o->data_dir, name);
     hk_fs_other_app(name, own);
     free(own);
     o->count++;
 }
 
+char *hk_run_own_storage(const char *data_dir, const char *package) { return hk_sprintf("%s/apps/%s/sdcard", data_dir, package); }
+
 void hk_run_files(const char *data_dir, const char *package, const megler_storage_host *storage)
 {
-    char *internal = hk_sprintf("%s/apps/%s/data", data_dir, package), *own = hk_sprintf("%s/apps/%s/sdcard", data_dir, package), *apps;
+    char *internal = hk_sprintf("%s/apps/%s/data", data_dir, package), *own = hk_run_own_storage(data_dir, package), *apps;
     left_behind left;
     other_apps others;
     hk_fs_configure(package, internal, own);
@@ -297,9 +302,25 @@ void hk_run_files(const char *data_dir, const char *package, const megler_storag
     free(own);
 }
 
+/* The splits megler_run_config names, in its folder (sorted by name) and then in its list, each once, into g_splits. */
+static void gather_splits(const megler_run_config *config)
+{
+    char **listed = NULL;
+    int n = hk_apk_list_splits(config->splits_dir, &listed), i, k;
+    g_splits = (char **)hk_alloc(sizeof(char *) * (size_t)(n + (config->split_count > 0 ? config->split_count : 0) + 1));
+    g_nsplits = 0;
+    for (i = 0; i < n; i++) g_splits[g_nsplits++] = listed[i];
+    free(listed);
+    for (i = 0; i < config->split_count; i++) {
+        if (!config->split_apks || !config->split_apks[i]) continue;
+        for (k = 0; k < g_nsplits && strcmp(g_splits[k], config->split_apks[i]); k++) { }
+        if (k == g_nsplits) g_splits[g_nsplits++] = hk_strdup(config->split_apks[i]);
+    }
+}
+
 bool hk_run_start(const megler_run_config *config)
 {
-    hk_apk_info info;
+    static hk_apk_info info;
     int i;
     g_error[0] = 0;
     if (g_started_once) {
@@ -314,7 +335,9 @@ bool hk_run_start(const megler_run_config *config)
         hk_run_set_error("no APK given");
         return false;
     }
-    if (!hk_apk_read_info(config->apk_path, &info)) {
+    hk_apk_free_list(g_splits, g_nsplits);
+    gather_splits(config);
+    if (!hk_apk_read_app(config->apk_path, (const char *const *)g_splits, g_nsplits, config->splits_dir, &info)) {
         hk_run_set_error("%s", info.error[0] ? info.error : "the APK cannot be read");
         return false;
     }
@@ -333,13 +356,34 @@ bool hk_run_start(const megler_run_config *config)
     g_config = *config;
     g_apk_path = hk_strdup(config->apk_path);
     g_config.apk_path = g_apk_path;
+    /*
+     * The drivers see the splits as one list, of those the reading took (a split of another app is no split of this one),
+     * in the order of info.splits, which names them.
+     */
+    g_config.split_apks = (const char *const *)g_splits;
+    g_config.split_count = 0;
+    for (i = 0; i < g_nsplits; i++) {
+        hk_apk_info *part = (hk_apk_info *)hk_alloc(sizeof(*part));
+        if (g_config.split_count < HK_APK_MAX_SPLITS && hk_apk_read_info(g_splits[i], part) && !strcmp(part->package, info.package) && part->split[0])
+            g_splits[g_config.split_count++] = g_splits[i];
+        else free(g_splits[i]);
+        free(part);
+    }
+    g_nsplits = g_config.split_count;
 
     if (!hk_ld_add_apk(config->apk_path)) {
         hk_run_set_error("the APK cannot be opened");
         hk_apk_info_free(&info);
         return false;
     }
-    for (i = 0; i < config->split_count; i++) hk_ld_add_apk(config->split_apks[i]);
+    for (i = 0; i < g_config.split_count; i++) hk_ld_add_apk(g_config.split_apks[i]);
+    if (g_config.split_count) {
+        char names[600];
+        size_t at = 0;
+        names[0] = 0;
+        for (i = 0; i < info.nsplits && at + 4 < sizeof(names); i++) at += (size_t)snprintf(names + at, sizeof(names) - at, "%s%s", i ? ", " : "", info.splits[i]);
+        hk_info("run: the app is in %d APKs, its base and the split%s %s", g_config.split_count + 1, g_config.split_count == 1 ? "" : "s", names);
+    }
 
     /* Each app gets its own Android data directories under ours, and all of them one shared storage. */
     hk_run_files(megler_data_dir(), info.package, &g_config.storage);

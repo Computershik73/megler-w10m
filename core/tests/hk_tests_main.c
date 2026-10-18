@@ -61,6 +61,10 @@
  *       core's camera for android.hardware.Camera: the PC's first camera opened, a few pictures taken at its smallest size and
  *       checked, focus and the light where it has them, stop and close. A PC without a camera says so and has nothing to
  *       check. Only in the build tools/build-tests.sh win makes; any other says so and does nothing
+ *   hk_tests --bundles <test apps dir> <scratch dir> [real bundles dir]
+ *       bundles of split APKs (.apks, .xapk) unpacked as the shell unpacks them, and the APK report of what comes out
+ *       (hk_bundle_tests.c): the test app `splits` in the folder of the test apps (build/guest/java), and the real bundles
+ *       in the third folder where one is named
  *   hk_tests --run <apk> <data dir> [milliseconds]
  *       start the APK with a stand-in for OpenGL ES, touch it, press Back, and say what happened
  *   hk_tests --load <dir> <library>...
@@ -903,6 +907,15 @@ int main(int argc, char **argv)
         }
         if (argc > 9) hk_tests_java_set_script(argc - 9, argv + 9);
         return hk_tests_java_run(argv[2], argv[3], argv[5], argc >= 7 && strcmp(argv[6], "-") ? argv[6] : NULL, argc >= 8 ? atoi(argv[7]) : 0) ? 1 : 0;
+    }
+    if (argc >= 4 && !strcmp(argv[1], "--bundles")) {
+        /* The scratch folder is the data folder too: a bundle's expansion files go into the app's storage under it. */
+        megler_config config;
+        memset(&config, 0, sizeof(config));
+        config.data_dir = argv[3];
+        config.package_dir = argv[3];
+        megler_init(&config);
+        return hk_bundle_tests_run(argv[2], argv[3], argc >= 5 ? argv[4] : NULL) ? 1 : 0;
     }
 #if HK_HOST_ARM32
     if (argc >= 4 && !strcmp(argv[1], "--load")) return load_mode(argc, argv);

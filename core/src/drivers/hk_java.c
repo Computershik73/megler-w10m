@@ -42,6 +42,9 @@
 
 #define MAX_EVENTS 256
 #define MAX_APKS 16
+/* The app's splits are APKs 2 to 11: ten, which is all the framework reads (its Resources looks in 2 to 11). */
+#define FIRST_SPLIT_APK 2
+#define MAX_SPLITS 10
 
 /* The phases of an event as megler.AppRunner.deliver reads them. */
 enum { EV_DOWN = 0, EV_MOVE = 1, EV_UP = 2, EV_CANCEL = 3, EV_KEY = 4, EV_BACK = 5, EV_HOST_PAUSE = 6, EV_TEXT = 7, EV_INSETS = 8 };
@@ -53,6 +56,14 @@ static struct {
     char *root;                        /* the Android root, a host path */
     char activity[200], application[200], package[128];
     char guest_apk[400];               /* the APK's path as the app sees it */
+    /*
+     * The app's splits (megler_run_config.split_apks, as many as there is room for): their names from their manifests
+     * ("config.armeabi_v7a"), their paths as the app sees them (Native.splitPaths), and whether they have code.
+     */
+    int nsplits;
+    char split_names[MAX_SPLITS][96];
+    char *guest_splits[MAX_SPLITS];
+    bool split_code[MAX_SPLITS];
     hk_thread *main;
     /*
      * The APKs by the framework's numbers: 0 the app's, 1 the platform's resources, 2 to 11 the app's splits, 12 on the shared
@@ -175,24 +186,39 @@ static char *asset_name(hk_jobj *path)
     return hk_sprintf("assets/%s", p);
 }
 
+/*
+ * Which of the app's APKs has an entry: the base, else the first split that has it. An app in several APKs has assets in
+ * its splits too -- an asset pack is a split of assets alone -- and AssetManager finds them there as it finds the base's,
+ * as on Android, whose AssetManager has every split of the app among its APKs. (Android looks in the last added first;
+ * a name in two of the app's APKs is no app's intent, and the base's is taken.) -1 when none has it.
+ */
+static int app_apk_with(const char *name)
+{
+    int i;
+    if (J.apk_open[0] && hk_zip_find(&J.apk[0], name)) return 0;
+    for (i = 0; i < J.nsplits; i++)
+        if (J.apk_open[FIRST_SPLIT_APK + i] && hk_zip_find(&J.apk[FIRST_SPLIT_APK + i], name)) return FIRST_SPLIT_APK + i;
+    return -1;
+}
+
 N(Native_readAsset)
 {
     char *name = asset_name(c->args[0].l);
-    c->ret.l = apk_file(0, name);
+    c->ret.l = apk_file(app_apk_with(name), name);
     free(name);
 }
 
 N(Native_assetFd)
 {
     char *name = asset_name(c->args[0].l);
-    c->ret.j = apk_fd(0, name);
+    c->ret.j = apk_fd(app_apk_with(name), name);
     free(name);
 }
 
 N(Native_assetLength)
 {
     char *name = asset_name(c->args[0].l);
-    c->ret.j = apk_length(0, name);
+    c->ret.j = apk_length(app_apk_with(name), name);
     free(name);
 }
 
@@ -234,7 +260,10 @@ N(Native_listAssets)
     memset(&l, 0, sizeof(l));
     l.dir = prefix;
     l.dir_len = strlen(prefix);
+    /* The base's, then what the splits have besides, each name once (list_one sees to that). */
     if (J.apk_open[0]) hk_zip_each(&J.apk[0], prefix, list_one, &l);
+    for (i = 0; i < J.nsplits; i++)
+        if (J.apk_open[FIRST_SPLIT_APK + i]) hk_zip_each(&J.apk[FIRST_SPLIT_APK + i], prefix, list_one, &l);
     a = hk_dvm_new_array("[Ljava/lang/String;", l.n);
     for (i = 0; i < l.n; i++) {
         if (a) a->u.oarr.v[i] = hk_dvm_new_string(l.names[i]);
@@ -315,7 +344,18 @@ N(Native_apkPath) { c->ret.l = hk_dvm_new_string(J.guest_apk); }
 /* setAppClassLoader(loader): the PathClassLoader the framework made for the app; the app's classes name it as theirs from now on. */
 N(Native_setAppClassLoader) { hk_dvm_set_app_loader(c->args[0].l); }
 
-N(Native_splitPaths) { c->ret.l = hk_dvm_new_array("[Ljava/lang/String;", 0); }
+/*
+ * The splits as the app's own code names them, beside the base where Android installs them:
+ * /data/app/<package>-1/split_<name>.apk (mount_apk). The framework makes ApplicationInfo.splitNames and splitSourceDirs
+ * of these, and the app's class loader's path.
+ */
+N(Native_splitPaths)
+{
+    hk_jobj *a = hk_dvm_new_array("[Ljava/lang/String;", J.nsplits);
+    int i;
+    for (i = 0; a && i < J.nsplits; i++) a->u.oarr.v[i] = hk_dvm_new_string(J.guest_splits[i]);
+    c->ret.l = a;
+}
 
 /*
  * Looper.prepare() and every turn of a message loop: the thread's native
@@ -911,16 +951,26 @@ static void open_apk(int index, const char *host_path)
     }
 }
 
-/* Gives the APK its Android path, and tells the runtime that its classes are on the class path under that name. */
+/*
+ * Gives the APK its Android path, and tells the runtime that its classes are on the class path under that name. And the
+ * splits theirs, beside it, under the names Android gives installed splits (split_config.armeabi_v7a.apk), each a mount of
+ * its own file wherever the shell keeps it; those with code are on the class path under their names too.
+ */
 static void mount_apk(void)
 {
     const char *path = J.config->apk_path, *slash = strrchr(path, '/'), *back = strrchr(path, '\\');
     const char *name = back && (!slash || back > slash) ? back + 1 : slash ? slash + 1 : path;
     char *dir = name > path ? hk_strdup(path) : hk_strdup("."), *guest_dir = hk_sprintf("/data/app/%s-1", J.package);
+    int i;
     if (name > path) dir[name - path - 1] = 0;
     hk_fs_mount(guest_dir, dir);
     snprintf(J.guest_apk, sizeof(J.guest_apk), "%s/%s", guest_dir, name);
     hk_dvm_dex_source_added(J.guest_apk);
+    for (i = 0; i < J.nsplits; i++) {
+        J.guest_splits[i] = hk_sprintf("%s/split_%s.apk", guest_dir, J.split_names[i]);
+        hk_fs_mount(J.guest_splits[i], J.config->split_apks[i]);
+        if (J.split_code[i]) hk_dvm_dex_source_added(J.guest_splits[i]);
+    }
     free(dir);
     free(guest_dir);
 }
@@ -1081,12 +1131,13 @@ static void main_thread(void *arg)
         } else {
             hk_dvm_clear_pending();
         }
-        for (i = 0; i < J.config->split_count; i++) hk_dvm_add_apk(J.config->split_apks[i]);
+        /* A feature split's code joins the app's class path after the base's, as its class loader has it on Android. */
+        for (i = 0; i < J.nsplits; i++) J.split_code[i] = hk_dvm_add_apk(J.config->split_apks[i]) > 0;
         mount_apk();
         place_libraries();
         open_apk(0, J.config->apk_path);
         open_apk(1, res);
-        for (i = 0; i < J.config->split_count; i++) open_apk(2 + i, J.config->split_apks[i]);
+        for (i = 0; i < J.nsplits; i++) open_apk(FIRST_SPLIT_APK + i, J.config->split_apks[i]);
         if (!J.apk_open[1]) hk_info("java: no framework-res.apk in the Android root: the platform's own resources (themes, widgets' pictures) are not there");
         hk_dvm_register(k_native);
         hk_dvm_register(k_absent);
@@ -1158,6 +1209,7 @@ static bool java_start(const megler_run_config *config, const hk_apk_info *info)
 {
     hk_stat st;
     char *probe;
+    int i;
     memset(&J, 0, sizeof(J));
     hk_lock_init(&J.lock);
     J.config = config;
@@ -1165,6 +1217,13 @@ static bool java_start(const megler_run_config *config, const hk_apk_info *info)
     hk_strlcpy(J.activity, info->activity, sizeof(J.activity));
     hk_strlcpy(J.application, info->application, sizeof(J.application));
     hk_strlcpy(J.package, info->package, sizeof(J.package));
+    /* The splits, in megler_run's order, which is info->splits' (run/hk_run.c): as many as the framework reads. */
+    J.nsplits = config->split_count < info->nsplits ? config->split_count : info->nsplits;
+    if (J.nsplits > MAX_SPLITS) {
+        hk_warn("java: the app has %d splits, and the framework reads %d: %s and those after it are left out", J.nsplits, MAX_SPLITS, info->splits[MAX_SPLITS]);
+        J.nsplits = MAX_SPLITS;
+    }
+    for (i = 0; i < J.nsplits; i++) hk_strlcpy(J.split_names[i], info->splits[i], sizeof(J.split_names[0]));
     /* The battery the app starts with is not news to it; what it becomes afterwards is (battery_news). */
     J.battery_changes = hk_battery_changes();
     hk_battery_read(&J.battery);

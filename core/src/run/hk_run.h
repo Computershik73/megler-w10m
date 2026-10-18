@@ -28,6 +28,12 @@ u32 hk_run_frames(void);
  */
 void hk_run_files(const char *data_dir, const char *package, const megler_storage_host *storage);
 /*
+ * The host folder that holds an app's own part of the shared storage (its Android/data/<package> and Android/obb/<package>
+ * are under it, as under /storage/emulated/0): <data_dir>/apps/<package>/sdcard, malloc'd. Where hk_run_files mounts it,
+ * and where megler_bundle_unpack puts a bundle's expansion files before the app has ever run.
+ */
+char *hk_run_own_storage(const char *data_dir, const char *package);
+/*
  * The shared storage alone: <data_dir>/sdcard as /storage/emulated/0, and the
  * shell's links in it (megler.h, megler_storage_host; NULL or all zero: none).
  * The links and their names are copied. Not while an app runs.

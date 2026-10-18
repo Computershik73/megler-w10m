@@ -1,0 +1,23 @@
+# How tools/build-test-app.sh builds this app: as a base and split APKs, as bundletool would for Google Play, and bundled
+# into build/guest/java/splits.apks (bundletool's layout) and splits.xapk (APKPure's, with an expansion file).
+#
+# config <qualifier>     a config split of the resources for that qualifier (aapt2 link --split): pictures for a density,
+#                        strings for a language. The base keeps none of them.
+# abi <abi> [real]       a split for a processor, with the app's native libraries (jni/) under lib/<abi>/; only `real`
+#                        is the one they were built for, the others carry the same files under their own ABI's name
+#                        (they are never run: the unpacking leaves them out)
+# feature <name>         a feature split with code: split/<name>/src compiled against the base's classes
+# assets <name>          an asset pack: split/<name>/assets
+# obb <file>             an expansion file of the .xapk, obb/<file>, which goes to Android/obb/<package>/
+config xxhdpi
+config mdpi
+config ldpi
+config en
+config ru
+config de
+abi armeabi_v7a real
+abi arm64_v8a
+abi x86
+feature extra
+assets pack
+obb main.7.megler.test.splits.obb

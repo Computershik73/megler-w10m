@@ -8,6 +8,10 @@
 #
 #   core/tests/app/<name>/AndroidManifest.xml, res/, src/, assets/, jni/   ->   build/guest/java/<name>.apk
 #
+# An app with a file named `splits` is built as a base and split APKs, as for
+# Google Play, and bundled: build/guest/java/<name>.apks and <name>.xapk
+# (tools/build-split-app.py; the file says what the splits are).
+#
 # An app with a jni/ folder has native libraries, built by the NDK's clang
 # against the NDK's own headers and libraries, as an app's are: armeabi-v7a,
 # Thumb-2, softfp. Each jni/<x>.c becomes lib/armeabi-v7a/lib<x>.so; those
@@ -69,6 +73,23 @@ fi
 
 for app in "$APPS"/*/; do
   name="$(basename "$app")"
+  if [ -f "$app/splits" ]; then
+    # An app in several APKs: a base and splits, bundled as an .apks and an .xapk (tools/build-split-app.py says how).
+    if [ "$FORCE" = 0 ] && [ -f "$OUT/$name.xapk" ] && [ -z "$(find "$app" "$0" "$ROOT/tools/build-split-app.py" -newer "$OUT/$name.xapk" -type f -print -quit)" ]; then
+      echo "build/guest/java/$name.apks and .xapk are newer than their sources"
+      continue
+    fi
+    CC=-
+    [ -f "$NDKCC" ] && CC="$(m "$NDKCC")"
+    if [ -d "$app/jni" ] && [ "$CC" = - ]; then
+      echo "(no NDK at $NDK (MEGLER_NDK): the test app $name, which has native code, is not built)"
+      rm -f "$OUT/$name.apks" "$OUT/$name.xapk" "$OUT/$name-base.apk"
+      continue
+    fi
+    python "$(m "$ROOT/tools/build-split-app.py")" "$(m "$app")" "$(m "$OUT")" "$(m "$BT")" "$(m "$JAR")" "$(m "$JDK")" "$CC" \
+      || { rm -f "$OUT/$name.apks" "$OUT/$name.xapk" "$OUT/$name-base.apk"; echo "the split test app $name could not be built" >&2; exit 1; }
+    continue
+  fi
   apk="$OUT/$name.apk"
   if [ "$FORCE" = 0 ] && [ -f "$apk" ] && [ -z "$(find "$app" "$0" -newer "$apk" -type f -print -quit)" ]; then
     echo "build/guest/java/$name.apk is newer than its sources"

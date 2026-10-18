@@ -255,6 +255,90 @@ u8 *hk_zip_read(const hk_zip *z, const hk_zip_entry *e, size_t limit, size_t *si
     return out;
 }
 
+bool hk_zip_extract(const hk_zip *z, const hk_zip_entry *e, const char *path, void (*progress)(void *user, u64 written), void *user,
+                    char *err, size_t errlen)
+{
+    enum { IN_PIECE = 256 * 1024, OUT_PIECE = 1024 * 1024 };
+    hk_file *out;
+    u8 *in = NULL, *buf = NULL;
+    u64 src = 0, left, written = 0;
+    uLong crc = crc32(0L, Z_NULL, 0);
+    z_stream s;
+    bool inflating = false, ok = false;
+    int ferr = 0, r = Z_OK;
+    const char *why = "the entry is damaged";
+    if (!entry_data(z, e, &src) || (e->method != 0 && e->method != 8) || (e->method == 0 && e->csize != e->usize)) {
+        fail(err, errlen, e->method != 0 && e->method != 8 ? "the entry is compressed in a way this reader does not know" : why);
+        return false;
+    }
+    memset(&s, 0, sizeof(s));
+    out = hk_file_open(path, HK_O_WRITE | HK_O_CREATE | HK_O_TRUNC, &ferr);
+    if (!out) {
+        fail(err, errlen, "the file cannot be made");
+        return false;
+    }
+    in = (u8 *)malloc(IN_PIECE);
+    buf = (u8 *)malloc(OUT_PIECE);
+    if (!in || !buf) {
+        why = "no memory to unpack with";
+        goto done;
+    }
+    left = e->csize;
+    if (e->method == 8) {
+        if (inflateInit2(&s, -MAX_WBITS) != Z_OK) goto done;
+        inflating = true;
+    }
+    for (;;) {
+        size_t n = (size_t)(left > IN_PIECE ? IN_PIECE : left), produced;
+        if (e->method == 0) {
+            /* Stored: the bytes as they are, a megabyte at a time. */
+            n = (size_t)(left > OUT_PIECE ? OUT_PIECE : left);
+            if (!n) break;
+            if (!hk_zip_pread(z, src, buf, n)) goto done;
+            src += n;
+            left -= n;
+            produced = n;
+        } else {
+            if (!s.avail_in) {
+                if (!n) goto done;     /* the stream wants more than the entry has */
+                if (!hk_zip_pread(z, src, in, n)) goto done;
+                src += n;
+                left -= n;
+                s.next_in = in;
+                s.avail_in = (uInt)n;
+            }
+            s.next_out = buf;
+            s.avail_out = OUT_PIECE;
+            r = inflate(&s, Z_NO_FLUSH);
+            if (r != Z_OK && r != Z_STREAM_END && !(r == Z_BUF_ERROR && left)) goto done;
+            produced = OUT_PIECE - s.avail_out;
+        }
+        if (produced) {
+            if (written + produced > e->usize) goto done;
+            if (hk_file_write(out, buf, produced, &ferr) != (i64)produced) {
+                why = "the file cannot be written (is the storage full?)";
+                goto done;
+            }
+            crc = crc32(crc, buf, (uInt)produced);
+            written += produced;
+            if (progress) progress(user, written);
+        }
+        if (e->method == 8 && r == Z_STREAM_END) break;
+    }
+    ok = written == e->usize && (u32)crc == e->crc;
+    if (!ok) why = "the entry is damaged (its size or its CRC is not what the archive says)";
+done:
+    if (inflating) inflateEnd(&s);
+    free(in);
+    free(buf);
+    hk_file_close(out);
+    if (!ok) {
+        hk_path_remove(path, NULL);
+        fail(err, errlen, why);
+    }
+    return ok;
+}
+
 void hk_zip_each(const hk_zip *z, const char *prefix, void (*cb)(const hk_zip_entry *e, void *user), void *user)
 {
     size_t n = strlen(prefix);

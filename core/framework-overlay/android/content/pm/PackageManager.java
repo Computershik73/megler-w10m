@@ -4,6 +4,9 @@
 // .any, .front, .autofocus, .flash), from the shell's (megler.CameraNative): the
 // original said no camera at all, and a scanner that asks before it opens one
 // (VK mp3 mod's QR sign-in among them) would not offer to scan.
+// And getPackageInfo names the app's split APKs (splitNames, splitRevisionCodes),
+// as ApplicationInfo does: an app in several APKs that checks for its splits by
+// this way of asking found none, where the original left them empty.
 package android.content.pm;
 
 import android.content.ComponentName;
@@ -74,6 +77,8 @@ public class PackageManager {
         PackageInfo p = new PackageInfo();
         p.packageName = pkg; p.versionCode = megler.Manifest.versionCode; p.versionName = megler.Manifest.versionName != null ? megler.Manifest.versionName : "1.0";
         p.firstInstallTime = p.lastUpdateTime = new java.io.File(megler.Native.apkPath()).lastModified();
+        String[] splits = ApplicationInfo.self().splitNames;
+        if (splits != null) { p.splitNames = splits.clone(); p.splitRevisionCodes = new int[splits.length]; }
         p.requestedPermissions = megler.Manifest.permissions.toArray(new String[0]);
         p.requestedPermissionsFlags = new int[p.requestedPermissions.length];
         java.util.Arrays.fill(p.requestedPermissionsFlags, PackageInfo.REQUESTED_PERMISSION_GRANTED);
