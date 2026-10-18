@@ -406,8 +406,37 @@ public class Main extends Activity {
                         && CodeDialog.dismissed == 1;
                 Log.i("DataTest", "dialog-fragment " + (shown && gone ? "ok" : "FAILED") + " created=" + CodeDialog.created + " started=" + CodeDialog.started
                         + " dismissed=" + CodeDialog.dismissed + " shown=" + shown + " gone=" + gone);
+                decorReparent();
             }, 300);
         }, 500);
+    }
+
+    /**
+     * The decor's content taken out and put in a view of the app's own, which goes in the decor in its place, as an app puts a
+     * navigation drawer over the whole window (VK mp3 mod, with a DrawerLayout): the window lays out again and is drawn, the
+     * content in the new view, and nothing is cast to the decor's layout parameters it no longer has.
+     */
+    private void decorReparent() {
+        final android.app.Dialog dialog = new android.app.Dialog(this);
+        android.widget.TextView text = new android.widget.TextView(this);
+        text.setText("moved");
+        dialog.setContentView(text);
+        dialog.show();
+        new android.os.Handler().postDelayed(() -> {
+            android.view.ViewGroup decor = (android.view.ViewGroup) dialog.getWindow().getDecorView();
+            android.view.View content = decor.getChildAt(0);
+            decor.removeView(content);
+            android.widget.LinearLayout wrap = new android.widget.LinearLayout(this);
+            wrap.addView(content, new android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+            decor.addView(wrap);
+            decor.requestApplyInsets();
+            decor.requestLayout();
+            new android.os.Handler().postDelayed(() -> {
+                boolean placed = wrap.getParent() == decor && content.getParent() == wrap && text.isShown() && text.getWidth() > 0 && dialog.isShowing();
+                Log.i("DataTest", "decor-reparent " + (placed ? "ok" : "FAILED") + " text=" + text.getWidth() + "x" + text.getHeight());
+                dialog.dismiss();
+            }, 400);
+        }, 300);
     }
 
     /**

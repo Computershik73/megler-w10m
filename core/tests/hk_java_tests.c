@@ -1724,6 +1724,8 @@ static int run_data(void)
     expect_line("I/DataTest: popup ok rows=3", &at, 30);
     /* A platform DialogFragment's dialog, made by its onCreateDialog, shows over the activity and goes with dismiss(). */
     expect_line("I/DataTest: dialog-fragment ok", &at, 30);
+    /* The decor's content moved into a view of the app's own, which takes its place in the decor: laid out and shown, no cast to the decor's parameters. */
+    expect_line("I/DataTest: decor-reparent ok", &at, 30);
     /* And the battery an app reads is the core's (hk_battery_read): a full one on mains when nothing was set, in the second run the one set before it. */
     CHECK(find_line(run == 2 && want == 2 ? "I/DataTest: battery is level=37/100 status=3 plugged=0 health=2 voltage=3712 temperature=301 present=true technology=Li-poly capacity=37 charging=false"
                                            : "I/DataTest: battery is level=100/100 status=5 plugged=1 health=2 voltage=4200 temperature=250 present=true technology=Li-ion capacity=100 charging=true",

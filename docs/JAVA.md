@@ -3552,7 +3552,7 @@ megler-framework.dex`, which `tools/dvm-android-root.sh` puts in the root. `bash
 tools/dvm-report.sh link build/framework/megler-framework.dex` says: 5965
 linked, 0 not; 0 classes, methods and fields named and not found.
 
-**What differs from the original's framework: a hundred and twelve files** in the overlay,
+**What differs from the original's framework: a hundred and thirteen files** in the overlay,
 most of them a statement or a few methods each inside an otherwise untouched copy
 (the copies are whole files, because a file is what the overlay replaces),
 **and thirteen files of members added** to classes of the original's, **and four files of the original's taken
@@ -3936,6 +3936,16 @@ on a looper thread of its own and takes it back with `next()`.
   activity. And the frame of the insets it makes (`computeInsets`), for
   `WindowInsets.getFrame` (below): the screen's size for an activity's
   window, a dialog's or popup's own once laid out.
+- `megler/DecorView.java`, one method: `dispatchApplyWindowInsets` sets the
+  content stack's margins only while the stack is still the decor's own
+  child with the decor's layout parameters. An app may take the decor's
+  content out, put it in a view of its own and put that view in the decor
+  -- the old way to have a navigation drawer over the whole window, which
+  VK mp3 mod does with a `DrawerLayout` -- and Android's decor then leaves
+  that content alone. The original cast the stack's parameters to
+  `FrameLayout.LayoutParams` whatever they were, and VK ended at its first
+  layout after signing in (package 271). The data app's step after the
+  dialog fragment moves a dialog's content so and lays it out.
 - `megler/InputMethods.java`: only what `deliverPending` writes in the log.
   What it does with the keyboard's text is the original's, unchanged
   ("The keyboard": where typed text went). This is for diagnosis; the
@@ -4345,7 +4355,7 @@ on a looper thread of its own and takes it back with `next()`.
   test app frames its `TextureView` as VK does, and the test finds the
   camera's picture in it and the white corner.
 
-The original has all forty-five faults; they are its author's to take back.
+The original has all forty-six faults; they are its author's to take back.
 
 That the framework was written against a later libcore (the original's ART
 module is Android 16's) showed nowhere else in linking; whether it shows in
