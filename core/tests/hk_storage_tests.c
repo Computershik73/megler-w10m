@@ -765,6 +765,16 @@ static void test_layout(const char *data)
     p = hk_sprintf("%s/OldGame", own);
     CHECK(hk_path_mkdirs(p));
     free(p);
+    /* Another app's own part, from when it ran: a file manager reaches it as on Android 9. */
+    p = hk_sprintf("%s/apps/com.other.game/sdcard/Android/data/com.other.game/files", data);
+    CHECK(hk_path_mkdirs(p));
+    free(p);
+    p = hk_sprintf("%s/apps/com.other.game/sdcard/Android/data/com.other.game/files/config.txt", data);
+    CHECK(hk_file_write_all(p, "SKIP=0", 6));
+    free(p);
+    p = hk_sprintf("%s/apps/com.other.game/sdcard/Android/obb/com.other.game", data);
+    CHECK(hk_path_mkdirs(p));
+    free(p);
     /* And a folder of the shared storage's own by a name that is about to be a link. */
     p = hk_sprintf("%s/Music", shared);
     CHECK(hk_path_mkdirs(p));
@@ -973,10 +983,28 @@ static void test_layout(const char *data)
     read_dir("/sdcard/Android", &seen);
     CHECK(seen.count == 2 && times(&seen, "data") == 1 && times(&seen, "obb") == 1);
     read_dir("/sdcard/Android/data", &seen);
-    CHECK(seen.count == 1 && times(&seen, PKG) == 1 && type_of(&seen, PKG) == T_DT_DIR);
+    CHECK(seen.count == 2 && times(&seen, PKG) == 1 && type_of(&seen, PKG) == T_DT_DIR && times(&seen, "com.other.game") == 1);
     CHECK_INT(stat_errno("/sdcard/Android/data/com.someone.else"), GE_NOENT);
     CHECK_INT(open_errno("/sdcard/Android/data/com.someone.else/files/x", T_RDONLY), GE_NOENT);
     CHECK(C.rmdir("/sdcard/Android/data/" PKG) == -1 && last_errno() == GE_BUSY);
+    /*
+     * Another app's own part is that app's folder, to read and to write, as Android 9 has it for an app with the storage
+     * permission: what a file manager puts there is where the other app looks.
+     */
+    CHECK(!strcmp(get("/sdcard/Android/data/com.other.game/files/config.txt"), "SKIP=0"));
+    CHECK(put("/sdcard/Android/data/com.other.game/files/qa.txt", "SKIP_VALIDATION=1"));
+    p = hk_sprintf("%s/apps/com.other.game/sdcard/Android/data/com.other.game/files/qa.txt", data);
+    text = text_of(p);
+    CHECK(text && !strcmp(text, "SKIP_VALIDATION=1"));
+    free(text);
+    free(p);
+    p = hk_sprintf("%s/Android/data/com.other.game", shared);
+    CHECK(!hk_path_stat(p, &st, NULL));
+    free(p);
+    CHECK(put("/sdcard/Android/obb/com.other.game/qa.txt", "x"));
+    read_dir("/sdcard/Android/obb", &seen);
+    CHECK(seen.count == 2 && times(&seen, PKG) == 1 && times(&seen, "com.other.game") == 1);
+    CHECK(C.rmdir("/sdcard/Android/data/com.other.game") == -1 && last_errno() == GE_BUSY);
     /* What the app kept outside its own part is where it was on the disk, and not in the shared storage (the log says so). */
     CHECK_INT(stat_errno("/sdcard/OldGame"), GE_NOENT);
     p = hk_sprintf("%s/OldGame", own);

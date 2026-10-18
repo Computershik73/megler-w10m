@@ -584,7 +584,7 @@ app sees, and where it is under the data folder (`LocalState` on a phone):
 |---|---|
 | `/data/data/<package>`, `/data/user/0/<package>` | `apps/<package>/data` |
 | `/storage/emulated/0`, and its other names `/sdcard`, `/mnt/sdcard`, `/storage/self/primary`, `/storage/sdcard0` | `sdcard`: **one storage for every app**, with Android's standard folders in it from the start (`Alarms`, `DCIM`, `Documents`, `Download`, `Movies`, `Music`, `Notifications`, `Pictures`, `Podcasts`, `Ringtones`) |
-| `/storage/emulated/0/Android/data/<package>`, `.../Android/obb/<package>` | `apps/<package>/sdcard/Android/data/<package>`, `.../obb/<package>`: the app's own part stays with the app. Another package's is not there |
+| `/storage/emulated/0/Android/data/<package>`, `.../Android/obb/<package>` | `apps/<package>/sdcard/Android/data/<package>`, `.../obb/<package>`: the app's own part stays with the app. Another package's is that package's own part, if it has run here (`hk_fs_other_app`), as Android 9 lets an app with the storage permission reach every app's; a package that has not run has none |
 | `/storage/emulated/0/<name>` for a link | a folder of the phone's own, through the shell |
 
 The other names of the storage are rewritten to the one before a path is looked

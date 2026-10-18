@@ -28,7 +28,8 @@
  *
  * Below it some names are mounts of their own: the app's own part
  * (Android/data/<package>, Android/obb/<package>), which stays in the app's
- * folder on the host, and the links -- folders of the phone itself, whose
+ * folder on the host, the same parts of the other apps that have run here,
+ * which are in their folders, and the links -- folders of the phone itself, whose
  * host paths are foreign ones (host/hk_host.h). Android's shared storage
  * does not tell A from a, so the part of a path below it is matched without
  * regard to the case of ASCII letters.
@@ -43,7 +44,7 @@ typedef struct mount {
     bool link;                         /* one of the phone's own folders */
     bool read_only;
 } mount;
-static mount g_mounts[96];
+static mount g_mounts[320];            /* the app's own, every other app's two parts, the links */
 static int g_nmounts;
 static char g_package[160] = "com.example.app";
 static char g_internal[256] = "/data/data/com.example.app";
@@ -191,6 +192,23 @@ void hk_fs_shared_storage(const char *shared_dir, const hk_fs_link *links, int c
             m->read_only = links[k].read_only;
         }
         free(p);
+        free(h);
+    }
+}
+
+void hk_fs_other_app(const char *package, const char *external_dir)
+{
+    static const char *const parts[] = { "data", "obb" };
+    hk_stat st;
+    size_t i;
+    if (!strcmp(package, g_package)) return;
+    for (i = 0; i < HK_COUNT(parts); i++) {
+        char *h = hk_sprintf("%s/Android/%s/%s", external_dir, parts[i], package);
+        if (hk_path_stat(h, &st, NULL) && st.is_dir) {
+            char *p = hk_sprintf(EXTERNAL "/Android/%s/%s", parts[i], package);
+            hk_fs_mount(p, h);
+            free(p);
+        }
         free(h);
     }
 }

@@ -247,12 +247,44 @@ static void left_one(const char *name, bool is_dir, void *user)
     if (l->count++ < 6 && at + strlen(name) + 3 < sizeof(l->names)) snprintf(l->names + at, sizeof(l->names) - at, "%s%s", at ? ", " : "", name);
 }
 
+/*
+ * The other apps that have run here, each with a folder in <data dir>/apps: their own parts of the shared storage are where
+ * this app finds them, as on Android 9, where an app with the storage permission reaches every app's Android/data and
+ * Android/obb (Android 11 stopped that). A file manager puts a file where a game looks for one: Asphalt 9 reads its
+ * qaTestingConfigs.txt in its own two folders. The names of folders that cannot be a package's are passed over.
+ */
+typedef struct other_apps {
+    const char *data_dir;
+    int count;
+} other_apps;
+
+static void other_app(const char *name, bool is_dir, void *user)
+{
+    other_apps *o = (other_apps *)user;
+    const char *c;
+    char *own;
+    if (!is_dir || name[0] == '.' || !name[0]) return;
+    for (c = name; *c; c++)
+        if (!((*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9') || *c == '.' || *c == '_')) return;
+    own = hk_sprintf("%s/apps/%s/sdcard", o->data_dir, name);
+    hk_fs_other_app(name, own);
+    free(own);
+    o->count++;
+}
+
 void hk_run_files(const char *data_dir, const char *package, const megler_storage_host *storage)
 {
-    char *internal = hk_sprintf("%s/apps/%s/data", data_dir, package), *own = hk_sprintf("%s/apps/%s/sdcard", data_dir, package);
+    char *internal = hk_sprintf("%s/apps/%s/data", data_dir, package), *own = hk_sprintf("%s/apps/%s/sdcard", data_dir, package), *apps;
     left_behind left;
+    other_apps others;
     hk_fs_configure(package, internal, own);
     hk_run_storage(data_dir, storage);
+    others.data_dir = data_dir;
+    others.count = 0;
+    apps = hk_sprintf("%s/apps", data_dir);
+    hk_path_list(apps, other_app, &others, NULL);
+    free(apps);
+    if (others.count > 1) hk_info("storage: the own parts of %d other app(s) are in /sdcard/Android/data and obb, as on Android 9", others.count - 1);
     /*
      * Until the storage was shared every app had a whole one to itself, in the folder its own part is still kept in. What an app put
      * there outside Android/data and Android/obb is still on the disk and no longer in /sdcard. Nothing is moved; it is said.
