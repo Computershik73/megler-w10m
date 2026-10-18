@@ -45,8 +45,8 @@
  * found, and what Android would tell it of its splits. Checked besides: the picture only a split has, in the window; and
  * the .xapk's expansion file, which the app finds in its own Android/obb.
  *
- * `app` is any APK at all: started, left to itself until it is still, its
- * picture written, then whatever the script on the command line says -- a
+ * `app` is any APK at all, or a bundle of split APKs, unpacked first as for `splits`: started, left to itself until it is
+ * still, its picture written, then whatever the script on the command line says -- a
  * touch, a wait, Back, each followed by another picture -- and a summary of
  * how it stands. Nothing is checked but that it started: it is for looking
  * at what a real app does here (docs/JAVA.md, "Real apps").
@@ -2112,8 +2112,11 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
      * of OpenGL from Java gets the stand-in as it is, which says "no such function" for what it does not have.
      */
     hk_gl_standin_set_complete(g_any_app || !strcmp(which, "webview"));
-    /* `splits` is given a bundle, unpacked first as the shell unpacks one; the app is its base and the folder of its splits. */
-    if (!strcmp(which, "splits")) {
+    /*
+     * `splits` is given a bundle, unpacked first as the shell unpacks one; the app is its base and the folder of its splits.
+     * So is `app` when what it is given is named as a bundle (.apks, .xapk): a real app that comes in several APKs.
+     */
+    if (!strcmp(which, "splits") || (g_any_app && strlen(apk) > 5 && (!strcmp(apk + strlen(apk) - 5, ".apks") || !strcmp(apk + strlen(apk) - 5, ".xapk")))) {
         char *base = NULL;
         if (!unpack_bundle(apk, &base)) {
             free(base);

@@ -587,6 +587,19 @@ line that the app is in eight APKs, the library placed and loaded from the
 split, and the density split's picture in the window, magenta in its middle
 (`build/java-pictures/splits-apks.bmp`, `splits-xapk.bmp`).
 
+And one real app from its bundle, by hand: BiP through `hk_tests --java app`
+with its .apks (not run by default; "Real apps" below), unpacked for 320 dpi
+(base, `config.armeabi_v7a`, `config.hdpi`, `config.xhdpi`). It starts as an
+app in four APKs, its base's thirty DEX files on the class path, and loads
+its native libraries out of the split as it asks for them -- Crashlytics',
+React Native's and Hermes' (`libc++_shared`, `libfbjni`, `libjsi`,
+`libreactnative`, `libhermes`) through SoLoader -- connects to its servers, and
+ends in its first activity's `onStart` on its own theme engine's lookup of an
+attribute ("color com.turkcell.bip:attr/themeHeaderBackground not found in
+theme: Day"). That attribute and the styles that give it are in the base's
+own table, not in a split, so this is a matter of themes for another day,
+not of splits.
+
 ### OpenGL ES from Java (both hosts; the app under qemu-arm)
 
 There is no OpenGL ES under qemu or on this PC: no ANGLE for either (the
@@ -936,7 +949,10 @@ boxes, PNG is the only picture format), writes a picture when the app is
 still and one more after each step of the script, and checks nothing. Verbose
 2 adds the framework's touch log, 3 its view dump. Three apps of the user's
 (`build/apps`, not in the repository) were run this way at 720 x 1280 and 280
-dpi; each starts in under half a minute.
+dpi; each starts in under half a minute. Given a bundle of split APKs (a name
+that ends in `.apks` or `.xapk`), it unpacks it first as the shell does, for
+the screen's density, and starts the base with its splits ("An app in several
+APKs" above says what came of BiP).
 
 Two things for an app that does nothing where it should do something, which
 is what a swallowed exception or a call that never happens looks like.
