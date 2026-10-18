@@ -425,6 +425,58 @@ static void test_hardware_buffers(void)
 }
 
 /*
+ * The WebView's display (hk_egl.c, webview_display): Chromium's code is given a display of its own, so that its GPU thread
+ * and an app's drawing threads never have contexts of one ANGLE display current at once. Asked for by the library a call
+ * comes from: libwebviewchromium.so's gets the WebView's, any other the app's. It is initialised and told the same as the
+ * app's -- version, the layer's extensions -- and an image of a hardware buffer asked for on it is made there, by the
+ * WebView's own thread and context; the same buffer is refused on the app's display while its texture is on the WebView's.
+ */
+static void test_webview_display(void)
+{
+    typedef struct { u32 width, height, layers, format; u64 usage; u32 stride, rfu0; u64 rfu1; } desc_t;
+    typedef int (*alloc_fn)(const desc_t *, void **);
+    typedef void (*ref_fn)(void *);
+    alloc_fn allocate = (alloc_fn)hk_bionic_find("AHardwareBuffer_allocate");
+    ref_fn release = (ref_fn)hk_bionic_find("AHardwareBuffer_release");
+    void *(*get_display)(void *) = (void *(*)(void *))hk_egl_resolve("eglGetDisplay");
+    unsigned (*initialize)(void *, int *, int *) = (unsigned (*)(void *, int *, int *))hk_egl_resolve("eglInitialize");
+    const char *(*query)(void *, int) = (const char *(*)(void *, int))hk_egl_resolve("eglQueryString");
+    void *(*client_of)(const void *) = (void *(*)(const void *))hk_egl_resolve("eglGetNativeClientBufferANDROID");
+    void *(*create_image)(void *, void *, unsigned, void *, const int *) =
+        (void *(*)(void *, void *, unsigned, void *, const int *))hk_egl_resolve("eglCreateImageKHR");
+    unsigned (*destroy_image)(void *, void *) = (unsigned (*)(void *, void *))hk_egl_resolve("eglDestroyImageKHR");
+    desc_t want = { 4, 2, 1, 1, 0x333, 0, 0, 0 };
+    void *app, *web, *b = NULL, *image;
+    const char *app_version, *web_version, *ext;
+    int major = 0, minor = 0;
+    say("The WebView's display: one of its own for Chromium's code, beside the app's");
+    CHECK(allocate && release && get_display && initialize && query && client_of && create_image && destroy_image);
+    if (!allocate || !release || !get_display || !initialize || !query || !client_of || !create_image || !destroy_image) return;
+    app = get_display(NULL);
+    web = hk_egl_webview_display();
+    CHECK(app && web && web != app);
+    CHECK(hk_egl_webview_display() == web);
+    CHECK(hk_egl_display_for_library("libwebviewchromium.so") == web);
+    CHECK(hk_egl_display_for_library("/system/app/webview/webview.apk!/lib/armeabi-v7a/libwebviewchromium.so") == web);
+    CHECK(hk_egl_display_for_library("libAsphalt9.so") == app && hk_egl_display_for_library(NULL) == app);
+    /* The test's own call comes from no guest library: the app's display, as before. */
+    CHECK(get_display(NULL) == app);
+    CHECK(initialize(web, &major, &minor) && major == 1);
+    app_version = query(app, 0x3054);
+    web_version = query(web, 0x3054);
+    CHECK(app_version && web_version && !strcmp(app_version, web_version));
+    ext = query(web, 0x3055);
+    CHECK(ext && strstr(ext, "EGL_ANDROID_image_native_buffer") && strstr(ext, "EGL_KHR_fence_sync"));
+    CHECK(allocate(&want, &b) == 0 && b);
+    if (!b) return;
+    image = create_image(web, NULL, 0x3140, client_of(b), NULL);
+    CHECK(image && hk_gl_standin_image_display() == web);
+    CHECK(!create_image(app, NULL, 0x3140, client_of(b), NULL));
+    if (image) destroy_image(web, image);
+    release(b);
+}
+
+/*
  * Fence syncs (hk_egl.c), which the ANGLE inside Chromium makes through the system's EGL once a canvas is in a hardware
  * buffer: the three extensions named; a fence made with a context current, of type fence, signalled, its condition
  * prior commands; a wait for it satisfied, a server wait done; a native fence made over a descriptor of someone else's,
@@ -986,6 +1038,7 @@ int hk_gl_natives_tests_run(hk_test_sink sink, void *user, int *checks)
     hk_java_gl_reset();
     test_version();
     test_hardware_buffers();
+    test_webview_display();
     test_fence_syncs();
     test_calls();
     test_buffers();

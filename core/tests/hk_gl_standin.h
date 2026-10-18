@@ -58,6 +58,8 @@ u32 hk_gl_standin_pixel(int x, int y);
  * false when it is held by the other side.
  */
 bool hk_gl_standin_keyed(void *share_handle, bool acquire);
+/* The display the last EGL image was asked for on. Displays: 0xD15, and 0xD16 for the native display -3 (EGL_D3D11_ONLY_DISPLAY_ANGLE). */
+void *hk_gl_standin_image_display(void);
 bool hk_gl_standin_shared(void *share_handle, const u8 **rgba, int *width, int *height);
 
 #ifdef __cplusplus

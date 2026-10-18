@@ -6,9 +6,19 @@
 #include "../bionic/hk_fd.h"
 #include "../hk_core.h"
 #include "../host/hk_host.h"
+#include "../ld/hk_ld.h"
 #include "../run/hk_run.h"
 #include "hk_ahb.h"
 #include "hk_ndk.h"
+
+/* Where the function this is written in returns to: called by a guest, an address in the guest's code. */
+#if defined(_MSC_VER)
+#include <intrin.h>
+#pragma intrinsic(_ReturnAddress)
+#define CALLER() _ReturnAddress()
+#else
+#define CALLER() __builtin_return_address(0)
+#endif
 
 /* ------------------------------------------------------------- the source */
 
@@ -127,7 +137,16 @@ static void *g_d3d_device;
 static char g_how[48];                 /* which attempt made the display */
 static HK_THREAD_LOCAL EGLint g_error = EGL_SUCCESS;
 
-static EGLDisplay make_display(void)
+/* A display to be made: for whom (NULL: the app), the native display ANGLE is given, and what came of it. */
+typedef struct made_display {
+    const char *whose;
+    void *native;
+    EGLDisplay d;
+    EGLint major, minor;
+    char how[48];
+} made_display;
+
+static void make_display(made_display *m)
 {
     /* What a feature-level-10+ GPU takes, then what a 9_3 phone needs; software rendering is not worth trying on a phone. */
     static const EGLint by_default[] = {
@@ -150,19 +169,19 @@ static EGLDisplay make_display(void)
     fn_initialize init = A(fn_initialize, "eglInitialize");
     size_t i;
     if (!get) get = A(fn_platform_display, "eglGetPlatformDisplay");
-    if (!get || !init) return NULL;
+    if (!get || !init) return;
     for (i = 0; i < HK_COUNT(tries); i++) {
         EGLDisplay d;
         /* Said before it is tried: this is the first thing ANGLE does on a device, and where a bad package would end the process. */
-        hk_info("egl: asking ANGLE for a display as %s", tries[i].name);
-        d = get(EGL_PLATFORM_ANGLE_ANGLE, NULL, tries[i].attribs);
-        if (d && init(d, &g_major, &g_minor)) {
-            hk_strlcpy(g_how, tries[i].name, sizeof(g_how));
-            return d;
+        hk_info("egl: asking ANGLE for a display%s%s as %s", m->whose ? " for " : "", m->whose ? m->whose : "", tries[i].name);
+        d = get(EGL_PLATFORM_ANGLE_ANGLE, m->native, tries[i].attribs);
+        if (d && init(d, &m->major, &m->minor)) {
+            hk_strlcpy(m->how, tries[i].name, sizeof(m->how));
+            m->d = d;
+            return;
         }
-        hk_warn("egl: no display as %s", tries[i].name);
+        hk_warn("egl: no display%s%s as %s", m->whose ? " for " : "", m->whose ? m->whose : "", tries[i].name);
     }
-    return NULL;
 }
 
 /* ------------------------------------------ the thread that outlives the app's
@@ -188,11 +207,13 @@ typedef struct service {
 } service;
 
 /*
- * Two such threads: this one, and one for hardware buffers' textures (below), which keeps a context of the layer's own
- * current, and whose jobs come from the app's graphics threads while this one may be waiting for the shell.
+ * Three such threads: this one, and for each of the layer's displays one for hardware buffers' textures (below), which keeps
+ * a context of the layer's own current, and whose jobs come from the app's graphics threads while this one may be waiting
+ * for the shell.
  */
 static service G_SERVICE = { HK_LOCK_INIT, HK_COND_INIT, HK_COND_INIT, 0, 0, 0, 0, 0, "graphics-service" };
 static service G_BUFFERS = { HK_LOCK_INIT, HK_COND_INIT, HK_COND_INIT, 0, 0, 0, 0, 0, "graphics-buffers" };
+static service G_BUFFERS_WEBVIEW = { HK_LOCK_INIT, HK_COND_INIT, HK_COND_INIT, 0, 0, 0, 0, 0, "graphics-buffers-webview" };
 
 static void service_main(void *p)
 {
@@ -281,7 +302,7 @@ static void shell_release_target(void)
     on_service_thread(shell_job_run, &j);
 }
 
-static void make_display_job(void *p) { *(EGLDisplay *)p = make_display(); }
+static void make_display_job(void *p) { make_display((made_display *)p); }
 
 /*
  * The version the guest is told. EGL 1.5 makes fence syncs part of EGL itself, and what is built on EGL takes 1.5 to
@@ -307,8 +328,14 @@ static EGLDisplay display(void)
     if (g_initialized) return g_display;
     hk_lock_acquire(&g_egl_lock);
     if (!g_initialized) {
+        made_display m;
+        memset(&m, 0, sizeof(m));
         /* The flag "no-egl": there is no display, as on a device ANGLE cannot run on. */
-        if (!hk_flag("no-egl")) on_service_thread(make_display_job, &g_display);
+        if (!hk_flag("no-egl")) on_service_thread(make_display_job, &m);
+        g_display = m.d;
+        g_major = m.major;
+        g_minor = m.minor;
+        hk_strlcpy(g_how, m.how, sizeof(g_how));
         if (g_display) {
             fn_query_display_attrib qd = A(fn_query_display_attrib, "eglQueryDisplayAttribEXT");
             fn_query_device_attrib qv = A(fn_query_device_attrib, "eglQueryDeviceAttribEXT");
@@ -337,6 +364,66 @@ static EGLDisplay display(void)
     hk_lock_release(&g_egl_lock);
     return g_display;
 }
+
+/*
+ * The WebView's display. ANGLE's Direct3D 11 renderer belongs to a display and serves every context made on it with one
+ * state manager, which keeps what was last bound and set (the vertex array, the framebuffer, the program, the pipeline's
+ * states), and with its device's one immediate context. It counts on that display's contexts taking turns: eglMakeCurrent
+ * makes a context current, which resets those caches and marks the whole state of the context now current to be set again.
+ * Two threads that each keep a context of the same display current and draw take no turns. Neither makes current again;
+ * each draws with what the other left bound, and both use the immediate context, which is not made for two threads, at
+ * once -- ANGLE as gecko-w10m builds it gives each context that shares nothing a lock of its own, and lets them. A game
+ * drawing while the WebView's Chromium draws on its GPU thread is that: Asphalt 9 ended in glDrawElements, ANGLE reading the
+ * vertex array through a null pointer the other context's eglMakeCurrent had left, a second and a half after the WebView of
+ * an ad page started (package 276). So Chromium's code has a display of its own. ANGLE makes another display for another
+ * native display: EGL_D3D11_ONLY_DISPLAY_ANGLE, which beside a Direct3D 11 renderer asked for by name says nothing more,
+ * and the display comes with a renderer, a state manager and a Direct3D device of its own. Which code is Chromium's is
+ * told by where eglGetDisplay is called from: libwebviewchromium.so. Where ANGLE cannot make it, the WebView shares the
+ * app's display, as before.
+ */
+#define EGL_D3D11_ONLY_DISPLAY_ANGLE ((void *)(hk_addr)-3)
+static EGLDisplay g_webview_display;
+static bool g_webview_initialized;
+
+static EGLDisplay webview_display(void)
+{
+    if (g_webview_initialized) return g_webview_display;
+    if (!display()) return NULL;
+    hk_lock_acquire(&g_egl_lock);
+    if (!g_webview_initialized) {
+        made_display m;
+        memset(&m, 0, sizeof(m));
+        m.whose = "the WebView";
+        m.native = EGL_D3D11_ONLY_DISPLAY_ANGLE;
+        on_service_thread(make_display_job, &m);
+        if (m.d && m.d != g_display) {
+            g_webview_display = m.d;
+            hk_info("egl: the WebView's Chromium draws on a display of its own (%s, with a Direct3D device of its own), not on the app's", m.how);
+        } else {
+            hk_warn("egl: no display of its own for the WebView's Chromium: it draws on the app's");
+        }
+        g_webview_initialized = true;
+    }
+    hk_lock_release(&g_egl_lock);
+    return g_webview_display;
+}
+
+/* Whether a display is one of the layer's: the app's or the WebView's. */
+static bool ours(EGLDisplay d) { return d && (d == display() || (g_webview_initialized && d == g_webview_display)); }
+
+/* Which of the layer's displays a display is: 1 the WebView's, 0 the app's (or one that is neither). */
+static int which_display(EGLDisplay d) { return d && g_webview_initialized && d == g_webview_display ? 1 : 0; }
+
+void *hk_egl_display_for_library(const char *name)
+{
+    if (name && strstr(name, "libwebviewchromium")) {
+        EGLDisplay w = webview_display();
+        if (w) return w;
+    }
+    return display();
+}
+
+void *hk_egl_webview_display(void) { return webview_display(); }
 
 /* --------------------------------------------------------------- surfaces */
 
@@ -420,13 +507,16 @@ static EGLint g_eglGetError(void)
 
 static EGLDisplay g_eglGetDisplay(void *native)
 {
+    const void *pc = CALLER();
+    hk_lib *lib = pc ? hk_ld_lib_of(pc) : NULL;
     (void)native;
-    return display();
+    /* The WebView's display for Chromium's code (webview_display), the app's for everyone else's. */
+    return hk_egl_display_for_library(lib ? hk_ld_lib_name(lib) : NULL);
 }
 
 static EGLBoolean g_eglInitialize(EGLDisplay d, EGLint *major, EGLint *minor)
 {
-    if (!d || d != display()) {
+    if (!ours(d)) {
         g_error = EGL_BAD_DISPLAY;
         return 0;
     }
@@ -440,8 +530,8 @@ static const char *layer_extensions(const char *angle);
 static const char *g_eglQueryString(EGLDisplay d, EGLint name)
 {
     fn_query_string real = A(fn_query_string, "eglQueryString");
-    if (name == EGL_VERSION && d && d == display() && g_told_version[0]) return g_told_version;
-    if (name == EGL_EXTENSIONS && d && d == display()) return layer_extensions(real ? real(d, name) : NULL);
+    if (name == EGL_VERSION && ours(d) && g_told_version[0]) return g_told_version;
+    if (name == EGL_EXTENSIONS && ours(d)) return layer_extensions(real ? real(d, name) : NULL);
     return real ? real(d, name) : NULL;
 }
 
@@ -907,8 +997,10 @@ static void *g_eglGetProcAddress(const char *name) { return hk_egl_resolve(name)
  * Android's EGL makes images of hardware buffers (EGL_ANDROID_image_native_buffer, ndk/hk_ahb.c): what Chromium's GPU
  * service draws a page's canvases and WebGL into. ANGLE has no such buffers, so a buffer's image is an image of a texture
  * of ANGLE's made for it in a context of the layer's own (EGL_KHR_gl_texture_2D_image), on a thread of the layer's own that
- * keeps that context current: G_BUFFERS. The extensions are named where ANGLE has images of textures; an image of a
- * buffer is asked for with no context (EGL_NO_CONTEXT), which is the spec's.
+ * keeps that context current: G_BUFFERS, and G_BUFFERS_WEBVIEW for the WebView's display, where Chromium's images are
+ * made (a buffer's texture is on the display its first image was asked for on, and an image of it on the other is
+ * refused). The extensions are named where ANGLE has images of textures; an image of a buffer is asked for with no context
+ * (EGL_NO_CONTEXT), which is the spec's.
  */
 #define EGL_NATIVE_BUFFER_ANDROID 0x3140
 #define EGL_GL_TEXTURE_2D_KHR 0x30B1
@@ -920,8 +1012,13 @@ typedef void *(*fn_create_image)(EGLDisplay, EGLContext, EGLenum, void *, const 
 static hk_lock g_ext_lock = HK_LOCK_INIT;
 static const char *g_ext_from;         /* ANGLE's string, as it was when g_ext was made of it */
 static char *g_ext;
-static EGLContext g_buffer_ctx;        /* the layer's own, current on G_BUFFERS */
-static u32 g_buffer_fbo;
+/* Hardware buffers' textures on each of the layer's displays (the app's, the WebView's): the thread, the layer's own context current on it, a framebuffer. */
+typedef struct buffers {
+    service *thread;
+    EGLContext ctx;
+    u32 fbo;
+} buffers;
+static buffers g_buffers[2] = { { &G_BUFFERS, NULL, 0 }, { &G_BUFFERS_WEBVIEW, NULL, 0 } };
 
 /* Whether an extension is named in a list of them. */
 static bool has_ext(const char *list, const char *name)
@@ -962,18 +1059,19 @@ static const char *layer_extensions(const char *angle)
     return out;
 }
 
-/* On G_BUFFERS: the layer's own context, current there from the first job on. */
-static bool buffer_context(void)
+/* On a display's G_BUFFERS: the layer's own context there, current from the first job on. */
+static bool buffer_context(int which)
 {
     static const EGLint es2[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
     fn_create_context create = A(fn_create_context, "eglCreateContext");
     fn_make_current make = A(fn_make_current, "eglMakeCurrent");
+    EGLDisplay d = which ? webview_display() : display();
     EGLContext ctx;
     EGLSurface surface = NULL;
-    if (g_buffer_ctx) return true;
-    if (!display() || !create || !make) return false;
-    ctx = create(g_display, NULL, NULL, es2);
-    if (!ctx || !make(g_display, NULL, NULL, ctx)) {
+    if (g_buffers[which].ctx) return true;
+    if (!d || !create || !make) return false;
+    ctx = create(d, NULL, NULL, es2);
+    if (!ctx || !make(d, NULL, NULL, ctx)) {
         /* Without contexts that need no configuration, or none current without a surface: a configuration's, over a pbuffer. */
         static const EGLint want[] = { EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT, EGL_SURFACE_TYPE, EGL_PBUFFER_BIT, EGL_RED_SIZE, 8, EGL_NONE };
         static const EGLint one[] = { EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE };
@@ -982,18 +1080,18 @@ static bool buffer_context(void)
         fn_destroy_context destroy = A(fn_destroy_context, "eglDestroyContext");
         EGLConfig config = NULL;
         EGLint n = 0;
-        if (ctx && destroy) destroy(g_display, ctx);
+        if (ctx && destroy) destroy(d, ctx);
         ctx = NULL;
-        if (choose && pbuffer && choose(g_display, want, &config, 1, &n) && n > 0) {
-            ctx = create(g_display, config, NULL, es2);
-            surface = ctx ? pbuffer(g_display, config, one) : NULL;
+        if (choose && pbuffer && choose(d, want, &config, 1, &n) && n > 0) {
+            ctx = create(d, config, NULL, es2);
+            surface = ctx ? pbuffer(d, config, one) : NULL;
         }
-        if (!ctx || !surface || !make(g_display, surface, surface, ctx)) {
-            hk_err("egl: no context of the layer's own for hardware buffers' textures; no image of one can be made");
+        if (!ctx || !surface || !make(d, surface, surface, ctx)) {
+            hk_err("egl: no context of the layer's own for hardware buffers' textures%s; no image of one can be made", which ? " on the WebView's display" : "");
             return false;
         }
     }
-    g_buffer_ctx = ctx;
+    g_buffers[which].ctx = ctx;
     return true;
 }
 
@@ -1023,6 +1121,7 @@ static void buffer_job_run(void *p)
     static const EGLint preserved[] = { EGL_IMAGE_PRESERVED_KHR, 1, EGL_NONE };
     buffer_job *j = (buffer_job *)p;
     hk_ahb *b = j->b;
+    buffers *own = &g_buffers[b->display];
     fn_gen gen = A(fn_gen, "glGenTextures"), del = A(fn_gen, "glDeleteTextures"), gen_fbo = A(fn_gen, "glGenFramebuffers");
     fn_bind bind = A(fn_bind, "glBindTexture"), bind_fbo = A(fn_bind, "glBindFramebuffer");
     fn_param param = A(fn_param, "glTexParameteri");
@@ -1034,7 +1133,7 @@ static void buffer_job_run(void *p)
     fn_gl_void flush = A(fn_gl_void, "glFlush");
     fn_create_image create_image = A(fn_create_image, "eglCreateImageKHR");
     u32 format, type, w = b->width, h = b->height;
-    if (!gen || !bind || !param || !storei || !tex_image || !sub_image || !flush || !buffer_context() || !hk_ahb_gl_format(b, &format, &type)) return;
+    if (!gen || !bind || !param || !storei || !tex_image || !sub_image || !flush || !buffer_context(b->display) || !hk_ahb_gl_format(b, &format, &type)) return;
     switch (j->what) {
     case J_IMAGE:
         if (!create_image) return;
@@ -1054,14 +1153,14 @@ static void buffer_job_run(void *p)
             sub_image(TEXTURE_2D, 0, 0, 0, (i32)w, (i32)h, format, type, b->pixels);
             b->cpu_newer = false;
         }
-        j->image = create_image(g_display, g_buffer_ctx, EGL_GL_TEXTURE_2D_KHR, (void *)(hk_addr)b->texture, preserved);
+        j->image = create_image(b->display ? g_webview_display : g_display, own->ctx, EGL_GL_TEXTURE_2D_KHR, (void *)(hk_addr)b->texture, preserved);
         flush();
         j->ok = j->image != NULL;
         break;
     case J_READ:
-        if (!b->texture || !b->pixels || !read || !bind_fbo || !fbo_texture || (!g_buffer_fbo && !gen_fbo)) return;
-        if (!g_buffer_fbo) gen_fbo(1, &g_buffer_fbo);
-        bind_fbo(FRAMEBUFFER, g_buffer_fbo);
+        if (!b->texture || !b->pixels || !read || !bind_fbo || !fbo_texture || (!own->fbo && !gen_fbo)) return;
+        if (!own->fbo) gen_fbo(1, &own->fbo);
+        bind_fbo(FRAMEBUFFER, own->fbo);
         fbo_texture(FRAMEBUFFER, COLOR_ATTACHMENT0, TEXTURE_2D, b->texture, 0);
         storei(PACK_ALIGNMENT, 1);
         if (format == RGBA) {
@@ -1113,16 +1212,22 @@ static bool buffer_job_do(hk_ahb *b, int what, void **image)
     memset(&j, 0, sizeof(j));
     j.b = b;
     j.what = what;
-    run_on(&G_BUFFERS, buffer_job_run, &j);
+    run_on(g_buffers[b->display].thread, buffer_job_run, &j);
     if (image) *image = j.image;
     return j.ok;
 }
 
-void *hk_egl_ahb_image(hk_ahb *b)
+void *hk_egl_ahb_image(hk_ahb *b, void *d)
 {
     void *image = NULL;
+    int which = which_display(d);
     hk_lock_acquire(&b->lock);
-    buffer_job_do(b, J_IMAGE, &image);
+    if (b->texture && b->display != which) {
+        hk_note_once("egl: an image of a hardware buffer was asked for on one of the layer's displays while its texture is on the other: refused");
+    } else {
+        b->display = (u8)which;
+        buffer_job_do(b, J_IMAGE, &image);
+    }
     hk_lock_release(&b->lock);
     return image;
 }
@@ -1146,7 +1251,7 @@ static void *g_eglCreateImageKHR(EGLDisplay d, EGLContext ctx, EGLenum target, v
     if (target == EGL_NATIVE_BUFFER_ANDROID) {
         hk_ahb *b = hk_ahb_of_client_buffer(buffer);
         void *image;
-        if (!d || d != display()) {
+        if (!ours(d)) {
             g_error = EGL_BAD_DISPLAY;
             return NULL;
         }
@@ -1154,7 +1259,7 @@ static void *g_eglCreateImageKHR(EGLDisplay d, EGLContext ctx, EGLenum target, v
             g_error = EGL_BAD_PARAMETER;
             return NULL;
         }
-        image = hk_egl_ahb_image(b);
+        image = hk_egl_ahb_image(b, d);
         if (!image) g_error = EGL_BAD_ALLOC;
         return image;
     }
@@ -1166,10 +1271,11 @@ static void *g_eglCreateImageKHR(EGLDisplay d, EGLContext ctx, EGLenum target, v
  * EGL_KHR_fence_sync, EGL_KHR_wait_sync and EGL_ANDROID_native_fence_sync, which ANGLE over Direct3D 11 does not have.
  * The ANGLE inside Chromium's WebView makes fences of both kinds through the system's EGL once a page's canvas is in a
  * hardware buffer (Chromium ends each access to one with a native fence), and called through nothing when none were
- * named. Here every context of ANGLE's puts its commands on the one Direct3D 11 device in the order they come, so a
- * fence needs nothing for the graphics processor to wait on: making one flushes the current context's commands, and the
- * CPU's wait for it (eglClientWaitSyncKHR, or asking its status) is glFinish on the context current then -- which, on
- * that one device, waits for everything put there before. A wait of the graphics processor (eglWaitSyncKHR) is nothing.
+ * named. Here every context of a display puts its commands on that display's one Direct3D 11 device in the order they
+ * come (the WebView's display has a device of its own, and Chromium's fences are its own), so a fence needs nothing for
+ * the graphics processor to wait on: making one flushes the current context's commands, and the CPU's wait for it
+ * (eglClientWaitSyncKHR, or asking its status) is glFinish on the context current then -- which, on that one device,
+ * waits for everything put there before. A wait of the graphics processor (eglWaitSyncKHR) is nothing.
  * A native fence's file descriptor given to make one is closed, its fence taken as signalled; one is never given out
  * (eglDupNativeFenceFDANDROID answers EGL_NO_NATIVE_FENCE_FD_ANDROID): Chromium then has no fence to pass on and waits on
  * none. Other kinds of sync (EGL_KHR_reusable_sync) are ANGLE's.
@@ -1226,7 +1332,7 @@ static void *g_eglCreateSyncKHR(EGLDisplay d, EGLenum type, const EGLint *attrib
     fence *f;
     int i;
     if (type != EGL_SYNC_FENCE_KHR && type != EGL_SYNC_NATIVE_FENCE_ANDROID) return real ? real(d, type, attribs) : NULL;
-    if (!d || d != display()) {
+    if (!ours(d)) {
         g_error = EGL_BAD_DISPLAY;
         return NULL;
     }
@@ -1599,7 +1705,10 @@ bool hk_egl_external_upload(u32 external, u32 *helper, void **image, int *helper
     typedef EGLBoolean (*fn_destroy_image)(EGLDisplay, void *);
     typedef void (*fn_target)(u32, void *);
     typedef EGLContext (*fn_current_context)(void);
+    typedef EGLDisplay (*fn_current_display)(void);
     typedef u32 (*fn_error)(void);
+    fn_current_display current_display = A(fn_current_display, "eglGetCurrentDisplay");
+    EGLDisplay d = current_display && current_display() ? current_display() : g_display;
     fn_get_integerv get = A(fn_get_integerv, "glGetIntegerv");
     fn_gen gen = A(fn_gen, "glGenTextures"), del = A(fn_gen, "glDeleteTextures");
     fn_bind bind = A(fn_bind, "glBindTexture"), bind_buffer = A(fn_bind, "glBindBuffer");
@@ -1628,7 +1737,7 @@ bool hk_egl_external_upload(u32 external, u32 *helper, void **image, int *helper
     storei(UNPACK_ALIGNMENT, 4);
     if (!*helper || *helper_w != w || *helper_h != h) {
         static const EGLint none[] = { NONE };
-        if (*image && destroy_image) destroy_image(g_display, *image);
+        if (*image && destroy_image) destroy_image(d, *image);
         if (*helper && del) del(1, helper);
         *image = NULL;
         *helper = 0;
@@ -1641,7 +1750,7 @@ bool hk_egl_external_upload(u32 external, u32 *helper, void **image, int *helper
         tex_image(TEXTURE_2D, 0, RGBA, w, h, 0, RGBA, UNSIGNED_BYTE, rgba);
         *helper_w = w;
         *helper_h = h;
-        *image = create_image(g_display, current(), GL_TEXTURE_2D_KHR, (void *)(hk_addr)*helper, none);
+        *image = create_image(d, current(), GL_TEXTURE_2D_KHR, (void *)(hk_addr)*helper, none);
         if (*image) {
             get(BINDING_EXTERNAL, &was_external);
             bind(TEXTURE_EXTERNAL, external);

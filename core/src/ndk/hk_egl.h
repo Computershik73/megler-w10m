@@ -54,6 +54,15 @@ void hk_egl_set_provider(void *(*resolve)(const char *name));
 void *hk_egl_surface_mutex(void *display, void *surface);
 bool hk_egl_keyed_mutex(void *mutex, bool acquire);
 
+/*
+ * The display eglGetDisplay gives code in the library of that name: a display of its own for the WebView's Chromium
+ * (libwebviewchromium.so), whose GPU thread draws while the app's threads do, and ANGLE's Direct3D 11 renderer does not
+ * take two contexts of one display drawing at once; the app's for any other (NULL included). And the WebView's display
+ * itself, made on first use; NULL when ANGLE cannot make one apart from the app's.
+ */
+void *hk_egl_display_for_library(const char *name);
+void *hk_egl_webview_display(void);
+
 /* What ANGLE gives on this device -- display, Direct3D feature level, GL version and limits -- a line at a time. */
 /* Why ANGLE's Direct3D device is gone (an HRESULT), or 0 while it is there or there is none. */
 u32 hk_egl_device_removed(void);
@@ -75,7 +84,7 @@ bool hk_egl_external_upload(u32 external, u32 *helper, void **image, int *helper
  * deleted. Each on a thread of this layer's that keeps a context of its own current.
  */
 struct hk_ahb;
-void *hk_egl_ahb_image(struct hk_ahb *b);
+void *hk_egl_ahb_image(struct hk_ahb *b, void *display);
 bool hk_egl_ahb_read(struct hk_ahb *b);
 bool hk_egl_ahb_upload(struct hk_ahb *b);
 void hk_egl_ahb_forget(struct hk_ahb *b);

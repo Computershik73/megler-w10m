@@ -96,7 +96,12 @@ static bool complete_integer(u32 name, i32 *v);
 
 /* ------------------------------------------------------------------- EGL */
 
-static void *e_GetPlatformDisplay(unsigned platform, void *native, const int *attribs) { (void)platform; (void)native; (void)attribs; return (void *)(hk_addr)0xD15; }
+/* Another display for another native display, as ANGLE makes one (the core asks for the WebView's with EGL_D3D11_ONLY_DISPLAY_ANGLE, -3). */
+static void *e_GetPlatformDisplay(unsigned platform, void *native, const int *attribs)
+{
+    (void)platform; (void)attribs;
+    return (void *)(hk_addr)(native == (void *)(hk_addr)-3 ? 0xD16 : 0xD15);
+}
 static void *e_GetDisplay(void *native) { (void)native; return (void *)(hk_addr)0xD15; }
 static unsigned e_Initialize(void *d, int *major, int *minor)
 {
@@ -720,12 +725,15 @@ static void g_TexSubImage2D(u32 target, i32 level, i32 x, i32 y, i32 w, i32 h, u
 }
 
 /* EGL images of textures (EGL_KHR_gl_texture_2D_image): the texture's pixels, which a texture made of the image shares. */
+static void *g_image_display;
+void *hk_gl_standin_image_display(void) { return g_image_display; }
 static void *e_CreateImage(void *d, void *ctx, unsigned target, void *buffer, const int *attribs)
 {
     u32 t = (u32)(hk_addr)buffer;
     sb_image *im = NULL;
-    (void)d; (void)ctx; (void)attribs;
+    (void)ctx; (void)attribs;
     hk_lock_acquire(&g_lock);
+    g_image_display = d;
     if (target == 0x30B1 && t && t < MAX_OBJECTS && S.textures[t].alive && S.textures[t].store) {
         im = (sb_image *)calloc(1, sizeof(*im));
         im->store = S.textures[t].store;

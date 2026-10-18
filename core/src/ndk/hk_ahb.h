@@ -49,6 +49,7 @@ typedef struct hk_ahb {
     u64 locked_usage;                  /* what the lock that is held asked for */
     int locks;
     u32 texture;                       /* ANGLE's texture in the layer's own context; 0 until an EGL image is asked for */
+    u8 display;                        /* the display that context is on: 0 the app's, 1 the WebView's (ndk/hk_egl.c) */
     bool cpu_newer;                    /* `pixels` were written since the texture last had them */
     u64 id;                            /* AHardwareBuffer_getId */
 } hk_ahb;
