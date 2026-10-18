@@ -166,6 +166,8 @@ void hk_gsleep(u64 ns);
 bool hk_app_threads_give_way(void);
 /* The flag trace-cpu: a thread that says every five seconds how much of the processor the app had, and its busiest threads. */
 void hk_bionic_cpu_trace_start(void);
+/* The flag trace-native-stacks: a thread that says every ten seconds where each of the app's threads is (pc, lr, its stack's way back). */
+void hk_bionic_native_stacks_start(void);
 /* The thread is ending: nothing more is sent its way. */
 void hk_signals_thread_gone(hk_gthread *t);
 

@@ -4,6 +4,7 @@
 #include "../hk_core.h"
 
 #include "../ld/hk_ld_internal.h"
+#include "../dvm/hk_dvm_internal.h"
 #include "../ndk/hk_egl.h"
 
 /* --------------------------------------------------------------- registry */
@@ -139,6 +140,8 @@ hk_thread *hk_gthread_host_of_tid(i32 tid)
  */
 #define CPU_TOP 8
 
+static volatile i32 g_stacks_round;
+
 typedef struct cpu_use {
     i32 tid;
     u64 ns;
@@ -217,6 +220,123 @@ static void cpu_observer(void *unused)
     }
     free(before);
     free(host);
+}
+
+/*
+ * The flag trace-native-stacks: every ten seconds, where each of the app's threads that run guest code is -- its pc, its
+ * lr and what its stack holds that looks like a way back into a library -- the way a crash report says where the thread
+ * that faulted was. Not an unwinding, but it names the function a thread is in and who called it: where a game that
+ * stands still waits, and on what. Each thread is stopped only while its registers and the top 8 KB of its stack are
+ * copied; what the words are is worked out after it goes on. The round holds the runtime's lock, as the collector and
+ * trace-stacks do while they stop threads. Only on Windows (the phone), where a thread is stopped by SuspendThread
+ * whatever it is doing: elsewhere hk_thread_suspend sends a signal and waits for its handler, and a guest thread may hold
+ * that signal back -- the collector stops Java threads only, which never do; the data app's run under qemu stood still
+ * on one. There a round says only that it does not look. At most 60 threads a round, 1500 lines a run.
+ */
+#define STACK_WORDS 2048
+
+typedef struct native_stack {
+    i32 tid;
+    char name[32];
+    hk_addr pc, lr;
+    u32 words[STACK_WORDS];
+    int nwords;
+} native_stack;
+
+/* "lib+0x1234" for an address of a library of the app's or a module of the host's; false for neither. */
+static bool code_at(hk_addr a, char *out, size_t size)
+{
+    const char *lib = NULL;
+    const void *sym = NULL, *base = NULL;
+    char module[96];
+    hk_addr mbase = 0;
+    a &= ~(hk_addr)1;
+    if (a < 0x10000) return false;
+    if (hk_ld_is_guest_code(a)) {
+        hk_ld_symbol_at((const void *)a, &lib, &sym, &base);
+        if (!lib || !base) return false;
+        snprintf(out, size, "%s+0x%x", lib, (unsigned)(a - (hk_addr)base));
+        return true;
+    }
+    if (hk_host_module_at(a, module, sizeof(module), &mbase) && a != mbase) {
+        snprintf(out, size, "%s+0x%x", module, (unsigned)(a - mbase));
+        return true;
+    }
+    return false;
+}
+
+static void stacks_round(native_stack *stacks, int *lines)
+{
+    int n = 0, i, k;
+#if !defined(_WIN32)
+    if (!*lines) hk_info("stacks: native threads are not looked at on this host (a thread is stopped by a signal here, which it may hold back)");
+    ++*lines;
+    return;
+#endif
+    hk_dvm_lock();
+    hk_lock_acquire(&g_thread_lock);
+    for (i = 1; i < (int)HK_COUNT(g_tid_thread) && n < 60; i++) {
+        hk_gthread *g = g_tid_thread[i];
+        hk_thread *h = g ? g->sig_thread : NULL;
+        hk_thread_regs regs;
+        native_stack *s = &stacks[n];
+        if (!h || h == hk_thread_current() || !hk_thread_suspend(h, &regs)) continue;
+        s->tid = i;
+        hk_strlcpy(s->name, g->name, sizeof(s->name));
+        s->pc = regs.pc;
+        s->lr = regs.n > 13 ? regs.r[13] : 0;
+        s->nwords = 0;
+        if (g->stack_lo && g->stack_hi && regs.sp >= (hk_addr)g->stack_lo && regs.sp < (hk_addr)g->stack_hi) {
+            hk_addr top = (hk_addr)g->stack_hi, at = regs.sp & ~(hk_addr)3;
+            s->nwords = (int)((top - at) / 4 < STACK_WORDS ? (top - at) / 4 : STACK_WORDS);
+            memcpy(s->words, (const void *)at, (size_t)s->nwords * 4);
+        }
+        hk_thread_resume(h);
+        n++;
+    }
+    hk_lock_release(&g_thread_lock);
+    hk_dvm_unlock();
+    for (i = 0; i < n && *lines < 1500; i++) {
+        native_stack *s = &stacks[i];
+        char text[900], where[128];
+        size_t at;
+        int found = 0;
+        u32 last = 0;
+        at = (size_t)snprintf(text, sizeof(text), "stacks: native thread %d \"%s\": pc ", (int)s->tid, s->name);
+        at += (size_t)snprintf(text + at, sizeof(text) - at, "%s", code_at(s->pc, where, sizeof(where)) ? where : "?");
+        at += (size_t)snprintf(text + at, sizeof(text) - at, ", lr %s; on the stack:", code_at(s->lr, where, sizeof(where)) ? where : "?");
+        for (k = 0; k < s->nwords && found < 14 && at + 64 < sizeof(text); k++) {
+            u32 w = s->words[k] & ~1u;
+            if (w == last || !code_at(w, where, sizeof(where))) continue;
+            at += (size_t)snprintf(text + at, sizeof(text) - at, "%s %s", found ? "," : "", where);
+            last = w;
+            found++;
+        }
+        hk_info("%s", text);
+        ++*lines;
+    }
+}
+
+static void stacks_observer(void *unused)
+{
+    native_stack *stacks = (native_stack *)hk_alloc(sizeof(native_stack) * 60);
+    int lines = 0;
+    (void)unused;
+    while (lines < 1500) {
+        hk_sleep_ns(10000000000ull);
+        if (lines < 1500 && hk_atomic_add(&g_stacks_round, 1) >= 0) hk_info("stacks: native round, every thread that runs guest code (the flag trace-native-stacks)");
+        stacks_round(stacks, &lines);
+    }
+    free(stacks);
+}
+
+void hk_bionic_native_stacks_start(void)
+{
+    static volatile i32 started;
+    hk_thread *t;
+    if (hk_atomic_xchg(&started, 1)) return;
+    t = hk_thread_start(stacks_observer, NULL, 64u * 1024u, "native-stacks-observer");
+    if (t) hk_thread_detach(t);
 }
 
 void hk_bionic_cpu_trace_start(void)

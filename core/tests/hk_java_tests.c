@@ -1774,6 +1774,8 @@ static int run_data(void)
         CHECK(find_line("dvm: thrown on thread ", 0) >= 0 && find_line("android/database/sqlite/SQLiteConstraintException: UNIQUE constraint failed", 0) >= 0);
         /* trace-cpu: the processor the app had, every five seconds, and its busiest threads. */
         CHECK(find_line("cpu: every five seconds", 0) >= 0 && find_line("of the phone's ", 0) >= 0 && find_line("threads that ran guest code, the most: ", 0) >= 0);
+        /* trace-native-stacks: every ten seconds a round, which on a host where threads are stopped by signals (this one) says it does not look. */
+        CHECK(find_line("stacks: native round", 0) >= 0 && (find_line("stacks: native thread 1 ", 0) >= 0 || find_line("stacks: native threads are not looked at", 0) >= 0));
         CHECK(find_line("stacks: round 1, ", 0) >= 0 && find_line("\"main\"", find_line("stacks: round 1, ", 0)) >= 0 && find_line("stacks:   ", 0) >= 0
               && find_line("stacks: thread ", 0) >= 0 && find_line("\" ends, ", 0) >= 0);
         CHECK(find_line("calls: every call of a method of a class whose name starts with android/media/session/PlaybackState is said", 0) >= 0
