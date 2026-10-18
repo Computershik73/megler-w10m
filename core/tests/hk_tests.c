@@ -368,6 +368,134 @@ static void dxt5_decode(const u8 *b, u8 out[16][4])
 
 static int far_apart(int a, int b) { return a > b ? a - b : b - a; }
 
+/* A stand-in for the few OpenGL functions hk_gltex.c's ETC path calls: what the last upload or storage was given. */
+static struct {
+    u32 internal;
+    i32 level, w, h, size;
+    u8 first[16];
+    bool data;
+} g_tex_got;
+static const char *g_tex_ext;
+
+static void tex_got(u32 internal, i32 level, i32 w, i32 h, i32 size, const void *data)
+{
+    memset(&g_tex_got, 0, sizeof(g_tex_got));
+    g_tex_got.internal = internal;
+    g_tex_got.level = level;
+    g_tex_got.w = w;
+    g_tex_got.h = h;
+    g_tex_got.size = size;
+    g_tex_got.data = data != NULL;
+    if (data && size >= 16) memcpy(g_tex_got.first, data, 16);
+}
+static void f_compressed_2d(u32 t, i32 level, u32 internal, i32 w, i32 h, i32 border, i32 size, const void *data) { (void)t; (void)border; tex_got(internal, level, w, h, size, data); }
+static void f_compressed_sub_2d(u32 t, i32 level, i32 x, i32 y, i32 w, i32 h, u32 format, i32 size, const void *data) { (void)t; (void)x; (void)y; tex_got(format, level, w, h, size, data); }
+static void f_storage_2d(u32 t, i32 levels, u32 internal, i32 w, i32 h) { (void)t; tex_got(internal, levels, w, h, 0, NULL); }
+static void f_bind_texture(u32 t, u32 name) { (void)t; (void)name; }
+static const u8 *f_get_string(u32 name) { return name == 0x1F03 ? (const u8 *)g_tex_ext : NULL; }
+static void *f_tex_resolve(const char *name)
+{
+    if (!strcmp(name, "glCompressedTexSubImage2D")) return (void *)f_compressed_sub_2d;
+    if (!strcmp(name, "glBindTexture")) return (void *)f_bind_texture;
+    if (!strcmp(name, "glGetString")) return (void *)f_get_string;
+    if (!strcmp(name, "glTexStorage2D")) return (void *)f_storage_2d;
+    return NULL;
+}
+
+/*
+ * ETC textures given to ANGLE in a format Direct3D has (hk_gltex.c). The decoder of RGBA8 ETC2 EAC blocks against ANGLE's
+ * own (image_util/loadimage_etc.cpp, LoadETC2RGBA8ToRGBA8, built apart over the same 65536 blocks of a xorshift's bytes:
+ * every mode -- individual, differential, T, H, planar -- and every EAC table comes up): the FNV-1a hash of all the pixels.
+ * A block packed again is the DXT5 of what it decodes to. Then the uploads, through the wrappers, over a stand-in that
+ * says what it was given: RGBA8 ETC2 EAC as DXT5, its blocks transcoded, at the first level and the next; ETC2 RGB8 as
+ * ANGLE's lossy-decode format, the data as it was; a texture whose base level is not whole blocks as the app gave it, all
+ * its levels; storage of sRGB RGBA8 ETC2 EAC as sRGB DXT5 and a part of a level uploaded into it so; without ANGLE's
+ * lossy decoding, the RGB ones as they are.
+ */
+static void test_etc(void)
+{
+    typedef void (*compressed_fn)(u32, i32, u32, i32, i32, i32, i32, const void *);
+    typedef void (*sub_fn)(u32, i32, i32, i32, i32, i32, u32, i32, const void *);
+    typedef void (*storage_fn)(u32, i32, u32, i32, i32);
+    typedef void (*bind_fn)(u32, u32);
+    u32 s = 0x12345678u, hash = 2166136261u;
+    u8 block[64], px[16][4], packed[64], again[16];
+    char report[600];
+    compressed_fn compressed;
+    sub_fn sub;
+    storage_fn storage;
+    bind_fn bind;
+    int n, i;
+    say("textures: ETC2 given to ANGLE as BC1 and DXT5");
+    for (n = 0; n < 65536; n++) {
+        for (i = 0; i < 16; i++) {
+            s ^= s << 13;
+            s ^= s >> 17;
+            s ^= s << 5;
+            block[i] = (u8)(s >> 24);
+        }
+        hk_gltex_etc2_eac_decode(block, px);
+        for (i = 0; i < 64; i++) {
+            hash ^= ((const u8 *)px)[i];
+            hash *= 16777619u;
+        }
+    }
+    CHECK_INT((long long)hash, 0x4e25546fLL);
+    /* Four blocks to upload (an 8x8 level): the last random ones and three more. */
+    for (i = 16; i < 64; i++) {
+        s ^= s << 13;
+        s ^= s >> 17;
+        s ^= s << 5;
+        block[i] = (u8)(s >> 24);
+    }
+    hk_gltex_etc2_eac_to_dxt5(block, 4, packed);
+    hk_gltex_etc2_eac_decode(block + 16, px);
+    hk_gltex_dxt5((const u8 *)px, 4, 4, 16, again);
+    CHECK(!memcmp(packed + 16, again, 16));
+
+    hk_gltex_reset();
+    g_tex_ext = "GL_EXT_texture_compression_s3tc GL_EXT_texture_compression_s3tc_srgb GL_ANGLE_lossy_etc_decode";
+    hk_gltex_set_host(f_tex_resolve);
+    compressed = (compressed_fn)hk_gltex_wrap("glCompressedTexImage2D", (void *)f_compressed_2d);
+    sub = (sub_fn)hk_gltex_wrap("glCompressedTexSubImage2D", (void *)f_compressed_sub_2d);
+    storage = (storage_fn)hk_gltex_wrap("glTexStorage2D", (void *)f_storage_2d);
+    bind = (bind_fn)hk_gltex_wrap("glBindTexture", (void *)f_bind_texture);
+    CHECK(compressed != (compressed_fn)f_compressed_2d && sub != (sub_fn)f_compressed_sub_2d && storage != (storage_fn)f_storage_2d);
+    bind(0x0DE1, 5);
+    compressed(0x0DE1, 0, 0x9278, 8, 8, 0, 64, block);
+    CHECK(g_tex_got.internal == 0x83F3 && g_tex_got.size == 64 && !memcmp(g_tex_got.first, packed, 16));
+    compressed(0x0DE1, 1, 0x9278, 4, 4, 0, 16, block);
+    CHECK(g_tex_got.internal == 0x83F3 && g_tex_got.level == 1 && !memcmp(g_tex_got.first, packed, 16));
+    bind(0x0DE1, 6);
+    compressed(0x0DE1, 0, 0x9274, 8, 8, 0, 32, block);
+    CHECK(g_tex_got.internal == 0x9695 && !memcmp(g_tex_got.first, block, 16));
+    bind(0x0DE1, 7);
+    compressed(0x0DE1, 0, 0x9278, 6, 6, 0, 64, block);
+    CHECK(g_tex_got.internal == 0x9278 && !memcmp(g_tex_got.first, block, 16));
+    compressed(0x0DE1, 1, 0x9278, 3, 3, 0, 16, block);
+    CHECK(g_tex_got.internal == 0x9278);
+    bind(0x0DE1, 8);
+    storage(0x0DE1, 4, 0x9279, 16, 16);
+    CHECK(g_tex_got.internal == 0x8C4F);
+    sub(0x0DE1, 0, 4, 4, 8, 8, 0x9279, 64, block);
+    CHECK(g_tex_got.internal == 0x8C4F && !memcmp(g_tex_got.first, packed, 16));
+    hk_gltex_report(report, sizeof(report));
+    CHECK(strstr(report, "ETC2/EAC in 6 (0 MB of it in 4 given to ANGLE as BC1 or DXT5") != NULL);
+
+    hk_gltex_reset();
+    g_tex_ext = "GL_EXT_texture_compression_s3tc";
+    hk_gltex_set_host(f_tex_resolve);
+    compressed = (compressed_fn)hk_gltex_wrap("glCompressedTexImage2D", (void *)f_compressed_2d);
+    bind = (bind_fn)hk_gltex_wrap("glBindTexture", (void *)f_bind_texture);
+    bind(0x0DE1, 9);
+    compressed(0x0DE1, 0, 0x9274, 8, 8, 0, 32, block);
+    CHECK(g_tex_got.internal == 0x9274);
+    bind(0x0DE1, 10);
+    compressed(0x0DE1, 0, 0x9278, 8, 8, 0, 64, block);
+    CHECK(g_tex_got.internal == 0x83F3);
+    hk_gltex_reset();
+}
+
 /* Textures packed on their way in (hk_gltex.c): what comes out of the DXT5 blocks is what went in, as near as the format allows. */
 static void test_textures(void)
 {
@@ -431,6 +559,7 @@ static void test_textures(void)
         CHECK(far_apart(back[0][0], 20) <= 20 && far_apart(back[4][0], 220) <= 20 && back[0][3] == 255);
         free(edge);
     }
+    test_etc();
 }
 
 /*

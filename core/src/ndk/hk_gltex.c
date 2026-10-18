@@ -26,6 +26,21 @@
  *
  * Flags: "plain-textures" turns the packing off, "pack-textures" does it from
  * the first texture.
+ *
+ * And ETC. A game made for OpenGL ES 3 ships its textures as ETC2, which
+ * Direct3D does not have: ANGLE decodes them to RGBA8, four bytes a pixel for
+ * what was half a byte or one, and keeps them so. Asphalt 9 asked for 112 MB
+ * of them, which came to 507 MB, and the addresses ran out in its first race
+ * (package 278). So they go to ANGLE in a format Direct3D has, of the same
+ * size: the RGB ones (ETC1, ETC2 RGB8, its punch-through and sRGB kinds) as
+ * ANGLE's own GL_ANGLE_lossy_etc_decode formats, which ANGLE turns into BC1
+ * block by block as it loads them; RGBA8 ETC2 EAC, which that extension does
+ * not offer over Direct3D, as DXT5, each block decoded and packed again here.
+ * Direct3D takes a block-compressed level only where the base level it
+ * implies is whole blocks: a texture whose first level is not stays as the
+ * app gave it, all its levels (one texture, one format). The texture bound is
+ * followed for 2D, cube map and 2D array targets. Flag "etc-by-angle": every
+ * ETC texture goes to ANGLE as the app gave it.
  */
 #include "hk_egl.h"
 
@@ -49,6 +64,12 @@
 #define GL_UNPACK_ROW_LENGTH 0x0CF2
 #define GL_UNPACK_SKIP_ROWS 0x0CF3
 #define GL_UNPACK_SKIP_PIXELS 0x0CF4
+#define GL_TEXTURE_2D_ARRAY 0x8C1A
+#define GL_TEXTURE_CUBE_MAP_POSITIVE_X 0x8515
+#define GL_TEXTURE_CUBE_MAP_NEGATIVE_Z 0x851A
+#define GL_MAP_READ_BIT 0x0001
+#define GL_RGBA8_ETC2_EAC 0x9278
+#define GL_SRGB8_ALPHA8_ETC2_EAC 0x9279
 
 /* Packing starts when this much plain texture has been asked for, with textures at least this large. */
 #define PACK_AFTER_BYTES (160u << 20)
@@ -61,6 +82,10 @@ typedef void (*fn_tex_image_3d)(u32 target, i32 level, i32 internal, i32 w, i32 
 typedef void (*fn_compressed_2d)(u32 target, i32 level, u32 internal, i32 w, i32 h, i32 border, i32 size, const void *data);
 typedef void (*fn_tex_sub_image_2d)(u32 target, i32 level, i32 x, i32 y, i32 w, i32 h, u32 format, u32 type, const void *pixels);
 typedef void (*fn_compressed_sub_2d)(u32 target, i32 level, i32 x, i32 y, i32 w, i32 h, u32 format, i32 size, const void *data);
+typedef void (*fn_compressed_3d)(u32 target, i32 level, u32 internal, i32 w, i32 h, i32 d, i32 border, i32 size, const void *data);
+typedef void (*fn_compressed_sub_3d)(u32 target, i32 level, i32 x, i32 y, i32 z, i32 w, i32 h, i32 d, u32 format, i32 size, const void *data);
+typedef void *(*fn_map_range)(u32 target, intptr_t offset, intptr_t length, u32 access);
+typedef u8 (*fn_unmap)(u32 target);
 typedef void (*fn_enum)(u32 v);
 typedef void (*fn_enum_uint)(u32 target, u32 name);
 typedef void (*fn_enum_int)(u32 pname, i32 v);
@@ -79,6 +104,10 @@ static fn_tex_image_3d h_image_3d;
 static fn_compressed_2d h_compressed_2d;
 static fn_tex_sub_image_2d h_sub_image_2d;
 static fn_compressed_sub_2d h_compressed_sub_2d;
+static fn_compressed_3d h_compressed_3d;
+static fn_compressed_sub_3d h_compressed_sub_3d;
+static fn_map_range h_map_range;
+static fn_unmap h_unmap;
 static fn_enum h_active_texture, h_generate_mipmap;
 static fn_enum_uint h_bind_texture, h_bind_buffer;
 static fn_enum_int h_pixel_storei;
@@ -95,7 +124,9 @@ enum { K_PLAIN, K_ETC, K_BLOCK, K_PACKED, K_KINDS };
 /* Bytes, and how many times asked. 64-bit sums under a lock: a few hundred calls a second at most. */
 static struct {
     u64 bytes[K_KINDS];                /* as the format has it; K_PACKED: as DXT5 */
-    u64 etc_expanded;                  /* what the ETC2/EAC ones come to at four bytes a pixel */
+    u64 etc_expanded;                  /* what the ETC2/EAC ones ANGLE decodes come to at four bytes a pixel */
+    u64 etc_as_bc;                     /* the ETC2/EAC ones given to ANGLE as BC1 or DXT5 instead, their own size */
+    u32 etc_as_bc_count;
     u64 packed_from;                   /* what the packed ones would have been */
     u32 count[K_KINDS];
     u32 largest_w, largest_h, largest_format;
@@ -213,6 +244,134 @@ static void dxt5_block(const u8 px[16][4], u8 out[16])
 
 size_t hk_gltex_dxt5_size(u32 w, u32 h) { return (size_t)((w + 3) / 4) * ((h + 3) / 4) * 16; }
 
+/* ------------------------------------------------------------- ETC2 EAC to DXT5 */
+
+/* ETC1 and ETC2's intensity modifiers, by table and by a pixel's two-bit index. */
+static const i16 k_etc_modifier[8][4] = {
+    { 2, 8, -2, -8 }, { 5, 17, -5, -17 }, { 9, 29, -9, -29 }, { 13, 42, -13, -42 },
+    { 18, 60, -18, -60 }, { 24, 80, -24, -80 }, { 33, 106, -33, -106 }, { 47, 183, -47, -183 },
+};
+/* The distances of ETC2's T and H modes. */
+static const u8 k_etc_distance[8] = { 3, 6, 11, 16, 23, 32, 41, 64 };
+/* EAC's modifiers, by table and by a pixel's three-bit index. */
+static const i8 k_eac_modifier[16][8] = {
+    { -3, -6, -9, -15, 2, 5, 8, 14 }, { -3, -7, -10, -13, 2, 6, 9, 12 }, { -2, -5, -8, -13, 1, 4, 7, 12 }, { -2, -4, -6, -13, 1, 3, 5, 12 },
+    { -3, -6, -8, -12, 2, 5, 7, 11 }, { -3, -7, -9, -11, 2, 6, 8, 10 }, { -4, -7, -8, -11, 3, 6, 7, 10 }, { -3, -5, -8, -11, 2, 4, 7, 10 },
+    { -2, -6, -8, -10, 1, 5, 7, 9 }, { -2, -5, -8, -10, 1, 4, 7, 9 }, { -2, -4, -8, -10, 1, 3, 7, 9 }, { -2, -5, -7, -10, 1, 4, 6, 9 },
+    { -3, -4, -7, -10, 2, 3, 6, 9 }, { -1, -2, -3, -10, 0, 1, 2, 9 }, { -4, -6, -8, -9, 3, 5, 7, 8 }, { -3, -5, -7, -9, 2, 4, 6, 8 },
+};
+
+static u8 clamp_byte(int v) { return (u8)(v < 0 ? 0 : v > 255 ? 255 : v); }
+static int extend4(int v) { return v << 4 | v; }
+static int extend5(int v) { return v << 3 | v >> 2; }
+static int extend6(int v) { return v << 2 | v >> 4; }
+static int extend7(int v) { return v << 1 | v >> 6; }
+static int signed3(int v) { return v & 4 ? v - 8 : v; }
+
+static void set3(int *c, int r, int g, int b)
+{
+    c[0] = r;
+    c[1] = g;
+    c[2] = b;
+}
+
+/*
+ * The colours of an ETC2 RGB block (eight bytes, as the format stores them) into sixteen pixels, rows of four, top first;
+ * their alpha is left as it was. A pixel's index is two bits, its high bit in bytes 4-5 and its low bit in bytes 6-7, pixel
+ * x, y at bit x * 4 + y. The differential bit, and which channel's difference carries its base colour out of range, tell
+ * the mode: none, individual; red, T; green, H; blue, planar; else differential.
+ */
+static void etc2_colour(const u8 *c, u8 px[16][4])
+{
+    u32 msb = (u32)c[4] << 8 | c[5], lsb = (u32)c[6] << 8 | c[7];
+    int pal[4][3], base[2][3], x, y, k;
+    bool halves = false;
+    if (c[3] & 2) {
+        int r = c[0] >> 3, g = c[1] >> 3, b = c[2] >> 3;
+        int r2 = r + signed3(c[0] & 7), g2 = g + signed3(c[1] & 7), b2 = b + signed3(c[2] & 7);
+        if (r2 < 0 || r2 > 31) {
+            /* T: one colour, and three about a second one, a distance either side. */
+            int r1 = extend4((c[0] >> 3 & 3) << 2 | (c[0] & 3)), g1 = extend4(c[1] >> 4), b1 = extend4(c[1] & 15);
+            int rr = extend4(c[2] >> 4), gg = extend4(c[2] & 15), bb = extend4(c[3] >> 4);
+            int d = k_etc_distance[(c[3] >> 2 & 3) << 1 | (c[3] & 1)];
+            set3(pal[0], r1, g1, b1);
+            set3(pal[1], rr + d, gg + d, bb + d);
+            set3(pal[2], rr, gg, bb);
+            set3(pal[3], rr - d, gg - d, bb - d);
+        } else if (g2 < 0 || g2 > 31) {
+            /* H: two colours, each a distance either side; which of them is the larger gives the distance's last bit. */
+            int r1 = extend4(c[0] >> 3 & 15), g1 = extend4((c[0] & 7) << 1 | (c[1] >> 4 & 1));
+            int b1 = extend4((c[1] >> 3 & 1) << 3 | (c[1] & 3) << 1 | c[2] >> 7);
+            int rr = extend4(c[2] >> 3 & 15), gg = extend4((c[2] & 7) << 1 | c[3] >> 7), bb = extend4(c[3] >> 3 & 15);
+            int order = (r1 << 16 | g1 << 8 | b1) >= (rr << 16 | gg << 8 | bb) ? 1 : 0;
+            int d = k_etc_distance[(c[3] >> 2 & 1) << 2 | (c[3] & 1) << 1 | order];
+            set3(pal[0], r1 + d, g1 + d, b1 + d);
+            set3(pal[1], r1 - d, g1 - d, b1 - d);
+            set3(pal[2], rr + d, gg + d, bb + d);
+            set3(pal[3], rr - d, gg - d, bb - d);
+        } else if (b2 < 0 || b2 > 31) {
+            /* Planar: a colour at the origin, one a block to the right and one a block down, and the plane through them. */
+            int ro = extend6(c[0] >> 1 & 63), go = extend7((c[0] & 1) << 6 | (c[1] >> 1 & 63));
+            int bo = extend6((c[1] & 1) << 5 | (c[2] >> 3 & 3) << 3 | (c[2] & 3) << 1 | c[3] >> 7);
+            int rh = extend6((c[3] >> 2 & 31) << 1 | (c[3] & 1)), gh = extend7(c[4] >> 1), bh = extend6((c[4] & 1) << 5 | c[5] >> 3);
+            int rv = extend6((c[5] & 7) << 3 | c[6] >> 5), gv = extend7((c[6] & 31) << 2 | c[7] >> 6), bv = extend6(c[7] & 63);
+            for (y = 0; y < 4; y++)
+                for (x = 0; x < 4; x++) {
+                    u8 *p = px[y * 4 + x];
+                    p[0] = clamp_byte(((x * (rh - ro) + y * (rv - ro) + 2) >> 2) + ro);
+                    p[1] = clamp_byte(((x * (gh - go) + y * (gv - go) + 2) >> 2) + go);
+                    p[2] = clamp_byte(((x * (bh - bo) + y * (bv - bo) + 2) >> 2) + bo);
+                }
+            return;
+        } else {
+            set3(base[0], extend5(r), extend5(g), extend5(b));
+            set3(base[1], extend5(r2), extend5(g2), extend5(b2));
+            halves = true;
+        }
+    } else {
+        set3(base[0], extend4(c[0] >> 4), extend4(c[1] >> 4), extend4(c[2] >> 4));
+        set3(base[1], extend4(c[0] & 15), extend4(c[1] & 15), extend4(c[2] & 15));
+        halves = true;
+    }
+    for (y = 0; y < 4; y++)
+        for (x = 0; x < 4; x++) {
+            int bit = x * 4 + y, idx = (int)((msb >> bit & 1) << 1 | (lsb >> bit & 1));
+            u8 *p = px[y * 4 + x];
+            if (halves) {
+                /* Two halves, side by side or (the flip bit) one above the other, each with its colour and its table. */
+                int half = (c[3] & 1) ? y >= 2 : x >= 2, m = k_etc_modifier[half ? (c[3] >> 2 & 7) : (c[3] >> 5 & 7)][idx];
+                for (k = 0; k < 3; k++) p[k] = clamp_byte(base[half][k] + m);
+            } else {
+                for (k = 0; k < 3; k++) p[k] = clamp_byte(pal[idx][k]);
+            }
+        }
+}
+
+/* The alpha of an EAC block (eight bytes) into sixteen pixels: a base, a multiplier, a table, and three bits a pixel, pixel x, y the (x * 4 + y)th from the top. */
+static void eac_alpha(const u8 *a, u8 px[16][4])
+{
+    const i8 *mod = k_eac_modifier[a[1] & 15];
+    int mult = a[1] >> 4, i;
+    u64 bits = 0;
+    for (i = 2; i < 8; i++) bits = bits << 8 | a[i];
+    for (i = 0; i < 16; i++) px[(i & 3) * 4 + (i >> 2)][3] = clamp_byte(a[0] + mod[(bits >> (45 - 3 * i)) & 7] * mult);
+}
+
+void hk_gltex_etc2_eac_decode(const u8 block[16], u8 px[16][4])
+{
+    eac_alpha(block, px);
+    etc2_colour(block + 8, px);
+}
+
+void hk_gltex_etc2_eac_to_dxt5(const u8 *in, size_t blocks, u8 *out)
+{
+    u8 px[16][4];
+    for (; blocks; blocks--, in += 16, out += 16) {
+        hk_gltex_etc2_eac_decode(in, px);
+        dxt5_block((const u8 (*)[4])px, out);
+    }
+}
+
 void hk_gltex_dxt5(const u8 *rgba, u32 w, u32 h, size_t stride, u8 *out)
 {
     u32 bx, by, x, y;
@@ -239,6 +398,7 @@ void hk_gltex_dxt5(const u8 *rgba, u32 w, u32 h, size_t stride, u8 *out)
 static HK_THREAD_LOCAL struct {
     u32 unit;
     u32 bound[32];                     /* the 2D texture on each unit */
+    u32 cube[32], array[32];           /* the cube map and the 2D array texture on each unit */
     u32 unpack_buffer;
     i32 row_length, skip_rows, skip_pixels;
 } T;
@@ -258,8 +418,10 @@ typedef struct tex_info {
 
 /* By the texture's name: ANGLE hands names out from 1 upwards. One past the table is simply never held back. */
 static tex_info g_info[16384];
-static int g_can_pack = -1, g_can_pack_srgb;
+static int g_can_pack = -1, g_can_pack_srgb, g_has_dxt5, g_etc_lossy;
 static int g_policy = -1;              /* 0 never, 1 when the app has asked for much, 2 from the start */
+static int g_etc_policy = -1;          /* 0: ETC as the app gave it (flag etc-by-angle); 1: in a format Direct3D has */
+static u8 g_etc[16384];                /* by texture name: 0 not known, 1 its ETC levels go as BC1 or DXT5, 2 as the app gave them */
 
 static bool has_word(const char *list, const char *word)
 {
@@ -286,18 +448,24 @@ static void say_list(const char *what, const char *list)
     }
 }
 
-/* Whether this OpenGL has DXT5 at all (with a context current: asked at the first texture that could use it). */
+/* What this OpenGL has of DXT5 and of ANGLE's lossy ETC decoding (with a context current: asked at the first texture that could use them). */
+static void learn_formats(void)
+{
+    const char *ext;
+    if (g_can_pack >= 0) return;
+    ext = h_get_string ? (const char *)h_get_string(GL_EXTENSIONS) : NULL;
+    say_list("gl extensions", ext);
+    g_has_dxt5 = ext && (has_word(ext, "GL_ANGLE_texture_compression_dxt5") || has_word(ext, "GL_EXT_texture_compression_s3tc")) ? 1 : 0;
+    g_can_pack_srgb = g_has_dxt5 && has_word(ext, "GL_EXT_texture_compression_s3tc_srgb");
+    g_etc_lossy = ext && has_word(ext, "GL_ANGLE_lossy_etc_decode");
+    g_can_pack = g_has_dxt5 && h_compressed_sub_2d && h_bind_texture;
+    hk_info("textures: large ones can%s be kept as DXT5 here%s; ETC2 RGBA8 ones can%s be given to ANGLE as DXT5, the RGB ones%s as BC1", g_can_pack ? "" : "not",
+            g_can_pack && !g_can_pack_srgb ? " (not the sRGB ones)" : "", g_has_dxt5 ? "" : "not", g_etc_lossy ? "" : " not");
+}
+
 static bool can_pack(u32 internal)
 {
-    if (g_can_pack < 0) {
-        const char *ext = h_get_string ? (const char *)h_get_string(GL_EXTENSIONS) : NULL;
-        say_list("gl extensions", ext);
-        g_can_pack = ext && (has_word(ext, "GL_ANGLE_texture_compression_dxt5") || has_word(ext, "GL_EXT_texture_compression_s3tc")) ? 1 : 0;
-        g_can_pack_srgb = g_can_pack && has_word(ext, "GL_EXT_texture_compression_s3tc_srgb");
-        if (!h_compressed_sub_2d || !h_bind_texture) g_can_pack = 0;
-        hk_info("textures: large ones can%s be kept as DXT5 here%s", g_can_pack ? "" : "not",
-                g_can_pack && !g_can_pack_srgb ? " (not the sRGB ones)" : "");
-    }
+    learn_formats();
     return g_can_pack && (internal == GL_RGBA8 || g_can_pack_srgb);
 }
 
@@ -305,6 +473,115 @@ static int policy(void)
 {
     if (g_policy < 0) g_policy = hk_flag("plain-textures") ? 0 : hk_flag("pack-textures") ? 2 : 1;
     return g_policy;
+}
+
+/* ------------------------------------------------------------- ETC kept small */
+
+static bool is_etc(u32 internal) { return internal == 0x8D64 || (internal >= 0x9270 && internal <= 0x9279); }
+
+/* The texture bound for a target on this thread's unit: 2D, a cube map (or one of its faces), a 2D array; 0 for any other. */
+static u32 bound_for(u32 target)
+{
+    if (target == GL_TEXTURE_2D) return T.bound[T.unit];
+    if (target == GL_TEXTURE_CUBE_MAP || (target >= GL_TEXTURE_CUBE_MAP_POSITIVE_X && target <= GL_TEXTURE_CUBE_MAP_NEGATIVE_Z)) return T.cube[T.unit];
+    if (target == GL_TEXTURE_2D_ARRAY) return T.array[T.unit];
+    return 0;
+}
+
+/* What an ETC format goes to ANGLE as, and whether its blocks are transcoded here on the way (to DXT5); 0: as it is. */
+static u32 etc_as(u32 internal, bool *transcode)
+{
+    *transcode = false;
+    if (g_etc_policy < 0) g_etc_policy = hk_flag("etc-by-angle") ? 0 : 1;
+    if (!g_etc_policy) return 0;
+    learn_formats();
+    switch (internal) {
+    case 0x8D64: return g_etc_lossy ? 0x9690 : 0;              /* ETC1 */
+    case 0x9274: return g_etc_lossy ? 0x9695 : 0;              /* RGB8, its sRGB twin, the punch-through pair */
+    case 0x9275: return g_etc_lossy ? 0x9696 : 0;
+    case 0x9276: return g_etc_lossy ? 0x9697 : 0;
+    case 0x9277: return g_etc_lossy ? 0x9698 : 0;
+    case GL_RGBA8_ETC2_EAC: *transcode = g_has_dxt5 != 0; return g_has_dxt5 ? GL_DXT5 : 0;
+    case GL_SRGB8_ALPHA8_ETC2_EAC: *transcode = g_can_pack_srgb != 0; return g_can_pack_srgb ? GL_DXT5_SRGB : 0;
+    default: return 0;                                         /* R11 and RG11: as ANGLE has them */
+    }
+}
+
+/*
+ * A level of the texture bound for `target`, in an ETC format: the format it goes to ANGLE as (0: as it is), and whether
+ * its blocks are transcoded. Its first level decides for the whole texture, which must be of one format: whole blocks at
+ * the base level that level implies, as ANGLE over Direct3D asks of a block-compressed level, or not at all. `anew`: the
+ * texture's base level or its storage is being made, which decides again.
+ */
+static u32 etc_level(u32 target, u32 internal, i32 level, i32 w, i32 h, bool anew, bool *transcode)
+{
+    static volatile i32 said;
+    u32 name = bound_for(target), to = etc_as(internal, transcode);
+    u8 *known = name && name < HK_COUNT(g_etc) ? &g_etc[name] : NULL;
+    if (!to) return 0;
+    if (known && *known && !anew) {
+        if (*known == 1) return to;
+        *transcode = false;
+        return 0;
+    }
+    if (level < 0 || level > 15 || w <= 0 || h <= 0 || ((u32)w << level & 3) || ((u32)h << level & 3)) {
+        if (known) *known = 2;
+        *transcode = false;
+        return 0;
+    }
+    if (known) *known = 1;
+    if (!hk_atomic_xchg(&said, 1))
+        hk_info("textures: ETC ones go to ANGLE in formats Direct3D has, the same size: the RGB ones as BC1 by ANGLE's lossy decoding, RGBA8 ETC2 EAC as DXT5 "
+                "transcoded here (ANGLE keeps ETC as RGBA8, four to eight times the size)");
+    return to;
+}
+
+/* The format an ETC upload into part of a level goes as: as the texture's levels went (0: as it is). */
+static u32 etc_part(u32 target, u32 format, bool *transcode)
+{
+    u32 name = bound_for(target);
+    *transcode = false;
+    if (!is_etc(format) || !name || name >= HK_COUNT(g_etc) || g_etc[name] != 1) return 0;
+    return etc_as(format, transcode);
+}
+
+/*
+ * RGBA8 ETC2 EAC blocks of an upload as DXT5, in memory of their own (the caller frees it): from the app's memory, or from
+ * the unpack buffer bound, where `data` is an offset. NULL when they cannot be read, or the size is not the blocks'.
+ */
+static u8 *etc_transcoded(const void *data, i32 size, u32 w, u32 h, u32 d)
+{
+    size_t blocks = (size_t)((w + 3) / 4) * ((h + 3) / 4) * d;
+    const u8 *in = (const u8 *)data;
+    void *mapped = NULL;
+    u8 *out;
+    if (size < 0 || (size_t)size != blocks * 16) return NULL;
+    if (T.unpack_buffer) {
+        if (!h_map_range || !h_unmap || !h_bind_buffer) return NULL;
+        mapped = h_map_range(GL_PIXEL_UNPACK_BUFFER, (intptr_t)data, (intptr_t)size, GL_MAP_READ_BIT);
+        if (!mapped) return NULL;
+        in = (const u8 *)mapped;
+    } else if (!in) {
+        return NULL;
+    }
+    out = (u8 *)malloc(blocks * 16);
+    if (out) hk_gltex_etc2_eac_to_dxt5(in, blocks, out);
+    if (mapped) h_unmap(GL_PIXEL_UNPACK_BUFFER);
+    return out;
+}
+
+/* Around an upload from the layer's own memory: the app's unpack buffer is let go of, and bound again after. */
+static void own_memory(bool begin)
+{
+    if (T.unpack_buffer && h_bind_buffer) h_bind_buffer(GL_PIXEL_UNPACK_BUFFER, begin ? 0 : T.unpack_buffer);
+}
+
+/* An ETC upload that was to be transcoded and could not be read: its level is made all the same, its pixels not given. */
+static void etc_unread(const char *what, i32 w, i32 h)
+{
+    static volatile i32 said;
+    hk_atomic_add((volatile i32 *)&G.dropped, 1);
+    if (hk_atomic_add(&said, 1) <= 6) hk_warn("textures: an ETC2 upload (%s, %dx%d) to be given to ANGLE as DXT5 could not be read; its level is left blank", what, w, h);
 }
 
 /* ---------------------------------------------------------------- counting */
@@ -366,7 +643,7 @@ static u64 storage_bytes(u32 internal, u32 format, u32 type, i32 w, i32 h, i32 d
     return bytes;
 }
 
-static void count(u32 target, u32 internal, u32 format, u32 type, i32 w, i32 h, i32 d, i32 levels, u64 given)
+static void count(u32 target, u32 internal, u32 format, u32 type, i32 w, i32 h, i32 d, i32 levels, u64 given, bool as_bc)
 {
     int kind;
     u64 bytes, pixels = 0;
@@ -380,7 +657,12 @@ static void count(u32 target, u32 internal, u32 format, u32 type, i32 w, i32 h, 
     hk_lock_acquire(&g_lock);
     G.bytes[kind] += bytes;
     G.count[kind]++;
-    if (kind == K_ETC) G.etc_expanded += pixels * 4;
+    if (kind == K_ETC && as_bc) {
+        G.etc_as_bc += bytes;
+        G.etc_as_bc_count++;
+    } else if (kind == K_ETC) {
+        G.etc_expanded += pixels * 4;
+    }
     if (bytes > G.largest_bytes) {
         G.largest_bytes = bytes;
         G.largest_w = (u32)w;
@@ -400,7 +682,7 @@ static void make_plain(u32 name, tex_info *t)
     bool rebind = bound_now() != name;
     t->state = S_NONE;
     if (rebind) h_bind_texture(GL_TEXTURE_2D, name);
-    count(GL_TEXTURE_2D, t->internal, 0, 0, t->w, t->h, 1, t->levels, 0);
+    count(GL_TEXTURE_2D, t->internal, 0, 0, t->w, t->h, 1, t->levels, 0, false);
     h_storage_2d(GL_TEXTURE_2D, t->levels, t->internal, t->w, t->h);
     if (rebind) h_bind_texture(GL_TEXTURE_2D, bound_now());
 }
@@ -435,8 +717,14 @@ static void w_storage_2d(u32 target, i32 levels, u32 internal, i32 w, i32 h)
 {
     u32 name = bound_now();
     tex_info *t = target == GL_TEXTURE_2D ? info_of(name) : NULL;
-    bool much;
+    bool much, transcode;
     if (t && t->state != S_NONE) t->state = S_NONE;            /* a name used again */
+    if (is_etc(internal)) {
+        u32 to = etc_level(target, internal, 0, w, h, true, &transcode);
+        count(target, internal, 0, 0, w, h, 1, levels, 0, to != 0);
+        h_storage_2d(target, levels, to ? to : internal, w, h);
+        return;
+    }
     hk_lock_acquire(&g_lock);
     much = G.bytes[K_PLAIN] + G.packed_from >= PACK_AFTER_BYTES;
     hk_lock_release(&g_lock);
@@ -449,7 +737,7 @@ static void w_storage_2d(u32 target, i32 levels, u32 internal, i32 w, i32 h)
         t->internal = internal;
         return;
     }
-    count(target, internal, 0, 0, w, h, 1, levels, 0);
+    count(target, internal, 0, 0, w, h, 1, levels, 0, false);
     h_storage_2d(target, levels, internal, w, h);
 }
 
@@ -489,28 +777,97 @@ static void w_sub_image_2d(u32 target, i32 level, i32 x, i32 y, i32 w, i32 h, u3
 
 static void w_storage_3d(u32 target, i32 levels, u32 internal, i32 w, i32 h, i32 d)
 {
-    count(target, internal, 0, 0, w, h, d, levels, 0);
-    h_storage_3d(target, levels, internal, w, h, d);
+    bool transcode;
+    u32 to = is_etc(internal) ? etc_level(target, internal, 0, w, h, true, &transcode) : 0;
+    count(target, internal, 0, 0, w, h, d, levels, 0, to != 0);
+    h_storage_3d(target, levels, to ? to : internal, w, h, d);
 }
 
 static void w_image_2d(u32 target, i32 level, i32 internal, i32 w, i32 h, i32 border, u32 format, u32 type, const void *pixels)
 {
     if (target == GL_TEXTURE_2D) needs_plain(bound_now(), "glTexImage2D");
-    count(0, (u32)internal, format, type, w, h, 1, 1, 0);
+    count(0, (u32)internal, format, type, w, h, 1, 1, 0, false);
     h_image_2d(target, level, internal, w, h, border, format, type, pixels);
 }
 
 static void w_image_3d(u32 target, i32 level, i32 internal, i32 w, i32 h, i32 d, i32 border, u32 format, u32 type, const void *pixels)
 {
-    count(0, (u32)internal, format, type, w, h, d, 1, 0);
+    count(0, (u32)internal, format, type, w, h, d, 1, 0, false);
     h_image_3d(target, level, internal, w, h, d, border, format, type, pixels);
 }
 
 static void w_compressed_2d(u32 target, i32 level, u32 internal, i32 w, i32 h, i32 border, i32 size, const void *data)
 {
+    bool transcode = false;
+    u32 to = 0;
     if (target == GL_TEXTURE_2D) needs_plain(bound_now(), "glCompressedTexImage2D");
-    count(0, internal, 0, 0, w, h, 1, 1, size > 0 ? (u64)size : 0);
-    h_compressed_2d(target, level, internal, w, h, border, size, data);
+    if (is_etc(internal)) to = etc_level(target, internal, level, w, h, level == 0, &transcode);
+    count(0, internal, 0, 0, w, h, 1, 1, size > 0 ? (u64)size : 0, to != 0);
+    if (to && transcode && (data || T.unpack_buffer)) {
+        u8 *packed = etc_transcoded(data, size, (u32)w, (u32)h, 1);
+        if (!packed) etc_unread("glCompressedTexImage2D", w, h);
+        own_memory(true);
+        h_compressed_2d(target, level, to, w, h, border, size, packed);
+        own_memory(false);
+        free(packed);
+        return;
+    }
+    h_compressed_2d(target, level, to ? to : internal, w, h, border, size, data);
+}
+
+static void w_compressed_sub_2d(u32 target, i32 level, i32 x, i32 y, i32 w, i32 h, u32 format, i32 size, const void *data)
+{
+    bool transcode;
+    u32 to = etc_part(target, format, &transcode);
+    if (to && transcode) {
+        u8 *packed = etc_transcoded(data, size, (u32)w, (u32)h, 1);
+        if (!packed) {
+            etc_unread("glCompressedTexSubImage2D", w, h);
+            return;
+        }
+        own_memory(true);
+        h_compressed_sub_2d(target, level, x, y, w, h, to, size, packed);
+        own_memory(false);
+        free(packed);
+        return;
+    }
+    h_compressed_sub_2d(target, level, x, y, w, h, to ? to : format, size, data);
+}
+
+static void w_compressed_3d(u32 target, i32 level, u32 internal, i32 w, i32 h, i32 d, i32 border, i32 size, const void *data)
+{
+    bool transcode = false;
+    u32 to = is_etc(internal) ? etc_level(target, internal, level, w, h, level == 0, &transcode) : 0;
+    count(0, internal, 0, 0, w, h, d, 1, size > 0 ? (u64)size : 0, to != 0);
+    if (to && transcode && d > 0 && (data || T.unpack_buffer)) {
+        u8 *packed = etc_transcoded(data, size, (u32)w, (u32)h, (u32)d);
+        if (!packed) etc_unread("glCompressedTexImage3D", w, h);
+        own_memory(true);
+        h_compressed_3d(target, level, to, w, h, d, border, size, packed);
+        own_memory(false);
+        free(packed);
+        return;
+    }
+    h_compressed_3d(target, level, to ? to : internal, w, h, d, border, size, data);
+}
+
+static void w_compressed_sub_3d(u32 target, i32 level, i32 x, i32 y, i32 z, i32 w, i32 h, i32 d, u32 format, i32 size, const void *data)
+{
+    bool transcode;
+    u32 to = etc_part(target, format, &transcode);
+    if (to && transcode && d > 0) {
+        u8 *packed = etc_transcoded(data, size, (u32)w, (u32)h, (u32)d);
+        if (!packed) {
+            etc_unread("glCompressedTexSubImage3D", w, h);
+            return;
+        }
+        own_memory(true);
+        h_compressed_sub_3d(target, level, x, y, z, w, h, d, to, size, packed);
+        own_memory(false);
+        free(packed);
+        return;
+    }
+    h_compressed_sub_3d(target, level, x, y, z, w, h, d, to ? to : format, size, data);
 }
 
 static void w_active_texture(u32 unit)
@@ -522,6 +879,8 @@ static void w_active_texture(u32 unit)
 static void w_bind_texture(u32 target, u32 name)
 {
     if (target == GL_TEXTURE_2D) T.bound[T.unit] = name;
+    else if (target == GL_TEXTURE_CUBE_MAP) T.cube[T.unit] = name;
+    else if (target == GL_TEXTURE_2D_ARRAY) T.array[T.unit] = name;
     h_bind_texture(target, name);
 }
 
@@ -546,8 +905,12 @@ static void w_delete_textures(i32 n, const u32 *names)
     for (i = 0; names && i < n; i++) {
         tex_info *t = info_of(names[i]);
         if (t) t->state = S_NONE;
-        for (u = 0; u < HK_COUNT(T.bound); u++)
+        if (names[i] < HK_COUNT(g_etc)) g_etc[names[i]] = 0;
+        for (u = 0; u < HK_COUNT(T.bound); u++) {
             if (T.bound[u] == names[i]) T.bound[u] = 0;
+            if (T.cube[u] == names[i]) T.cube[u] = 0;
+            if (T.array[u] == names[i]) T.array[u] = 0;
+        }
     }
     h_delete_textures(n, names);
 }
@@ -605,6 +968,11 @@ void *hk_gltex_wrap(const char *name, void *host)
         { "glTexImage2D", (void *)w_image_2d, (void **)&h_image_2d },
         { "glTexImage3D", (void *)w_image_3d, (void **)&h_image_3d },
         { "glCompressedTexImage2D", (void *)w_compressed_2d, (void **)&h_compressed_2d },
+        { "glCompressedTexSubImage2D", (void *)w_compressed_sub_2d, (void **)&h_compressed_sub_2d },
+        { "glCompressedTexImage3D", (void *)w_compressed_3d, (void **)&h_compressed_3d },
+        { "glCompressedTexImage3DOES", (void *)w_compressed_3d, (void **)&h_compressed_3d },
+        { "glCompressedTexSubImage3D", (void *)w_compressed_sub_3d, (void **)&h_compressed_sub_3d },
+        { "glCompressedTexSubImage3DOES", (void *)w_compressed_sub_3d, (void **)&h_compressed_sub_3d },
         { "glTexSubImage2D", (void *)w_sub_image_2d, (void **)&h_sub_image_2d },
         { "glActiveTexture", (void *)w_active_texture, (void **)&h_active_texture },
         { "glBindTexture", (void *)w_bind_texture, (void **)&h_bind_texture },
@@ -637,16 +1005,55 @@ void hk_gltex_set_host(void *(*resolve)(const char *name))
     if (!h_bind_texture) h_bind_texture = (fn_enum_uint)resolve("glBindTexture");
     if (!h_get_string) h_get_string = (fn_get_string)resolve("glGetString");
     if (!h_storage_2d) h_storage_2d = (fn_tex_storage_2d)resolve("glTexStorage2D");
+    /* And what reading an ETC upload out of the app's unpack buffer takes. */
+    if (!h_map_range) h_map_range = (fn_map_range)resolve("glMapBufferRange");
+    if (!h_unmap) h_unmap = (fn_unmap)resolve("glUnmapBuffer");
+    if (!h_bind_buffer) h_bind_buffer = (fn_enum_uint)resolve("glBindBuffer");
+}
+
+void hk_gltex_reset(void)
+{
+    h_storage_2d = NULL;
+    h_storage_3d = NULL;
+    h_image_2d = NULL;
+    h_image_3d = NULL;
+    h_compressed_2d = NULL;
+    h_sub_image_2d = NULL;
+    h_compressed_sub_2d = NULL;
+    h_compressed_3d = NULL;
+    h_compressed_sub_3d = NULL;
+    h_map_range = NULL;
+    h_unmap = NULL;
+    h_active_texture = h_generate_mipmap = NULL;
+    h_bind_texture = h_bind_buffer = NULL;
+    h_pixel_storei = NULL;
+    h_delete_textures = NULL;
+    h_fb_texture_2d = NULL;
+    h_fb_texture_2d_ms = NULL;
+    h_fb_texture_layer = NULL;
+    h_copy_sub_2d = NULL;
+    h_copy_image = NULL;
+    h_get_string = NULL;
+    hk_lock_acquire(&g_lock);
+    memset(&G, 0, sizeof(G));
+    hk_lock_release(&g_lock);
+    memset(g_info, 0, sizeof(g_info));
+    memset(g_etc, 0, sizeof(g_etc));
+    memset(&T, 0, sizeof(T));
+    g_can_pack = g_policy = g_etc_policy = -1;
+    g_can_pack_srgb = g_has_dxt5 = g_etc_lossy = 0;
 }
 
 void hk_gltex_report(char *out, size_t size)
 {
     hk_lock_acquire(&g_lock);
     snprintf(out, size,
-             "textures asked for so far: %u MB plain in %u, %u MB ETC2/EAC in %u (%u MB as ANGLE keeps them), %u MB other compressed in %u; "
+             "textures asked for so far: %u MB plain in %u, %u MB ETC2/EAC in %u (%u MB of it in %u given to ANGLE as BC1 or DXT5, the same size; "
+             "the rest %u MB as ANGLE decodes it), %u MB other compressed in %u; "
              "the largest %ux%u of format 0x%x, %u MB; kept as DXT5: %u, %u MB for what would have been %u MB (%u uploads dropped)",
              (unsigned)(G.bytes[K_PLAIN] >> 20), (unsigned)G.count[K_PLAIN], (unsigned)(G.bytes[K_ETC] >> 20), (unsigned)G.count[K_ETC],
-             (unsigned)(G.etc_expanded >> 20), (unsigned)(G.bytes[K_BLOCK] >> 20), (unsigned)G.count[K_BLOCK], (unsigned)G.largest_w,
+             (unsigned)(G.etc_as_bc >> 20), (unsigned)G.etc_as_bc_count, (unsigned)(G.etc_expanded >> 20), (unsigned)(G.bytes[K_BLOCK] >> 20),
+             (unsigned)G.count[K_BLOCK], (unsigned)G.largest_w,
              (unsigned)G.largest_h, (unsigned)G.largest_format, (unsigned)(G.largest_bytes >> 20), (unsigned)G.count[K_PACKED],
              (unsigned)(G.bytes[K_PACKED] >> 20), (unsigned)(G.packed_from >> 20), (unsigned)G.dropped);
     hk_lock_release(&g_lock);

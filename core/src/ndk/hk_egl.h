@@ -97,6 +97,11 @@ void hk_gltex_set_host(void *(*resolve)(const char *name));
 /* RGBA8 pixels (rows `stride` bytes apart) to DXT5 blocks; a width or height that is not a multiple of four is padded with its edge. */
 size_t hk_gltex_dxt5_size(u32 w, u32 h);
 void hk_gltex_dxt5(const u8 *rgba, u32 w, u32 h, size_t stride, u8 *out);
+/* An RGBA8 ETC2 EAC block (sixteen bytes) decoded into sixteen pixels, rows of four, top first; and `blocks` of them packed again as as many DXT5 blocks. */
+void hk_gltex_etc2_eac_decode(const u8 block[16], u8 px[16][4]);
+void hk_gltex_etc2_eac_to_dxt5(const u8 *in, size_t blocks, u8 *out);
+/* Back to nothing known (tests): the functions it calls, the formats this OpenGL has, what was counted, the textures held, this thread's bindings. */
+void hk_gltex_reset(void);
 
 #ifdef __cplusplus
 }
