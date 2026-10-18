@@ -1898,6 +1898,10 @@ static int run_gl(void)
     expect_line("I/GlTest: device gles=3.0 req=0x30000", &at, 30);
     /* EGL14 on a pbuffer, on a thread of the app's: how an app asks the GPU's name. */
     CHECK(wait_line("I/GlTest: egl14 pbuffer made=true egl=1.4 pixel=255,0,128 width=16 version=2 current=true released=true max-texture=4096 error=0", 0, 120) >= 0);
+    /* The app's display, made here for the first time, without ANGLE's structured buffers for uniform blocks (a Direct3D buffer
+       for each range bound: ndk/hk_egl.c). */
+    CHECK(!strcmp(hk_gl_standin_app_features_off(), "allowTranslateUniformBlockToStructuredBuffer"));
+    CHECK(find_line("egl: asking ANGLE for a display as Direct3D 11, without its allowTranslateUniformBlockToStructuredBuffer", 0) >= 0);
     /* (The app logs the strings just after that line, on the same thread: waited for too, not looked for at once.) */
     CHECK(wait_line("I/GlTest: egl14 strings vendor=Megler renderer=stand-in for OpenGL ES version=OpenGL ES 2.0 (stand-in) extensions=3", 0, 30) >= 0);
     /* The renderer, on the GL thread with its context current: created, changed, drawn, in that order. */

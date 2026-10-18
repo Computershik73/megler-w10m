@@ -88,6 +88,7 @@ typedef unsigned EGLBoolean, EGLenum;
 #define EGL_PLATFORM_ANGLE_DEVICE_TYPE_ANGLE 0x3209
 #define EGL_PLATFORM_ANGLE_DEVICE_TYPE_D3D_WARP_ANGLE 0x320B
 #define EGL_PLATFORM_ANGLE_ENABLE_AUTOMATIC_TRIM_ANGLE 0x320F
+#define EGL_FEATURE_OVERRIDES_DISABLED_ANGLE 0x3467
 #define EGL_DEVICE_EXT 0x322C
 #define EGL_D3D11_DEVICE_ANGLE 0x33A1
 #define EGL_D3D_TEXTURE_ANGLE 0x33A3
@@ -102,6 +103,7 @@ typedef unsigned EGLBoolean, EGLenum;
 #define A(type, name) ((type)angle(name))
 
 typedef EGLDisplay (*fn_platform_display)(EGLenum, void *, const EGLint *);
+typedef EGLDisplay (*fn_platform_display_attrib)(EGLenum, void *, const intptr_t *);
 typedef EGLBoolean (*fn_initialize)(EGLDisplay, EGLint *, EGLint *);
 typedef EGLint (*fn_get_error)(void);
 typedef const char *(*fn_query_string)(EGLDisplay, EGLint);
@@ -146,6 +148,21 @@ typedef struct made_display {
     char how[48];
 } made_display;
 
+/*
+ * ANGLE's own choices that the app's display is made without (EGL_ANGLE_feature_control, by feature name):
+ *
+ * allowTranslateUniformBlockToStructuredBuffer -- on Windows 10 ANGLE turns a uniform block that is one array of structures
+ * into a structured buffer (it compiles faster with dynamic indexing), and then makes a Direct3D buffer of its own, with
+ * its view, for each range of a GL buffer bound to it. A game that keeps its uniforms in one large buffer and binds a new
+ * range of it for each draw (glBindBufferRange) has a new Direct3D buffer made for nearly every draw: in a race of
+ * Asphalt 9's, two thirds of the render thread went to ResourceManager11::allocate<ID3D11Buffer> and the driver's calls
+ * into the kernel below it, at one or two frames a second, with the graphics processor idle. Without it a uniform block is
+ * a constant buffer, and a bound range is that buffer at an offset (Direct3D 11.1's constant buffer offsets).
+ *
+ * The WebView's display is made as ANGLE would make it: Chromium chooses for itself.
+ */
+static const char *const k_app_features_off[] = { "allowTranslateUniformBlockToStructuredBuffer", NULL };
+
 static void make_display(made_display *m)
 {
     /* What a feature-level-10+ GPU takes, then what a 9_3 phone needs; software rendering is not worth trying on a phone. */
@@ -166,6 +183,8 @@ static void make_display(made_display *m)
         { level_9_3, "Direct3D 11 at feature level 9_3" },
     };
     fn_platform_display get = A(fn_platform_display, "eglGetPlatformDisplayEXT");
+    /* EGL 1.5's, whose attributes are as wide as a pointer: the features turned off are a list of names. */
+    fn_platform_display_attrib get_attrib = m->whose ? NULL : A(fn_platform_display_attrib, "eglGetPlatformDisplay");
     fn_initialize init = A(fn_initialize, "eglInitialize");
     size_t i;
     if (!get) get = A(fn_platform_display, "eglGetPlatformDisplay");
@@ -173,8 +192,22 @@ static void make_display(made_display *m)
     for (i = 0; i < HK_COUNT(tries); i++) {
         EGLDisplay d;
         /* Said before it is tried: this is the first thing ANGLE does on a device, and where a bad package would end the process. */
-        hk_info("egl: asking ANGLE for a display%s%s as %s", m->whose ? " for " : "", m->whose ? m->whose : "", tries[i].name);
-        d = get(EGL_PLATFORM_ANGLE_ANGLE, m->native, tries[i].attribs);
+        hk_info("egl: asking ANGLE for a display%s%s as %s%s", m->whose ? " for " : "", m->whose ? m->whose : "", tries[i].name,
+                get_attrib ? ", without its allowTranslateUniformBlockToStructuredBuffer" : "");
+        if (get_attrib) {
+            intptr_t attribs[16];
+            size_t k = 0, n;
+            for (n = 0; tries[i].attribs[n] != EGL_NONE && k + 4 < HK_COUNT(attribs); n += 2) {
+                attribs[k++] = tries[i].attribs[n];
+                attribs[k++] = tries[i].attribs[n + 1];
+            }
+            attribs[k++] = EGL_FEATURE_OVERRIDES_DISABLED_ANGLE;
+            attribs[k++] = (intptr_t)k_app_features_off;
+            attribs[k] = EGL_NONE;
+            d = get_attrib(EGL_PLATFORM_ANGLE_ANGLE, m->native, attribs);
+        } else {
+            d = get(EGL_PLATFORM_ANGLE_ANGLE, m->native, tries[i].attribs);
+        }
         if (d && init(d, &m->major, &m->minor)) {
             hk_strlcpy(m->how, tries[i].name, sizeof(m->how));
             m->d = d;

@@ -103,6 +103,25 @@ static void *e_GetPlatformDisplay(unsigned platform, void *native, const int *at
     return (void *)(hk_addr)(native == (void *)(hk_addr)-3 ? 0xD16 : 0xD15);
 }
 static void *e_GetDisplay(void *native) { (void)native; return (void *)(hk_addr)0xD15; }
+/* EGL 1.5's: as above, and the features asked to be turned off for the app's display (EGL_FEATURE_OVERRIDES_DISABLED_ANGLE) kept. */
+static char g_app_features_off[200];
+static void *e_GetPlatformDisplayAttrib(unsigned platform, void *native, const intptr_t *attribs)
+{
+    size_t i;
+    if (native != (void *)(hk_addr)-3) {
+        g_app_features_off[0] = 0;
+        for (i = 0; attribs && attribs[i] != 0x3038; i += 2)
+            if (attribs[i] == 0x3467 && attribs[i + 1]) {
+                const char *const *names = (const char *const *)attribs[i + 1];
+                for (; *names; names++) {
+                    size_t at = strlen(g_app_features_off);
+                    snprintf(g_app_features_off + at, sizeof(g_app_features_off) - at, "%s%s", at ? " " : "", *names);
+                }
+            }
+    }
+    return e_GetPlatformDisplay(platform, native, NULL);
+}
+const char *hk_gl_standin_app_features_off(void) { return g_app_features_off; }
 static unsigned e_Initialize(void *d, int *major, int *minor)
 {
     (void)d;
@@ -1173,7 +1192,8 @@ void hk_gl_standin_set_complete(bool on) { g_complete = on; }
 void *hk_gl_standin(const char *name)
 {
     static const struct { const char *name; void *fn; } k[] = {
-        { "eglGetPlatformDisplayEXT", (void *)e_GetPlatformDisplay }, { "eglGetDisplay", (void *)e_GetDisplay }, { "eglInitialize", (void *)e_Initialize },
+        { "eglGetPlatformDisplayEXT", (void *)e_GetPlatformDisplay }, { "eglGetPlatformDisplay", (void *)e_GetPlatformDisplayAttrib },
+        { "eglGetDisplay", (void *)e_GetDisplay }, { "eglInitialize", (void *)e_Initialize },
         { "eglTerminate", (void *)e_Terminate }, { "eglGetError", (void *)e_GetError }, { "eglQueryString", (void *)e_QueryString },
         { "eglChooseConfig", (void *)e_ChooseConfig }, { "eglGetConfigAttrib", (void *)e_GetConfigAttrib }, { "eglCreateContext", (void *)e_CreateContext },
         { "eglDestroyContext", (void *)e_DestroyContext }, { "eglCreatePbufferSurface", (void *)e_CreatePbuffer },
