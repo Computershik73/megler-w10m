@@ -237,7 +237,13 @@ stack scan, thread and memory lines, the flags (`hk_flag`: a file's presence in
 `LocalState\flags`, put there through the Device Portal: `no-interrupt`,
 `no-render`, `late-render`, `no-egl`, `no-panel`, `early-present`, `no-present`,
 `normal-priority`, `trace-gl`), `trace-gl` (every GL call through a generated
-thunk), the unattended `play` mode, and `tools/phone-etw.py`.
+thunk), the unattended `play` mode, and `tools/phone-etw.py`. And for what an app
+does that it says nothing of: `trace-net` (every TCP connection the app makes,
+where to, how it ended and how long it took, and every name it looks up with its
+addresses; `bionic/hk_net.c`, `hk_netdb.c`) and `trace-exceptions` (every Java
+exception thrown, once, with its message and the method it was thrown in, caught
+or not; `dvm/hk_dvm_interp.c`), at most 1000 and 2000 lines a run. The data app's
+second run under qemu has both on, and the test finds their lines.
 
 **Sound.** FMOD said "Error initializing output device" twice and made no player.
 It had not got as far as OpenSL ES: before that it asks `AudioManager.getProperty`

@@ -15,6 +15,8 @@
  */
 #include "hk_dvm_internal.h"
 
+#include "../hk_core.h"
+
 #include <math.h>
 #include <stdio.h>
 
@@ -507,6 +509,28 @@ static bool trivial(const hk_dvm_method *m, u32 w, const hk_dvm_reg *a, hk_jvalu
 
 /* ---------------------------------------------------------------- exceptions */
 
+/*
+ * The flag trace-exceptions (a file of that name in LocalState\flags, read once): every exception thrown is said in the log
+ * once, with its message and the method it was thrown in, caught or not -- what an app catches and says nothing about is
+ * otherwise not seen at all (VK mp3 mod's sign-in stood still with nothing in the log). At most 2000 lines a run.
+ */
+static void trace_exception(hk_dvm_thread *t, hk_dvm_method *m, u32 pc, hk_jobj *e)
+{
+    static int wanted = -1;
+    static volatile i32 said;
+    const char *text = NULL;
+    if (wanted < 0) wanted = hk_flag("trace-exceptions") ? 1 : 0;
+    if (!wanted || e == t->traced) return;
+    t->traced = e;
+    if (hk_atomic_add(&said, 1) > 2000) return;
+    if (g_dvm.f_message && hk_dvm_is_instance(e, g_dvm.c_throwable)) {
+        hk_jobj *msg = hk_dvm_slots(e)[g_dvm.f_message->slot].l;
+        if (msg) text = hk_dvm_string_utf8(msg);
+    }
+    hk_info("dvm: thrown on thread %u: %s%s%s, in %s.%s at %u", (unsigned)t->id, hk_dvm_class_name(e), text ? ": " : "", text ? text : "", m->cls->name,
+            m->name, (unsigned)pc);
+}
+
 /* The handler in method `m` for exception `e` thrown at `pc`, if it has one. */
 static bool find_handler(hk_dvm_thread *t, hk_dvm_method *m, u32 pc, hk_jobj *e, u32 *target)
 {
@@ -514,6 +538,7 @@ static bool find_handler(hk_dvm_thread *t, hk_dvm_method *m, u32 pc, hk_jobj *e,
     hk_dvm_class *ec = hk_dvm_class_of(e);
     u32 i;
     bool found = false;
+    trace_exception(t, m, pc, e);
     /* Nothing catches the error a used-up step limit throws: code that catches everything and goes round again would never end. */
     if (!m->ntries || t->steps_left == ~(u64)0) return false;
     tries = (const u8 *)(m->insns + m->ninsns);

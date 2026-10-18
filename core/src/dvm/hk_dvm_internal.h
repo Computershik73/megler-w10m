@@ -219,6 +219,7 @@ struct hk_dvm_thread {
     hk_dvm_reg *sp;
     hk_dvm_frame *top;
     hk_jobj *pending;                  /* the exception being thrown */
+    hk_jobj *traced;                   /* the last exception the flag trace-exceptions said (find_handler) */
     u32 id;
     int depth;                         /* frames */
     int c_depth;                       /* calls from C into the interpreter, nested */

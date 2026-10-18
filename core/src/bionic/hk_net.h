@@ -36,6 +36,9 @@ extern "C" {
 u32 hk_net_sockaddr_out(const hk_sockaddr *a, bool v6, u8 *out);
 /* The host's sockaddr from Android's: 0, or the errno for one that is not an internet address (EINVAL, EAFNOSUPPORT). AF_UNSPEC: family 0. */
 int hk_net_sockaddr_in(const void *sa, u32 len, hk_sockaddr *a);
+/* The flag trace-net: whether it is on, and a line of it (hk_net.c). */
+bool hk_net_trace_wanted(void);
+void hk_net_trace(const char *fmt, ...) HK_PRINTF(1, 2);
 /* Into a buffer the app gave with its length: as much as fits; *len then says how long the whole was. */
 void hk_net_give(const u8 *what, u32 n, void *out, u32 *len);
 

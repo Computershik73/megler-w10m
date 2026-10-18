@@ -989,7 +989,13 @@ static int g_getaddrinfo(const char *node, const char *service, const g_addrinfo
             count++;
         }
     } else if ((e = addresses_of(node, family, (flags & G_AI_NUMERICHOST) != 0, (flags & G_AI_ADDRCONFIG) != 0, (flags & G_AI_CANONNAME) != 0, &addrs, &count, &canon)) != 0) {
+        hk_net_trace("the name %s: not found (getaddrinfo error %d)", node, e);
         return e;
+    }
+    if (node && *node && hk_net_trace_wanted()) {
+        char first[64] = "";
+        if (count) g_inet_ntop(addrs[0].family == HK_AF_INET6 ? G_AF_INET6 : G_AF_INET, addrs[0].addr, first, sizeof(first));
+        hk_net_trace("the name %s: %d addresses, the first %s", node, count, first);
     }
     /* With no type asked for, every address once as a datagram one and once as a stream one, in that order, as bionic gives them. */
     for (t = 0; t < (socktype ? 1 : 2); t++) {

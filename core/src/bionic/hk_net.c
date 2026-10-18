@@ -25,7 +25,10 @@
  */
 #include "hk_net.h"
 
+#include <stdarg.h>
 #include <stdio.h>
+
+#include "../hk_core.h"
 
 #include "hk_fd.h"
 
@@ -150,6 +153,9 @@ typedef struct gsock {
     int keepidle, keepintvl, keepcnt;  /* what was set where the host has no such option, to be said back */
     int rcvbuf, sndbuf;                /* AF_UNIX: what was asked, said back */
     bool first, first_own;             /* the app's first connection, its outcome not yet said (first_connection_ended) */
+    bool traced;                       /* a connection the flag trace-net is to say the outcome of */
+    char trace_to[56];
+    u64 trace_from;
     u16 first_port;
     hk_sock *host;                     /* AF_INET and AF_INET6 */
     /* AF_UNIX, the app's own: all of what follows under the descriptor table's lock. */
@@ -279,8 +285,50 @@ static bool own_address(const hk_sockaddr *a)
     return a->family == HK_AF_INET6 && (!memcmp(a->addr, one, 16) || (!memcmp(a->addr, mapped, 12) && a->addr[12] == 127));
 }
 
+/*
+ * The flag trace-net (a file of that name in LocalState\flags, read once): every TCP connection the app makes is said in the
+ * log, where to and how it ended, and every name it looks up (hk_netdb.c). An app whose request goes nowhere often says
+ * nothing about it; this says whether a connection was made at all. At most 1000 lines a run.
+ */
+bool hk_net_trace_wanted(void)
+{
+    static int wanted = -1;
+    if (wanted < 0) wanted = hk_flag("trace-net") ? 1 : 0;
+    return wanted != 0;
+}
+
+void hk_net_trace(const char *fmt, ...)
+{
+    static volatile i32 said;
+    char line[400];
+    va_list ap;
+    if (!hk_net_trace_wanted() || hk_atomic_add(&said, 1) > 1000) return;
+    va_start(ap, fmt);
+    vsnprintf(line, sizeof(line), fmt, ap);
+    va_end(ap);
+    hk_info("network: %s", line);
+}
+
+/* An address and port as text: a.b.c.d:port, or [v6]:port. */
+static void addr_text(const hk_sockaddr *a, char *out, size_t size)
+{
+    if (a->family == HK_AF_INET6) {
+        size_t k = (size_t)snprintf(out, size, "[");
+        int i;
+        for (i = 0; i < 16 && k + 6 < size; i += 2) k += (size_t)snprintf(out + k, size - k, "%s%x", i ? ":" : "", (unsigned)(a->addr[i] << 8 | a->addr[i + 1]));
+        snprintf(out + k, size - k, "]:%u", (unsigned)a->port);
+    } else {
+        snprintf(out, size, "%u.%u.%u.%u:%u", a->addr[0], a->addr[1], a->addr[2], a->addr[3], (unsigned)a->port);
+    }
+}
+
 static void first_connection_began(gsock *s, const hk_sockaddr *a)
 {
+    if (hk_net_trace_wanted()) {
+        addr_text(a, s->trace_to, sizeof(s->trace_to));
+        s->trace_from = hk_time_monotonic_ns();
+        s->traced = true;
+    }
     if (g_first_connection || hk_atomic_cas(&g_first_connection, 0, 1) != 0) return;
     s->first = true;
     s->first_port = a->port;
@@ -289,6 +337,10 @@ static void first_connection_began(gsock *s, const hk_sockaddr *a)
 
 static void first_connection_ended(gsock *s, int e)
 {
+    if (s->traced) {
+        s->traced = false;
+        hk_net_trace("TCP to %s: %s after %llu ms", s->trace_to, errno_name(e), (unsigned long long)((hk_time_monotonic_ns() - s->trace_from) / 1000000));
+    }
     if (!s->first) return;
     s->first = false;
     hk_atomic_xchg(&g_first_connection, 2);

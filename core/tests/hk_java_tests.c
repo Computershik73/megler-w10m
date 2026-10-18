@@ -1527,6 +1527,15 @@ static int run_data(void)
                                            : "I/DataTest: battery is level=100/100 status=5 plugged=1 health=2 voltage=4200 temperature=250 present=true technology=Li-ion capacity=100 charging=true",
                     0) >= 0);
     battery_changes(run == 2 && want == 2);
+    /*
+     * The second run has the flags trace-net and trace-exceptions on (tools/build-tests.sh puts them in its data folder): the
+     * network steps' connections are said with where to and how they ended, the names looked up with their addresses, and
+     * the exceptions the steps throw and catch with their messages.
+     */
+    if (run == 2 && want == 2) {
+        CHECK(find_line("network: TCP to [0:0:0:0:0:ffff:7f00:1]:", 0) >= 0 && find_line("network: the name 127.0.0.1: 1 addresses, the first 127.0.0.1", 0) >= 0);
+        CHECK(find_line("dvm: thrown on thread ", 0) >= 0 && find_line("android/database/sqlite/SQLiteConstraintException: UNIQUE constraint failed", 0) >= 0);
+    }
     /* The core's own word that it is its SQLite, on its files. */
     CHECK(find_line("sqlite: SQLite 3.", 0) >= 0);
     /* An empty list of decoders is the answer, not a gap: the codecs step asked, and nothing said the class was missing. */
