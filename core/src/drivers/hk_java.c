@@ -1148,6 +1148,8 @@ static void main_thread(void *arg)
         hk_dvm_register(hk_java_media_natives());
         hk_java_camera_set_host(&J.config->camera);
         hk_dvm_register(hk_java_camera_natives());
+        hk_java_location_set_host(&J.config->location);
+        hk_dvm_register(hk_java_location_natives());
         hk_java_gfx_set_host(&J.config->gfx);
         hk_java_gfx_set_present(present, NULL);
         hk_java_gfx_set_present_canvas(present_canvas, NULL);

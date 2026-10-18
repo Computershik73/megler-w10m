@@ -3,7 +3,9 @@
 // And hasSystemFeature says what cameras the phone has (android.hardware.camera,
 // .any, .front, .autofocus, .flash), from the shell's (megler.CameraNative): the
 // original said no camera at all, and a scanner that asks before it opens one
-// (VK mp3 mod's QR sign-in among them) would not offer to scan.
+// (VK mp3 mod's QR sign-in among them) would not offer to scan. Likewise the
+// location (android.hardware.location, .gps, .network), wherever the shell can
+// find the phone (megler.LocationNative).
 // And getPackageInfo names the app's split APKs (splitNames, splitRevisionCodes),
 // as ApplicationInfo does: an app in several APKs that checks for its splits by
 // this way of asking found none, where the original left them empty.
@@ -129,6 +131,10 @@ public class PackageManager {
             if (name.equals(FEATURE_CAMERA_FLASH)) return (f & megler.CameraNative.FEATURE_FLASH) != 0;
             return false;
         }
+        // The phone's location, where the shell can find it (megler.LocationNative, core/src/drivers/hk_java_location.c): GPS and
+        // the network's alike, as LocationManager offers both.
+        if (name.equals(FEATURE_LOCATION) || name.equals(FEATURE_LOCATION_GPS) || name.equals(FEATURE_LOCATION_NETWORK))
+            return megler.LocationNative.access(false) != megler.LocationNative.NONE;
         return false;
     }
     public FeatureInfo[] getSystemAvailableFeatures() { return new FeatureInfo[0]; }

@@ -1281,6 +1281,44 @@ typedef struct megler_keyboard_host {
     void (*hide)(void *user);
 } megler_keyboard_host;
 
+/*
+ * The phone's location, for a Java app's android.location.LocationManager.
+ *
+ * A fix is where the phone was and when: degrees on WGS 84, metres, metres a second, degrees clockwise from north, and the time
+ * in milliseconds since 1970 (UTC). `has` says which of the optional ones are there. `source` is what found it: the satellites
+ * (Android's "gps" provider), Wi-Fi or the cell network ("network"), or a place set by hand for testing, which the app is told
+ * is the satellites'.
+ *
+ * The host is asked:
+ *   access(ask)  whether the app may be told where the phone is: MEGLER_LOCATION_ON; OFF when the phone's location is switched
+ *                off in its settings; DENIED when the user has not let Megler have it; NONE when the device has no way to find
+ *                it; UNKNOWN while the user has not been asked. With `ask`, the user is asked first if they have not been
+ *                (Windows' own question, which may take as long as the user does: the caller is the app's own thread, which may
+ *                wait); without it, nothing is asked.
+ *   start        to find the phone every `interval_ms` or so, until stop -- each fix kept for last;
+ *   last         the newest fix (false while there is none). It may be from before start, and stay after stop.
+ * Each may be called from any of the app's threads.
+ */
+enum { MEGLER_LOCATION_NONE = 0, MEGLER_LOCATION_ON = 1, MEGLER_LOCATION_OFF = 2, MEGLER_LOCATION_DENIED = 3, MEGLER_LOCATION_UNKNOWN = 4 };
+enum { MEGLER_LOCATION_HAS_ALTITUDE = 1, MEGLER_LOCATION_HAS_ALTITUDE_ACCURACY = 2, MEGLER_LOCATION_HAS_SPEED = 4, MEGLER_LOCATION_HAS_BEARING = 8 };
+enum { MEGLER_LOCATION_SATELLITES = 0, MEGLER_LOCATION_NETWORK = 1, MEGLER_LOCATION_SET_BY_HAND = 2 };
+
+typedef struct megler_location {
+    double latitude, longitude, altitude;
+    float accuracy_m, altitude_accuracy_m, speed_mps, bearing_deg;
+    long long time_ms;
+    unsigned has;
+    int source;
+} megler_location;
+
+typedef struct megler_location_host {
+    void *user;
+    int (*access)(void *user, bool ask);
+    bool (*start)(void *user, int interval_ms);
+    void (*stop)(void *user);
+    bool (*last)(void *user, megler_location *fix);
+} megler_location_host;
+
 typedef struct megler_run_config {
     const char *apk_path;
     /*
@@ -1304,6 +1342,8 @@ typedef struct megler_run_config {
     megler_camera_host camera;
     /* The phone's own folders in the app's shared storage (see megler_storage_host). May be left zero. */
     megler_storage_host storage;
+    /* The phone's location for a Java app's LocationManager (see megler_location_host). May be left zero: no location. */
+    megler_location_host location;
     /*
      * Drawing for an app whose user interface is Java (see megler_gfx_host). All of it may be left NULL: such an app still starts,
      * lays its views out and takes input, but nothing is drawn (its bitmaps hold only what the layer does itself: erasing, single

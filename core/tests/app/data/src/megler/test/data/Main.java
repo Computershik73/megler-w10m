@@ -281,6 +281,7 @@ public class Main extends Activity {
         storage(run);
         battery();
         connectivity();
+        location();
         timezone();
         tls();
         keystore(run);
@@ -610,6 +611,57 @@ public class Main extends Activity {
      * gives the intent back, and a receiver registered for it is called with it, once, later, on the main thread (Asphalt 9 tells
      * its native code the connection's type from there and from nowhere else). It says what ConnectivityManager says.
      */
+    /*
+     * The phone's location (the tests' stand-in puts it in Moscow, the location on): the providers there are and on, the newest
+     * fix named for the provider asked, a Location through a Parcel and back, the distance from Moscow to Saint Petersburg on
+     * the ellipsoid (636 215 m, Vincenty's), and an update to a listener on the main thread, after which it is removed.
+     */
+    private void location() {
+        step("location", () -> {
+            final android.location.LocationManager lm = (android.location.LocationManager) getSystemService(Context.LOCATION_SERVICE);
+            boolean gps = lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER), on = lm.isLocationEnabled();
+            java.util.List<String> all = lm.getAllProviders();
+            android.location.Location last = lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER);
+            android.os.Parcel parcel = android.os.Parcel.obtain();
+            boolean back = false;
+            if (last != null) {
+                last.writeToParcel(parcel, 0);
+                parcel.setDataPosition(0);
+                back = last.equals(android.location.Location.CREATOR.createFromParcel(parcel));
+            }
+            parcel.recycle();
+            float[] d = new float[3];
+            android.location.Location.distanceBetween(55.751244, 37.618423, 59.938630, 30.314130, d);
+            lm.requestLocationUpdates(android.location.LocationManager.GPS_PROVIDER, 0, 0, new android.location.LocationListener() {
+                private int calls;
+
+                @Override
+                public void onLocationChanged(android.location.Location l) {
+                    if (++calls != 1) return;
+                    boolean good = android.location.LocationManager.GPS_PROVIDER.equals(l.getProvider()) && Math.abs(l.getLatitude() - 55.7512) < 0.01
+                            && l.hasAccuracy() && l.getAccuracy() == 12f && l.hasAltitude() && l.getTime() > 0 && l.getElapsedRealtimeNanos() > 0
+                            && android.os.Looper.myLooper() == android.os.Looper.getMainLooper();
+                    Log.i("DataTest", "location-update " + (good ? "ok" : "FAILED " + l));
+                    lm.removeUpdates(this);
+                }
+
+                // (Abstract in the android.jar the app is built against; Android 11 gave them defaults.)
+                @Override
+                public void onProviderEnabled(String provider) {}
+
+                @Override
+                public void onProviderDisabled(String provider) {}
+
+                @Override
+                public void onStatusChanged(String provider, int status, android.os.Bundle extras) {}
+            });
+            detail = "gps=" + gps + " on=" + on + " providers=" + all + " last=" + last + " parcel=" + back + " distance=" + d[0] + " bearing=" + d[1];
+            return gps && on && all.contains(android.location.LocationManager.NETWORK_PROVIDER) && all.contains("fused")
+                    && last != null && android.location.LocationManager.NETWORK_PROVIDER.equals(last.getProvider()) && back
+                    && Math.abs(d[0] - 636215f) < 1f && d[1] < -35 && d[1] > -45;
+        });
+    }
+
     private void connectivity() {
         step("connectivity", () -> {
             android.content.IntentFilter filter = new android.content.IntentFilter(android.net.ConnectivityManager.CONNECTIVITY_ACTION);

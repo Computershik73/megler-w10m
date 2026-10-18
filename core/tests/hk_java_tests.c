@@ -73,6 +73,7 @@
 #include "../src/ndk/hk_egl.h"
 #include "../src/run/hk_run.h"
 #include "hk_camera_standin.h"
+#include "hk_location_standin.h"
 #include "hk_codec_standin.h"
 #include "hk_gfx_standin.h"
 #include "hk_gl_standin.h"
@@ -571,6 +572,8 @@ static bool start(const char *apk, const char *android_root)
     /* Decoders for MediaCodec that decode nothing but take samples only as a real one must have them (hk_codec_standin.c). */
     cfg.codec = *hk_codec_standin();
     if (g_camera_app) cfg.camera = *hk_camera_standin();
+    /* The phone in Moscow, the location on (hk_location_standin.c). */
+    cfg.location = *hk_location_standin();
     /* The framework says which window each touch went to when it finds this in the environment: asked for with verbose 2. */
     if (g_verbose >= 2 && hk_bionic_find("setenv")) ((int (*)(const char *, const char *, int))hk_bionic_find("setenv"))("TL_TOUCH_LOG", "1", 1);
     /* And every window's views with their frames, every three seconds while it lays out: verbose 3. */
@@ -1660,7 +1663,7 @@ static int run_data(void)
                                             and an https URL through Android's HTTP client; or, where its library is not in the Android root, the
                                             stand-in that fails politely), Android's key store's key pairs, and the list of decoders: the stand-in's
                                             H.264, AAC and MP3 (hk_codec_standin.c), and no H.265. */
-                                         "battery", "connectivity", "timezone", "tls", "tls-loopback", "tls-https", "keystore", "codecs",
+                                         "battery", "connectivity", "location", "timezone", "tls", "tls-loopback", "tls-https", "keystore", "codecs",
                                          /* And what Android's WebView asks of the platform before it shows a page, each answered as Android
                                             answers it: the app's id within its user (UserHandle.getAppId), whether cleartext HTTP is
                                             permitted (NetworkSecurityPolicy), a compatibility change's state for the app's target
@@ -1726,6 +1729,20 @@ static int run_data(void)
     expect_line("I/DataTest: battery-received ok", &at, 30);
     /* And the network's sticky broadcast (CONNECTIVITY_ACTION), once, to the receiver registered for it. */
     CHECK(wait_line("I/DataTest: connectivity-received ok", 0, 30) >= 0);
+    /* The phone's location, asked for in the step "location": a fix delivered on the main thread, after which the listener is
+       removed and the location no longer followed. */
+    CHECK(wait_line("I/DataTest: location-update ok", 0, 30) >= 0);
+    {
+        int starts = 0, stops = 0, tries;
+        for (tries = 0; tries < 40; tries++) {
+            hk_location_standin_counts(&starts, &stops);
+            if (starts >= 1 && stops >= starts) break;
+            hk_sleep_ns(100000000ull);
+        }
+        CHECK(starts >= 1 && stops == starts);
+        CHECK(find_line("location: on: the app may have it", 0) >= 0 && find_line("location: the phone's location is followed, every 1000 ms", 0) >= 0
+              && find_line("location: no longer followed", 0) >= 0);
+    }
     /* The broadcasts of the step "broadcast-explicit", once delivered: the relayed one, which names Target, reached Target alone. */
     CHECK(wait_line("I/DataTest: broadcast-relay ok relay=1 target=1 off=0 registered=1", 0, 30) >= 0);
     /* The sound the step "audio-track" and those after it started: each MediaPlayer played to its end, the SoundPool's sound played once loaded. */

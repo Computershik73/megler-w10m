@@ -80,6 +80,17 @@ i32 hk_mcodec_size(hk_mcodec *c);
  */
 const hk_jhle *hk_java_camera_natives(void);
 void hk_java_camera_set_host(const megler_camera_host *host);
+/*
+ * megler.LocationNative: the phone's location behind android.location.LocationManager, over the shell's (megler_location_host;
+ * hk_java_location.c). The host is copied; NULL or one left zero finds nothing. The same without Java for the tests:
+ * whether the app may have it (MEGLER_LOCATION_*, the user asked first with `ask`), start and stop, the newest fix.
+ */
+const hk_jhle *hk_java_location_natives(void);
+void hk_java_location_set_host(const megler_location_host *host);
+int hk_jlocation_access(bool ask);
+bool hk_jlocation_start(int interval_ms);
+void hk_jlocation_stop(void);
+bool hk_jlocation_last(megler_location *fix);
 void hk_java_camera_close_all(void);
 /*
  * The same without Java, as the natives use them, for the tests. A camera is opened by its number and started at one of its
