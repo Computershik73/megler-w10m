@@ -283,7 +283,12 @@ and its eight busiest threads that ran guest code, by id and name, each as a
 share of one core: whether a slow app is held by one thread; at most 2000 lines;
 `bionic/hk_bionic.c`). `trace-net` also says, when the app closes a connection,
 what went over it: the bytes and calls each way, the first sixteen bytes each
-way, when the first came in, the other end's close, errors and timeouts. The
+way, when the first came in, the other end's close, errors and timeouts. Of a
+connection made it says which call the app learnt it by (`getsockopt SO_ERROR`,
+connect itself or asked again, a send, a receive), the first bytes each way as
+they go, and every twenty seconds, for each connection still open whose counts
+changed, the same counts with how long ago bytes last went each way: a
+connection an app keeps open, and waits on, is otherwise never said. The
 data app's second run under qemu has all five on, and the test finds their lines.
 For OpenGL ES drawn on a view (a GLSurfaceView, or native code's EGL surface on a
 SurfaceView's window): `trace-surfaces` (every three seconds each window surface's

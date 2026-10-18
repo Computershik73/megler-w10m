@@ -161,6 +161,10 @@ typedef struct gsock {
     u64 io_from, io_first_in;          /* when it was made; when its first bytes came in (0: none yet) */
     u64 sent, received;
     u32 sends, recvs, would_block, timeouts;
+    u64 last_out, last_in;             /* when bytes last went out, came in (0: never) */
+    u64 said_sent, said_received;      /* what the last round of open connections said of it (open_round) */
+    u32 said_blocked;
+    bool said_open;
     int last_send_err, last_recv_err;
     bool got_end;                      /* a read returned 0: the other end has closed or shut down writing */
     u8 head_out[16], head_in[16];      /* the first bytes each way, for what the protocol is */
@@ -344,14 +348,84 @@ static void first_connection_began(gsock *s, const hk_sockaddr *a)
     s->first_own = own_address(a);
 }
 
-static void first_connection_ended(gsock *s, int e)
+/*
+ * trace-net: the traced connections that are open, and a thread that says every twenty seconds what has gone over each
+ * since it last said it -- a connection an app keeps open is otherwise said only when it is closed, which may be never,
+ * and an app that stands still waits on one of them: a request sent and no answer, or nothing sent at all. A connection
+ * whose counts have not changed is not said again. At most 64 connections are followed at once.
+ */
+static hk_lock g_open_lock = HK_LOCK_INIT;
+static gsock *g_open[64];
+
+static void open_round(void)
+{
+    u64 now = hk_time_monotonic_ns();
+    size_t i;
+    hk_lock_acquire(&g_open_lock);
+    for (i = 0; i < HK_COUNT(g_open); i++) {
+        gsock *s = g_open[i];
+        char out_ago[40] = "", in_ago[40] = "", errs[64] = "";
+        if (!s || (s->said_open && s->said_sent == s->sent && s->said_received == s->received && s->said_blocked == s->would_block)) continue;
+        s->said_open = true;
+        s->said_sent = s->sent;
+        s->said_received = s->received;
+        s->said_blocked = s->would_block;
+        if (s->last_out) snprintf(out_ago, sizeof(out_ago), ", the last %llu s ago", (unsigned long long)((now - s->last_out) / 1000000000ull));
+        if (s->last_in) snprintf(in_ago, sizeof(in_ago), ", the last %llu s ago", (unsigned long long)((now - s->last_in) / 1000000000ull));
+        if (s->last_send_err || s->last_recv_err) snprintf(errs, sizeof(errs), "; the last errors: send %d, receive %d", s->last_send_err, s->last_recv_err);
+        hk_net_trace("TCP to %s: open for %llu s; sent %llu bytes in %u calls%s; received %llu bytes in %u calls%s%s; %u reads or writes would have blocked%s",
+                     s->trace_to, (unsigned long long)((now - s->io_from) / 1000000000ull), (unsigned long long)s->sent, s->sends, out_ago,
+                     (unsigned long long)s->received, s->recvs, in_ago, s->got_end ? ", then the other end's close" : "", s->would_block, errs);
+    }
+    hk_lock_release(&g_open_lock);
+}
+
+static void open_observer(void *unused)
+{
+    (void)unused;
+    for (;;) {
+        hk_sleep_ns(20000000000ull);
+        open_round();
+    }
+}
+
+static void open_add(gsock *s)
+{
+    static volatile i32 started;
+    size_t i;
+    hk_lock_acquire(&g_open_lock);
+    for (i = 0; i < HK_COUNT(g_open); i++)
+        if (!g_open[i]) {
+            g_open[i] = s;
+            break;
+        }
+    hk_lock_release(&g_open_lock);
+    if (!hk_atomic_xchg(&started, 1)) {
+        hk_thread *t = hk_thread_start(open_observer, NULL, 64u * 1024u, "net-open-observer");
+        if (t) hk_thread_detach(t);
+    }
+}
+
+static void open_remove(gsock *s)
+{
+    size_t i;
+    hk_lock_acquire(&g_open_lock);
+    for (i = 0; i < HK_COUNT(g_open); i++)
+        if (g_open[i] == s) g_open[i] = NULL;
+    hk_lock_release(&g_open_lock);
+}
+
+/* `how`: the call the app learnt it by, which says what it does next -- a send, or waiting to be answered. */
+static void first_connection_ended(gsock *s, int e, const char *how)
 {
     if (s->traced) {
         s->traced = false;
-        hk_net_trace("TCP to %s: %s after %llu ms", s->trace_to, errno_name(e), (unsigned long long)((hk_time_monotonic_ns() - s->trace_from) / 1000000));
+        hk_net_trace("TCP to %s: %s after %llu ms (the app learnt it by %s)", s->trace_to, errno_name(e),
+                     (unsigned long long)((hk_time_monotonic_ns() - s->trace_from) / 1000000), how);
         if (!e) {
             s->io_traced = true;
             s->io_from = hk_time_monotonic_ns();
+            open_add(s);
         }
     }
     if (!s->first) return;
@@ -387,8 +461,10 @@ static void io_note(gsock *s, bool sending, const void *buf, i32 r)
         if (sending) {
             s->sent += (u32)r;
             s->sends++;
+            s->last_out = hk_time_monotonic_ns();
         } else {
-            if (!s->io_first_in) s->io_first_in = hk_time_monotonic_ns();
+            s->last_in = hk_time_monotonic_ns();
+            if (!s->io_first_in) s->io_first_in = s->last_in;
             s->received += (u32)r;
             s->recvs++;
         }
@@ -419,6 +495,7 @@ static void io_said(gsock *s)
     u64 now = hk_time_monotonic_ns();
     if (!s->io_traced) return;
     s->io_traced = false;
+    open_remove(s);
     hex_of(s->head_out, s->head_out_len, out, sizeof(out));
     hex_of(s->head_in, s->head_in_len, in, sizeof(in));
     if (s->last_send_err) snprintf(send_err, sizeof(send_err), ", the last send's error %d", s->last_send_err);
@@ -967,13 +1044,13 @@ static int sock_wait(gsock *s, int want, u64 deadline, u64 timeo)
 }
 
 /* A connection under way that has since been made: it is connected. (One that failed stays under way until its error is asked for.) */
-static void settle(gsock *s)
+static void settle(gsock *s, const char *how)
 {
     if (s->state == S_CONNECTING && s->host) {
         int h = hk_sock_ready(s->host);
         if ((h & HK_SOCK_OUT) && !(h & (HK_SOCK_ERR | HK_SOCK_HUP))) {
             s->state = S_CONNECTED;
-            first_connection_ended(s, 0);
+            first_connection_ended(s, 0, how);
         }
     }
 }
@@ -989,7 +1066,7 @@ static i32 host_send(gsock *s, const u8 *buf, u32 n, int flags, const hk_sockadd
     u32 done = 0;
     if (flags & G_MSG_DONTWAIT) nonblock = true;
     if (s->shut_wr) return fail(GE_PIPE);
-    settle(s);
+    settle(s, "a send");
     for (;;) {
         int err = 0, e;
         i32 r = hk_sock_send(s->host, buf + done, n - done, host_flags(flags), to, &err);
@@ -1013,7 +1090,7 @@ static i32 host_recv(gsock *s, u8 *buf, u32 n, int flags, hk_sockaddr *from, int
     u32 done = 0;
     bool stream = s->type == G_SOCK_STREAM, all = (flags & G_MSG_WAITALL) && stream && !(flags & G_MSG_PEEK);
     if (flags & G_MSG_DONTWAIT) nonblock = true;
-    settle(s);
+    settle(s, "a receive");
     for (;;) {
         int err = 0, e;
         i32 r = hk_sock_recv(s->host, buf + done, n - done, host_flags(flags), stream ? NULL : from, said, &err);
@@ -1414,7 +1491,7 @@ static int g_connect(int fd, const void *sa, u32 len)
         if (!(h & (HK_SOCK_OUT | HK_SOCK_ERR | HK_SOCK_HUP))) e = GE_ALREADY;
         else if ((e = gerr(hk_sock_error(s->host))) != 0) s->state = S_FAILED;
         else s->state = S_CONNECTED;
-        if (e != GE_ALREADY) first_connection_ended(s, e);
+        if (e != GE_ALREADY) first_connection_ended(s, e, "connect, asked again");
         if (s->state == S_CONNECTED) e = GE_ISCONN;
         goto out;
     }
@@ -1451,7 +1528,7 @@ static int g_connect(int fd, const void *sa, u32 len)
             }
         }
     }
-    first_connection_ended(s, e);
+    first_connection_ended(s, e, nonblock ? "connect itself" : "a blocking connect");
 out:
     hk_fd_let_go(held);
     return e ? fail(e) : 0;
@@ -1477,7 +1554,7 @@ static int g_shutdown(int fd, int how)
         }
         hk_fd_unlock();
     } else {
-        settle(s);
+        settle(s, "shutdown");
         if (!hk_sock_shutdown(s->host, how, &err)) e = gerr(err);
         else {
             if (how != 1) s->shut_rd = true;
@@ -1787,7 +1864,7 @@ static int getsockopt_held(gsock *s, int level, int name, void *val, u32 *len)
                 if (!(h & (HK_SOCK_OUT | HK_SOCK_ERR | HK_SOCK_HUP))) return give_int(0, val, len);
                 v = gerr(hk_sock_error(s->host));
                 s->state = v ? S_FAILED : S_CONNECTED;
-                first_connection_ended(s, v);
+                first_connection_ended(s, v, "getsockopt SO_ERROR");
                 return give_int(v, val, len);
             }
             return give_int(gerr(hk_sock_error(s->host)), val, len);
