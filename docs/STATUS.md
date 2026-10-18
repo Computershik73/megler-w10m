@@ -242,8 +242,11 @@ does that it says nothing of: `trace-net` (every TCP connection the app makes,
 where to, how it ended and how long it took, and every name it looks up with its
 addresses; `bionic/hk_net.c`, `hk_netdb.c`) and `trace-exceptions` (every Java
 exception thrown, once, with its message and the method it was thrown in, caught
-or not; `dvm/hk_dvm_interp.c`), at most 1000 and 2000 lines a run. The data app's
-second run under qemu has both on, and the test finds their lines.
+or not; `dvm/hk_dvm_interp.c`), at most 1000 and 2000 lines a run; and
+`trace-stacks` (five seconds in and every ten seconds after, every Java thread's
+stack, its 24 top frames, each thread stopped only while they are copied; a stack
+as it was the round before in one line; 30 rounds; `dvm/hk_dvm_object.c`). The
+data app's second run under qemu has all three on, and the test finds their lines.
 
 **Sound.** FMOD said "Error initializing output device" twice and made no player.
 It had not got as far as OpenSL ES: before that it asks `AudioManager.getProperty`

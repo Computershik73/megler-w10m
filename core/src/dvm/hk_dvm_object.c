@@ -700,6 +700,88 @@ void hk_dvm_monitor_trace_start(void)
     }
 }
 
+/*
+ * The flag trace-stacks (hk_java.c starts it): five seconds after the app's main thread starts and every ten seconds after,
+ * the Java stack of every thread is said in the log, its 24 top frames -- where an app that stands still with nothing in the
+ * log is waiting (VK mp3 mod's sign-in stopped after its anonymous token). Each thread is stopped only while its frames are
+ * copied, under the VM lock, as for the monitor trace. A thread whose stack is what it was the round before is said in one
+ * line. At most 30 rounds a run.
+ */
+#define STACKS_THREADS 64
+#define STACKS_FRAMES 24
+
+static bool same_stack(const monitor_sample *a, const monitor_sample *b)
+{
+    int i;
+    if (a->thread != b->thread || a->frames != b->frames) return false;
+    for (i = 0; i < a->frames; ++i)
+        if (a->methods[i] != b->methods[i] || a->pcs[i] != b->pcs[i]) return false;
+    return true;
+}
+
+static void stacks_observer(void *unused)
+{
+    static monitor_sample now[STACKS_THREADS], before[STACKS_THREADS];
+    int nbefore = 0, round = 1;
+    u64 next = hk_time_monotonic_ns() + 5000000000ull;
+    (void)unused;
+    while (round <= 30 && g_dvm.running) {
+        hk_dvm_thread *t;
+        hk_thread_regs regs;
+        int count = 0, more = 0, i, j, k;
+        hk_sleep_ns(100000000ull);
+        if (hk_time_monotonic_ns() < next) continue;
+        next += 10000000000ull;
+        memset(now, 0, sizeof(now));
+        hk_dvm_lock();
+        for (t = g_threads; t; t = t->next) {
+            if (count == STACKS_THREADS) {
+                ++more;
+                continue;
+            }
+            if (!t->host || !hk_thread_suspend(t->host, &regs)) continue;
+            monitor_sample_copy(t, &now[count++]);
+            hk_thread_resume(t->host);
+        }
+        hk_dvm_unlock();
+        hk_info("stacks: round %d, %d Java threads%s", round, count, more ? " (and more not said)" : "");
+        for (i = 0; i < count; ++i) {
+            monitor_sample *s = &now[i];
+            for (k = 0; k < nbefore && !same_stack(s, &before[k]); ++k) {}
+            if (k < nbefore && s->frames) {
+                hk_info("stacks: thread %u \"%s\": as ten seconds before, in %s.%s", s->thread, s->name, s->methods[0]->cls->name, s->methods[0]->name);
+                continue;
+            }
+            if (s->object)
+                hk_info("stacks: thread %u \"%s\", waiting %.1f s for the monitor of a %s that thread %u holds:", s->thread, s->name,
+                        (double)s->waiting_ns / 1e9, s->object_class ? s->object_class : "?", s->owner);
+            else
+                hk_info("stacks: thread %u \"%s\"%s", s->thread, s->name, s->frames ? ":" : ": no Java frames");
+            for (j = 0; j < s->frames && j < STACKS_FRAMES; ++j) {
+                hk_dvm_method *m = s->methods[j];
+                int line = hk_dvm_dex_line(m, s->pcs[j]);
+                if (m->flags & DVM_ACC_NATIVE) hk_info("stacks:   %s.%s (native)", m->cls->name, m->name);
+                else if (line >= 0) hk_info("stacks:   %s.%s line %d", m->cls->name, m->name, line);
+                else hk_info("stacks:   %s.%s at %u", m->cls->name, m->name, s->pcs[j]);
+            }
+        }
+        memcpy(before, now, sizeof(before));
+        nbefore = count;
+        ++round;
+    }
+}
+
+void hk_dvm_stacks_trace_start(void)
+{
+    hk_thread *observer = hk_thread_start(stacks_observer, NULL, 64u * 1024u, "stacks-observer");
+    if (observer) {
+        hk_thread_detach(observer);
+        hk_info("stacks: every Java thread's stack in 5 s and every 10 s after (the flag trace-stacks)");
+    } else {
+        hk_warn("stacks: the observer could not start");
+    }
+}
+
 void hk_dvm_object_dying(void *p)
 {
     hk_dvm_obj *o = (hk_dvm_obj *)p;

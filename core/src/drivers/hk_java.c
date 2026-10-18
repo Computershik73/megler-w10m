@@ -1060,6 +1060,7 @@ static void main_thread(void *arg)
     if (!why[0]) {
         hk_jvalue sdk;
         if (hk_flag("trace-monitors")) hk_dvm_monitor_trace_start();
+        if (hk_flag("trace-stacks")) hk_dvm_stacks_trace_start();
         /*
          * One process, one answer to "which Android is this": what the framework's Build.VERSION.SDK_INT tells the app's Java
          * is what its native code is told too (the property, android_get_device_api_level, AConfiguration_getSdkVersion).

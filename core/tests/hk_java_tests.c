@@ -1528,13 +1528,15 @@ static int run_data(void)
                     0) >= 0);
     battery_changes(run == 2 && want == 2);
     /*
-     * The second run has the flags trace-net and trace-exceptions on (tools/build-tests.sh puts them in its data folder): the
-     * network steps' connections are said with where to and how they ended, the names looked up with their addresses, and
-     * the exceptions the steps throw and catch with their messages.
+     * The second run has the flags trace-net, trace-exceptions and trace-stacks on (tools/build-tests.sh puts them in its
+     * data folder): the network steps' connections are said with where to and how they ended, the names looked up with their
+     * addresses, the exceptions the steps throw and catch with their messages, and five seconds in, every thread's stack, the
+     * main thread's among them.
      */
     if (run == 2 && want == 2) {
         CHECK(find_line("network: TCP to [0:0:0:0:0:ffff:7f00:1]:", 0) >= 0 && find_line("network: the name 127.0.0.1: 1 addresses, the first 127.0.0.1", 0) >= 0);
         CHECK(find_line("dvm: thrown on thread ", 0) >= 0 && find_line("android/database/sqlite/SQLiteConstraintException: UNIQUE constraint failed", 0) >= 0);
+        CHECK(find_line("stacks: round 1, ", 0) >= 0 && find_line("\"main\"", find_line("stacks: round 1, ", 0)) >= 0 && find_line("stacks:   ", 0) >= 0);
     }
     /* The core's own word that it is its SQLite, on its files. */
     CHECK(find_line("sqlite: SQLite 3.", 0) >= 0);
