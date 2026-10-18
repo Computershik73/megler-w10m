@@ -232,6 +232,11 @@ ANGLE's functions. This layer adds the display, the window, and the float adapte
 
 - The display is made as an ANGLE Direct3D 11 display, falling back to feature level
   9_3, which most Windows phones are. At 9_3 ANGLE gives OpenGL ES 2.0 only.
+  The WebView's Chromium, whose GPU thread draws while the app's threads do, gets a
+  second display with a Direct3D device of its own (`eglGetDisplay` called from
+  `libwebviewchromium.so`): ANGLE's Direct3D 11 renderer, one to a display, does not
+  take two contexts of one display drawing at once (docs/JAVA.md, "A display of its
+  own").
 - The app's window is an `ANativeWindow`; its window surface is a pbuffer over a
   texture the shell provides, on ANGLE's own Direct3D device. `eglSwapBuffers` hands
   the finished frame to the shell, which copies it to its swap chain's back buffer
@@ -246,7 +251,8 @@ ANGLE's functions. This layer adds the display, the window, and the float adapte
   for the CPU and, from the first EGL image of one
   (`EGL_ANDROID_image_native_buffer`), a texture of ANGLE's made for it in a
   context of the layer's own, on a thread of its own that keeps that context
-  current (`ndk/hk_egl.c`); the image is an image of that texture
+  current (`ndk/hk_egl.c`; one of each for each display, the buffer's texture on
+  the display of its first image); the image is an image of that texture
   (`EGL_KHR_gl_texture_2D_image`). A lock for reading reads the texture back
   when the graphics processor may have drawn into it; an unlock after writing
   uploads what was written. A buffer is laid out as Android's `GraphicBuffer`
@@ -371,7 +377,7 @@ code is bound to, ANGLE's, by name through the core (`hk_egl_host`). Two things
 differ from a guest's binding: a function with float parameters is ANGLE's own and
 not its adapter (the caller is the core, which passes floats as the host does),
 and nothing is traced. The texture policy (`hk_gltex.c`) is the same for both.
-EGL is the core's too: its one display (made on the layer's service thread), its
+EGL is the core's too: its display (made on the layer's service thread), its
 configuration rules (no 10-bit configurations), contexts made without a
 configuration where ANGLE allows it.
 

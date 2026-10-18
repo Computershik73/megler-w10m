@@ -3060,9 +3060,9 @@ a buffer with a fence of Android's (EGL_SYNC_NATIVE_FENCE_ANDROID), made by
 its ANGLE through the system's EGL whatever that EGL names: on the phone that
 was a call through nothing until the layer's EGL had fence syncs of its own
 (`EGL_KHR_fence_sync`, `EGL_KHR_wait_sync`, `EGL_ANDROID_native_fence_sync`:
-making one flushes, waiting for one is `glFinish`, every context of ANGLE's
-being in order on one Direct3D 11 device; no native fence descriptor is given
-out). Under qemu Chromium does not draw canvases on the stand-in, so the
+making one flushes, waiting for one is `glFinish`, every context of a display
+being in order on its one Direct3D 11 device; no native fence descriptor is
+given out). Under qemu Chromium does not draw canvases on the stand-in, so the
 buffers are tried there only through the core's tests (`hk_gl_tests.c`,
 test_hardware_buffers and test_fence_syncs), the fences also by Chromium
 itself, which uses them once they are named.
@@ -3071,6 +3071,30 @@ reads a pixel back (`getImageData`), and says whether the page has WebGL and
 what a pixel it cleared green reads: under qemu `webgl=no`; on a phone,
 with buffers, it should read `webgl=yes:0.255.0.255`, and the log name the
 first buffer (`AHardwareBuffer_allocate: the first buffer: 300x150`).
+
+**A display of its own.** Chromium's GPU thread draws while the app's own
+threads may be drawing too: a game shows an ad page in a WebView over its
+running game. ANGLE's Direct3D 11 renderer belongs to a display and serves all
+of that display's contexts with one state manager (what was last bound and
+set) and its device's one immediate context, and counts on the contexts taking
+turns through `eglMakeCurrent`. Two threads that each keep a context of one
+display current take no turns, and ANGLE as gecko-w10m builds it gives a
+context that shares nothing a lock of its own and lets them draw at once:
+Asphalt 9 ended in `glDrawElements` inside ANGLE (`VertexArray11::syncStateForDraw`
+reading a null vertex array, which the WebView context's `eglMakeCurrent` had
+reset), a second and a half after the WebView of an ad page started (package
+276). So `eglGetDisplay` called from `libwebviewchromium.so` (the caller's
+return address) gives a second display of ANGLE's, made for the native display
+`EGL_D3D11_ONLY_DISPLAY_ANGLE`, with a renderer, a state manager and a
+Direct3D device of its own (`ndk/hk_egl.c`, `webview_display`); any other
+caller gets the app's. The WebView's display is initialised and told as the
+app's; a hardware buffer's texture is made on the display its first image is
+asked for on, by that display's own thread and context of the layer's
+(`graphics-buffers-webview` for the WebView's), and an image of it on the
+other display is refused. Where ANGLE cannot make a second display, Chromium
+shares the app's, as before. The core's test `test_webview_display`
+(`hk_gl_tests.c`) asks for both displays and makes a buffer's image on the
+WebView's.
 
 **Out of memory.** Chromium ends an app it cannot get memory for in
 PartitionAlloc's `OnNoMemoryInternal`: the size it asked for goes into a
