@@ -2081,6 +2081,39 @@ static void check_text(void)
         CHECK(k == 0 && n > 200);
         pic_done(&p);
     }
+    /*
+     * A glyph drawn large under a small scale is there too, where text_bounds says, scaled: a letter 224 px high under a
+     * scale of 0.46, as Spotify's play button on its now-playing screen draws the glyph of its icon font (64 dp at 560 dpi,
+     * in a drawable fitted to the button), in the default face and in the one from a file's bytes. On the phone that glyph
+     * was not drawn, where the same font's glyphs of up to 32 dp, unscaled, were.
+     */
+    {
+        static const u16 letter[] = { 'H' };
+        pic p;
+        int l = 0, t = 0, r = 0, b = 0;
+        pic_make(&p, H, 160, 160);
+        for (f = 0; f < 2; f++) {
+            void *face = f ? t_face_data : NULL;
+            const float s = 0.46f, x = 40, y = 280;
+            saved a;
+            if (f && !face) continue;
+            other = paint;
+            other.text_size = 224;
+            color(&p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+            a = save(&p);
+            scale(&p, s, s);
+            text16(&p, letter, 1, x, y, &other, face, NULL);
+            restore(&p, a);
+            settle(&p);
+            H->text_bounds(H->user, letter, 1, &other, face, box);
+            k = ink_box(&p, &l, &t, &r, &b);
+            if (!k || fabs(l - s * (x + box[0])) > 2 || fabs(r - s * (x + box[2])) > 2 || fabs(t - s * (y + box[1])) > 2 || fabs(b - s * (y + box[3])) > 2)
+                say("    a letter of 224 px under a scale of 0.46 (%s): %s; text_bounds says %.1f..%.1f by %.1f..%.1f", f ? "the face from bytes" : "the default face",
+                    k ? "its ink is elsewhere" : "no ink at all", s * (x + box[0]), s * (x + box[2]), s * (y + box[1]), s * (y + box[3]));
+            CHECK(k && fabs(l - s * (x + box[0])) <= 2 && fabs(r - s * (x + box[2])) <= 2 && fabs(t - s * (y + box[1])) <= 2 && fabs(b - s * (y + box[3])) <= 2);
+        }
+        pic_done(&p);
+    }
     /* Breaking never gives more than fits, and gives all there is room for. */
     paint.text_size = 15;
     for (i = 0; i < 60; i++) {
