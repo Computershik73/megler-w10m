@@ -545,10 +545,16 @@ static bool take_split(ctx *c, item *it, int index)
         else hk_strlcpy(it->why, "a second base APK of the same app", sizeof(it->why));
     } else {
         /* The name its manifest gives is the one that counts: chosen again if it says otherwise than the file's name did. */
-        int named = it->kind;
+        int named = it->kind, k;
         hk_strlcpy(it->name, c->part->split, sizeof(it->name));
         it->kind = kind_of(it->name, it);
         if (it->kind != named) decide(c, it);
+        /* The same split twice in one bundle (under two names): the first is kept. */
+        for (k = 0; k < c->nitems && it->keep; k++)
+            if (&c->items[k] != it && c->items[k].keep && c->items[k].file[0] && !strcmp(c->items[k].name, it->name)) {
+                it->keep = false;
+                snprintf(it->why, sizeof(it->why), "the same split as %s", c->items[k].e->name);
+            }
     }
     if (!it->keep) {
         hk_path_remove(tmp, NULL);
@@ -648,7 +654,7 @@ char *megler_bundle_unpack(const char *bundle_path, const char *apk_path, const 
 {
     ctx *c = (ctx *)hk_alloc(sizeof(ctx));
     expansions *obbs = (expansions *)hk_alloc(sizeof(expansions));
-    int i, kept = 0;
+    int i, pass, kept = 0;
     char *base_part = NULL, *out = NULL, *path;
     item *base = NULL;
     const hk_zip_entry *icon_entry = NULL;
@@ -710,20 +716,27 @@ char *megler_bundle_unpack(const char *bundle_path, const char *apk_path, const 
     icon_entry = bundle_icon(c);
     if (icon_entry) c->total += icon_entry->usize;
 
-    for (i = 0; i < c->nitems; i++) {
-        item *it = &c->items[i];
-        if (it->is_base) {
-            it->keep = false;
-            continue;
+    /*
+     * The splits: those for this phone's processor, density and languages first, so that of more than ten what is left out
+     * is a feature split or an asset pack, never the split with the native code.
+     */
+    for (pass = 0; pass < 2; pass++) {
+        for (i = 0; i < c->nitems; i++) {
+            item *it = &c->items[i];
+            bool config = it->kind == K_ABI || it->kind == K_DENSITY || it->kind == K_LANGUAGE || it->kind == K_CONFIG;
+            if (it->is_base) {
+                it->keep = false;
+                continue;
+            }
+            if (!it->keep || config != (pass == 0) || it->file[0]) continue;
+            if (kept >= MAX_KEPT) {
+                it->keep = false;
+                snprintf(it->why, sizeof(it->why), "more than %d splits: an app is run with %d at most", MAX_KEPT, MAX_KEPT);
+                continue;
+            }
+            if (!take_split(c, it, i)) goto end;
+            if (it->keep) kept++;
         }
-        if (!it->keep) continue;
-        if (kept >= MAX_KEPT) {
-            it->keep = false;
-            snprintf(it->why, sizeof(it->why), "more than %d splits: an app is run with %d at most", MAX_KEPT, MAX_KEPT);
-            continue;
-        }
-        if (!take_split(c, it, i)) goto end;
-        if (it->keep) kept++;
     }
 
     /* The expansion files, where the app finds them. */
