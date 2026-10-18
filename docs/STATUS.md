@@ -515,8 +515,15 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   1650 x 2560. Under qemu (the data app's `render-node` steps) nodes are
   drawn as their bitmaps were, pixel for pixel, children moved and made
   translucent without the parent recorded again, and 200 nodes of
-  1440 x 2560 take 110 KB. On the phone (package 256) Spotify plays a track
-  and runs on, but its pause button is drawn as a white circle.
+  1440 x 2560 take 110 KB. On the phone (package 255, the same day) Spotify
+  played, and showed its now-playing screen for a minute, with 14 to 44 KB
+  of lists in up to 472 nodes. Its play button there was a white disc with
+  no pause glyph. That is not the lists' doing: the button (the View form
+  of Spotify's element, a disc drawing one glyph of its icon font, 224 px
+  high under a scale of 0.46) is drawn straight onto the window, and on
+  this PC the shell draws its glyph every way it draws, through a list and
+  a node as well. Not known yet why the phone does not; the shell's scenes
+  check a letter of that size under that scale for the phone to say.
   Not there: garbage collection (an app that animates lasts minutes); sound
   from Java; a `SurfaceView` drawn by native code; method
   handles; other apps (the

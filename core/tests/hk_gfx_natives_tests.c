@@ -11,9 +11,11 @@
  */
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "../src/drivers/hk_java_gfx.h"
 #include "../src/dvm/hk_dvm.h"
+#include "../src/host/hk_host.h"
 #include "../src/webp/hk_webp.h"
 #include "hk_gfx_standin.h"
 #include "hk_gfx_tests.h"
@@ -1620,6 +1622,106 @@ static void scene(i64 cv, i64 pic)
     call("cvRestoreTo", 2, J(cv), I(1));
 }
 
+/*
+ * What a recorded call keeps of its Paint, every part of it: a grid of cells over a striped background, each cell one call
+ * with one kind of paint -- a bitmap drawn with no paint, with the filter flag, at an alpha, through colour filters of
+ * several modes (PorterDuff's and BlendMode's numbers are the same here), by transfer modes; a rectangle, a path and a run of
+ * text likewise, and with a shader; layers put on at an alpha and by a mode. Drawn on whatever canvas it is given.
+ */
+static void paint_cases(i64 cv, i64 pic, i64 shader)
+{
+    static const i32 filters[] = { 5, 9, 13, 6, 14, 1 }, blends[] = { 0, 1, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17 };
+    static const float tri[10] = { 0, 0, 0, 1, 6, 0, 1, 0, 6, 4 };
+    hk_jobj *stripe = paint(0xFF3060A0u);
+    float at[6] = { 1, 0, 0, 0, 1, 0 }, x, y;
+    int i, n = 0;
+    call("cvDrawColor", 3, J(cv), I((i32)0xFFE0E0E0u), I(3));
+    for (i = 0; i < 12; i++) call("cvDrawRect", 7, J(cv), F(0), F((float)(8 * i)), F(96), F((float)(8 * i + 4)), L(stripe), J(0));
+#define CELL() (x = (float)(8 * (n % 12)), y = (float)(8 * (n / 12)), n++)
+    /* Bitmaps: no paint, a paint with the filter flag and without, an alpha. */
+    CELL();
+    call("cvDrawBitmap", 11, J(cv), J(pic), F(0), F(0), F(4), F(4), F(x), F(y), F(x + 7), F(y + 7), L(NULL));
+    {
+        hk_jobj *p = paint(0xFF000000u);
+        ints_of(p)[P_FLAGS] = 2;
+        CELL();
+        call("cvDrawBitmap", 11, J(cv), J(pic), F(0), F(0), F(4), F(4), F(x), F(y), F(x + 7), F(y + 7), L(p));
+        CELL();
+        call("cvDrawBitmap", 11, J(cv), J(pic), F(0), F(0), F(4), F(4), F(x), F(y), F(x + 7), F(y + 7), L(paint(0x80000000u)));
+    }
+    for (i = 0; i < (int)HK_COUNT(filters); i++) {
+        hk_jobj *p = paint(0xC0FFFFFFu);
+        ints_of(p)[P_CFCOLOR] = (i32)0xFF20C040u;
+        ints_of(p)[P_CFMODE] = filters[i];
+        CELL();
+        call("cvDrawBitmap", 11, J(cv), J(pic), F(0), F(0), F(4), F(4), F(x), F(y), F(x + 7), F(y + 7), L(p));
+        CELL();
+        call("cvDrawRect", 7, J(cv), F(x), F(y), F(x + 7), F(y + 7), L(p), J(0));
+        CELL();
+        call("cvDrawRect", 7, J(cv), F(x), F(y), F(x + 7), F(y + 7), L(p), J(shader));
+        CELL();
+        ints_of(p)[P_TEXTSIZE] = (i32)hk_fb(8);
+        call("cvDrawText", 9, J(cv), L(hk_dvm_new_string("W")), I(0), I(1), F(x), F(y + 7), L(p), J(0), J(0));
+    }
+    for (i = 0; i < (int)HK_COUNT(blends); i++) {
+        hk_jobj *p = paint(0xA0C02020u);
+        ints_of(p)[P_XFER] = blends[i];
+        CELL();
+        call("cvDrawBitmap", 11, J(cv), J(pic), F(0), F(0), F(4), F(4), F(x), F(y), F(x + 7), F(y + 7), L(p));
+        CELL();
+        call("cvDrawOval", 7, J(cv), F(x), F(y), F(x + 7), F(y + 7), L(p), J(0));
+        CELL();
+        at[2] = x;
+        at[5] = y;
+        call("cvSave", 1, J(cv));
+        call("cvMatrix", 3, J(cv), L(floats(at, 6)), Z(false));
+        call("cvDrawPath", 6, J(cv), L(floats(tri, 10)), I(10), I(0), L(p), J(shader));
+        call("cvRestore", 1, J(cv));
+        /* A layer by that mode, with something of its own in it. */
+        CELL();
+        call("cvSaveLayerMode", 7, J(cv), F(x), F(y), F(x + 7), F(y + 7), I(0xC0), I(blends[i]));
+        call("cvDrawRect", 7, J(cv), F(x + 1), F(y + 1), F(x + 6), F(y + 6), L(paint(0xFF2080F0u)), J(0));
+        call("cvRestore", 1, J(cv));
+    }
+#undef CELL
+}
+
+/*
+ * paint_cases drawn directly and through a list, both inside a node's save and move as a node's list is drawn, on the host
+ * set now: how many pixels differ.
+ */
+static int paint_cases_differ(void)
+{
+    static const float move[6] = { 1, 0, 3, 0, 1, 2 };
+    static const i32 two[2] = { (i32)0xFFF0A000u, (i32)0xFF00A0F0u };
+    i64 pic = call("bmNew", 2, I(4), I(4)).j, a = call("bmNew", 2, I(104), I(104)).j, b = call("bmNew", 2, I(104), I(104)).j;
+    i64 ca = call("cvNew", 1, J(a)).j, cb = call("cvNew", 1, J(b)).j, sh, rc, list;
+    int d;
+    call("bmErase", 2, J(pic), I((i32)0xFFFF8000u));
+    call("bmSetPixel", 4, J(pic), I(1), I(1), I((i32)0x80FFFFFFu));
+    call("bmSetPixel", 4, J(pic), I(2), I(2), I(0));
+    sh = call("shLinear", 7, F(0), F(0), F(96), F(0), L(ints(two, 2)), L(NULL), I(0)).j;
+    call("cvSave", 1, J(ca));
+    call("cvMatrix", 3, J(ca), L(floats(move, 6)), Z(false));
+    paint_cases(ca, pic, sh);
+    call("cvRestore", 1, J(ca));
+    rc = call("cvRecord", 2, I(100), I(100)).j;
+    paint_cases(rc, pic, sh);
+    list = call("cvEndRecord", 1, J(rc)).j;
+    call("cvFree", 1, J(rc));
+    call("cvMatrix", 3, J(cb), L(floats(move, 6)), Z(false));
+    call("cvDrawList", 2, J(cb), J(list));
+    d = differ(a, b);
+    call("dlFree", 1, J(list));
+    call("shFree", 1, J(sh));
+    call("cvFree", 1, J(ca));
+    call("cvFree", 1, J(cb));
+    call("bmFree", 1, J(a));
+    call("bmFree", 1, J(b));
+    call("bmFree", 1, J(pic));
+    return d;
+}
+
 /* A node's properties as RenderNode hands them over: its place, a matrix (none: the identity), alpha, flags, a layer's alpha, a clip rectangle, an outline. */
 static void node_set(i64 node, float l, float t, float r, float b, const float *matrix, float alpha, i32 flags, i32 layer_alpha, const float *clip,
                      i32 outline_kind, const float *outline, float radius)
@@ -1661,6 +1763,105 @@ static void node_of(i64 node, i64 child, i64 other)
     if (other) call("cvDrawNode", 2, J(rc), J(other));
     call("rnEnd", 2, J(node), J(rc));
     call("cvFree", 1, J(rc));
+}
+
+/* One of a Canvas's moves, as the framework hands translate and scale over: pre-concatenated. */
+static void move_by(i64 cv, float sx, float sy, float tx, float ty)
+{
+    const float m[6] = { sx, 0, tx, 0, sy, ty };
+    call("cvMatrix", 3, J(cv), L(floats(m, 6)), Z(false));
+}
+
+/*
+ * Spotify's play/pause button on its now-playing screen as the phone showed it: the View form, p.daf drawing p.zg71 (the
+ * drawable of one glyph of Spotify's icon font). A white disc, then the glyph: black, a run of text in a face from a font
+ * file's bytes at 64 dp (224 px at 560 dpi), placed by zg71 from its measures (an advance of 224, a height of 1.0233 of
+ * its size, the baseline 1.00645 of it below its middle), each drawable between save and restoreToCount, all under the
+ * scale the button's ImageView gives its 511 px drawable to fit 236 px. Two bars stand in for the pause glyph. On
+ * whatever canvas it is given, 236 px square.
+ */
+static void player_button(i64 cv, i64 face)
+{
+    hk_jobj *disc = paint(0xFFFFFFFFu), *glyph = paint(0xFF000000u);
+    i32 outer, inner;
+    ints_of(glyph)[P_TEXTSIZE] = (i32)hk_fb(224);
+    outer = call("cvSave", 1, J(cv)).i;
+    move_by(cv, 236.0f / 511, 236.0f / 511, 0, 0);
+    /* daf: the disc about its middle, then the glyph's box (224 x 230) scaled to the disc and by 0.45, about the middle too. */
+    move_by(cv, 1, 1, 255.5f, 255.5f);
+    call("cvDrawOval", 7, J(cv), F(-255.5f), F(-255.5f), F(255.5f), F(255.5f), L(disc), J(0));
+    move_by(cv, 511.0f / 230, 511.0f / 230, 0, 0);
+    move_by(cv, 0.45f, 0.45f, 0, 0);
+    move_by(cv, 1, 1, -112, -115);
+    /* zg71: to its box's middle, down to the baseline, back by half the advance and half the height. */
+    inner = call("cvSave", 1, J(cv)).i;
+    move_by(cv, 1, 1, 112, 115);
+    move_by(cv, 1, 1, 0, 224 * 1.00645f);
+    move_by(cv, 1, 1, -112, -224 * 1.0233f / 2);
+    call("cvDrawText", 9, J(cv), L(hk_dvm_new_string("II")), I(0), I(2), F(0), F(0), L(glyph), J(face), J(0));
+    call("cvRestoreTo", 2, J(cv), I(inner));
+    call("cvRestoreTo", 2, J(cv), I(outer));
+}
+
+/* How many pixels of a part of a bitmap are dark (each of red, green and blue under 0x60) and opaque. */
+static int dark(i64 bm, int x0, int y0, int x1, int y1)
+{
+    int x, y, n = 0;
+    for (y = y0; y < y1; y++)
+        for (x = x0; x < x1; x++) {
+            u32 w = word(bm, x, y);
+            n += (w >> 24) > 0xC0 && ((w >> 16) & 255) < 0x60 && ((w >> 8) & 255) < 0x60 && (w & 255) < 0x60;
+        }
+    return n;
+}
+
+/*
+ * player_button drawn on the host set now three ways, into bitmaps of its size over a dark ground: directly, as it is
+ * drawn on the window; through a list; and in a node a parent node draws, as a graphics layer of Compose's would hold it.
+ * How many pixels the list and the node give that the direct drawing does not; *ink, how many dark pixels each of the
+ * three has where the glyph is (the least of them).
+ */
+static int player_button_differ(i64 face, int *ink)
+{
+    i64 direct = call("bmNew", 2, I(236), I(236)).j, listed = call("bmNew", 2, I(236), I(236)).j, noded = call("bmNew", 2, I(236), I(236)).j;
+    i64 cd = call("cvNew", 1, J(direct)).j, cl = call("cvNew", 1, J(listed)).j, cn = call("cvNew", 1, J(noded)).j;
+    i64 rc, list, node = call("rnNew", 0).j, parent = call("rnNew", 0).j;
+    int d, a, b, c;
+    call("cvDrawColor", 3, J(cd), I((i32)0xFF202020u), I(1));
+    call("cvDrawColor", 3, J(cl), I((i32)0xFF202020u), I(1));
+    call("cvDrawColor", 3, J(cn), I((i32)0xFF202020u), I(1));
+    player_button(cd, face);
+    rc = call("cvRecord", 2, I(236), I(236)).j;
+    player_button(rc, face);
+    list = call("cvEndRecord", 1, J(rc)).j;
+    call("cvFree", 1, J(rc));
+    call("cvDrawList", 2, J(cl), J(list));
+    rc = call("cvRecord", 2, I(236), I(236)).j;
+    player_button(rc, face);
+    call("rnEnd", 2, J(node), J(rc));
+    call("cvFree", 1, J(rc));
+    node_place(node, 0, 0, 236, 236, RN_CLIP_BOUNDS);
+    rc = call("cvRecord", 2, I(236), I(236)).j;
+    call("cvDrawNode", 2, J(rc), J(node));
+    call("rnEnd", 2, J(parent), J(rc));
+    call("cvFree", 1, J(rc));
+    node_place(parent, 0, 0, 236, 236, RN_CLIP_BOUNDS);
+    call("cvDrawNode", 2, J(cn), J(parent));
+    d = differ(direct, listed) + differ(direct, noded);
+    a = dark(direct, 60, 80, 130, 180);
+    b = dark(listed, 60, 80, 130, 180);
+    c = dark(noded, 60, 80, 130, 180);
+    *ink = a < b ? (a < c ? a : c) : (b < c ? b : c);
+    call("dlFree", 1, J(list));
+    call("rnFree", 1, J(parent));
+    call("rnFree", 1, J(node));
+    call("cvFree", 1, J(cd));
+    call("cvFree", 1, J(cl));
+    call("cvFree", 1, J(cn));
+    call("bmFree", 1, J(direct));
+    call("bmFree", 1, J(listed));
+    call("bmFree", 1, J(noded));
+    return d;
 }
 
 static int g_shader_matrices, g_shader_frees;
@@ -1822,6 +2023,17 @@ static void test_lists(void)
         call("dlFree", 1, J(list));
         CHECK_INT(g_shader_frees, 1);
         hk_java_gfx_set_host(hk_gfx_standin());
+    }
+
+    /* Every part of a Paint is what the list keeps: a grid of bitmaps, shapes, text and layers by every filter and mode, the same both ways. */
+    CHECK_INT(paint_cases_differ(), 0);
+    /* Spotify's player button, a glyph in a face from bytes under several moves between save and restoreToCount: the same three ways. */
+    {
+        static const u8 font[16] = { 0, 1, 0, 0 };
+        i64 face = call("tfFromData", 1, L(bytes(font, 16))).j;
+        int ink = 0;
+        CHECK(face != 0);
+        CHECK_INT(player_button_differ(face, &ink), 0);
     }
 
     /* Nodes. A node's list is drawn where the node is, clipped to its bounds when it clips to them. */
@@ -2016,6 +2228,47 @@ static void test_lists(void)
     CHECK(thrown()[0] == 0);
 }
 
+#ifdef HK_GFX_WINDOWS
+/* hk_gfx_windows.cpp: the shell's own megler_gfx_host (app/Megler/player/GfxHost.cpp), in the Windows build of the tests. */
+const megler_gfx_host *hk_gfx_windows_host(void (*line)(const char *text, void *user), void *user, int way);
+
+static void shell_line(const char *text, void *user)
+{
+    (void)user;
+    say("    (shell) %s", text);
+}
+
+/*
+ * The same on the shell's own drawing (Direct2D on this machine's graphics processor): every part of a Paint drawn both
+ * ways gives the same pixels, and so does Spotify's player button, in a face of this machine's (Windows' fonts), its glyph
+ * dark on the white disc all three ways. (On the phone that glyph was missing; what this shows is that neither a list nor
+ * a node loses it.)
+ */
+static void test_lists_on_shell(void)
+{
+    static const char *const fonts[] = { "C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/arial.ttf" };
+    const megler_gfx_host *shell = hk_gfx_windows_host(shell_line, NULL, 0);
+    i64 face = 0;
+    int ink = 0;
+    size_t i;
+    say("  display lists on the shell's own drawing (Direct2D): a grid of paints, and Spotify's player button");
+    hk_java_gfx_set_host(shell);
+    CHECK_INT(paint_cases_differ(), 0);
+    for (i = 0; !face && i < HK_COUNT(fonts); i++) {
+        size_t size = 0;
+        u8 *data = hk_file_read_all(fonts[i], &size);
+        if (!data) continue;
+        face = call("tfFromData", 1, L(bytes(data, (int)size))).j;
+        free(data);
+    }
+    if (!face) say("    (no font file of Windows' could be read: the button's glyph is in the default face)");
+    CHECK_INT(player_button_differ(face, &ink), 0);
+    say("    the button's glyph: %d dark pixels, the least of the three ways", ink);
+    CHECK(ink > 400);
+    hk_java_gfx_set_host(hk_gfx_standin());
+}
+#endif
+
 int hk_gfx_natives_tests_run(hk_test_sink sink, void *user, int *checks)
 {
     uint64_t bytes0 = 0, bytes1 = 1;
@@ -2044,6 +2297,9 @@ int hk_gfx_natives_tests_run(hk_test_sink sink, void *user, int *checks)
     test_shaders();
     test_paths();
     test_lists();
+#ifdef HK_GFX_WINDOWS
+    test_lists_on_shell();
+#endif
     test_protocol();
     /* Every bitmap the tests made is freed again. */
     hk_java_gfx_stats(&bytes1, &count1);
