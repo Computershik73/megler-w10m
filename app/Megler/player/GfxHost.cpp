@@ -3179,9 +3179,12 @@ bool showComposed(Box part, bool fresh) {
 /// with a keyed mutex (gecko-w10m's ANGLE shares every pbuffer so), the copy
 /// is made holding it: the core lets go of it on ANGLE's side for the call,
 /// and Direct3D drops a copy made without it (the frame was then nothing).
+/// The first frame may come before any view has been drawn: Direct2D and the
+/// graphics processor are started for it then, as for a canvas (refused, the
+/// core composes the window for good, the frames read back).
 bool glFrame(void*, int layer, void* handle, int width, int height) {
     State& s = G();
-    if (layer < 0 || layer >= 8 || !handle || !s.gpu || gpuGone() || width <= 0 || height <= 0) return false;
+    if (layer < 0 || layer >= 8 || !handle || width <= 0 || height <= 0 || !started() || !s.gpu || gpuGone()) return false;
     bool taken = false;
     guarded("gl_frame", [&] {
         Composition& c = composition();
