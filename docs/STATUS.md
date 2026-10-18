@@ -471,9 +471,13 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   same, the WebView started in 0.8 s, Chromium's GPU thread on ANGLE; VK mp3
   mod and Kate show VK ID's "not a robot" sheet in their WebViews, but the
   check in it did not load ("something went wrong") while its canvases had
-  no hardware buffers; those are there since (`ndk/hk_ahb.c`), as is the
-  WebView on a `RenderNode`'s canvas that ended Spotify; neither tried on a
-  phone yet.
+  no hardware buffers; those are there since (`ndk/hk_ahb.c`, with fence
+  syncs), as is the WebView on a `RenderNode`'s canvas. Spotify's WebView
+  then (packages 252 and 254) ended out of memory on an image of 126 MB that
+  Chromium decodes and maps twice, in a 2 GB address space whose largest
+  free stretch was 135 MB (docs/JAVA.md, "Out of memory"); the layer's
+  changes for it (no shared memory view of the descriptor's own, the
+  WebView's library at its own size) are not yet tried on a phone.
   Not there: garbage collection (an app that animates lasts minutes); sound
   from Java; a `SurfaceView` drawn by native code; method
   handles; other apps (the
