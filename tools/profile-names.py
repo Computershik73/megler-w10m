@@ -1,6 +1,6 @@
 r"""Names what the flag trace-profile sampled: LocalState\profile.txt, by function.
 
-    python tools/profile-names.py [PROFILE] [--version N] [--map MODULE=FILE] [--lib FILE.so] [--top N]
+    python tools/profile-names.py [PROFILE] [--base EARLIER] [--version N] [--map MODULE=FILE] [--lib FILE.so] [--top N]
 
 PROFILE is a profile.txt pulled from the phone; without it the phone's is
 fetched (tools/phone.py's Device Portal). Each sample is an address in a
@@ -16,9 +16,15 @@ module (module, offset); the offsets are put to functions with:
   MODULE=FILE    any other MSVC/lld-link map (--map)
 
 The system's DLLs and the driver have no names here: they are said by module.
+The file counts from the profiler's start; --base, a profile.txt fetched
+earlier in the same run, is taken away from it: what came between the two
+(a race, without the menus before it).
 For each thread: where it ran, by function, and what it waited for (the
 first return address outside the system and the layer when it was stopped
-in a system call), the most first.
+in a system call), and the ANGLE function each sample was under (its pc
+in libGLESv2.dll, or the first return address into it): the time spent in
+and below each of ANGLE's functions -- Direct3D, the driver, the kernel --
+the most first.
 """
 import argparse
 import bisect
@@ -106,6 +112,43 @@ def default_maps(version):
     return maps
 
 
+def entry(line):
+    """A line "run|wait|under MODULE 0xOFFSET COUNT" as its four parts; None for any other (or one cut short)."""
+    parts = line.split(" ")
+    if len(parts) != 4 or parts[0] not in ("run", "wait", "under") or not parts[3].isdigit():
+        return None
+    return parts[0], parts[1], parts[2], int(parts[3])
+
+
+def parse_counts(text):
+    """{(thread line's tid, kind, module, offset): count} and {tid: [samples, waits, unknown]}."""
+    counts, heads, tid = {}, {}, None
+    for line in text.splitlines():
+        m = re.match(r'thread (\d+) "([^"]*)" samples (\d+) waits (\d+) unknown (\d+)', line)
+        e = entry(line)
+        if m:
+            tid = m.group(1)
+            heads[tid] = [m.group(2)] + [int(x) for x in m.groups()[2:]]
+        elif tid and e:
+            counts[(tid,) + e[:3]] = e[3]
+    return counts, heads
+
+
+def subtract(text, base):
+    """The profile `text` less `base` (an earlier one of the same run), as text of the same form."""
+    now, heads = parse_counts(text)
+    then, then_heads = parse_counts(base)
+    out = [text.splitlines()[0] + " (less an earlier profile)"] if text.startswith("#") else []
+    for tid, (name, samples, waits, unknown) in heads.items():
+        s0 = then_heads.get(tid, [name, 0, 0, 0])
+        out.append('thread %s "%s" samples %d waits %d unknown %d' % (tid, name, max(0, samples - s0[1]), max(0, waits - s0[2]), max(0, unknown - s0[3])))
+        for (t, kind, module, off), c in now.items():
+            d = c - then.get((t, kind, module, off), 0)
+            if t == tid and d > 0:
+                out.append("%s %s %s %d" % (kind, module, off, d))
+    return "\n".join(out) + "\n"
+
+
 def fetch_profile():
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     import phone
@@ -118,6 +161,7 @@ def fetch_profile():
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("profile", nargs="?")
+    ap.add_argument("--base", help="an earlier profile.txt of the same run, taken away")
     ap.add_argument("--version", help="the package's build number, for its Megler.exe map")
     ap.add_argument("--map", action="append", default=[], help="MODULE=FILE")
     ap.add_argument("--lib", action="append", default=[], help="an app's .so, named as the module of its file name")
@@ -125,6 +169,8 @@ def main():
     a = ap.parse_args()
 
     text = open(a.profile, encoding="utf-8", errors="replace").read() if a.profile else fetch_profile()
+    if a.base:
+        text = subtract(text, open(a.base, encoding="utf-8", errors="replace").read())
     tables = {}
     for module, path in default_maps(a.version).items():
         if os.path.exists(path):
@@ -150,18 +196,23 @@ def main():
     for line in text.splitlines():
         if line.startswith("thread "):
             m = re.match(r'thread (\d+) "([^"]*)" samples (\d+) waits (\d+) unknown (\d+)', line)
-            threads.append({"head": m.groups(), "run": collections.Counter(), "wait": collections.Counter(), "rmod": collections.Counter(),
-                            "wmod": collections.Counter()})
-        elif threads and (line.startswith("run ") or line.startswith("wait ")):
-            kind, module, off, count = line.split(" ")
+            if not m:
+                continue
+            threads.append({"head": m.groups(), "run": collections.Counter(), "wait": collections.Counter(), "under": collections.Counter(),
+                            "rmod": collections.Counter(), "wmod": collections.Counter(), "umod": collections.Counter()})
+        elif threads and entry(line):
+            kind, module, off, count = entry(line)
             t = threads[-1]
-            t[kind][name_of(module, int(off, 16))] += int(count)
-            t["rmod" if kind == "run" else "wmod"][module] += int(count)
+            t[kind][name_of(module, int(off, 16))] += count
+            t[kind[0] + "mod"][module] += count
     if text.startswith("#"):
         print(text.splitlines()[0])
     for t in threads:
         tid, name, samples, waits, unknown = t["head"]
         samples, waits, unknown = int(samples), int(waits), int(unknown)
+        if not samples:
+            print("\n== thread %s \"%s\": no samples" % (tid, name))
+            continue
         print("\n== thread %s \"%s\": %d samples, %d running, %d waiting (%d of them for a caller not found)" % (tid, name, samples, samples - waits, waits, unknown))
         print("   running, by module: " + ", ".join("%s %.1f%%" % (m, 100.0 * c / samples) for m, c in t["rmod"].most_common(12)))
         for fn, c in t["run"].most_common(a.top):
@@ -169,6 +220,10 @@ def main():
         print("   waiting for, by module: " + ", ".join("%s %.1f%%" % (m, 100.0 * c / samples) for m, c in t["wmod"].most_common(12)))
         for fn, c in t["wait"].most_common(max(10, a.top // 2)):
             print("   %5.1f%%  %s" % (100.0 * c / samples, fn))
+        if t["under"]:
+            print("   under ANGLE's functions (with all below them), %.1f%% of its samples:" % (100.0 * sum(t["under"].values()) / samples))
+            for fn, c in t["under"].most_common(a.top):
+                print("   %5.1f%%  %s" % (100.0 * c / samples, fn))
 
 
 if __name__ == "__main__":

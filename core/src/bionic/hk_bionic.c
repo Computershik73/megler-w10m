@@ -348,20 +348,24 @@ void hk_bionic_native_stacks_start(void)
  * The flag trace-profile: where the app's busiest threads spend their time, sampled -- what a game that is slow with
  * the graphics processor idle is doing instead. Every second the three guest threads that had the most of the processor
  * (a tenth of a core at least) are chosen, and each is stopped about sixty times a second for as long as its pc and the
- * top 2 KB of its stack take to copy (no lock is taken while it is stopped). A sample whose pc is in the system's own
+ * top 8 KB of its stack take to copy (no lock is taken while it is stopped). A sample whose pc is in the system's own
  * code (ntdll, KERNELBASE, kernel32, and win32u, whose system calls are the graphics driver's into the kernel) is a wait --
  * a thread stopped in a system call is in the kernel, blocked nearly always -- and
  * is put to the first return address on its stack that is neither the system's nor the layer's (Megler.exe, whose locks
- * and condition variables the app's waits go through): what it waits for, in ANGLE, the driver or the app. Every ten
- * seconds the log says, for each thread sampled then, its share of a core and its samples by module, running and
- * waiting; and since the start the six addresses it ran at and waited from most. LocalState\profile.txt has every
+ * and condition variables the app's waits go through): what it waits for, in ANGLE, the driver or the app. And every
+ * sample is put to the innermost frame of ANGLE's (libGLESv2.dll) it is under -- its pc, or the first return address
+ * into ANGLE on its stack: the ANGLE function a stretch of time in Direct3D, the driver or the kernel below it is
+ * spent for (a race of Asphalt 9's had two thirds of its render thread in the driver's calls into the kernel, which
+ * alone says nothing of why). Every ten seconds the log says, for each thread sampled then, its share of a core and its
+ * samples by module, running and waiting; and since the start the six addresses it ran at, waited from and was under
+ * ANGLE at most. LocalState\profile.txt has every
  * address of every thread with its count, rewritten every ten seconds: tools/profile-names.py names them by function
  * with the build's maps (ANGLE's, the layer's, an app library's exported symbols). Only on Windows, as
  * trace-native-stacks. At most 1000 lines a run.
  */
 #define PROF_THREADS 3
 #define PROF_SLOTS 8192u
-#define PROF_WORDS 512
+#define PROF_WORDS 2048
 #define PROF_MODULES 96
 #define PROF_TOP 6
 
@@ -371,6 +375,9 @@ typedef struct prof_module {
     char name[48];
     hk_addr base;
     int kind;
+    bool gl;                           /* ANGLE's libGLESv2.dll: what a sample is "under" */
+    int ncode;                         /* its executable sections (a DLL's, from its PE header); -1: an app's library, asked of the loader */
+    hk_addr code_lo[4], code_hi[4];
 } prof_module;
 
 typedef struct prof_slot {
@@ -382,8 +389,8 @@ typedef struct prof_slot {
     u32 w_samples, w_waits, w_unknown, w_run_unknown;   /* this window's */
     u64 w_cpu_ns;
     u32 w_run_mod[PROF_MODULES], w_wait_mod[PROF_MODULES];
-    hk_addr run_addr[PROF_SLOTS], wait_addr[PROF_SLOTS];
-    u32 run_count[PROF_SLOTS], wait_count[PROF_SLOTS];
+    hk_addr run_addr[PROF_SLOTS], wait_addr[PROF_SLOTS], under_addr[PROF_SLOTS];
+    u32 run_count[PROF_SLOTS], wait_count[PROF_SLOTS], under_count[PROF_SLOTS];
 } prof_slot;
 
 static prof_module *g_pmod;
@@ -405,6 +412,56 @@ static int prof_kind(const char *name)
     return !strcmp(low, "megler.exe") ? PROF_LAYER : PROF_OTHER;
 }
 
+/* A DLL's executable sections, from the PE header Windows mapped at its base. (A word on a stack that points into a module
+   is a return address only if it points into its code: one into its data -- a lock, a table -- is a pointer, and was taken
+   for a frame of ANGLE's in half of a race's samples.) */
+static void prof_code_ranges(prof_module *m)
+{
+    const u8 *b = (const u8 *)m->base;
+    u32 pe = 0, i, nsec, opt;
+    u16 v16;
+    m->ncode = 0;
+    if (!b || b[0] != 'M' || b[1] != 'Z') return;
+    memcpy(&pe, b + 0x3C, 4);
+    if (pe > 4096 || memcmp(b + pe, "PE\0\0", 4) != 0) return;
+    memcpy(&v16, b + pe + 6, 2);
+    nsec = v16;
+    memcpy(&v16, b + pe + 20, 2);
+    opt = v16;
+    for (i = 0; i < nsec && m->ncode < 4; i++) {
+        const u8 *sh = b + pe + 24 + opt + i * 40;
+        u32 vsize, va, flags;
+        memcpy(&vsize, sh + 8, 4);
+        memcpy(&va, sh + 12, 4);
+        memcpy(&flags, sh + 36, 4);
+        if (flags & 0x20000000u) {     /* IMAGE_SCN_MEM_EXECUTE */
+            m->code_lo[m->ncode] = m->base + va;
+            m->code_hi[m->ncode] = m->base + va + vsize;
+            m->ncode++;
+        }
+    }
+}
+
+/* Whether `a`, in module `m`, is in its code: what a return address is. */
+static bool prof_is_code(int m, hk_addr a)
+{
+    int i;
+    if (g_pmod[m].ncode < 0) return hk_ld_is_guest_code(a);
+    if (!g_pmod[m].ncode) return true;
+    for (i = 0; i < g_pmod[m].ncode; i++)
+        if (a >= g_pmod[m].code_lo[i] && a < g_pmod[m].code_hi[i]) return true;
+    return false;
+}
+
+static bool prof_kind_gl(const char *name)
+{
+    char low[48];
+    size_t i;
+    for (i = 0; name[i] && i + 1 < sizeof(low); i++) low[i] = (char)(name[i] >= 'A' && name[i] <= 'Z' ? name[i] + 32 : name[i]);
+    low[i] = 0;
+    return !strcmp(low, "libglesv2.dll");
+}
+
 /* The module an address is in, by its 64 KB (no two modules share one: Windows maps them at that granularity, as the
    layer's loader does an app's libraries); -1 for none. Only the profiler's thread calls it. */
 static int prof_module_of(hk_addr a, hk_addr *off)
@@ -420,14 +477,14 @@ static int prof_module_of(hk_addr a, hk_addr *off)
         const void *sym = NULL, *base = NULL;
         char name[96];
         hk_addr mbase = 0;
-        bool found = false;
+        bool found = false, guest = false;
         int i;
         if (hk_ld_is_guest_code(a)) {
             hk_ld_symbol_at((const void *)a, &lib, &sym, &base);
             if (lib && base) {
                 hk_strlcpy(name, lib, sizeof(name));
                 mbase = (hk_addr)base;
-                found = true;
+                found = guest = true;
             }
         } else if (hk_host_module_at(a, name, sizeof(name), &mbase)) {
             found = true;
@@ -439,6 +496,9 @@ static int prof_module_of(hk_addr a, hk_addr *off)
                 hk_strlcpy(g_pmod[i].name, name, sizeof(g_pmod[i].name));
                 g_pmod[i].base = mbase;
                 g_pmod[i].kind = prof_kind(g_pmod[i].name);
+                g_pmod[i].gl = prof_kind_gl(g_pmod[i].name);
+                if (guest) g_pmod[i].ncode = -1;
+                else prof_code_ranges(&g_pmod[i]);
                 g_npmod++;
             }
             if (i < g_npmod) m = i;
@@ -490,6 +550,20 @@ static void prof_sample(prof_slot *s, u32 *words)
     s->samples++;
     s->w_samples++;
     m = pc >= 0x10000 ? prof_module_of(pc, NULL) : -1;
+    if (m >= 0 && g_pmod[m].gl) {
+        prof_add(s->under_addr, s->under_count, pc);
+    } else {
+        for (k = 0; k < n; k++) {
+            hk_addr w = (hk_addr)(words[k] & ~1u);
+            int wm;
+            if (w < 0x10000) continue;
+            wm = prof_module_of(w, NULL);
+            if (wm >= 0 && g_pmod[wm].gl && prof_is_code(wm, w)) {
+                prof_add(s->under_addr, s->under_count, w);
+                break;
+            }
+        }
+    }
     if (m >= 0 && g_pmod[m].kind == PROF_SYSTEM) {
         int from = -1;
         hk_addr w = 0;
@@ -498,7 +572,7 @@ static void prof_sample(prof_slot *s, u32 *words)
             w = (hk_addr)(words[k] & ~1u);
             if (w < 0x10000) continue;
             wm = prof_module_of(w, NULL);
-            if (wm >= 0 && g_pmod[wm].kind == PROF_OTHER) from = wm;
+            if (wm >= 0 && g_pmod[wm].kind == PROF_OTHER && prof_is_code(wm, w)) from = wm;
         }
         s->waits++;
         s->w_waits++;
@@ -583,7 +657,7 @@ const char *megler_data_dir(void);
 
 static void prof_report(prof_slot *slots, double seconds, double since)
 {
-    char mods[600], waits[600];
+    char mods[600], waits[600], under[600];
     size_t cap = 4096, at = 0;
     char *file;
     int i;
@@ -604,8 +678,10 @@ static void prof_report(prof_slot *slots, double seconds, double since)
                     mods[0] ? mods : "-", (unsigned)(s->w_waits * 100 / s->w_samples), waits[0] ? waits : "-");
         prof_top_text(mods, sizeof(mods), s->run_addr, s->run_count, s->samples);
         prof_top_text(waits, sizeof(waits), s->wait_addr, s->wait_count, s->samples);
+        prof_top_text(under, sizeof(under), s->under_addr, s->under_count, s->samples);
         if (prof_line_left())
-            hk_info("profile: thread %d since it was first sampled: ran most at %s; waited most for %s", (int)s->tid, mods[0] ? mods : "-", waits[0] ? waits : "-");
+            hk_info("profile: thread %d since it was first sampled: ran most at %s; waited most for %s; under ANGLE most at %s", (int)s->tid,
+                    mods[0] ? mods : "-", waits[0] ? waits : "-", under[0] ? under : "-");
         s->w_samples = s->w_waits = s->w_unknown = s->w_run_unknown = 0;
         s->w_cpu_ns = 0;
         memset(s->w_run_mod, 0, sizeof(s->w_run_mod));
@@ -613,10 +689,11 @@ static void prof_report(prof_slot *slots, double seconds, double since)
     }
     /* The whole of it, for tools/profile-names.py. */
     for (i = 0; i < PROF_THREADS; i++)
-        for (k = 0; k < PROF_SLOTS; k++) cap += (slots[i].run_addr[k] ? 96 : 0) + (slots[i].wait_addr[k] ? 96 : 0);
+        for (k = 0; k < PROF_SLOTS; k++) cap += (slots[i].run_addr[k] ? 96 : 0) + (slots[i].wait_addr[k] ? 96 : 0) + (slots[i].under_addr[k] ? 96 : 0);
     file = (char *)hk_alloc(cap);
     at += (size_t)snprintf(file + at, cap - at, "# Megler trace-profile, %.0f s after it began: samples by address (module, offset in it, count); "
-                                                "run: where a thread was, wait: what a thread in the system's code waited for\n", since);
+                                                "run: where a thread was, wait: what a thread in the system's code waited for, "
+                                                "under: the innermost frame of ANGLE's a sample was under\n", since);
     for (i = 0; i < PROF_THREADS; i++) {
         prof_slot *s = &slots[i];
         if (!s->tid) continue;
@@ -624,6 +701,7 @@ static void prof_report(prof_slot *slots, double seconds, double since)
                                (unsigned)s->waits, (unsigned)s->unknown);
         at += prof_dump_hist(file + at, cap - at, "run", s->run_addr, s->run_count);
         at += prof_dump_hist(file + at, cap - at, "wait", s->wait_addr, s->wait_count);
+        at += prof_dump_hist(file + at, cap - at, "under", s->under_addr, s->under_count);
     }
     {
         char path[700];
