@@ -2551,8 +2551,12 @@ software, as it does on Android into a `Bitmap`'s canvas:
 canvas says it is (Compose draws an `AndroidView` into one), and Chromium
 draws such a canvas through the platform's draw functor, whose function table
 is null here: the overlay's `WebView.onDraw` gives it the WebView's software
-drawing through a bitmap of the view's size instead (Spotify's WebView ended
-the app making its functor). The tables of
+drawing through a bitmap instead (Spotify's WebView ended the app making its
+functor). The bitmap is what the window shows of the view, as the functor
+draws on Android: a WebView sized to its page is many screens tall, and a
+bitmap of all of it was as big (a check: a WebView 20000 rows tall is drawn
+through 744); a view out of the window gets at most a screen's worth from its
+scroll position. The tables of
 functions the platform's `libwebviewchromium_plat_support.so` gives a WebView
 (`GraphicsUtils.nativeGetDrawSWFunctionTable`, the GL functor's) are null
 (`hk_java_webview.c`; the library is a system library's name to the linker,

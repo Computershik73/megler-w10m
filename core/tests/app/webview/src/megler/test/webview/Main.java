@@ -259,16 +259,30 @@ public class Main extends Activity {
         });
     }
 
+    /** The rows of the bitmap the overlay's WebView last drew a hardware-accelerated canvas through; -1 if none. */
+    private static int drawnRows(WebView v) {
+        try {
+            java.lang.reflect.Field f = WebView.class.getDeclaredField("mMeglerBitmap");
+            f.setAccessible(true);
+            Bitmap b = (Bitmap) f.get(v);
+            return b != null ? b.getHeight() : -1;
+        } catch (Exception e) {
+            Log.w(T, "dismiss: " + e);
+            return -1;
+        }
+    }
+
     /**
-     * A second WebView over the first, its size, in the same layout, as an app shows a banner: its page loaded, drawn
-     * through a RenderNode its size (as Compose draws it) three times, then taken out of the layout and destroyed, and drawn
+     * A second WebView over the first, in the same layout, as an app shows a banner, and 20000 rows tall, as a WebView sized
+     * to its page is: its page loaded, drawn through a RenderNode its size (as Compose draws it) three times -- through a
+     * bitmap of what the window shows of it, not of its 20000 rows -- then taken out of the layout and destroyed, and drawn
      * once more after that, as a draw that was under way when the banner was dismissed. The app goes on.
      */
     private void dismiss() {
         final WebView banner = new WebView(this);
         final android.view.ViewGroup root = (android.view.ViewGroup) web.getParent();
-        root.addView(banner, new android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+        // As tall as a page sized to its content: far taller than the window, which shows its top.
+        root.addView(banner, new android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, 20000));
         banner.setWebViewClient(new WebViewClient() {
             boolean once;
 
@@ -279,10 +293,17 @@ public class Main extends Activity {
                 main.postDelayed(() -> {
                     int w = banner.getWidth(), h = banner.getHeight();
                     for (int i = 0; i < 3; i++) drawThroughNode(banner, w, h);
+                    // What it was drawn through: the part the window shows, not the 20000 rows.
+                    int drawn = drawnRows(banner);
                     root.removeView(banner);
+                    // Out of the window, and so with nothing to say what is seen: at most a screen's worth.
+                    drawThroughNode(banner, w, h);
+                    int detached = drawnRows(banner);
                     banner.destroy();
                     drawThroughNode(banner, w, h);
-                    Log.i(T, "dismiss ok size=" + w + "x" + h);
+                    boolean ok = h == 20000 && drawn > 0 && drawn <= root.getHeight() && detached > 0
+                            && detached <= getResources().getDisplayMetrics().heightPixels;
+                    Log.i(T, "dismiss " + (ok ? "ok" : "FAILED") + " size=" + w + "x" + h + " drawn=" + drawn + " detached=" + detached + " window=" + root.getHeight());
                     Log.i(T, "done");
                 }, 500);
             }
