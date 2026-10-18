@@ -9,7 +9,11 @@
  *     asked for, falling back to what a feature-level-9_3 phone needs;
  *   - the guest's window is an ANativeWindow, and its window surface is a
  *     pbuffer over a texture the shell provides. eglSwapBuffers hands the
- *     finished frame to the shell, which owns the swap chain (megler.h);
+ *     finished frame to the shell, which owns the swap chain (megler.h). On a
+ *     SurfaceView's window (ANativeWindow_fromSurface in a Java app) the
+ *     surface is the window's own, composed under the app's views
+ *     (drivers/hk_java_ndk.c, hk_java_gl.c), and the app's EGLSurface stands
+ *     for whichever pbuffer the window has at the time;
  *   - every GLES function that takes a float gets an adapter: the guest passes
  *     floats in integer registers, ANGLE expects them in VFP registers.
  */

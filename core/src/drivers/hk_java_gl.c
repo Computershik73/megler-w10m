@@ -8,6 +8,7 @@
  *   - the window: the views' picture over the frames of the EGL window surfaces, composed here and handed to the shell;
  *   - a swap: the frame read back, composed, shown, paced;
  *   - megler.EGLNative;
+ *   - window surfaces native code makes with EGL on a SurfaceView's window (hk_java_ndk.c), the same as those of Java;
  *   - the GL thread of a GLSurfaceView (megler.Native.startGL).
  */
 #include "hk_java_gl.h"
@@ -420,7 +421,10 @@ static struct {
     /* A pbuffer's Direct3D texture as a DXGI shared handle, for a shell that composes the window (megler_gfx_host.gl_frame). */
     u32 (*query_pointer)(EGLDisplay, EGLSurface, EGLint, void **);
     bool share;
-} E = { HK_LOCK_INIT, 0, NULL, NULL, false, false, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, false };
+    /* The context current on a thread and its version: for a swap of a window surface of native code's, in whatever context it made. */
+    EGLContext (*current_context)(void);
+    u32 (*query_context)(EGLDisplay, EGLContext, EGLint, EGLint *);
+} E = { HK_LOCK_INIT, 0, NULL, NULL, false, false, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, false, NULL, NULL };
 
 enum { EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE = 0x3200 };
 
@@ -468,6 +472,8 @@ static bool egl_ready(void)
             E.surfaceless = ext && strstr(ext, "EGL_KHR_surfaceless_context");
             E.query_pointer = (u32(*)(EGLDisplay, EGLSurface, EGLint, void **))hk_egl_host("eglQuerySurfacePointerANGLE");
             E.share = E.query_pointer && ext && strstr(ext, "EGL_ANGLE_surface_d3d_texture_2d_share_handle");
+            E.current_context = (EGLContext(*)(void))hk_egl_host("eglGetCurrentContext");
+            E.query_context = (u32(*)(EGLDisplay, EGLContext, EGLint, EGLint *))hk_egl_host("eglQueryContext");
             hk_info("java: EGL for the app's Java: EGL %d.%d, OpenGL ES %s, every surface 8 bits a channel%s", (int)major, (int)minor, E.es3 ? "3 and 2" : "2",
                     E.surfaceless ? ", contexts without a surface" : "");
         } else {
@@ -524,6 +530,7 @@ struct layer;
 
 typedef struct gl_surf {
     EGLSurface handle;
+    EGLConfig config;                  /* what it was made with */
     int width, height;
     struct layer *layer;               /* the view it is shown at; NULL for a pbuffer of the app's own */
     u8 *pixels;                        /* where a frame is read back to, rows bottom first */
@@ -537,15 +544,17 @@ static void layer_attach(struct layer *l);
 static void layer_detach(struct layer *l);
 static void layer_unused(struct layer *l);
 
-static gl_surf *surf_new(int width, int height, struct layer *l)
+/* A pbuffer made with the first of `configs` EGL makes one with (the one configuration of the app's Java, or native code's). */
+static gl_surf *surf_new_with(int width, int height, struct layer *l, void *const *configs, int count)
 {
     EGLint attribs[] = { EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE };
     gl_surf *s;
-    EGLSurface h;
+    EGLSurface h = NULL;
+    int i;
     if (!egl_ready()) return NULL;
     attribs[1] = width > 0 ? width : 1;
     attribs[3] = height > 0 ? height : 1;
-    h = E.create_pbuffer(E.display, E.config, attribs);
+    for (i = 0; i < count && !h; i++) h = E.create_pbuffer(E.display, configs[i], attribs);
     if (!h) {
         hk_warn("java: no %dx%d surface could be made (EGL error 0x%x)", (int)attribs[1], (int)attribs[3], (unsigned)E.get_error());
         if (l) layer_unused(l);
@@ -554,12 +563,15 @@ static gl_surf *surf_new(int width, int height, struct layer *l)
     s = (gl_surf *)hk_alloc(sizeof(*s));
     memset(s, 0, sizeof(*s));
     s->handle = h;
+    s->config = configs[i - 1];
     s->width = attribs[1];
     s->height = attribs[3];
     s->layer = l;
     if (l) layer_attach(l);
     return s;
 }
+
+static gl_surf *surf_new(int width, int height, struct layer *l) { return surf_new_with(width, height, l, &E.config, 1); }
 
 static void surf_free(gl_surf *s)
 {
@@ -1292,7 +1304,10 @@ N(EN_place)
     hk_lock_release(&g_window_lock);
 }
 
-/* forget(Object view): the view's surface is gone (it left its window, or its window was hidden): its frames are not shown. */
+/*
+ * forget(Object view): the view's surface is gone (it left its window, or its window was hidden): its frames are not shown,
+ * and the windows native code has of it are no longer valid (hk_java_ndk.c). Said after its surfaceDestroyed callbacks.
+ */
 N(EN_forget)
 {
     layer *l;
@@ -1300,6 +1315,88 @@ N(EN_forget)
     l = c->args[0].l ? layer_of(c->args[0].l, false) : NULL;
     if (l) layer_off(l);
     hk_lock_release(&g_window_lock);
+    if (c->args[0].l) hk_java_ndk_view_gone(c->args[0].l);
+}
+
+/* ------------------------------------------- window surfaces of native code */
+
+/*
+ * An EGL window surface native code made on a SurfaceView's window (eglCreateWindowSurface on what ANativeWindow_fromSurface
+ * gave it: hk_java_ndk.c, ndk/hk_egl.c). It is what a window surface made from Java on the view is -- a pbuffer on the view's
+ * layer, swapped by swap() -- with what that one has from megler.EGLNative instead: the configuration it is made with, and the
+ * context it is drawn in, which is whatever the app made current, read at each swap for what a read-back needs of it.
+ */
+typedef struct native_surf {
+    gl_surf *s;                        /* the pbuffer now */
+    EGLConfig config;
+    gl_ctx ctx;                        /* of the context current at the last swap: its version and read-back format */
+    EGLContext ctx_of;
+} native_surf;
+
+void *hk_java_gl_window_surface(hk_jobj *view, int width, int height, void *const *configs, int count)
+{
+    native_surf *n;
+    gl_surf *s;
+    layer *l;
+    hk_jvalue args[1];
+    if (!view || count <= 0 || !egl_ready()) return NULL;
+    hk_lock_acquire(&g_window_lock);
+    l = layer_of(view, true);
+    hk_lock_release(&g_window_lock);
+    if (!l) return NULL;
+    s = surf_new_with(width, height, l, configs, count);
+    if (!s) return NULL;
+    n = (native_surf *)hk_alloc(sizeof(*n));
+    n->s = s;
+    /* (The size changing later makes the next pbuffer with the configuration this one took.) */
+    n->config = s->config;
+    n->ctx.version = 2;
+    n->ctx.bgra = -1;
+    /* The view keeps its area clear from now on and says where it is, as for a surface made from Java on it (MeglerEGL): the frames are under it. */
+    memset(args, 0, sizeof(args));
+    args[0].z = 1;
+    if (!hk_dvm_call_virtual(view, "meglerSetGL", "(Z)V", args, NULL)) hk_dvm_clear_pending();
+    return n;
+}
+
+void *hk_java_gl_window_handle(void *surface, int *width, int *height)
+{
+    native_surf *n = (native_surf *)surface;
+    if (width) *width = n->s->width;
+    if (height) *height = n->s->height;
+    return n->s->handle;
+}
+
+void hk_java_gl_window_swap(void *surface, int width, int height)
+{
+    native_surf *n = (native_surf *)surface;
+    EGLContext current = E.current_context ? E.current_context() : NULL;
+    if (current != n->ctx_of) {
+        EGLint version = 2;
+        n->ctx_of = current;
+        if (current && E.query_context) E.query_context(E.display, current, EGL_CONTEXT_CLIENT_VERSION, &version);
+        n->ctx.handle = current;
+        n->ctx.version = version >= 3 ? 3 : 2;
+        n->ctx.bgra = -1;
+    }
+    swap(n->s, &n->ctx);
+    if (width > 0 && height > 0 && (width != n->s->width || height != n->s->height)) {
+        /* The window's buffers are another size now: so is the surface, from the next frame on (the caller makes this one current). */
+        gl_surf *fresh = surf_new_with(width, height, n->s->layer, &n->config, 1);
+        if (fresh) {
+            hk_info("java: a window surface of native code's is %dx%d from now on (it was %dx%d)", width, height, n->s->width, n->s->height);
+            surf_free(n->s);
+            n->s = fresh;
+        }
+    }
+}
+
+void hk_java_gl_window_destroy(void *surface)
+{
+    native_surf *n = (native_surf *)surface;
+    if (!n) return;
+    surf_free(n->s);
+    free(n);
 }
 
 /* ------------------------------------------------------------ the GL thread */

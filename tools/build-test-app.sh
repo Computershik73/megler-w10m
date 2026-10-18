@@ -95,7 +95,9 @@ for app in "$APPS"/*/; do
     for src in "$app"/jni/*.c; do
       case "$src" in *_dep.c) continue ;; esac
       lib="$(basename "$src" .c)"
-      "$NDKCC" "${NDKFLAGS[@]}" "-Wl,-soname,lib$lib.so" -o "$(m "$W/lib/lib$lib.so")" "$(m "$src")" "-L$(m "$W/lib")" "${DEPS[@]}" -llog -landroid -ljnigraphics -ldl 2> "$W/ndk.log" \
+      # (EGL and OpenGL ES only where a library uses them: --as-needed leaves them out of the others' DT_NEEDED.)
+      "$NDKCC" "${NDKFLAGS[@]}" "-Wl,-soname,lib$lib.so" -o "$(m "$W/lib/lib$lib.so")" "$(m "$src")" "-L$(m "$W/lib")" "${DEPS[@]}" -llog -landroid -ljnigraphics -ldl \
+        -Wl,--as-needed -lEGL -lGLESv2 2> "$W/ndk.log" \
         || { head -40 "$W/ndk.log" >&2; echo "the NDK failed for $name ($lib)" >&2; exit 1; }
     done
   fi

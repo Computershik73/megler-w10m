@@ -239,6 +239,9 @@ ANGLE's functions. This layer adds the display, the window, and the float adapte
   `SwapChainPanel` in the app's XAML.
 - `ANativeWindow_setBuffersGeometry` sets the size frames are rendered at, as on
   Android.
+- In a Java app, the window of a `SurfaceView`'s `Surface` (from
+  `ANativeWindow_fromSurface`) is drawn on as the view would be from Java:
+  "Native code on a SurfaceView", under "OpenGL ES from an app's Java" below.
 - Hardware buffers (`AHardwareBuffer`, `ndk/hk_ahb.c`) are memory of the layer's
   for the CPU and, from the first EGL image of one
   (`EGL_ANDROID_image_native_buffer`), a texture of ANGLE's made for it in a
@@ -507,6 +510,27 @@ composed there and nothing is read back, neither the frames nor the views:
   their "share handles"), once with a shell that refuses frames, the core
   composing; the same picture checks hold for both. On the PC's graphics
   processor a second Direct3D device stands for ANGLE's (`hk_gfx_windows.cpp`).
+
+**Native code on a SurfaceView.** A game with a Java activity and a native
+engine (Asphalt 9) hands its `SurfaceView`'s `Surface` to native code, which
+asks `ANativeWindow_fromSurface` for its window and draws there with EGL from
+a thread of its own (docs/JAVA.md, "A SurfaceView drawn by native code"). The
+window is an `hk_nwindow` with operations of its own (`hk_nwindow_ops`,
+`ndk/hk_ndk.h`; `drivers/hk_java_ndk.c`): its size follows the view's surface,
+and it is no longer valid once the view has said its surface is gone
+(`EGLNative.forget`). An EGL window surface on it is not over the shell's
+texture, as on the app's whole window, but the same as a window surface Java
+makes on the view: a pbuffer on the view's layer, swapped by the same swap,
+composed by the shell on the graphics processor or by the core, paced alike
+(`hk_java_gl_window_*` in `hk_java_gl.c`). Two things differ. The context is
+the app's own, made by its `eglCreateContext` (without a configuration, so it
+goes with the pbuffer's 8888 one), and the swap asks its version for what a
+read-back must restore. And a window's buffers change size with its surface
+or its geometry at the next frame on Android, while a pbuffer of ANGLE's has
+one size: so the app's `EGLSurface` for such a window is an entry of the
+layer's (`ndk/hk_egl.c`), which stands for the window's pbuffer now; a swap
+that finds the size changed makes a new pbuffer, current in the old one's
+place, and EGL's calls that take a surface are given whichever it stands for.
 
 ## Sound
 
