@@ -635,6 +635,18 @@ static void test_mmap_commit(void)
     say("mmap: no access is address space alone, committed when given access");
     CHECK(mmap_ && mprotect_ && munmap_);
     if (!mmap_ || !mprotect_ || !munmap_) return;
+    /* Inline hooks must see failure, not permission to overwrite a host
+     * bionic implementation. Neither request may change the host page. */
+    {
+        void *host_page = (void *)HK_ALIGN_DOWN((hk_addr)hk_bionic_find("abort"), (hk_addr)HK_PAGE);
+        typedef int *(*errno_fn)(void);
+        errno_fn errno_ = (errno_fn)hk_bionic_find("__errno");
+        CHECK(host_page && errno_);
+        if (host_page && errno_) {
+            CHECK(mprotect_(host_page, HK_PAGE, 5) == -1 && *errno_() == 13);
+            CHECK(mprotect_(host_page, HK_PAGE, 7) == -1 && *errno_() == 13);
+        }
+    }
     p = (u8 *)mmap_(NULL, 64 * MB, NONE, PRIVATE | ANONYMOUS, -1, 0);
     CHECK(p && p != (u8 *)(hk_addr)-1);
     if (!p || p == (u8 *)(hk_addr)-1) return;
