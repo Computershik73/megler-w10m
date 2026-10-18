@@ -368,6 +368,18 @@ static void io_note(gsock *s, bool sending, const void *buf, i32 r)
 {
     u8 *head = sending ? s->head_out : s->head_in, *len = sending ? &s->head_out_len : &s->head_in_len;
     if (!s->io_traced) return;
+    /* The first bytes each way are said as they go, the first 120 as text (what is not printable a dot): a connection the app keeps open says at once who has not spoken. */
+    if (r > 0 && buf && (sending ? !s->sends : !s->recvs)) {
+        char text[124];
+        i32 i, n = r < 120 ? r : 120;
+        for (i = 0; i < n; i++) {
+            u8 c = ((const u8 *)buf)[i];
+            text[i] = c >= 32 && c < 127 ? (char)c : '.';
+        }
+        text[n] = 0;
+        hk_net_trace("TCP to %s: the first bytes %s, %d of them, %llu ms after it was made: %s", s->trace_to, sending ? "sent" : "received", (int)r,
+                     (unsigned long long)((hk_time_monotonic_ns() - s->io_from) / 1000000), text);
+    }
     if (r > 0) {
         u32 take = (u32)r < (u32)(sizeof(s->head_out) - *len) ? (u32)r : (u32)(sizeof(s->head_out) - *len);
         if (take && buf) memcpy(head + *len, buf, take);
