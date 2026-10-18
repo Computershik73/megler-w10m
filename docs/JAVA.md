@@ -2668,6 +2668,16 @@ what a pixel it cleared green reads: under qemu `webgl=no`; on a phone,
 with buffers, it should read `webgl=yes:0.255.0.255`, and the log name the
 first buffer (`AHardwareBuffer_allocate: the first buffer: 300x150`).
 
+**Out of memory.** Chromium ends an app it cannot get memory for in
+PartitionAlloc's `OnNoMemoryInternal`: the size it asked for goes into a
+global of its library, and it traps (bkpt, then udf, where the phone's report
+finds the pc). The crash report recognises that function's code at the pc
+and reads the global: "Chromium ran out of memory asking for N bytes"
+(`hk_core.c`, `hk_chromium_oom_global`). Checked on the function's bytes in
+the core's tests, and under qemu by calling the library's own
+`TerminateBecauseOutOfMemory` in a child process (test_chromium_oom_end,
+with the Android root that carries the WebView).
+
 **What is not there.** Drawing on the graphics processor (the GL functor);
 `AImageReader` and the rest of the imports the layer does not provide (video,
 camera); the WebView APK's own processes and services (its developer UI, its

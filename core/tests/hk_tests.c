@@ -714,6 +714,35 @@ static void test_mmap_file(const char *scratch)
     free(path);
 }
 
+/*
+ * Chromium's end out of memory, in the crash report (hk_core.c, hk_chromium_oom_global): OnNoMemoryInternal as the
+ * WebView's library has it -- its bytes, libwebviewchromium.so+0x1f4c348 to +0x1f4c364 of 128.0.6613.88 -- with its
+ * literal made to point at a global here. Found from its bkpt and from its udf; not from elsewhere, nor once changed.
+ */
+static void test_chromium_oom_report(void)
+{
+    static const u8 code[28] = { 0x82, 0xb0, 0x04, 0x49, 0x01, 0x90, 0x79, 0x44, 0x08, 0x60, 0x01, 0xa8, 0x40, 0xf1,
+                                 0xb9, 0xfa, 0x00, 0xbe, 0x00, 0xde, 0x06, 0x45, 0x73, 0x02, 0xff, 0xf7, 0xf2, 0xff };
+    static union {
+        u8 b[64];
+        u32 align;
+    } fn;
+    static u32 g_oom_size = 126337600u;
+    hk_addr f = (hk_addr)fn.b;
+    i32 offset;
+    say("Chromium's end out of memory: the size it asked for, from its global");
+    memcpy(fn.b, code, sizeof(code));
+    /* The literal (at +0x14): the global's distance from where `add r1, pc` reads pc, f + 10. */
+    offset = (i32)((hk_addr)&g_oom_size - (f + 10));
+    memcpy(fn.b + 0x14, &offset, 4);
+    CHECK(hk_chromium_oom_global(f + 18) == (hk_addr)&g_oom_size);
+    CHECK(hk_chromium_oom_global(f + 16) == (hk_addr)&g_oom_size);
+    CHECK(*(const u32 *)hk_chromium_oom_global(f + 18) == 126337600u);
+    CHECK(hk_chromium_oom_global(f + 14) == 0 && hk_chromium_oom_global(f + 12) == 0 && hk_chromium_oom_global(f + 17) == 0);
+    fn.b[8] = 0x09;                    /* str r1, [r1] -- not the function */
+    CHECK(hk_chromium_oom_global(f + 18) == 0);
+}
+
 static void test_libc_odds(void)
 {
     const u32 *size = (const u32 *)hk_bionic_find("__page_size"), *shift = (const u32 *)hk_bionic_find("__page_shift");
@@ -1726,6 +1755,152 @@ static int g_dvm_trace;
 
 void hk_tests_set_dvm_android(const char *root) { g_dvm_android = root; }
 
+#if HK_HOST_ARM32 && !defined(_WIN32)
+#include <poll.h>
+#include <signal.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#include "../src/elf/hk_elf.h"
+
+typedef struct oom_text {
+    hk_addr lo, hi;
+} oom_text;
+
+static int oom_text_of(hk_addr bias, const char *name, const void *phdr, unsigned phnum, void *user)
+{
+    oom_text *t = (oom_text *)user;
+    const Elf32_Phdr *ph = (const Elf32_Phdr *)phdr;
+    unsigned i;
+    if (!name || !strstr(name, "libwebviewchromium.so")) return 0;
+    for (i = 0; i < phnum; i++) {
+        if (ph[i].p_type == PT_LOAD && (ph[i].p_flags & PF_X)) {
+            t->lo = bias + ph[i].p_vaddr;
+            t->hi = t->lo + ph[i].p_memsz;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void oom_call(void *fn)
+{
+    ((void (*)(size_t))fn)(123456789u);
+}
+
+/* The child of test_chromium_oom_end: the WebView's library loaded, its TerminateBecauseOutOfMemory called. Never returns. */
+static void oom_child(const char *apk)
+{
+    oom_text text = { 0, 0 };
+    hk_addr pc, f = 0, call;
+    const u16 *h;
+    hk_thread *t;
+    if (!hk_ld_add_apk(apk) || !hk_ld_load("libwebviewchromium.so")) {
+        fprintf(stderr, "oom: the WebView's library did not load\n");
+        _exit(3);
+    }
+    hk_ld_iterate(oom_text_of, &text);
+    for (pc = (text.lo + 1) & ~(hk_addr)1; pc + 4 <= text.hi; pc += 2) {
+        h = (const u16 *)pc;
+        if (h[0] == 0xbe00 && h[1] == 0xde00 && hk_chromium_oom_global(pc + 2)) {
+            f = pc - 16;
+            break;
+        }
+    }
+    if (!f) {
+        fprintf(stderr, "oom: no OnNoMemoryInternal in the library\n");
+        _exit(3);
+    }
+    /* TerminateBecauseOutOfMemory follows it and its literal: a bl to it. Else the function itself is called. */
+    call = f;
+    h = (const u16 *)(f + 0x18);
+    if ((h[0] & 0xf800) == 0xf000 && (h[1] & 0xd000) == 0xd000) {
+        u32 s = (h[0] >> 10) & 1, j1 = (h[1] >> 13) & 1, j2 = (h[1] >> 11) & 1;
+        i32 off = (i32)((s << 24) | ((1 - (j1 ^ s)) << 23) | ((1 - (j2 ^ s)) << 22) | ((u32)(h[0] & 0x3ff) << 12) | ((u32)(h[1] & 0x7ff) << 1));
+        if (s) off -= 1 << 25;
+        if (f + 0x18 + 4 + (hk_addr)(intptr_t)off == f) call = f + 0x18;
+    }
+    fprintf(stderr, "oom: calling %s at +0x%x\n", call == f ? "OnNoMemoryInternal" : "TerminateBecauseOutOfMemory",
+            (unsigned)(call - (hk_addr)hk_ld_lib_base(hk_ld_find_lib("libwebviewchromium.so"))));
+    /* On a thread that has run no Android code: its fault is reported, and then the process ends, as the signal ends it. */
+    t = hk_thread_start(oom_call, (void *)(call | 1), 0, "oom");
+    if (t) hk_thread_join(t);
+    fprintf(stderr, "oom: it returned\n");
+    _exit(4);
+}
+
+/*
+ * Under qemu, with the Android root that carries the WebView: its library's TerminateBecauseOutOfMemory, called for 123456789
+ * bytes in a child process, ends that process with a fault whose report says so (hk_core.c). The real code, the real trap,
+ * the report as the phone prints it.
+ */
+static void test_chromium_oom_end(void)
+{
+    char *apk;
+    static char out[65536], drop[4096];
+    size_t got = 0;
+    int fds[2], status = 0;
+    pid_t pid;
+    u64 until;
+    const char *line;
+    hk_stat st;
+    int err = 0;
+    if (!g_dvm_android || !g_dvm_android[0]) {
+        say("(Chromium's end out of memory is not tried: no Android root, --dvm-android)");
+        return;
+    }
+    apk = hk_sprintf("%s/app/webview/webview.apk", g_dvm_android);
+    if (!hk_path_stat(apk, &st, &err)) {
+        say("(Chromium's end out of memory is not tried: no %s)", apk);
+        free(apk);
+        return;
+    }
+    say("Chromium's end out of memory: the WebView's TerminateBecauseOutOfMemory(123456789), in a child process");
+    CHECK(pipe(fds) == 0);
+    fflush(stdout);
+    fflush(stderr);
+    pid = fork();
+    if (pid == 0) {
+        close(fds[0]);
+        dup2(fds[1], 1);
+        dup2(fds[1], 2);
+        oom_child(apk);
+    }
+    close(fds[1]);
+    CHECK(pid > 0);
+    until = hk_time_monotonic_ns() + 300000000000ull;
+    while (pid > 0) {
+        struct pollfd pfd;
+        ssize_t n;
+        pfd.fd = fds[0];
+        pfd.events = POLLIN;
+        pfd.revents = 0;
+        if (hk_time_monotonic_ns() > until) {
+            say("  the child did not end in 300 s");
+            kill(pid, SIGKILL);
+            break;
+        }
+        if (poll(&pfd, 1, 1000) <= 0) continue;
+        /* (What does not fit is read and dropped: the report comes first, the trace after it.) */
+        n = read(fds[0], got < sizeof(out) - 1 ? out + got : drop, got < sizeof(out) - 1 ? sizeof(out) - 1 - got : sizeof(drop));
+        if (n <= 0) break;
+        if (got < sizeof(out) - 1) got += (size_t)n;
+    }
+    out[got] = 0;
+    close(fds[0]);
+    if (pid > 0) waitpid(pid, &status, 0);
+    CHECK(pid > 0 && WIFSIGNALED(status));
+    line = strstr(out, "oom: ");
+    if (line) say("  %.*s", (int)strcspn(line, "\n"), line);
+    line = strstr(out, "fault: ");
+    if (line) say("  %.*s", (int)strcspn(line, "\n"), line);
+    line = strstr(out, "Chromium ran out of memory");
+    CHECK(line && !strncmp(line, "Chromium ran out of memory asking for 123456789 bytes (117 MB)", 61));
+    say("  the report: %.*s", line ? (int)strcspn(line, "\n") : 4, line ? line : "none");
+    free(apk);
+}
+#endif
+
 void hk_tests_set_dvm(const char *fixtures, const char *apk, int trace)
 {
     g_dvm_fixtures = fixtures;
@@ -1906,6 +2081,7 @@ int hk_tests_run(const char *libdir, const char *scratch, hk_test_sink sink, voi
     test_libc_odds();
     test_mmap_commit();
     test_mmap_file(scratch);
+    test_chromium_oom_report();
     test_input();
     {
         /* The stand-in for the shell's drawing under a Java app: it is what the Java driver's tests see pictures through. */
@@ -1917,6 +2093,10 @@ int hk_tests_run(const char *libdir, const char *scratch, hk_test_sink sink, voi
 #if HK_HOST_ARM32
     test_proxies();
     if (can_run) {
+#if !defined(_WIN32)
+        /* (First, while this process has few threads of its own: the test forks.) */
+        test_chromium_oom_end();
+#endif
         test_mechanisms();
         test_suspend_arm();
         if (libdir) {

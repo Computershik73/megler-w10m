@@ -33,6 +33,12 @@ void hk_core_set_arm_state(int state);
 
 /* Called with a description of a fault in guest code that nothing could repair, before the process ends. */
 void hk_core_set_crash_hook(void (*hook)(const char *report));
+/*
+ * Chromium's end out of memory: when the Thumb code at `pc` is the trap that ends its OnNoMemoryInternal, the address of
+ * the global that function put the size it was asked for in; 0 when it is not. The crash report reads it. The code from
+ * 18 bytes before pc to 16 after it must be readable.
+ */
+hk_addr hk_chromium_oom_global(hk_addr pc);
 
 #ifdef __cplusplus
 }
