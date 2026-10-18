@@ -92,7 +92,8 @@ the decoder 40 fewer, and the script says which is missing.
 bash tools/build-tests.sh win      (MSVC x64, run on the PC; libcore's native libraries cannot run there)
     4539 checks, 0 failed          on the built-in java.lang (OpenGL ES from Java's 117 among them)
     4592 checks, 0 failed          on libcore, its bytecode alone (OpenGL ES from Java's 136 among them)
-    (then the shell's own drawing and the storage on Windows' own folders, which are not this document's: 294, 264, 264, 294, 294, 441, 110, 12, 8, 8, 8, 6 and 6 checks)
+    (then the shell's own drawing and the storage on Windows' own folders, which are not this document's: 294, 264, 264, 294, 294, 441, 110, 12, 8, 8, 8, 6 and 6 checks;
+     and the shell's cameras on this PC's one, DroidCam's virtual camera: 9 checks)
 
 bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-float, under qemu-arm)
     4794 checks, 0 failed          on the built-in java.lang
@@ -4168,6 +4169,14 @@ code among them (budiyev's code-scanner over ZXing) -- is the overlay's
 `megler.CameraNative` (`drivers/hk_java_camera.c`), over the shell's cameras
 (`megler_camera_host` in megler.h).
 
+VK mp3 mod (version 190) scans two ways, both in its DEX files: code-scanner
+in `BarcodeScanFragment` (`open(n)` on a thread of its own, a `SurfaceView`
+by `setPreviewDisplay`, `setPreviewCallback`, autofocus),
+and a ZXing scanner of its own in `BarcodeShareFragment` (`open()`, a
+`TextureView`'s `SurfaceTexture` by `setPreviewTexture`,
+`setPreviewCallbackWithBuffer` with a buffer added back after each frame,
+`autoFocus` straight after `startPreview`). Neither takes a picture.
+
 - **The cameras.** `getNumberOfCameras` and `getCameraInfo` (which way the
   camera faces, how many degrees its picture is turned) are the shell's
   answers; `open()` is the first camera at the back, or null where there is
@@ -4300,8 +4309,21 @@ The tests:
   connect to camera service" and the core's log line says the user or the
   system refused it.
 
-The shell's side is not there yet: the shell hands the core no cameras
-(`megler_run_config.camera` is zero), so an app on a phone still finds none.
+The shell's side is `player/CameraHost.cpp`, over Windows.Media.Capture
+(docs/ARCHITECTURE.md, "Cameras"): the cameras found as media frame source
+groups, opened on the UI thread where Windows asks the user the first time,
+NV12 pictures from a frame reader, focus and the torch. `tools/build-tests.sh
+win` builds it into the test program and runs `hk_tests --camera-windows`:
+the PC's first camera through the host and the core's camera code, ten
+pictures at its smallest size taken in order and copied and drawn, focus and
+the light where it has them, nothing after stop (a PC without a camera
+says so and checks nothing). This PC's one camera is DroidCam's virtual one
+("DroidCam Source 3", a source group with no panel, so a camera at the back
+turned 0), which with no phone behind it streams a flat orange: opened at
+640 x 480 and 30 frames a second, given as RGB24 and turned into NV12 by the
+frame reader, ten pictures in order, no focus, no light, 9 checks; the last
+picture, written to the scratch folder as `camera-0.bmp`, is that orange.
+Not tried on a phone.
 
 ### 3. Apps that are not the test apps
 

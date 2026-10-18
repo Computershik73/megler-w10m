@@ -2,6 +2,7 @@
 
 #include "player/Session.h"
 
+#include "player/CameraHost.h"
 #include "player/CodecHost.h"
 #include "player/GfxHost.h"
 #include "player/KeyboardHost.h"
@@ -191,6 +192,11 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         config.media = MediaHost::shared().callbacks();
         // A Java app's MediaCodec: Media Foundation's decoder transforms, one sample at a time (player/CodecHost.h).
         config.codec = CodecHost::shared().callbacks();
+        // A Java app's android.hardware.Camera: the phone's cameras through Windows.Media.Capture (player/CameraHost.h), held
+        // upright by nature on a phone, what was learnt of them kept in LocalState.
+        CameraHost::shared().configure(platform::localStateDirectory() + L"\\camera.txt", platform::localStateDirectory() + L"\\flags",
+                                       platform::isMobile());
+        config.camera = CameraHost::shared().callbacks();
         config.storage = StorageHost::shared().callbacks();
         // For an app that is Java: its drawing, and where Android's libcore and the framework are -- NULL is the folder
         // `android` of the installed package, which is where tools/build-appx.sh --libcore (or --java) puts them. An app

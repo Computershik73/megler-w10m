@@ -33,6 +33,11 @@
 #       (core/tests/app/data/assets) and checked against what they hold,
 #       and timed on 720p and 1080p streams it makes into build/media-speed
 #       (tools/media-test-streams.py --speed, where Python and ffmpeg are).
+#       And the shell's cameras for a Java app's android.hardware.Camera
+#       (app/Megler/player/CameraHost.cpp: Windows.Media.Capture), built in
+#       likewise and run as --camera-windows: the PC's first camera opened
+#       through the core's camera code and a few pictures taken, or, on a PC
+#       without one, a line that says so.
 #
 # The tests are run twice where Android 9's boot class path has been unpacked
 # (build/android9/boot): once with the Dalvik runtime on its built-in
@@ -249,9 +254,10 @@ elif [ "$MODE" = win ]; then
   for s in "${SRCS[@]}"; do ALL+=("$(w "$ROOT/$s")"); done
   ZALL=()
   for s in "${ZSRCS[@]}"; do ZALL+=("$(w "$ROOT/$s")"); done
-  # (HK_GFX_WINDOWS, HK_STORAGE_WINDOWS, HK_CODEC_WINDOWS: this build has the shell's drawing, its storage host and its
-  # decoders in it; hk_tests_main.c's --gfx-windows, --storage-windows and --codec-windows modes.)
-  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c "$OPT" /MT /W3 /std:c11 /utf-8 /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DHK_GFX_WINDOWS /DHK_STORAGE_WINDOWS /DHK_CODEC_WINDOWS "${SQLITE_CL[@]}" "${WEBP_CL[@]}" \
+  # (HK_GFX_WINDOWS, HK_STORAGE_WINDOWS, HK_CODEC_WINDOWS, HK_CAMERA_WINDOWS: this build has the shell's drawing, its storage
+  # host, its decoders and its cameras in it; hk_tests_main.c's --gfx-windows, --storage-windows, --codec-windows and
+  # --camera-windows modes.)
+  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c "$OPT" /MT /W3 /std:c11 /utf-8 /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DHK_GFX_WINDOWS /DHK_STORAGE_WINDOWS /DHK_CODEC_WINDOWS /DHK_CAMERA_WINDOWS "${SQLITE_CL[@]}" "${WEBP_CL[@]}" \
     "/I$(w "$ROOT/core/third_party/zlib")" "/Fo$(w "$OUT/obj")\\" "${ALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
   "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /O1 /MT /w /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS \
     "/Fo$(w "$OUT/zobj")\\" "${ZALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
@@ -287,16 +293,18 @@ elif [ "$MODE" = win ]; then
   # And the shell's decoders for a Java app's MediaCodec (app/Megler/player/CodecHost.cpp: Media Foundation's decoder
   # transforms), likewise, with the lines that hand them to the tests (core/tests/hk_codec_windows.cpp), and its reader of
   # whole files (player/MediaHost.cpp), for the files of sound alone a Java app's MediaPlayer and SoundPool hand it; the
-  # shell's log they write to is hk_storage_windows.cpp's.
+  # shell's log they write to is hk_storage_windows.cpp's. And the shell's cameras (player/CameraHost.cpp:
+  # Windows.Media.Capture), with the lines that hand them to the tests (core/tests/hk_camera_windows.cpp).
   STORAGE_SRC=("$(w "$ROOT/app/Megler/player/StorageHost.cpp")" "$(w "$ROOT/app/Megler/shell/Strings.cpp")" "$(w "$ROOT/core/tests/hk_storage_windows.cpp")"
                "$(w "$ROOT/app/Megler/player/CodecHost.cpp")" "$(w "$ROOT/core/tests/hk_codec_windows.cpp")"
-               "$(w "$ROOT/app/Megler/player/MediaHost.cpp")")
+               "$(w "$ROOT/app/Megler/player/MediaHost.cpp")"
+               "$(w "$ROOT/app/Megler/player/CameraHost.cpp")" "$(w "$ROOT/core/tests/hk_camera_windows.cpp")")
   mkdir -p "$OUT/storageobj"
   rm -f "$OUT/storageobj/"*.obj
   INCLUDE="$INCLUDE;$(w "$SDK/Include/$SDKV/winrt");$(w "$SDK/Include/$SDKV/cppwinrt")" \
     "$VC/bin/Hostx64/x64/cl.exe" "${GFX_FLAGS[@]}" /Zc:__cplusplus /bigobj /DWINAPI_FAMILY=WINAPI_FAMILY_APP /O1 /MP "/Fo$(w "$OUT/storageobj")\\" "${STORAGE_SRC[@]}" \
     | grep -v -E '^[A-Za-z0-9_]+\.cpp$' || true
-  for obj in StorageHost Strings hk_storage_windows CodecHost hk_codec_windows MediaHost; do
+  for obj in StorageHost Strings hk_storage_windows CodecHost hk_codec_windows MediaHost CameraHost hk_camera_windows; do
     [ -f "$OUT/storageobj/$obj.obj" ] || { echo "compile failed: $obj.cpp" >&2; exit 1; }
   done
   # (MEGLER_TESTS_MAP=1: a linker map beside it, hk_tests.map, which tools/dvm-bench.sh profile reads.)
@@ -353,6 +361,9 @@ elif [ "$MODE" = win ]; then
       echo "(the streams to time the decoders by could not be made: tools/media-test-streams.py --speed needs Python and ffmpeg)"
     fi
     "$OUT/hk_tests.exe" --codec-windows "$(w "$ROOT/core/tests/app/data/assets")" "$(w "$OUT/scratch-codec")" ${SPEED[@]+"${SPEED[@]}"} || STATUS=1
+    # The shell's cameras: the PC's first camera through the core's camera code, a few pictures taken; a PC without one says so.
+    rm -rf "$OUT/scratch-camera"
+    "$OUT/hk_tests.exe" --camera-windows "$(w "$OUT/scratch-camera")" || STATUS=1
     # The Java test apps' own drawing, as `tools/build-tests.sh arm` recorded it under qemu: drawn again by the stand-in,
     # which must give the recorded pictures back pixel for pixel, and then by the shell's drawing, into
     # build/gfx-pictures/app-<app>-N.png -- the app's views as a phone's Direct2D and DirectWrite would draw them, laid
