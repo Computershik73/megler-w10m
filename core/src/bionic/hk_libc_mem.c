@@ -183,8 +183,8 @@ static void g_delete_sized(void *p, size_t n) { (void)n; hk_g_free(p); }
  * Anonymous memory mapped with no access (PROT_NONE) is address space and nothing more, as on Linux: reserved, not
  * committed, until mprotect gives some of it access (committed then, zeroed the first time); mapped again over itself
  * with no access (MAP_FIXED, PROT_NONE), what was there is given back, as Linux gives zeroed pages for it. Allocators
- * reserve that way and commit what they use: Chromium's PartitionAlloc its 2 MB super pages, the WebView's loader the
- * 130 MB its library goes into. Each was committed whole before, and Windows counts committed memory against the app's
+ * reserve that way and commit what they use: Chromium's PartitionAlloc its 2 MB super pages, a Chromium browser's linker
+ * the range its library goes into. Each was committed whole before, and Windows counts committed memory against the app's
  * limit whether it is touched or not: a WebView in Spotify ended out of memory with 1586 MB committed and 307 MB of
  * address space free.
  *

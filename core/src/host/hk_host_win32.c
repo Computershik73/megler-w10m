@@ -83,6 +83,12 @@ struct hk_section {
     HANDLE handle;
 };
 
+static volatile i32 g_views_kb;
+
+static void views_count(size_t size, int sign) { hk_atomic_add(&g_views_kb, sign * (i32)((size + 1023) >> 10)); }
+
+u32 hk_views_kb(void) { return (u32)g_views_kb; }
+
 hk_section *hk_section_create(u64 size)
 {
     hk_section *s;
@@ -115,14 +121,16 @@ void *hk_section_map(hk_section *s, u64 offset, size_t size, bool writable, void
     v = MapViewOfFile(s->handle, writable ? FILE_MAP_WRITE : FILE_MAP_READ, (DWORD)(aligned >> 32), (DWORD)aligned, size + delta);
 #endif
     if (!v) return NULL;
+    views_count(size + delta, 1);
     if (base) *base = v;
     return (u8 *)v + delta;
 }
 
 void hk_section_unmap(void *base, size_t size)
 {
-    (void)size;
-    if (base) UnmapViewOfFile(base);
+    if (!base) return;
+    UnmapViewOfFile(base);
+    views_count(size, -1);
 }
 
 void hk_section_close(hk_section *s)
@@ -1019,6 +1027,7 @@ void *hk_file_map(hk_file *f, u64 offset, size_t size, void **base, size_t *mapp
 #endif
     CloseHandle(m);                    /* the view keeps the mapping */
     if (!v) return NULL;
+    views_count(size + delta, 1);
     *base = v;
     *mapped = size + delta;
     return (u8 *)v + delta;
@@ -2339,6 +2348,28 @@ bool hk_host_address_space(u32 *free_mb, u32 *largest_free_mb, u32 *reserved_mb,
     *largest_free_mb = (u32)(largest >> 20);
     *reserved_mb = (u32)(reserved >> 20);
     *committed_mb = (u32)(committed >> 20);
+    return true;
+}
+
+bool hk_host_free_stretches(u32 *mb, int n)
+{
+    MEMORY_BASIC_INFORMATION info;
+    SYSTEM_INFO si;
+    hk_addr at, end;
+    int i, k;
+    for (i = 0; i < n; i++) mb[i] = 0;
+    GetNativeSystemInfo(&si);
+    at = (hk_addr)si.lpMinimumApplicationAddress;
+    end = (hk_addr)si.lpMaximumApplicationAddress;
+    while (at < end && VirtualQuery((LPCVOID)at, &info, sizeof(info)) == sizeof(info) && info.RegionSize) {
+        u32 size = (u32)(info.RegionSize >> 20);
+        if (info.State == MEM_FREE && n > 0 && size > mb[n - 1]) {
+            /* In its place among the largest so far. */
+            for (k = n - 1; k > 0 && mb[k - 1] < size; k--) mb[k] = mb[k - 1];
+            mb[k] = size;
+        }
+        at = (hk_addr)info.BaseAddress + info.RegionSize;
+    }
     return true;
 }
 

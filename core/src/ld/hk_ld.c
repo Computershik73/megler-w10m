@@ -1225,6 +1225,7 @@ hk_lib *hk_ld_lib_of(const void *addr)
 }
 
 void *hk_ld_lib_base(const hk_lib *lib) { return lib->base; }
+size_t hk_ld_lib_extent(const hk_lib *lib) { return lib->map_size + (lib->placed ? lib->island_size[0] : 0); }
 const char *hk_ld_lib_name(const hk_lib *lib) { return lib->name; }
 void hk_ld_get_stats(const hk_lib *lib, hk_ld_stats *out) { *out = lib->stats; }
 

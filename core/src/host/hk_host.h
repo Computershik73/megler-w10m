@@ -64,6 +64,11 @@ hk_section *hk_section_create(u64 size);
 void *hk_section_map(hk_section *s, u64 offset, size_t size, bool writable, void **base);
 void hk_section_unmap(void *base, size_t size);
 void hk_section_close(hk_section *s);
+/*
+ * The address space that views hold now, in KB: those of sections and those of files (hk_file_map), mapped and not yet
+ * given to hk_section_unmap (which unmaps both kinds). The crash report says it; the shared memory tests count by it.
+ */
+u32 hk_views_kb(void);
 
 /* What the app may use before the OS ends it, and what it uses now; 0 when unknown. */
 u64 hk_mem_limit(void);
@@ -561,6 +566,12 @@ bool hk_host_gpu_memory(void *device, u32 *budget_mb, u32 *used_mb);
  * system's included -- can be made. False where it cannot be walked.
  */
 bool hk_host_address_space(u32 *free_mb, u32 *largest_free_mb, u32 *reserved_mb, u32 *committed_mb);
+/*
+ * The `n` largest free stretches of the address space, in megabytes, largest first, 0 past the last. Two allocations of
+ * one size need two stretches of it: Chromium in a single process maps each image it decodes twice. False where the
+ * address space cannot be walked.
+ */
+bool hk_host_free_stretches(u32 *mb, int n);
 
 /* Bytes from the OS's random source. */
 void hk_random(void *buf, size_t n);

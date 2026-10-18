@@ -1828,6 +1828,13 @@ static int run_webview(void)
     if (line >= 0) say("  %s", strstr(line_at(line), "provider ok"));
     /* The WebView's own word on how it runs: in this process, its renderer not in one of its own. */
     CHECK(find_line("multiprocess=false", 0) >= 0);
+    {
+        /* Its library holds its own size of address space, not the 130 MB the WebView asks to reserve (drivers/hk_java_webview.c). */
+        unsigned mb = 0;
+        line = find_line("webview: libwebviewchromium.so loaded at ", 0);
+        CHECK(line >= 0 && sscanf(strstr(line_at(line), ", ") + 2, "%u MB of address space", &mb) == 1 && mb > 60 && mb < 100);
+        say("  the WebView's library: %u MB of address space", mb);
+    }
     /* The text field: where it is, as the page says, once the page with it is loaded again after the redirect. */
     line = wait_line("I/WebViewTest: input-at ", 0, 300);
     CHECK(line >= 0 && sscanf(strstr(line_at(line), "input-at ") + 9, "%d,%d", &x, &y) == 2);

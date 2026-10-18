@@ -61,6 +61,12 @@ struct hk_section {
     int fd;
 };
 
+static volatile i32 g_views_kb;
+
+static void views_count(size_t size, int sign) { hk_atomic_add(&g_views_kb, sign * (i32)((size + 1023) >> 10)); }
+
+u32 hk_views_kb(void) { return (u32)g_views_kb; }
+
 hk_section *hk_section_create(u64 size)
 {
     hk_section *s;
@@ -87,13 +93,16 @@ void *hk_section_map(hk_section *s, u64 offset, size_t size, bool writable, void
     if (!s || !size) return NULL;
     v = mmap(NULL, size, PROT_READ | (writable ? PROT_WRITE : 0), MAP_SHARED, s->fd, (off_t)offset);
     if (v == MAP_FAILED) return NULL;
+    views_count(size, 1);
     if (base) *base = v;
     return v;
 }
 
 void hk_section_unmap(void *base, size_t size)
 {
-    if (base && size) munmap(base, size);
+    if (!base || !size) return;
+    munmap(base, size);
+    views_count(size, -1);
 }
 
 void hk_section_close(hk_section *s)
@@ -603,6 +612,7 @@ void *hk_file_map(hk_file *f, u64 offset, size_t size, void **base, size_t *mapp
     if (!f || !size) return NULL;
     v = mmap(NULL, size + delta, PROT_READ, MAP_SHARED, f->fd, (off_t)aligned);
     if (v == MAP_FAILED) return NULL;
+    views_count(size + delta, 1);
     *base = v;
     *mapped = size + delta;
     return (u8 *)v + delta;
@@ -1483,6 +1493,12 @@ bool hk_host_address_space(u32 *free_mb, u32 *largest_free_mb, u32 *reserved_mb,
 bool hk_host_gpu_memory(void *device, u32 *budget_mb, u32 *used_mb)
 {
     (void)device; (void)budget_mb; (void)used_mb;
+    return false;
+}
+
+bool hk_host_free_stretches(u32 *mb, int n)
+{
+    (void)mb; (void)n;
     return false;
 }
 

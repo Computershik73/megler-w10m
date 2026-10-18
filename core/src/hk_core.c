@@ -33,6 +33,38 @@ static const char *fault_name(u32 code)
     }
 }
 
+/*
+ * Chromium ends an app out of memory in OnNoMemoryInternal (PartitionAlloc's, which base's TerminateBecauseOutOfMemory
+ * calls): the size it was asked for goes into a global of its library, g_oom_size, and then it traps -- bkpt, then udf,
+ * the second being where the phone's report finds the pc. The registers do not have the size by then, the global does.
+ * The WebView's build (128.0.6613.88) compiles the function to
+ *
+ *     sub sp, #8; ldr r1, [pc, #n]; str r0, [sp, #4]; add r1, pc; str r0, [r1]; add r0, sp, #4; bl Alias; bkpt; udf
+ *
+ * and the global's address is the literal plus where `add r1, pc` reads pc. Another build that compiles it otherwise is
+ * not recognised, and its report has no size.
+ */
+hk_addr hk_chromium_oom_global(hk_addr pc)
+{
+    const u16 *h = (const u16 *)pc;
+    hk_addr f, literal;
+    u32 offset;
+    if (pc < 18 || (pc & 1)) return 0;
+    if (h[0] == 0xde00 && h[-1] == 0xbe00) f = pc - 18;
+    else if (h[0] == 0xbe00 && h[1] == 0xde00) f = pc - 16;
+    else return 0;
+    h = (const u16 *)f;
+    if (h[0] != 0xb082 || (h[1] & 0xff00) != 0x4900 || h[2] != 0x9001 || h[3] != 0x4479 || h[4] != 0x6008 || h[5] != 0xa801
+        || (h[6] & 0xf800) != 0xf000 || (h[7] & 0xd000) != 0xd000)
+        return 0;
+    literal = ((f + 2 + 4) & ~(hk_addr)3) + (hk_addr)(h[1] & 0xff) * 4;
+    /* (It follows the function's end, as the compiler puts it: no further than f + 32, which the caller can check.) */
+    if (literal + 4 > f + 32) return 0;
+    memcpy(&offset, (const void *)literal, 4);
+    /* (A 32-bit offset: added as a signed one, it lands where the Thumb add lands on any width of address.) */
+    return f + 6 + 4 + (hk_addr)(intptr_t)(i32)offset;
+}
+
 static bool on_fault(hk_fault *f)
 {
     const char *lib = NULL, *sym;
@@ -80,6 +112,19 @@ static bool on_fault(hk_fault *f)
             if (reason && *reason) {
                 size_t n = strlen(report);
                 snprintf(report + n, sizeof(report) - n, "\n  MOZ_CRASH: %.300s", *reason);
+            }
+        }
+        if (lib && hk_ld_lib_of((const void *)(pc - 18)) == hk_ld_lib_of((const void *)pc)
+            && hk_ld_lib_of((const void *)(pc + 16)) == hk_ld_lib_of((const void *)pc)) {
+            /* Chromium's end out of memory: how much it was asked for, which its library's global keeps (see above). */
+            hk_addr global = hk_chromium_oom_global(pc);
+            if (global && hk_ld_lib_of((const void *)global) == hk_ld_lib_of((const void *)pc)
+                && hk_ld_lib_of((const void *)(global + 3)) == hk_ld_lib_of((const void *)pc)) {
+                u32 asked;
+                size_t n = strlen(report);
+                memcpy(&asked, (const void *)global, 4);
+                snprintf(report + n, sizeof(report) - n, "\n  Chromium ran out of memory asking for %u bytes (%u MB)", (unsigned)asked,
+                         (unsigned)(asked >> 20));
             }
         }
         if (f->kind == HK_FAULT_ACCESS && pc < 0x10000) {
@@ -158,8 +203,15 @@ static bool on_fault(hk_fault *f)
                 u32 free_mb = 0, largest = 0, reserved = 0, committed = 0;
                 if (hk_host_address_space(&free_mb, &largest, &reserved, &committed)) {
                     n = strlen(report);
-                    snprintf(report + n, sizeof(report) - n, "\n  address space: %u MB free (the largest stretch %u MB), %u MB reserved, %u MB committed",
-                             (unsigned)free_mb, (unsigned)largest, (unsigned)reserved, (unsigned)committed);
+                    u32 stretch[4];
+                    snprintf(report + n, sizeof(report) - n,
+                             "\n  address space: %u MB free (the largest stretch %u MB), %u MB reserved, %u MB committed; %u MB of it views of shared memory and files",
+                             (unsigned)free_mb, (unsigned)largest, (unsigned)reserved, (unsigned)committed, (unsigned)(hk_views_kb() >> 10));
+                    if (hk_host_free_stretches(stretch, 4)) {
+                        n = strlen(report);
+                        snprintf(report + n, sizeof(report) - n, "\n  the largest free stretches: %u, %u, %u and %u MB", (unsigned)stretch[0],
+                                 (unsigned)stretch[1], (unsigned)stretch[2], (unsigned)stretch[3]);
+                    }
                 }
             }
         }

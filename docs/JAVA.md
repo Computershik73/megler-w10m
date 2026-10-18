@@ -2536,12 +2536,16 @@ meta-data `com.android.webview.WebViewLibrary`). Its resources and files are
 added to the app's `AssetManager` as a shared library (below). Its class
 loader is a `PathClassLoader` over the APK with the APK's `lib/armeabi-v7a`
 as its native path, as Android's is for a package whose libraries are not
-extracted. `WebViewLibraryLoader` reserves 130 MB of address space, as the
-zygote does for a 32-bit process, and its two natives
-(`core/src/drivers/hk_java_webview.c`) load `libwebviewchromium.so` into it,
-the way `android_dlopen_ext` with `ANDROID_DLEXT_RESERVED_ADDRESS_HINT` does
-(`bionic/hk_libdl.c`), reading it out of the APK: 73 MB of code, its
-constructors run. Its `JNI_OnLoad` runs when Chromium's own `LibraryLoader`
+extracted. `WebViewLibraryLoader` asks for 130 MB of address space to be
+reserved, as the zygote does for a 32-bit process so that every app can load
+the library at one address with one RELRO; here there is one process and
+nothing to share, so its two natives (`core/src/drivers/hk_java_webview.c`)
+reserve nothing and load `libwebviewchromium.so` wherever its own size fits,
+reading it out of the APK: 72 MB of address space with the code the patcher
+adds, its constructors run (the test checks the size). It went into the 130
+MB at first, as `android_dlopen_ext` with
+`ANDROID_DLEXT_RESERVED_ADDRESS_HINT` does, and the other 58 MB stayed
+reserved for nothing. Its `JNI_OnLoad` runs when Chromium's own `LibraryLoader`
 calls `System.loadLibrary("webviewchromium")`, as on Android: the runtime now
 runs a library's `JNI_OnLoad` the first time Java loads it even when native
 code or the framework loaded it before (`dvm/hk_dvm_jvm.c`). Then
@@ -2574,8 +2578,12 @@ software, as it does on Android into a `Bitmap`'s canvas:
 canvas says it is (Compose draws an `AndroidView` into one), and Chromium
 draws such a canvas through the platform's draw functor, whose function table
 is null here: the overlay's `WebView.onDraw` gives it the WebView's software
-drawing through a bitmap of the view's size instead (Spotify's WebView ended
-the app making its functor). The tables of
+drawing through a bitmap instead (Spotify's WebView ended the app making its
+functor). The bitmap is what the window shows of the view, as the functor
+draws on Android: a WebView sized to its page is many screens tall, and a
+bitmap of all of it was as big (a check: a WebView 20000 rows tall is drawn
+through 744); a view out of the window gets at most a screen's worth from its
+scroll position. The tables of
 functions the platform's `libwebviewchromium_plat_support.so` gives a WebView
 (`GraphicsUtils.nativeGetDrawSWFunctionTable`, the GL functor's) are null
 (`hk_java_webview.c`; the library is a system library's name to the linker,
@@ -2686,6 +2694,35 @@ reads a pixel back (`getImageData`), and says whether the page has WebGL and
 what a pixel it cleared green reads: under qemu `webgl=no`; on a phone,
 with buffers, it should read `webgl=yes:0.255.0.255`, and the log name the
 first buffer (`AHardwareBuffer_allocate: the first buffer: 300x150`).
+
+**Out of memory.** Chromium ends an app it cannot get memory for in
+PartitionAlloc's `OnNoMemoryInternal`: the size it asked for goes into a
+global of its library, and it traps (bkpt, then udf, where the phone's report
+finds the pc). The crash report recognises that function's code at the pc
+and reads the global: "Chromium ran out of memory asking for N bytes"
+(`hk_core.c`, `hk_chromium_oom_global`). Checked on the function's bytes in
+the core's tests, and under qemu by calling the library's own
+`TerminateBecauseOutOfMemory` in a child process (test_chromium_oom_end,
+with the Android root that carries the WebView). The report also gives the
+address space views of shared memory and files hold, and the four largest
+free stretches of it.
+
+Spotify's WebView (packages 252 and 254) ended so, r4 holding 126,337,600,
+which looks like the size: 4 bytes a pixel of an image. The stack has
+Skia's cache of decoded images (`SkBitmapCache::Alloc`, its key tagged
+'bmap'): a page drawn in software, as every WebView here is drawn, decodes
+each image it draws at its full size, into Chromium's discardable memory. A
+region of the image's size and a page more is made and mapped twice, on two
+of Chromium's threads (the side that hands discardable memory out and the
+side that uses it, both in this one process; measured under qemu with a
+2048x2048 image: two views of 16 MB and 4 KB), and the descriptor's own view
+made a third, while the largest free stretch of the 2 GB was 135 MB. Now a
+descriptor keeps no view of its own (docs/ARCHITECTURE.md, the mmap row),
+and the WebView's library no longer sits in a 130 MB reservation (above);
+an image that big still needs two stretches its size. One view at one
+address for both of Chromium's mappings was tried: Chromium counts its
+mappings by address, and ended on its own check of that
+(`shared_memory_tracker.cc(68)`, "Check failed: it != usages_.end()").
 
 **What is not there.** Drawing on the graphics processor (the GL functor);
 `AImageReader` and the rest of the imports the layer does not provide (video,

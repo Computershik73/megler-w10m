@@ -74,6 +74,8 @@ void *hk_ld_sym_deep(hk_lib *lib, const char *name, hk_lib **found_in);
 hk_lib *hk_ld_lib_of(const void *addr);
 void *hk_ld_lib_base(const hk_lib *lib);
 const char *hk_ld_lib_name(const hk_lib *lib);
+/* The address space a library holds: its image and the code the patcher adds beside it. */
+size_t hk_ld_lib_extent(const hk_lib *lib);
 /* The nearest exported symbol at or below an address, for crash reports and dladdr. */
 const char *hk_ld_symbol_at(const void *addr, const char **lib_name, const void **sym_addr, const void **lib_base);
 

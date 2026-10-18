@@ -2848,23 +2848,37 @@ public class WebView extends AbsoluteLayout
 
     private Bitmap mMeglerBitmap;
     private Canvas mMeglerCanvas;
+    private final Rect mMeglerVisible = new Rect();
 
+    // megler-w10m: only the part of the view that can be seen in the window, as a draw functor draws it on Android. A
+    // RenderNode is the size of its view, and a WebView sized to its page is many screens tall: a bitmap of all of it
+    // was as big (1440 by 20000 is 115 MB). Where no window says what of the view it shows (a view not in one), at most
+    // a screen's worth from the scroll position is drawn.
     private void meglerDrawThroughBitmap(Canvas canvas) {
-        int w = getWidth(), h = getHeight();
-        if (w <= 0 || h <= 0) return;
+        int sx = getScrollX(), sy = getScrollY();
+        Rect area = mMeglerVisible;
+        if (getWidth() <= 0 || getHeight() <= 0) return;
+        if (!isAttachedToWindow() || !getLocalVisibleRect(area)) {
+            android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+            area.set(sx, sy, sx + Math.min(getWidth(), dm.widthPixels), sy + Math.min(getHeight(), dm.heightPixels));
+        }
+        if (!area.intersect(sx, sy, sx + getWidth(), sy + getHeight())) return;
+        int w = area.width(), h = area.height();
         if (mMeglerBitmap == null || mMeglerBitmap.getWidth() != w || mMeglerBitmap.getHeight() != h) {
+            android.util.Log.i("WebView", "drawn on a hardware-accelerated canvas through a bitmap of " + w + "x" + h + ", of a view of "
+                    + getWidth() + "x" + getHeight());
             mMeglerBitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
             mMeglerCanvas = new Canvas(mMeglerBitmap);
         } else {
             mMeglerCanvas.drawColor(0, android.graphics.PorterDuff.Mode.CLEAR);
         }
-        // What View.draw did to the canvas it was given: the view's content scrolled by its scroll position.
-        int sx = getScrollX(), sy = getScrollY();
+        // What View.draw did to the canvas it was given -- the view's content scrolled by its scroll position -- with the
+        // visible part's corner at the bitmap's.
         int save = mMeglerCanvas.save();
-        mMeglerCanvas.translate(-sx, -sy);
+        mMeglerCanvas.translate(-area.left, -area.top);
         mProvider.getViewDelegate().onDraw(mMeglerCanvas);
         mMeglerCanvas.restoreToCount(save);
-        canvas.drawBitmap(mMeglerBitmap, sx, sy, null);
+        canvas.drawBitmap(mMeglerBitmap, area.left, area.top, null);
     }
 
     @Override

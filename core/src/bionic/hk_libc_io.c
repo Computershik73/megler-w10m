@@ -475,13 +475,15 @@ typedef struct gobj {
     int shm_prot;
     int shm_seals;                 /* memfd's F_ADD_SEALS */
     /*
-     * Its pages: a section of the host's (hk_section), of which `mem` is this descriptor's own view (`view_base`,
-     * `view_size`) and every mmap of it another (hk_fd_shm_map), all the same memory, as Linux's mappings of an ashmem
-     * region or a memfd are. `capacity` is what the section holds; NULL while the size is 0.
+     * Its pages: a section of the host's (hk_section), of which every mmap is a view (hk_fd_shm_map), all the same memory,
+     * as Linux's mappings of an ashmem region or a memfd are. `capacity` is what the section holds; NULL while the size is
+     * 0. The descriptor keeps no view of its own: read and write map what they copy for as long as they copy it
+     * (shm_copy). A view of its own took the region's size in address space once more while the descriptor was open:
+     * Chromium in a single process maps each image it decodes twice, so that made three stretches of its size, and
+     * Spotify's WebView ended out of memory on one of 126 MB with 135 MB the largest stretch free.
      */
     hk_section *section;
-    void *view_base;
-    size_t view_size, capacity;
+    size_t capacity;
 } gobj;
 
 #define G_O_ACCMODE 3
@@ -564,12 +566,8 @@ static void obj_destroy(gobj *o)
     if (o->file) hk_file_close(o->file);
     if (o->type == OBJ_EXT && o->ops && o->ops->close) o->ops->close(o->ext);
     if (o->type == OBJ_LOG && o->line_len) hk_log(o->log_level, "%.*s", (int)o->line_len, o->line);
-    if (o->section) {
-        /* Shared memory: this descriptor's view goes; the app's own views keep the pages until they are unmapped. */
-        hk_section_unmap(o->view_base, o->view_size);
-        hk_section_close(o->section);
-        o->mem = NULL;
-    }
+    /* Shared memory: the app's own views keep the pages until they are unmapped. */
+    if (o->section) hk_section_close(o->section);
     free(o->mem);
     free(o->path);
     free(o->items);
@@ -866,6 +864,8 @@ void hk_fd_unlock(void) { hk_lock_release(&g_io_lock); }
 void hk_fd_notify_locked(void) { hk_cond_broadcast(&g_io_cond); }
 int hk_fd_wait_locked(u64 timeout_ns) { return io_wait(timeout_ns); }
 
+static bool shm_copy(gobj *o, u64 at, void *buf, size_t n, bool write);
+
 static i32 obj_read(gobj *o, void *buf, u32 n, bool positioned, u64 offset)
 {
     int err = 0;
@@ -879,7 +879,12 @@ static i32 obj_read(gobj *o, void *buf, u32 n, bool positioned, u64 offset)
         u64 at = positioned ? offset : o->pos;
         u32 left = at < o->mem_size ? (u32)(o->mem_size - at) : 0;
         if (n > left) n = left;
-        memcpy(buf, o->mem + at, n);
+        if (!o->shm) {
+            memcpy(buf, o->mem + at, n);
+        } else if (!shm_copy(o, at, buf, n, false)) {
+            hk_set_errno(GE_NOMEM);
+            return -1;
+        }
         if (!positioned) o->pos += n;
         return (i32)n;
     }
@@ -990,7 +995,10 @@ static i32 obj_write(gobj *o, const void *buf, u32 n, bool positioned, u64 offse
         }
         left = at < o->mem_size ? (u32)(o->mem_size - at) : 0;
         if (n > left) n = left;
-        memcpy(o->mem + at, buf, n);
+        if (!shm_copy(o, at, (void *)buf, n, true)) {
+            hk_set_errno(GE_NOMEM);
+            return -1;
+        }
         if (!positioned) o->pos += n;
         return (i32)n;
     }
@@ -1204,19 +1212,47 @@ static i32 g_lseek(int fd, i32 offset, int whence)
 static i64 g_lseek64(int fd, i64 offset, int whence) { return hk_fd_seek(fd, offset, whence); }
 
 /*
+ * `n` bytes of a section from `at`, copied into `buf` or out of it (write), or zeroed (write, `buf` NULL): through a view
+ * of just those pages, made for the copy and unmapped after it. False when no view could be made.
+ */
+static bool section_copy(hk_section *s, u64 at, void *buf, size_t n, bool write)
+{
+    u64 page = at & ~(u64)(HK_PAGE - 1);
+    size_t delta = (size_t)(at - page);
+    void *base = NULL;
+    u8 *v;
+    if (!n) return true;
+    v = (u8 *)hk_section_map(s, page, delta + n, write, &base);
+    if (!v) return false;
+    if (!write) memcpy(buf, v + delta, n);
+    else if (buf) memcpy(v + delta, buf, n);
+    else memset(v + delta, 0, n);
+    hk_section_unmap(base, (size_t)(v - (u8 *)base) + delta + n);
+    return true;
+}
+
+/* Shared memory's bytes for read and write (see the struct). */
+static bool shm_copy(gobj *o, u64 at, void *buf, size_t n, bool write)
+{
+    return !n || (o->section && section_copy(o->section, at, buf, n, write));
+}
+
+/*
  * Shared memory's new size: the bytes past the old end are zero. Within what its section holds that is only a number;
- * beyond it a new section is made and what there was copied in. Views the app mapped before keep the old pages, which
- * is where Linux too leaves a mapping of a region that grows past it (nothing here maps a region before sizing it).
+ * beyond it a new section is made and what there was copied in, both mapped for the copy only. Views the app mapped
+ * before keep the old pages, which is where Linux too leaves a mapping of a region that grows past it (nothing here maps
+ * a region before sizing it).
  */
 static bool shm_resize(gobj *o, size_t size)
 {
     hk_section *s;
-    void *base = NULL;
-    u8 *view;
     size_t capacity = HK_ALIGN_UP(size, HK_PAGE);
     if (size <= o->capacity && o->section) {
-        if (size > o->mem_size) memset(o->mem + o->mem_size, 0, size - o->mem_size);
-        else memset(o->mem + size, 0, o->mem_size - size);
+        size_t lo = size < o->mem_size ? size : o->mem_size, hi = size < o->mem_size ? o->mem_size : size;
+        if (!section_copy(o->section, lo, NULL, hi - lo, true)) {
+            hk_set_errno(GE_NOMEM);
+            return false;
+        }
         o->mem_size = size;
         return true;
     }
@@ -1225,23 +1261,26 @@ static bool shm_resize(gobj *o, size_t size)
         return true;
     }
     s = hk_section_create(capacity);
-    view = s ? (u8 *)hk_section_map(s, 0, capacity, true, &base) : NULL;
-    if (!view) {
-        hk_section_close(s);
+    if (!s) {
         hk_set_errno(GE_NOMEM);
         return false;
     }
-    if (o->mem && o->mem_size) memcpy(view, o->mem, o->mem_size < size ? o->mem_size : size);
-    if (o->section) {
-        hk_section_unmap(o->view_base, o->view_size);
-        hk_section_close(o->section);
-    } else {
-        free(o->mem);
+    if (o->section && o->mem_size) {
+        size_t keep = o->mem_size < size ? o->mem_size : size;
+        void *base = NULL;
+        u8 *from = (u8 *)hk_section_map(o->section, 0, keep, false, &base);
+        bool copied = from && section_copy(s, 0, from, keep, true);
+        if (from) hk_section_unmap(base, (size_t)(from - (u8 *)base) + keep);
+        if (!copied) {
+            hk_section_close(s);
+            hk_set_errno(GE_NOMEM);
+            return false;
+        }
     }
+    if (o->section) hk_section_close(o->section);
+    free(o->mem);
+    o->mem = NULL;
     o->section = s;
-    o->mem = view;
-    o->view_base = base;
-    o->view_size = capacity + (size_t)(view - (u8 *)base);
     o->capacity = capacity;
     o->mem_size = size;
     return true;

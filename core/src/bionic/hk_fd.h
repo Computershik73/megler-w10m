@@ -49,10 +49,9 @@ void *hk_fd_shm_map(int fd, u64 offset, size_t len, bool *writable, void **base,
 int hk_fd_open_host(const char *host_path, int host_flags);
 int hk_fd_eventfd(unsigned initial, int flags);
 /*
- * Shared memory as a descriptor (ASharedMemory_create, memfd_create): `size` zeroed bytes of the layer's own, read and
- * written like a file and mapped by mmap. A mapping is a copy, as every file mapping here is: what a MAP_SHARED writable
- * mapping holds is written back at msync, at munmap and at the app's end, and a mapping made after that sees it; two
- * mappings alive at once do not see each other's writes. -1 with errno on failure.
+ * Shared memory as a descriptor (ASharedMemory_create, memfd_create): `size` zeroed bytes of a section of the host's, read
+ * and written like a file and mapped by mmap (hk_fd_shm_map), every mapping a view of the same pages. The descriptor holds
+ * no view of its own: read and write map what they copy for the copy. -1 with errno on failure.
  */
 int hk_fd_shm_create(const char *name, u64 size);
 /* Its protection (ASharedMemory_setProt): from then on a mapping may be no more than that (G_PROT_* bits). 0, or -1 with errno. */

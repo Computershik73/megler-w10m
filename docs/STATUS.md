@@ -477,9 +477,13 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   same, the WebView started in 0.8 s, Chromium's GPU thread on ANGLE; VK mp3
   mod and Kate show VK ID's "not a robot" sheet in their WebViews, but the
   check in it did not load ("something went wrong") while its canvases had
-  no hardware buffers; those are there since (`ndk/hk_ahb.c`), as is the
-  WebView on a `RenderNode`'s canvas that ended Spotify; neither tried on a
-  phone yet.
+  no hardware buffers; those are there since (`ndk/hk_ahb.c`, with fence
+  syncs), as is the WebView on a `RenderNode`'s canvas. Spotify's WebView
+  then (packages 252 and 254) ended out of memory on an image of 126 MB that
+  Chromium decodes and maps twice, in a 2 GB address space whose largest
+  free stretch was 135 MB (docs/JAVA.md, "Out of memory"); the layer's
+  changes for it (no shared memory view of the descriptor's own, the
+  WebView's library at its own size) are not yet tried on a phone.
   **RenderNode and Picture** (2026-10-18; docs/JAVA.md, "Drawing"): display
   lists the core records and draws again with what each node has when it is
   drawn, as on Android, where each node had been a bitmap of its size, and
@@ -487,7 +491,8 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   1650 x 2560. Under qemu (the data app's `render-node` steps) nodes are
   drawn as their bitmaps were, pixel for pixel, children moved and made
   translucent without the parent recorded again, and 200 nodes of
-  1440 x 2560 take 110 KB. Not tried on a phone.
+  1440 x 2560 take 110 KB. On the phone (package 256) Spotify plays a track
+  and runs on, but its pause button is drawn as a white circle.
   Not there: garbage collection (an app that animates lasts minutes); sound
   from Java; a `SurfaceView` drawn by native code; method
   handles; other apps (the
