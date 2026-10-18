@@ -81,6 +81,7 @@ typedef unsigned EGLBoolean, EGLenum;
 #define EGL_DEVICE_EXT 0x322C
 #define EGL_D3D11_DEVICE_ANGLE 0x33A1
 #define EGL_D3D_TEXTURE_ANGLE 0x33A3
+#define EGL_DXGI_KEYED_MUTEX_ANGLE 0x33A2
 
 #define GL_VENDOR 0x1F00
 #define GL_RENDERER 0x1F01
@@ -384,6 +385,21 @@ static surface *window_surface(EGLSurface h)
 /* The surface of EGL's that a window's own stands for now, and its size. */
 static EGLSurface window_real(surface *s, int *width, int *height) { return (EGLSurface)s->window->ops->egl_handle(s->native, width, height); }
 
+/*
+ * An EGL call of the app's that EGL refused: said in the log, the first ten of each kind, with the error -- which stays the
+ * app's to read with eglGetError, as if nothing had asked first.
+ */
+static void refused(const char *what, volatile i32 *said)
+{
+    typedef EGLint (*fn_error)(void);
+    fn_error err = A(fn_error, "eglGetError");
+    EGLint e = err ? err() : 0;
+    i32 n;
+    if (e && e != EGL_SUCCESS) g_error = e;
+    n = hk_atomic_add(said, 1);
+    if (n <= 10) hk_warn("egl: %s was refused (EGL error 0x%x)%s", what, (unsigned)e, n == 10 ? "; the next of these are not said" : "");
+}
+
 /* What EGL itself is to be given for a surface the app names. */
 static EGLSurface real_of(EGLSurface h)
 {
@@ -535,6 +551,56 @@ static int surface_configs(EGLDisplay d, EGLConfig wanted, EGLConfig *out, int m
     return count;
 }
 
+/* ------------------------------------------------------- pbuffers' keyed mutexes
+ *
+ * ANGLE, as gecko-w10m builds it (ANGLE_ENABLE_KEYEDMUTEX), gives every pbuffer it can share a texture made with a DXGI keyed
+ * mutex (D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX), and never acquires it itself: that is the user's to do, as Firefox does
+ * around its drawing (eglQuerySurfacePointerANGLE, EGL_DXGI_KEYED_MUTEX_ANGLE). Direct3D drops whatever a device does with such
+ * a texture while it does not hold its mutex -- drawing, clearing, reading, copying: all of an app's frames were nothing, and
+ * so was every copy the shell made of them (docs/ARCHITECTURE.md, "OpenGL ES from an app's Java"). An Android app's own
+ * pbuffer is simply its own; so here ANGLE's device holds each pbuffer's mutex from the moment it is made, and lets go of it
+ * only while the shell copies a frame out of it (drivers/hk_java_gl.c). With key 0 throughout: whoever has it next takes it.
+ */
+bool hk_egl_keyed_mutex(void *mutex, bool acquire)
+{
+    typedef unsigned (*fn_keyed)(void *, int);
+    if (!mutex) return false;
+    /* (The tests' stand-in for ANGLE has mutexes of its own: the seam is its "function" by this name.) */
+    if (g_provider) {
+        fn_keyed f = (fn_keyed)g_provider("meglerKeyedMutexANGLE");
+        return f && f(mutex, acquire ? 1 : 0);
+    }
+    return hk_host_keyed_mutex(mutex, acquire, acquire ? 1000 : 0);
+}
+
+void *hk_egl_surface_mutex(void *d, void *surface)
+{
+    typedef EGLBoolean (*fn_pointer)(EGLDisplay, EGLSurface, EGLint, void **);
+    fn_pointer query = A(fn_pointer, "eglQuerySurfacePointerANGLE");
+    void *mutex = NULL;
+    if (!query || !surface || !query(d, surface, EGL_DXGI_KEYED_MUTEX_ANGLE, &mutex)) return NULL;
+    return mutex;
+}
+
+static EGLSurface g_eglCreatePbufferSurface(EGLDisplay d, EGLConfig config, const EGLint *attribs)
+{
+    static volatile i32 said, refused_mutex, refused_made;
+    fn_pbuffer real = A(fn_pbuffer, "eglCreatePbufferSurface");
+    EGLSurface h = real ? real(d, config, attribs) : NULL;
+    void *mutex;
+    if (!h) {
+        refused("eglCreatePbufferSurface", &refused_made);
+        return NULL;
+    }
+    mutex = hk_egl_surface_mutex(d, h);
+    if (!mutex) return h;
+    if (!hk_atomic_xchg(&said, 1))
+        hk_info("egl: ANGLE shares its pbuffers' textures with a keyed mutex: each is held by ANGLE's device from its making, else what is drawn in it is dropped");
+    if (!hk_egl_keyed_mutex(mutex, true) && hk_atomic_add(&refused_mutex, 1) <= 10)
+        hk_warn("egl: a new pbuffer's keyed mutex could not be acquired: what is drawn in it will be dropped");
+    return h;
+}
+
 /*
  * Contexts are made without a configuration where ANGLE allows it, so a
  * context goes with whatever configuration its surface ended up with.
@@ -542,7 +608,9 @@ static int surface_configs(EGLDisplay d, EGLConfig wanted, EGLConfig *out, int m
 static EGLContext g_eglCreateContext(EGLDisplay d, EGLConfig config, EGLContext share, const EGLint *attribs)
 {
     static int no_config = -1;
+    static volatile i32 said;
     fn_create_context real = A(fn_create_context, "eglCreateContext");
+    EGLContext made;
     hk_trace("eglCreateContext(share %p)", (void *)share);
     if (!real) return NULL;
     if (no_config < 0) {
@@ -550,7 +618,9 @@ static EGLContext g_eglCreateContext(EGLDisplay d, EGLConfig config, EGLContext 
         const char *ext = qs ? qs(d, EGL_EXTENSIONS) : NULL;
         no_config = ext && strstr(ext, "EGL_KHR_no_config_context") ? 1 : 0;
     }
-    return real(d, no_config ? NULL : config, share, attribs);
+    made = real(d, no_config ? NULL : config, share, attribs);
+    if (!made) refused("eglCreateContext", &said);
+    return made;
 }
 
 /* A free entry, taken (its handle set to something not null until the caller fills it); NULL when all are in use. */
@@ -601,6 +671,7 @@ static EGLSurface window_surface_create(EGLDisplay d, EGLConfig config, hk_nwind
     native = window->ops->egl_create(window, candidates, count);
     if (!native) {
         free_entry(s);
+        hk_warn("egl: no window surface on a view's window (EGL_BAD_ALLOC to the app)");
         g_error = EGL_BAD_ALLOC;
         return NULL;
     }
@@ -661,11 +732,10 @@ static EGLSurface g_eglCreateWindowSurface(EGLDisplay d, EGLConfig config, hk_nw
         }
         if (!h) {
             /* No shell behind us (the tests), or its texture was refused: an off-screen buffer keeps the app running. */
-            fn_pbuffer pb = A(fn_pbuffer, "eglCreatePbufferSurface");
             EGLint size[] = { EGL_WIDTH, 0, EGL_HEIGHT, 0, EGL_NONE };
             size[1] = width;
             size[3] = height;
-            h = pb ? pb(d, config, size) : NULL;
+            h = g_eglCreatePbufferSurface(d, config, size);
         }
         if (!h) {
             free_entry(s);
@@ -742,6 +812,7 @@ static EGLBoolean g_eglQuerySurface(EGLDisplay d, EGLSurface handle, EGLint attr
  */
 static EGLBoolean g_eglMakeCurrent(EGLDisplay d, EGLSurface draw, EGLSurface read, EGLContext ctx)
 {
+    static volatile i32 said;
     fn_make_current real = A(fn_make_current, "eglMakeCurrent");
     surface *wd = window_surface(draw), *wr = window_surface(read);
     EGLBoolean ok;
@@ -750,6 +821,8 @@ static EGLBoolean g_eglMakeCurrent(EGLDisplay d, EGLSurface draw, EGLSurface rea
     if (ok) {
         t_draw = ctx ? wd : NULL;
         t_read = ctx ? wr : NULL;
+    } else {
+        refused(wd || wr ? "eglMakeCurrent of a window surface on a view's window" : "eglMakeCurrent", &said);
     }
     return ok;
 }
@@ -780,6 +853,8 @@ static EGLBoolean window_swap(EGLDisplay d, surface *w)
     bool shown;
     if (t_draw != w) {
         /* As EGL has it: the surface swapped must be the calling thread's current one. */
+        static volatile i32 said;
+        if (hk_atomic_add(&said, 1) <= 10) hk_warn("egl: eglSwapBuffers of a window surface on a view's window that is not current on this thread: EGL_BAD_SURFACE");
         g_error = EGL_BAD_SURFACE;
         return 0;
     }
@@ -794,6 +869,9 @@ static EGLBoolean window_swap(EGLDisplay d, surface *w)
         if (!make || !context || !make(d, after, read, context())) hk_warn("egl: the window's surface of its new size could not be made current");
     }
     if (!shown) {
+        static volatile i32 said;
+        if (hk_atomic_add(&said, 1) <= 10)
+            hk_info("egl: eglSwapBuffers of a window surface whose view's surface has gone: EGL_BAD_NATIVE_WINDOW, as on Android (the app is to make a new one)");
         g_error = EGL_BAD_NATIVE_WINDOW;
         return 0;
     }
@@ -1299,6 +1377,7 @@ static const hk_sym g_egl_overrides[] = {
     HK_WRAP("eglChooseConfig", g_eglChooseConfig),
     HK_WRAP("eglGetConfigAttrib", g_eglGetConfigAttrib),
     HK_WRAP("eglCreateWindowSurface", g_eglCreateWindowSurface),
+    HK_WRAP("eglCreatePbufferSurface", g_eglCreatePbufferSurface),
     HK_WRAP("eglCreateContext", g_eglCreateContext),
     HK_WRAP("eglDestroySurface", g_eglDestroySurface),
     HK_WRAP("eglQuerySurface", g_eglQuerySurface),

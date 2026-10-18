@@ -1151,6 +1151,7 @@ static void main_thread(void *arg)
         hk_java_gfx_set_host(&J.config->gfx);
         hk_java_gfx_set_present(present, NULL);
         hk_java_gfx_set_present_canvas(present_canvas, NULL);
+        hk_java_gfx_set_present_probe(hk_java_gl_views_probe_due, hk_java_gl_views_probe);
         /* What C keeps of the app's objects across calls: the collector keeps it too. */
         hk_dvm_add_root(&J.clipboard);
         hk_dvm_register(hk_java_gfx_natives());

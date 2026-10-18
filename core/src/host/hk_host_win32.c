@@ -2400,6 +2400,43 @@ bool hk_host_gpu_memory(void *device, u32 *budget_mb, u32 *used_mb)
     return ok;
 }
 
+/* ID3D11Multithread (d3d11_4.h, Windows 10 1703; the same id as ID3D10Multithread), declared here: only its lock is needed. */
+static const GUID g_iid_d3d11_device = { 0xdb6f6ddb, 0xac77, 0x4e88, { 0x82, 0x53, 0x81, 0x9d, 0xf9, 0xbb, 0xf1, 0x40 } };
+static const GUID g_iid_multithread = { 0x9b7e4e00, 0x342c, 0x4106, { 0xa1, 0x9f, 0x4f, 0x27, 0x04, 0xf6, 0x89, 0xf0 } };
+typedef struct mt_vtbl {
+    HRESULT(STDMETHODCALLTYPE *QueryInterface)(void *, REFIID, void **);
+    ULONG(STDMETHODCALLTYPE *AddRef)(void *);
+    ULONG(STDMETHODCALLTYPE *Release)(void *);
+    void(STDMETHODCALLTYPE *Enter)(void *);
+    void(STDMETHODCALLTYPE *Leave)(void *);
+    BOOL(STDMETHODCALLTYPE *SetMultithreadProtected)(void *, BOOL);
+    BOOL(STDMETHODCALLTYPE *GetMultithreadProtected)(void *);
+} mt_vtbl;
+typedef struct mt_object {
+    const mt_vtbl *v;
+} mt_object;
+
+bool hk_host_keyed_mutex(void *mutex, bool acquire, u32 ms)
+{
+    IDXGIKeyedMutex *km = (IDXGIKeyedMutex *)mutex;
+    ID3D11Device *device = NULL;
+    mt_object *mt = NULL;
+    HRESULT hr;
+    if (!km) return false;
+    if (SUCCEEDED(IDXGIKeyedMutex_GetDevice(km, &g_iid_d3d11_device, (void **)&device)) && device &&
+        SUCCEEDED(ID3D11Device_QueryInterface(device, &g_iid_multithread, (void **)&mt)) && mt) {
+        if (!mt->v->GetMultithreadProtected(mt)) mt->v->SetMultithreadProtected(mt, TRUE);
+        mt->v->Enter(mt);
+    }
+    hr = acquire ? IDXGIKeyedMutex_AcquireSync(km, 0, ms) : IDXGIKeyedMutex_ReleaseSync(km, 0);
+    if (mt) {
+        mt->v->Leave(mt);
+        mt->v->Release(mt);
+    }
+    if (device) ID3D11Device_Release(device);
+    return hr == S_OK;
+}
+
 void hk_random(void *buf, size_t n)
 {
     if (BCryptGenRandom(NULL, (PUCHAR)buf, (ULONG)n, BCRYPT_USE_SYSTEM_PREFERRED_RNG) != 0) {

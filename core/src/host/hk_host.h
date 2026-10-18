@@ -559,6 +559,13 @@ u32 hk_host_d3d11_removed_reason(void *device);
 /* How much graphics memory the process may use and does (megabytes), as the adapter of a Direct3D 11 device says; false where it cannot be asked. */
 bool hk_host_gpu_memory(void *device, u32 *budget_mb, u32 *used_mb);
 /*
+ * A DXGI keyed mutex (an IDXGIKeyedMutex *: what ANGLE shares its pbuffers' textures with) acquired, waiting up to `ms`, or
+ * released, with key 0. Its device is made safe for use from several threads first (from then on its Direct3D calls take a
+ * lock, which these take too: the app's other threads may be drawing on that device). False when it could not be acquired in
+ * time, and where there is no DXGI.
+ */
+bool hk_host_keyed_mutex(void *mutex, bool acquire, u32 ms);
+/*
  * The process's address space, in megabytes: how much is free, the largest
  * free stretch, and how much is reserved without being committed. A 32-bit
  * process has two gigabytes, and it is the largest free stretch, not the

@@ -17,6 +17,7 @@
 
 #include "../bionic/hk_bionic.h"
 #include "../dvm/hk_dvm_internal.h"
+#include "../hk_core.h"
 #include "../host/hk_host.h"
 #include "../ndk/hk_egl.h"
 #include "../run/hk_run.h"
@@ -537,7 +538,10 @@ typedef struct gl_surf {
     size_t pixels_size;
     u64 due;                           /* when the next swap may return */
     void *share;                       /* its texture's DXGI shared handle, asked for at its first swap; NULL: none */
+    void *mutex;                       /* the texture's keyed mutex, which ANGLE's device holds but while the shell copies a frame */
     bool share_asked;
+    u32 swaps;
+    u64 traced_at;                     /* trace-surfaces: when its frame was last looked at */
 } gl_surf;
 
 static void layer_attach(struct layer *l);
@@ -622,6 +626,10 @@ typedef struct layer {
     u8 *rows;                          /* for each row of [y, y + h): a hole there, covered by the views, or both */
     size_t rows_size;
     bool rows_valid;
+    u64 placed_at;                     /* when the view last said a new place */
+    int places_said;                   /* lines the log has had of its places */
+    u8 views_alpha[16];                /* trace-surfaces: the views' alpha over it, a 4 x 4 grid, rows from the top */
+    u64 views_at;                      /* when that was looked at; 0: never */
 } layer;
 
 /* The window's lock: the views' picture, the composed one and the layers, and every call of the shell's present from here. */
@@ -638,7 +646,22 @@ static struct {
     bool roots;
     hk_java_gl_stats stats, window;    /* in all, and as they stood at the start of the log's window */
     u64 first_swap, window_started;
+    u64 views_looked;                  /* trace-surfaces: when the views' picture was last looked at */
 } C;
+
+/*
+ * The flag trace-surfaces: every three seconds, each EGL window surface's frame read back just before it is handed over (its
+ * centre and a 4 x 4 grid of its pixels), with where its view said it is; and the views' picture at the same grid over it --
+ * its alpha, 0 where the hole lets the frame through -- as the views were last shown. What tells a black frame from a frame
+ * the views hide. (The views' picture is read back for it where the shell draws it: a read-back every three seconds.)
+ */
+static bool trace_surfaces(void)
+{
+    static volatile i32 state;         /* 0 not asked yet, 1 off, 2 on */
+    if (!state) hk_atomic_xchg(&state, hk_flag("trace-surfaces") ? 2 : 1);
+    return state == 2;
+}
+#define TRACE_EVERY 3000000000ull
 
 /* The shell's drawing, which composes the window where it can (hk_java_gl_set_shell). */
 static const megler_gfx_host *g_shell;
@@ -669,7 +692,9 @@ static void use_window(void)
 {
     if (C.used || C.width <= 0 || C.height <= 0) return;
     C.used = true;
-    if (g_shell && g_shell->gl_frame && g_shell->gl_place && g_shell->present && E.share) {
+    /* (The flag gl-compose-here: the core composes, as where the shell cannot -- to tell the shell's composing from the rest on a phone.) */
+    if (hk_flag("gl-compose-here")) hk_warn("java: the flag gl-compose-here: the window with OpenGL ES views is composed here, the frames read back");
+    else if (g_shell && g_shell->gl_frame && g_shell->gl_place && g_shell->present && E.share) {
         C.shell = 1;
         hk_info("java: the app draws with EGL on a view: from now on its window is composed by the shell, the views over OpenGL's frames, "
                 "on the graphics processor (the surfaces' textures shared, nothing read back)");
@@ -840,6 +865,12 @@ static void take_place(layer *l, i32 *x0, i32 *y0, i32 *x1, i32 *y1)
     l->w = l->pw;
     l->h = l->ph;
     l->placed = true;
+    l->placed_at = hk_time_monotonic_ns();
+    if (l->places_said < 6) {
+        l->places_said++;
+        hk_info("java: OpenGL layer %d (%s) is at %d,%d %dx%d in the window: its frames go there%s", layer_index(l), hk_dvm_class_name(l->view), (int)l->x,
+                (int)l->y, (int)l->w, (int)l->h, l->places_said == 6 ? " (its next places are not said)" : "");
+    }
     /* (Made where the shell composes too: should it stop, the window is composed here with them.) */
     if (l->rows_size < (size_t)l->h) {
         free(l->rows);
@@ -855,6 +886,36 @@ static void take_place(layer *l, i32 *x0, i32 *y0, i32 *x1, i32 *y1)
     *y0 = min_i(*y0, l->y);
     *x1 = max_i(*x1, l->x + l->w);
     *y1 = max_i(*y1, l->y + l->h);
+}
+
+/* A grid point of a rectangle: column i, row j of four, rows from the top. */
+static i32 grid_x(i32 x, i32 w, int i) { return x + (2 * i + 1) * w / 8; }
+static i32 grid_y(i32 y, i32 h, int j) { return y + (2 * j + 1) * h / 8; }
+
+/*
+ * trace-surfaces, with the lock held: the views' picture (B, G, R, A premultiplied, rows from the top) at each placed layer's
+ * grid -- its alpha, kept with the layer for its frames' lines, and said in `out` now. (The next look three seconds after one
+ * that found a layer placed.)
+ */
+static void look_at_views(const void *pixels, int width, int height, int stride, char *out, size_t size)
+{
+    size_t n = 0;
+    int k, i, j;
+    u64 now = hk_time_monotonic_ns();
+    for (k = 0; k < MAX_LAYERS; k++) {
+        layer *l = &C.layers[k];
+        if (!l->view || !l->placed || l->w <= 0 || l->h <= 0) continue;
+        C.views_looked = now;
+        for (j = 0; j < 4; j++)
+            for (i = 0; i < 4; i++) {
+                i32 x = grid_x(l->x, l->w, i), y = grid_y(l->y, l->h, j);
+                l->views_alpha[j * 4 + i] = x >= 0 && y >= 0 && x < width && y < height ? ((const u8 *)pixels)[(size_t)y * (size_t)stride + (size_t)x * 4 + 3] : 255;
+            }
+        l->views_at = now;
+        if (n < size)
+            n += (size_t)snprintf(out + n, size - n, "%sjava: trace-surfaces: the views' picture over layer %d at %d,%d %dx%d, alpha (0 the hole): ", n ? "\n" : "", k, (int)l->x, (int)l->y, (int)l->w, (int)l->h);
+        for (i = 0; i < 16 && n < size; i++) n += (size_t)snprintf(out + n, size - n, "%s%02x", i == 0 ? "" : i % 4 ? " " : " / ", l->views_alpha[i]);
+    }
 }
 
 static void layer_attach(layer *l)
@@ -974,6 +1035,8 @@ bool hk_java_gl_views(const void *pixels, int width, int height, int stride, con
     i32 x0 = 0, y0 = 0, x1 = width, y1 = height, r, sx0, sy0, sx1, sy1;
     size_t line = (size_t)width * 4;
     int i;
+    char probe[600];
+    probe[0] = 0;
     hk_lock_acquire(&g_window_lock);
     if (!C.used || width != C.width || height != C.height || !pixels) {
         hk_lock_release(&g_window_lock);
@@ -1011,9 +1074,33 @@ bool hk_java_gl_views(const void *pixels, int width, int height, int stride, con
         }
         compose(l, sx0, sy0, sx1, sy1);
     }
+    if (trace_surfaces() && hk_time_monotonic_ns() - C.views_looked >= TRACE_EVERY) look_at_views(pixels, width, height, stride, probe, sizeof(probe));
     show_part(sx0, sy0, sx1, sy1);
     hk_lock_release(&g_window_lock);
+    if (probe[0]) hk_info("%s", probe);
     return true;
+}
+
+bool hk_java_gl_views_probe_due(void)
+{
+    bool due = false;
+    int i;
+    if (!trace_surfaces()) return false;
+    hk_lock_acquire(&g_window_lock);
+    if (hk_time_monotonic_ns() - C.views_looked >= TRACE_EVERY)
+        for (i = 0; i < MAX_LAYERS && !due; i++) due = C.layers[i].view && C.layers[i].placed && C.layers[i].w > 0;
+    hk_lock_release(&g_window_lock);
+    return due;
+}
+
+void hk_java_gl_views_probe(const void *pixels, int width, int height, int stride)
+{
+    char probe[600];
+    probe[0] = 0;
+    hk_lock_acquire(&g_window_lock);
+    look_at_views(pixels, width, height, stride, probe, sizeof(probe));
+    hk_lock_release(&g_window_lock);
+    if (probe[0]) hk_info("%s", probe);
 }
 
 void hk_java_gl_get_stats(hk_java_gl_stats *out)
@@ -1035,11 +1122,71 @@ static void stats_line(const hk_java_gl_stats *a, u64 since, u64 now)
     u32 swaps = b->swaps - (a ? a->swaps : 0), shown = b->shown - (a ? a->shown : 0);
     double seconds = (double)(now - since) / 1e9, n = swaps ? (double)swaps : 1.0;
     u64 read = b->read_ns - (a ? a->read_ns : 0), composing = b->compose_ns - (a ? a->compose_ns : 0), shell = b->show_ns - (a ? a->show_ns : 0);
+    char places[400];
+    size_t at = 0;
+    int i;
     if (!swaps) return;
+    /* And where each layer's frames go: a view that has not drawn its hole since its surface was made has no place, and its frames are seen nowhere. */
+    places[0] = 0;
+    for (i = 0; i < MAX_LAYERS && at < sizeof(places); i++) {
+        const layer *l = &C.layers[i];
+        if (!l->view) continue;
+        if (l->placed)
+            at += (size_t)snprintf(places + at, sizeof(places) - at, "%slayer %d at %d,%d %dx%d", at ? ", " : "; ", i, (int)l->x, (int)l->y, (int)l->w, (int)l->h);
+        else
+            at += (size_t)snprintf(places + at, sizeof(places) - at, "%slayer %d nowhere (its view has not drawn its hole)", at ? ", " : "; ", i);
+    }
     hk_info("java: OpenGL frames %s%.1f s: %u swaps of window surfaces, %u shown (%.1f a second); a swap's own work %.2f ms on average "
-            "(reading back, or finishing where the shell composes, %.2f, composing %.2f, the shell %.2f), the longest %.2f; the window %dx%d",
+            "(reading back, or finishing where the shell composes, %.2f, composing %.2f, the shell %.2f), the longest %.2f; the window %dx%d, composed %s%s",
             a ? "" : "in all, ", seconds, (unsigned)swaps, (unsigned)shown, seconds > 0 ? shown / seconds : 0.0, (double)(read + composing + shell) / n / 1e6,
-            (double)read / n / 1e6, (double)composing / n / 1e6, (double)shell / n / 1e6, (double)b->longest_ns / 1e6, (int)C.width, (int)C.height);
+            (double)read / n / 1e6, (double)composing / n / 1e6, (double)shell / n / 1e6, (double)b->longest_ns / 1e6, (int)C.width, (int)C.height,
+            C.shell > 0 ? "by the shell" : "here", places);
+}
+
+/* A pixel of a frame read back (rows bottom first) as 0xRRGGBBAA. */
+static u32 frame_pixel(const u8 *px, int width, int x, int y, bool bgra)
+{
+    const u8 *p = px + ((size_t)y * (size_t)width + (size_t)x) * 4;
+    return bgra ? ((u32)p[2] << 24) | ((u32)p[1] << 16) | ((u32)p[0] << 8) | p[3] : ((u32)p[0] << 24) | ((u32)p[1] << 16) | ((u32)p[2] << 8) | p[3];
+}
+
+static bool read_back(gl_surf *s, gl_ctx *x);
+
+/*
+ * trace-surfaces: a window surface's frame, read back just before it is handed over (the app's context current, the surface's
+ * keyed mutex held), said with where its view is and what the views' picture had over it when last looked at.
+ */
+static void trace_frame(gl_surf *s, gl_ctx *x, layer *l)
+{
+    char grid[200], where[300];
+    size_t n = 0;
+    u64 now = hk_time_monotonic_ns();
+    int i, j;
+    bool bgra;
+    u32 centre;
+    if (!read_back(s, x)) return;
+    bgra = x->bgra == 1;
+    for (j = 0; j < 4; j++)
+        for (i = 0; i < 4; i++)
+            n += (size_t)snprintf(grid + n, sizeof(grid) - n, "%s%08x", i == 0 && j == 0 ? "" : i ? " " : " / ",
+                                  (unsigned)frame_pixel(s->pixels, s->width, grid_x(0, s->width, i), s->height - 1 - grid_y(0, s->height, j), bgra));
+    centre = frame_pixel(s->pixels, s->width, s->width / 2, s->height - 1 - s->height / 2, bgra);
+    hk_lock_acquire(&g_window_lock);
+    if (!l->placed) {
+        snprintf(where, sizeof(where), "its view has not said where it is (no hole drawn since the surface was made): the frame goes nowhere");
+    } else {
+        n = (size_t)snprintf(where, sizeof(where), "at %d,%d %dx%d, said %.1f s ago, composed %s%s", (int)l->x, (int)l->y, (int)l->w, (int)l->h,
+                             (double)(now - l->placed_at) / 1e9, C.shell > 0 ? "by the shell" : "here", l->active ? "" : ", NOT shown (its surface has gone)");
+        if (!l->views_at) {
+            snprintf(where + n, sizeof(where) - n, "; the views over it not looked at yet");
+        } else {
+            n += (size_t)snprintf(where + n, sizeof(where) - n, "; the views' alpha over it %.1f s ago: ", (double)(now - l->views_at) / 1e9);
+            for (i = 0; i < 16 && n < sizeof(where); i++) n += (size_t)snprintf(where + n, sizeof(where) - n, "%s%02x", i == 0 ? "" : i % 4 ? " " : " / ", l->views_alpha[i]);
+        }
+    }
+    hk_lock_release(&g_window_lock);
+    hk_info("java: trace-surfaces: layer %d (%s) frame %dx%d, swap %u: centre %08x; grid (rows from the top) %s; %s", layer_index(l),
+            l->view ? hk_dvm_class_name(l->view) : "-", s->width, s->height, (unsigned)s->swaps, (unsigned)centre, grid, where);
 }
 
 /*
@@ -1108,8 +1255,10 @@ static void pace(gl_surf *s)
 /*
  * A swap where the shell composes the window: the frame finished in the surface's texture (glFinish: this thread may wait,
  * the app's main thread and the UI thread never do) and handed to the shell by the texture's shared handle; the shell has
- * copied what it keeps when gl_frame returns, and the app draws the next frame into the same texture. False: the shell
- * cannot take frames, and the window is composed here from now on.
+ * copied what it keeps when gl_frame returns, and the app draws the next frame into the same texture. Where ANGLE shares the
+ * texture with a keyed mutex (ndk/hk_egl.c), ANGLE's device lets go of it for the copy -- the shell acquires it, copies,
+ * releases -- and takes it back before the app draws again. False: the shell cannot take frames, and the window is composed
+ * here from now on.
  */
 static bool shell_frame(gl_surf *s, layer *l, bool *shown, u64 *finished)
 {
@@ -1123,6 +1272,7 @@ static bool shell_frame(gl_surf *s, layer *l, bool *shown, u64 *finished)
         s->share_asked = true;
         if (E.query_pointer && E.query_pointer(E.display, s->handle, EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE, &handle) && handle) s->share = handle;
         else hk_note_once("java: EGL gave no shared handle for a surface's texture (EGL error 0x%x)", (unsigned)E.get_error());
+        s->mutex = s->share ? hk_egl_surface_mutex(E.display, s->handle) : NULL;
     }
     if (!s->share || !finish) return false;
     finish();
@@ -1131,7 +1281,10 @@ static bool shell_frame(gl_surf *s, layer *l, bool *shown, u64 *finished)
     active = l->active;
     hk_lock_release(&g_window_lock);
     if (!active) return true;
+    if (s->mutex) hk_egl_keyed_mutex(s->mutex, false);
     taken = g_shell->gl_frame(g_shell->user, layer_index(l), s->share, s->width, s->height);
+    if (s->mutex && !hk_egl_keyed_mutex(s->mutex, true))
+        hk_note_once("java: a surface's keyed mutex could not be taken back from the shell: what the app draws in it now is dropped");
     *shown = taken;
     return taken;
 }
@@ -1150,6 +1303,12 @@ static bool swap(gl_surf *s, gl_ctx *x)
     l = s->layer;
     if (!l) return true;
     t0 = hk_time_monotonic_ns();
+    s->swaps++;
+    if (trace_surfaces() && t0 - s->traced_at >= TRACE_EVERY) {
+        s->traced_at = t0;
+        trace_frame(s, x, l);
+        t0 = hk_time_monotonic_ns();
+    }
     if (C.shell > 0) {
         u64 finished;
         if (shell_frame(s, l, &shown, &finished)) {
@@ -1343,7 +1502,10 @@ void *hk_java_gl_window_surface(hk_jobj *view, int width, int height, void *cons
     gl_surf *s;
     layer *l = NULL;
     hk_jvalue args[1];
-    if (count <= 0 || !egl_ready()) return NULL;
+    if (count <= 0 || !egl_ready()) {
+        hk_warn("java: no window surface on a view's window: %s", count <= 0 ? "no configuration of EGL's will do for it" : "the EGL of Megler's is not to be had");
+        return NULL;
+    }
     if (view) {
         hk_lock_acquire(&g_window_lock);
         l = layer_of(view, true);

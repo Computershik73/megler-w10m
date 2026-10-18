@@ -3063,6 +3063,7 @@ struct Composition {
         Box rect;                    // where its frames go, in the window's (the views') pixels; empty: nowhere
         void* handle = nullptr;      // the shared handle its surface's texture was opened by
         Ref<ID3D11Texture2D> shared; // ANGLE's texture of the surface, opened on this device
+        Ref<IDXGIKeyedMutex> mutex;  // its keyed mutex, where ANGLE shares it with one (gecko-w10m's does)
         Ref<ID3D11Texture2D> copy;   // its last frame, copied out of it
         Ref<ID2D1Bitmap1> frame;     // the copy as Direct2D draws it: rows bottom first, alpha ignored (a frame is opaque)
     };
@@ -3174,7 +3175,10 @@ bool showComposed(Box part, bool fresh) {
 /// the layer's own. The copy is waited for (an event query: this is the GL
 /// thread, which may wait; ANGLE draws the next frame into the same texture
 /// when this returns); then the layer's rectangle is composed again, when
-/// the views have been shown and it has one.
+/// the views have been shown and it has one. Where ANGLE shares the texture
+/// with a keyed mutex (gecko-w10m's ANGLE shares every pbuffer so), the copy
+/// is made holding it: the core lets go of it on ANGLE's side for the call,
+/// and Direct3D drops a copy made without it (the frame was then nothing).
 bool glFrame(void*, int layer, void* handle, int width, int height) {
     State& s = G();
     if (layer < 0 || layer >= 8 || !handle || !s.gpu || gpuGone() || width <= 0 || height <= 0) return false;
@@ -3195,6 +3199,8 @@ bool glFrame(void*, int layer, void* handle, int width, int height) {
             }
             D3D11_TEXTURE2D_DESC desc = {};
             l.shared->GetDesc(&desc);
+            if (desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX)
+                l.shared->QueryInterface(__uuidof(IDXGIKeyedMutex), reinterpret_cast<void**>(l.mutex.put()));
             // (A texture made typeless, to be seen in more than one format, is copied into one of the format it is drawn in.)
             if (desc.Format == DXGI_FORMAT_R8G8B8A8_TYPELESS) desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
             if (desc.Format == DXGI_FORMAT_B8G8R8A8_TYPELESS) desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
@@ -3228,8 +3234,18 @@ bool glFrame(void*, int layer, void* handle, int width, int height) {
         const uint64_t from = ticksNow();
         GfxHost& host = GfxHost::shared();
         host.lockDevice();
+        if (l.mutex) {
+            // (Half a second at the most: the core has released it before calling, so it is there at once.)
+            const HRESULT got = l.mutex->AcquireSync(0, 500);
+            if (got != S_OK) {
+                host.unlockDevice();
+                note("gl-mutex", "an OpenGL ES surface's keyed mutex was not to be had (0x%08lX): its frame is not taken", static_cast<unsigned long>(got));
+                return;
+            }
+        }
         context->CopyResource(l.copy.get(), l.shared.get());
         if (c.copied) context->End(c.copied.get());
+        if (l.mutex) l.mutex->ReleaseSync(0);
         context->Flush();
         host.unlockDevice();
         // The copy waited for, half a second at the most: ANGLE's device may draw into its texture as soon as this returns.

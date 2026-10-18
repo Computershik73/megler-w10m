@@ -100,7 +100,7 @@ bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-f
     4915 checks, 0 failed          on libcore with its native libraries
       50 checks, 0 failed          the Java test app hello, through megler_run
      121 checks, 0 failed          the Java test app demos, the keyboard's 25 and the frame meter's 3 among them
-      78 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK; native code drawing on SurfaceViews and a TextureView
+      85 checks, 0 failed          the Java test app natives: a library of its own, built by the NDK; native code drawing on SurfaceViews and a TextureView
       18 checks, 0 failed          the Java test app crash: an exception nothing catches, launcher aliases, an app written for Android 6
       19 checks, 0 failed          the Java test app gc: references, finalizers, threads allocating, a heap that stays small
       49 checks, 0 failed          the Java test app gl: a GLSurfaceView, EGL14 on a pbuffer, EGL10 on a SurfaceView, on a stand-in for OpenGL ES that draws
@@ -110,7 +110,7 @@ bash tools/build-tests.sh arm      (gcc for arm-linux-gnueabihf, Thumb-2, hard-f
       38 checks, 0 failed          the Java test app camera: the old android.hardware.Camera on a stand-in for the shell's cameras, the previews' pictures in the window
       13 checks, 0 failed          camera again, every camera refused
       50 checks, 0 failed          gl again, the window composed by the core
-      78 checks, 0 failed          natives again, the window composed by the core
+      85 checks, 0 failed          natives again, the window composed by the core
       50 checks, 0 failed          hello again, on an upright surface (720 x 1280 at 320 dpi)
     (then each app once more, its drawing recorded for the PC's run to draw again)
 ```
@@ -655,8 +655,10 @@ OpenGL ES 2 and 3 and pbuffers in memory, `glClear`, triangles of one colour
 (the program's `vec4` uniform with "olor" in its name, positions from the
 attribute with "osition" in it), shaders whose attributes and uniforms are read
 out of their source, `glReadPixels` as R, G, B, A or B, G, R, A; a context of
-version 1 refused, as an ANGLE without OpenGL ES 1 refuses it. Every Java app
-of the tests runs with it.
+version 1 refused, as an ANGLE without OpenGL ES 1 refuses it; and every
+surface with a keyed mutex, as gecko-w10m's ANGLE gives every pbuffer, what is
+done with one that is not held dropped (docs/ARCHITECTURE.md, "Keyed
+mutexes"). Every Java app of the tests runs with it.
 
 **The natives, called as the runtime calls them** (`core/tests/hk_gl_tests.c`,
 in both suites on both hosts; 86 checks on libcore, 67 on the built-in
@@ -2452,6 +2454,25 @@ scaled to its size. Read back from the graphics processor at each frame and
 drawn again by the shell, this is the slow way, as it is for Java's EGL on a
 `TextureView`.
 
+On the phone (package 270) Asphalt 9 had its window and swapped 28 frames a
+second, every one handed to the shell, and showed nothing: ANGLE's pbuffers
+are shared with keyed mutexes nobody held, so Direct3D dropped the game's
+drawing and the shell's copies (docs/ARCHITECTURE.md, "Keyed mutexes"); ANGLE's
+device now holds each pbuffer's mutex but while the shell copies.
+
+What tells such cases apart on the phone without guessing: the flag
+`trace-surfaces` (docs/STATUS.md, where the flags are), which every three
+seconds reads back a window surface's frame just before it is handed over
+and says its centre and a 4 x 4 grid of pixels, where its view last said it
+is and who composes it, and what alpha the views' picture has at the same
+grid over it (`00`: the hole); and `gl-compose-here`, which has the core
+compose the window from frames read back instead of the shell. Without them
+the log says each view's place as it is said (`java: OpenGL layer 0
+(android/view/SurfaceView) is at ...`), the EGL calls for these surfaces EGL
+refused (`egl: ... was refused (EGL error 0x...)`, and the swaps refused for a
+surface gone or not current), and the OpenGL frames' minute lines end with who
+composes and where each layer is.
+
 Pausing the app here (the shell's `megler_set_paused`) is `onPause` alone and
 destroys no surface; the surface goes when the view leaves its window (the
 activity stopped, finished, or the view taken out of its layout), which is
@@ -2464,7 +2485,9 @@ surface above the window (`setZOrderOnTop` without a `GLSurfaceView`) is not
 composed, as for Java's EGL.
 
 *Tested* by the app `natives` under qemu, the window steps, twice (the shell
-composing, and the core): "A Java app with native libraries" above.
+composing, and the core), with `trace-surfaces` on and its lines checked (the
+frames' grids the quarters drawn, the views' alpha `00` over the hole): "A Java
+app with native libraries" above.
 
 ### Split APKs and bundles
 

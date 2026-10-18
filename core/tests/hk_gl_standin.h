@@ -32,6 +32,7 @@ typedef struct hk_gl_standin_stats {
     i32 refused_es1;                   /* version-1 contexts refused */
     float clear[4];                    /* the last clear colour */
     i32 largest_es;                    /* the newest version a context was made for */
+    i32 dropped;                       /* clears, draws and reads of a surface whose keyed mutex was not held: dropped */
 } hk_gl_standin_stats;
 void hk_gl_standin_stats_get(hk_gl_standin_stats *out);
 /* Back to nothing made and nothing counted; whether GL_EXT_read_format_bgra is listed, and whether version 1 is made. */
@@ -48,7 +49,15 @@ u32 hk_gl_standin_pixel(int x, int y);
  * A surface by what eglQuerySurfacePointerANGLE gave as its texture's shared handle (EGL_ANGLE_surface_d3d_texture_2d_share_handle,
  * which the stand-in lists): its memory, R, G, B, A, rows bottom first, and its size. For a test's shell that composes the
  * window from the surfaces' frames (megler_gfx_host.gl_frame).
+ *
+ * Every surface has a keyed mutex, as every pbuffer of gecko-w10m's ANGLE does (EGL_DXGI_KEYED_MUTEX_ANGLE through
+ * eglQuerySurfacePointerANGLE), released with key 0 when it is made. The stand-in clears, draws into and reads a surface only
+ * while its own "device" holds that mutex (the core's hk_egl_keyed_mutex, through the provider's name meglerKeyedMutexANGLE),
+ * and otherwise drops what is asked, as Direct3D does: a core that never acquires it gets no frames. A test's shell takes it
+ * with hk_gl_standin_keyed before it copies a frame and gives it back after, as the shell's AcquireSync and ReleaseSync do;
+ * false when it is held by the other side.
  */
+bool hk_gl_standin_keyed(void *share_handle, bool acquire);
 bool hk_gl_standin_shared(void *share_handle, const u8 **rgba, int *width, int *height);
 
 #ifdef __cplusplus

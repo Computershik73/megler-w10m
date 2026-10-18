@@ -255,6 +255,24 @@ of a class whose name starts with it, with its thread and depth, and its return
 with the value or the exception it ends with; up to eight such flags; at most 8000
 lines; `dvm/hk_dvm_interp.c`, the flags read by `hk_flags_each`). The
 data app's second run under qemu has all four on, and the test finds their lines.
+For OpenGL ES drawn on a view (a GLSurfaceView, or native code's EGL surface on a
+SurfaceView's window): `trace-surfaces` (every three seconds each window surface's
+frame read back just before it is handed over -- its centre and a 4 x 4 grid of
+pixels, R, G, B, A, rows from the top -- with where its view last said it is,
+when, and who composes it; and the views' picture at the same grid over each
+placed view, its alpha, `00` where the view's hole lets the frame through:
+`java: trace-surfaces: ...` lines, `drivers/hk_java_gl.c`) and `gl-compose-here`
+(the core composes the window from frames read back, as where EGL shares no
+textures, instead of the shell on the graphics processor). A black frame, a frame
+the views hide, and a frame the shell loses tell apart so: the first has a black
+grid, the second alpha other than `00` over it, the third a good grid and alpha
+`00` and a black screen that `gl-compose-here` mends. Without a flag the log says
+each view's first six places (`java: OpenGL layer N (class) is at x,y wxh in the
+window`), every EGL call of the app's for these surfaces that EGL refused with its
+error (`egl: ... was refused (EGL error 0x...)`), and the OpenGL frames' minute
+lines end with who composes and where each layer is, or that it is nowhere (its
+view has not drawn its hole). The natives app runs under qemu with
+`trace-surfaces` on, and the test checks its lines.
 
 **Sound.** FMOD said "Error initializing output device" twice and made no player.
 It had not got as far as OpenSL ES: before that it asks `AudioManager.getProperty`
@@ -528,8 +546,17 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   engine draws from native code on its `SurfaceView`, and
   `ANativeWindow_fromSurface` gave NULL for the framework's `Surface`; a window
   of the view's surface, with EGL and software drawing on it, is there now
-  (docs/JAVA.md, "A SurfaceView drawn by native code"), not yet tried on the
-  phone. Spotify's WebView
+  (docs/JAVA.md, "A SurfaceView drawn by native code"). On the phone (package
+  270) its engine had its window, made its surface on it and swapped 28 frames
+  a second, all handed to the shell -- and the screen stayed black: ANGLE as
+  gecko-w10m builds it shares every pbuffer's texture with a keyed mutex that
+  nobody acquired, and Direct3D drops whatever is done with such a texture
+  without it, the app's drawing and the shell's copy alike. The core now has
+  ANGLE's device hold each pbuffer's mutex and lets go of it only while the
+  shell copies a frame, which the shell does holding it (docs/ARCHITECTURE.md,
+  "Keyed mutexes"). The same was true of every OpenGL ES view a Java app ever
+  had here, none of which had been looked at on the phone. Not yet tried on
+  the phone. Spotify's WebView
   then (packages 252 and 254) ended out of memory on an image of 126 MB that
   Chromium decodes and maps twice, in a 2 GB address space whose largest
   free stretch was 135 MB (docs/JAVA.md, "Out of memory"); the layer's
