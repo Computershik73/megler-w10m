@@ -528,8 +528,17 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   engine draws from native code on its `SurfaceView`, and
   `ANativeWindow_fromSurface` gave NULL for the framework's `Surface`; a window
   of the view's surface, with EGL and software drawing on it, is there now
-  (docs/JAVA.md, "A SurfaceView drawn by native code"), not yet tried on the
-  phone. Spotify's WebView
+  (docs/JAVA.md, "A SurfaceView drawn by native code"). On the phone (package
+  270) its engine had its window, made its surface on it and swapped 28 frames
+  a second, all handed to the shell -- and the screen stayed black: ANGLE as
+  gecko-w10m builds it shares every pbuffer's texture with a keyed mutex that
+  nobody acquired, and Direct3D drops whatever is done with such a texture
+  without it, the app's drawing and the shell's copy alike. The core now has
+  ANGLE's device hold each pbuffer's mutex and lets go of it only while the
+  shell copies a frame, which the shell does holding it (docs/ARCHITECTURE.md,
+  "Keyed mutexes"). The same was true of every OpenGL ES view a Java app ever
+  had here, none of which had been looked at on the phone. Not yet tried on
+  the phone. Spotify's WebView
   then (packages 252 and 254) ended out of memory on an image of 126 MB that
   Chromium decodes and maps twice, in a 2 GB address space whose largest
   free stretch was 135 MB (docs/JAVA.md, "Out of memory"); the layer's

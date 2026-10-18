@@ -655,8 +655,10 @@ OpenGL ES 2 and 3 and pbuffers in memory, `glClear`, triangles of one colour
 (the program's `vec4` uniform with "olor" in its name, positions from the
 attribute with "osition" in it), shaders whose attributes and uniforms are read
 out of their source, `glReadPixels` as R, G, B, A or B, G, R, A; a context of
-version 1 refused, as an ANGLE without OpenGL ES 1 refuses it. Every Java app
-of the tests runs with it.
+version 1 refused, as an ANGLE without OpenGL ES 1 refuses it; and every
+surface with a keyed mutex, as gecko-w10m's ANGLE gives every pbuffer, what is
+done with one that is not held dropped (docs/ARCHITECTURE.md, "Keyed
+mutexes"). Every Java app of the tests runs with it.
 
 **The natives, called as the runtime calls them** (`core/tests/hk_gl_tests.c`,
 in both suites on both hosts; 86 checks on libcore, 67 on the built-in
@@ -2451,6 +2453,12 @@ turned to it, opaque). The `TextureView` draws the texture's front buffer
 scaled to its size. Read back from the graphics processor at each frame and
 drawn again by the shell, this is the slow way, as it is for Java's EGL on a
 `TextureView`.
+
+On the phone (package 270) Asphalt 9 had its window and swapped 28 frames a
+second, every one handed to the shell, and showed nothing: ANGLE's pbuffers
+are shared with keyed mutexes nobody held, so Direct3D dropped the game's
+drawing and the shell's copies (docs/ARCHITECTURE.md, "Keyed mutexes"); ANGLE's
+device now holds each pbuffer's mutex but while the shell copies.
 
 Pausing the app here (the shell's `megler_set_paused`) is `onPause` alone and
 destroys no surface; the surface goes when the view leaves its window (the

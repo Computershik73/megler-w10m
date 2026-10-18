@@ -537,6 +537,7 @@ typedef struct gl_surf {
     size_t pixels_size;
     u64 due;                           /* when the next swap may return */
     void *share;                       /* its texture's DXGI shared handle, asked for at its first swap; NULL: none */
+    void *mutex;                       /* the texture's keyed mutex, which ANGLE's device holds but while the shell copies a frame */
     bool share_asked;
 } gl_surf;
 
@@ -1108,8 +1109,10 @@ static void pace(gl_surf *s)
 /*
  * A swap where the shell composes the window: the frame finished in the surface's texture (glFinish: this thread may wait,
  * the app's main thread and the UI thread never do) and handed to the shell by the texture's shared handle; the shell has
- * copied what it keeps when gl_frame returns, and the app draws the next frame into the same texture. False: the shell
- * cannot take frames, and the window is composed here from now on.
+ * copied what it keeps when gl_frame returns, and the app draws the next frame into the same texture. Where ANGLE shares the
+ * texture with a keyed mutex (ndk/hk_egl.c), ANGLE's device lets go of it for the copy -- the shell acquires it, copies,
+ * releases -- and takes it back before the app draws again. False: the shell cannot take frames, and the window is composed
+ * here from now on.
  */
 static bool shell_frame(gl_surf *s, layer *l, bool *shown, u64 *finished)
 {
@@ -1123,6 +1126,7 @@ static bool shell_frame(gl_surf *s, layer *l, bool *shown, u64 *finished)
         s->share_asked = true;
         if (E.query_pointer && E.query_pointer(E.display, s->handle, EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE, &handle) && handle) s->share = handle;
         else hk_note_once("java: EGL gave no shared handle for a surface's texture (EGL error 0x%x)", (unsigned)E.get_error());
+        s->mutex = s->share ? hk_egl_surface_mutex(E.display, s->handle) : NULL;
     }
     if (!s->share || !finish) return false;
     finish();
@@ -1131,7 +1135,10 @@ static bool shell_frame(gl_surf *s, layer *l, bool *shown, u64 *finished)
     active = l->active;
     hk_lock_release(&g_window_lock);
     if (!active) return true;
+    if (s->mutex) hk_egl_keyed_mutex(s->mutex, false);
     taken = g_shell->gl_frame(g_shell->user, layer_index(l), s->share, s->width, s->height);
+    if (s->mutex && !hk_egl_keyed_mutex(s->mutex, true))
+        hk_note_once("java: a surface's keyed mutex could not be taken back from the shell: what the app draws in it now is dropped");
     *shown = taken;
     return taken;
 }

@@ -28,7 +28,11 @@ enum {
 typedef struct sb_surface {
     int w, h;
     u8 *px;                            /* R, G, B, A, rows bottom first */
+    int km;                            /* its keyed mutex, as ANGLE's: 0 released (key 0), 1 held by this OpenGL ES, 2 by a shell */
 } sb_surface;
+
+/* What this OpenGL ES does with a surface whose keyed mutex it does not hold: nothing, as Direct3D drops it. */
+static bool held(const sb_surface *s) { return s && s->km == 1; }
 
 /* A texture's pixels, R, G, B, A, rows in the order given (bottom first, as OpenGL has it); shared by the EGL images of it. */
 typedef struct sb_store {
@@ -113,13 +117,29 @@ static const char *e_QueryString(void *d, int name)
            : name == 0x3053 ? "Megler (stand-in)"
                             : "1.5 (stand-in)";
 }
-/* EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE: the surface itself stands for its texture's shared handle (hk_gl_standin_shared). */
+/*
+ * EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE: the surface itself stands for its texture's shared handle (hk_gl_standin_shared).
+ * EGL_DXGI_KEYED_MUTEX_ANGLE: its keyed mutex, which every surface has, as every pbuffer of gecko-w10m's ANGLE has.
+ */
 static unsigned e_QuerySurfacePointer(void *d, void *surface, int attribute, void **value)
 {
     (void)d;
-    if (!surface || attribute != 0x3200 || !value) return 0;
-    *value = surface;
+    if (!surface || (attribute != 0x3200 && attribute != 0x33A2) || !value) return 0;
+    *value = attribute == 0x3200 ? surface : (void *)&((sb_surface *)surface)->km;
     return 1;
+}
+
+/* A keyed mutex acquired (key 0, not waiting) or released by this OpenGL ES's own "device": the core's seam (ndk/hk_egl.c). */
+static unsigned e_KeyedMutex(void *mutex, int acquire)
+{
+    int *km = (int *)mutex;
+    unsigned ok;
+    if (!km) return 0;
+    hk_lock_acquire(&g_lock);
+    ok = acquire ? *km == 0 : *km == 1;
+    if (ok) *km = acquire ? 1 : 0;
+    hk_lock_release(&g_lock);
+    return ok;
 }
 static unsigned e_ChooseConfig(void *d, const int *attribs, void **configs, int size, int *num)
 {
@@ -815,6 +835,12 @@ static void g_Clear(u32 mask)
         n = (size_t)s->w * (size_t)s->h;
         for (i = 0; i < n; i++) memcpy(s->px + 4 * i, c, 4);
     } else {
+        if (!held(t_surf)) {
+            hk_lock_acquire(&g_lock);
+            S.stats.dropped++;
+            hk_lock_release(&g_lock);
+            return;
+        }
         n = (size_t)t_surf->w * (size_t)t_surf->h;
         for (i = 0; i < n; i++) memcpy(t_surf->px + 4 * i, c, 4);
     }
@@ -885,6 +911,12 @@ static void g_DrawArrays(u32 mode, i32 first, i32 count)
     i32 stride;
     u8 rgba[4] = { 255, 255, 255, 255 };
     if (!t_ctx || !t_surf) return;
+    if (!held(t_surf)) {
+        hk_lock_acquire(&g_lock);
+        S.stats.dropped++;
+        hk_lock_release(&g_lock);
+        return;
+    }
     p = t_ctx->program;
     if (p && p < MAX_OBJECTS) {
         for (i = 0; i < S.programs[p].nattrs; i++)
@@ -947,6 +979,14 @@ static void g_ReadPixels(i32 x, i32 y, i32 w, i32 h, u32 format, u32 type, void 
     }
     if ((format != GL_RGBA && !(format == GL_BGRA_EXT && S.bgra)) || type != 0x1401) {
         g_error(GL_INVALID_OPERATION);
+        return;
+    }
+    if (!held(t_surf)) {
+        /* (What Direct3D's dropped copy leaves in the staging texture ANGLE reads from: nothing.) */
+        for (r = 0; r < h; r++) memset(out + (size_t)r * (size_t)w * 4, 0, (size_t)w * 4);
+        hk_lock_acquire(&g_lock);
+        S.stats.dropped++;
+        hk_lock_release(&g_lock);
         return;
     }
     for (r = 0; r < h; r++)
@@ -1131,7 +1171,7 @@ void *hk_gl_standin(const char *name)
         { "eglDestroyContext", (void *)e_DestroyContext }, { "eglCreatePbufferSurface", (void *)e_CreatePbuffer },
         { "eglDestroySurface", (void *)e_DestroySurface }, { "eglMakeCurrent", (void *)e_MakeCurrent }, { "eglGetCurrentContext", (void *)e_GetCurrentContext },
         { "eglSwapBuffers", (void *)e_SwapBuffers }, { "eglSwapInterval", (void *)e_SwapInterval }, { "eglQuerySurface", (void *)e_QuerySurface },
-        { "eglQuerySurfacePointerANGLE", (void *)e_QuerySurfacePointer },
+        { "eglQuerySurfacePointerANGLE", (void *)e_QuerySurfacePointer }, { "meglerKeyedMutexANGLE", (void *)e_KeyedMutex },
         { "eglBindAPI", (void *)e_BindAPI }, { "eglReleaseThread", (void *)e_True }, { "eglWaitClient", (void *)e_True },
         { "eglGetConfigs", (void *)e_GetConfigs }, { "eglGetCurrentSurface", (void *)e_GetCurrentSurface },
         { "eglGetCurrentDisplay", (void *)e_GetCurrentDisplay }, { "eglCreateWindowSurface", (void *)e_CreateWindowSurface },
@@ -1185,6 +1225,18 @@ void hk_gl_standin_reset(bool bgra, bool es1)
     S.bgra = bgra;
     S.es1 = es1;
     hk_lock_release(&g_lock);
+}
+
+bool hk_gl_standin_keyed(void *share_handle, bool acquire)
+{
+    sb_surface *s = (sb_surface *)share_handle;
+    bool ok;
+    if (!s) return false;
+    hk_lock_acquire(&g_lock);
+    ok = acquire ? s->km == 0 : s->km == 2;
+    if (ok) s->km = acquire ? 2 : 0;
+    hk_lock_release(&g_lock);
+    return ok;
 }
 
 bool hk_gl_standin_shared(void *share_handle, const u8 **rgba, int *width, int *height)

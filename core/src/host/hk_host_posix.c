@@ -1496,6 +1496,12 @@ bool hk_host_gpu_memory(void *device, u32 *budget_mb, u32 *used_mb)
     return false;
 }
 
+bool hk_host_keyed_mutex(void *mutex, bool acquire, u32 ms)
+{
+    (void)mutex; (void)acquire; (void)ms;
+    return false;
+}
+
 bool hk_host_free_stretches(u32 *mb, int n)
 {
     (void)mb; (void)n;

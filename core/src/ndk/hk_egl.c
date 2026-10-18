@@ -81,6 +81,7 @@ typedef unsigned EGLBoolean, EGLenum;
 #define EGL_DEVICE_EXT 0x322C
 #define EGL_D3D11_DEVICE_ANGLE 0x33A1
 #define EGL_D3D_TEXTURE_ANGLE 0x33A3
+#define EGL_DXGI_KEYED_MUTEX_ANGLE 0x33A2
 
 #define GL_VENDOR 0x1F00
 #define GL_RENDERER 0x1F01
@@ -535,6 +536,51 @@ static int surface_configs(EGLDisplay d, EGLConfig wanted, EGLConfig *out, int m
     return count;
 }
 
+/* ------------------------------------------------------- pbuffers' keyed mutexes
+ *
+ * ANGLE, as gecko-w10m builds it (ANGLE_ENABLE_KEYEDMUTEX), gives every pbuffer it can share a texture made with a DXGI keyed
+ * mutex (D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX), and never acquires it itself: that is the user's to do, as Firefox does
+ * around its drawing (eglQuerySurfacePointerANGLE, EGL_DXGI_KEYED_MUTEX_ANGLE). Direct3D drops whatever a device does with such
+ * a texture while it does not hold its mutex -- drawing, clearing, reading, copying: all of an app's frames were nothing, and
+ * so was every copy the shell made of them (docs/ARCHITECTURE.md, "OpenGL ES from an app's Java"). An Android app's own
+ * pbuffer is simply its own; so here ANGLE's device holds each pbuffer's mutex from the moment it is made, and lets go of it
+ * only while the shell copies a frame out of it (drivers/hk_java_gl.c). With key 0 throughout: whoever has it next takes it.
+ */
+bool hk_egl_keyed_mutex(void *mutex, bool acquire)
+{
+    typedef unsigned (*fn_keyed)(void *, int);
+    if (!mutex) return false;
+    /* (The tests' stand-in for ANGLE has mutexes of its own: the seam is its "function" by this name.) */
+    if (g_provider) {
+        fn_keyed f = (fn_keyed)g_provider("meglerKeyedMutexANGLE");
+        return f && f(mutex, acquire ? 1 : 0);
+    }
+    return hk_host_keyed_mutex(mutex, acquire, acquire ? 1000 : 0);
+}
+
+void *hk_egl_surface_mutex(void *d, void *surface)
+{
+    typedef EGLBoolean (*fn_pointer)(EGLDisplay, EGLSurface, EGLint, void **);
+    fn_pointer query = A(fn_pointer, "eglQuerySurfacePointerANGLE");
+    void *mutex = NULL;
+    if (!query || !surface || !query(d, surface, EGL_DXGI_KEYED_MUTEX_ANGLE, &mutex)) return NULL;
+    return mutex;
+}
+
+static EGLSurface g_eglCreatePbufferSurface(EGLDisplay d, EGLConfig config, const EGLint *attribs)
+{
+    static volatile i32 said, refused;
+    fn_pbuffer real = A(fn_pbuffer, "eglCreatePbufferSurface");
+    EGLSurface h = real ? real(d, config, attribs) : NULL;
+    void *mutex = h ? hk_egl_surface_mutex(d, h) : NULL;
+    if (!mutex) return h;
+    if (!hk_atomic_xchg(&said, 1))
+        hk_info("egl: ANGLE shares its pbuffers' textures with a keyed mutex: each is held by ANGLE's device from its making, else what is drawn in it is dropped");
+    if (!hk_egl_keyed_mutex(mutex, true) && hk_atomic_add(&refused, 1) <= 10)
+        hk_warn("egl: a new pbuffer's keyed mutex could not be acquired: what is drawn in it will be dropped");
+    return h;
+}
+
 /*
  * Contexts are made without a configuration where ANGLE allows it, so a
  * context goes with whatever configuration its surface ended up with.
@@ -661,11 +707,10 @@ static EGLSurface g_eglCreateWindowSurface(EGLDisplay d, EGLConfig config, hk_nw
         }
         if (!h) {
             /* No shell behind us (the tests), or its texture was refused: an off-screen buffer keeps the app running. */
-            fn_pbuffer pb = A(fn_pbuffer, "eglCreatePbufferSurface");
             EGLint size[] = { EGL_WIDTH, 0, EGL_HEIGHT, 0, EGL_NONE };
             size[1] = width;
             size[3] = height;
-            h = pb ? pb(d, config, size) : NULL;
+            h = g_eglCreatePbufferSurface(d, config, size);
         }
         if (!h) {
             free_entry(s);
@@ -1299,6 +1344,7 @@ static const hk_sym g_egl_overrides[] = {
     HK_WRAP("eglChooseConfig", g_eglChooseConfig),
     HK_WRAP("eglGetConfigAttrib", g_eglGetConfigAttrib),
     HK_WRAP("eglCreateWindowSurface", g_eglCreateWindowSurface),
+    HK_WRAP("eglCreatePbufferSurface", g_eglCreatePbufferSurface),
     HK_WRAP("eglCreateContext", g_eglCreateContext),
     HK_WRAP("eglDestroySurface", g_eglDestroySurface),
     HK_WRAP("eglQuerySurface", g_eglQuerySurface),

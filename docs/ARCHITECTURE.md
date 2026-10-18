@@ -505,11 +505,29 @@ composed there and nothing is read back, neither the frames nor the views:
   views composes the part that changed; a GL view that stopped drawing costs
   nothing. One surface a view is enough, since the copy is made before the
   swap returns: the app never draws into a frame being shown.
+- **Keyed mutexes.** ANGLE as gecko-w10m builds it (`ANGLE_ENABLE_KEYEDMUTEX`)
+  makes the texture of every pbuffer it can share with a DXGI keyed mutex
+  (`D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX`) and never acquires it: that is left
+  to its user, as Firefox does around its drawing. Direct3D drops whatever a
+  device does with such a texture without holding the mutex -- a clear, a
+  draw, a read, a copy (measured on this PC: a clear and a copy made without
+  it leave zeros). So every frame of an app's was nothing, and every copy the
+  shell made of one too; the first app to show it on the phone was Asphalt 9,
+  black while it swapped 28 frames a second (package 270). Now the layer's
+  `eglCreatePbufferSurface` has ANGLE's device acquire a new pbuffer's mutex
+  at once (`ndk/hk_egl.c`; its device is made safe for several threads first,
+  since the app's other threads draw on it meanwhile), and keeps it, as an
+  Android app's pbuffer is simply its own; a swap that hands a frame to the
+  shell releases it for the call, the shell copies holding it (`AcquireSync`,
+  `ReleaseSync`), and the core takes it back before the app draws again.
 - Tests: under qemu the Java test app `gl` runs twice, once with a test shell
   that composes from what the core hands it (the GL stand-in's surfaces by
   their "share handles"), once with a shell that refuses frames, the core
-  composing; the same picture checks hold for both. On the PC's graphics
-  processor a second Direct3D device stands for ANGLE's (`hk_gfx_windows.cpp`).
+  composing; the same picture checks hold for both. The stand-in's surfaces
+  have keyed mutexes as ANGLE's do and drop what is done without one held, and
+  the test shell takes it before it copies a frame. On the PC's graphics
+  processor a second Direct3D device stands for ANGLE's (`hk_gfx_windows.cpp`),
+  its texture shared plainly and then with a keyed mutex.
 
 **Native code on a SurfaceView.** A game with a Java activity and a native
 engine (Asphalt 9) hands its `SurfaceView`'s `Surface` to native code, which

@@ -46,6 +46,14 @@ void *hk_egl_host(const char *name);
  */
 void hk_egl_set_provider(void *(*resolve)(const char *name));
 
+/*
+ * A pbuffer's DXGI keyed mutex, which ANGLE shares its pbuffers' textures with (NULL when it has none), and that mutex acquired
+ * or released by ANGLE's device. Every pbuffer made through this layer is acquired when it is made (Direct3D drops what a
+ * device does with such a texture without it); hk_java_gl.c lets go of one while the shell copies a frame out of it.
+ */
+void *hk_egl_surface_mutex(void *display, void *surface);
+bool hk_egl_keyed_mutex(void *mutex, bool acquire);
+
 /* What ANGLE gives on this device -- display, Direct3D feature level, GL version and limits -- a line at a time. */
 /* Why ANGLE's Direct3D device is gone (an HRESULT), or 0 while it is there or there is none. */
 u32 hk_egl_device_removed(void);

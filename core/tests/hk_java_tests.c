@@ -269,6 +269,7 @@ static struct {
     u8 *views, *out;                   /* B, G, R, A premultiplied, rows top first */
     int vw, vh;
     volatile i32 frames, places, composed;
+    volatile i32 unlocked;             /* frames refused because the core held the surface's keyed mutex */
 } GL = { HK_LOCK_INIT };
 
 /* With GL.lock held: the window composed and shown. */
@@ -310,6 +311,11 @@ static bool gl_frame(void *user, int layer, void *share_handle, int width, int h
     int w, h;
     (void)user;
     if (GL.refuse || layer < 0 || layer >= GL_LAYERS || !hk_gl_standin_shared(share_handle, &rgba, &w, &h) || w != width || h != height) return false;
+    /* The surface's keyed mutex first, as the shell's AcquireSync: a frame whose mutex the core still holds is not taken. */
+    if (!hk_gl_standin_keyed(share_handle, true)) {
+        hk_atomic_add(&GL.unlocked, 1);
+        return false;
+    }
     hk_lock_acquire(&GL.lock);
     GL.used = true;
     if (GL.layers[layer].fw != w || GL.layers[layer].fh != h) {
@@ -319,6 +325,7 @@ static bool gl_frame(void *user, int layer, void *share_handle, int width, int h
         GL.layers[layer].fh = h;
     }
     memcpy(GL.layers[layer].frame, rgba, (size_t)w * (size_t)h * 4);
+    hk_gl_standin_keyed(share_handle, false);
     if (GL.layers[layer].w > 0) gl_compose();
     hk_lock_release(&GL.lock);
     hk_atomic_add(&GL.frames, 1);
@@ -2275,6 +2282,16 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
     say("  %d pictures, %d of them presented as a part, %d shown from the window's canvas without a flush; %ld pixels changed outside the part said",
         (int)W.pictures, (int)W.parts, (int)W.from_canvas, W.stale);
     CHECK(W.stale == 0);
+    {
+        /*
+         * OpenGL ES's surfaces have keyed mutexes, as ANGLE's do on the phone: nothing the app drew or the core read on one may
+         * have been dropped for want of it, and the shell refused no frame because the core still held it.
+         */
+        hk_gl_standin_stats st;
+        hk_gl_standin_stats_get(&st);
+        if (st.dropped || GL.unlocked) say("  %d clears, draws or reads of a surface whose keyed mutex was not held, dropped; %d frames the shell could not take", (int)st.dropped, (int)GL.unlocked);
+        if (!g_any_app) CHECK(st.dropped == 0 && GL.unlocked == 0);
+    }
     /* An app that shows pictures and composes no OpenGL frames has them shown from its canvas (megler_gfx_host.present). */
     if (W.pictures > 0 && count_lines("java: the app draws with EGL on a view") == 0) CHECK(W.from_canvas > 0);
     if (!g_any_app) CHECK(count_lines("a frame drawn in part missed") == 0);
