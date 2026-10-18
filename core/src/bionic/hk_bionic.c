@@ -344,7 +344,8 @@ void hk_bionic_native_stacks_start(void)
  * the graphics processor idle is doing instead. Every second the three guest threads that had the most of the processor
  * (a tenth of a core at least) are chosen, and each is stopped about sixty times a second for as long as its pc and the
  * top 2 KB of its stack take to copy (no lock is taken while it is stopped). A sample whose pc is in the system's own
- * code (ntdll, KERNELBASE, kernel32) is a wait -- a thread stopped in a system call is blocked there, nearly always -- and
+ * code (ntdll, KERNELBASE, kernel32, and win32u, whose system calls are the graphics driver's into the kernel) is a wait --
+ * a thread stopped in a system call is in the kernel, blocked nearly always -- and
  * is put to the first return address on its stack that is neither the system's nor the layer's (Megler.exe, whose locks
  * and condition variables the app's waits go through): what it waits for, in ANGLE, the driver or the app. Every ten
  * seconds the log says, for each thread sampled then, its share of a core and its samples by module, running and
@@ -389,7 +390,7 @@ static bool prof_line_left(void) { return hk_atomic_add(&g_prof_lines, 1) <= 100
 
 static int prof_kind(const char *name)
 {
-    static const char *const system[] = { "ntdll.dll", "kernelbase.dll", "kernel32.dll" };
+    static const char *const system[] = { "ntdll.dll", "kernelbase.dll", "kernel32.dll", "win32u.dll" };
     char low[48];
     size_t i;
     for (i = 0; name[i] && i + 1 < sizeof(low); i++) low[i] = (char)(name[i] >= 'A' && name[i] <= 'Z' ? name[i] + 32 : name[i]);
