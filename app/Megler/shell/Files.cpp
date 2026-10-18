@@ -99,6 +99,32 @@ std::vector<std::wstring> list(const std::wstring& directory, const std::wstring
     return names;
 }
 
+std::vector<std::wstring> listFolders(const std::wstring& directory, const std::wstring& pattern) {
+    std::vector<std::wstring> names;
+    WIN32_FIND_DATAW found = {};
+    HANDLE h = FindFirstFileExW((directory + L"\\" + pattern).c_str(), FindExInfoBasic, &found, FindExSearchNameMatch, nullptr, 0);
+    if (h == INVALID_HANDLE_VALUE) return names;
+    do {
+        const std::wstring name = found.cFileName;
+        if ((found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && name != L"." && name != L"..") names.push_back(name);
+    } while (FindNextFileW(h, &found));
+    FindClose(h);
+    return names;
+}
+
+bool removeTree(const std::wstring& path) {
+    bool ok = true;
+    for (const auto& name : list(path, L"*")) ok = remove(path + L"\\" + name) && ok;
+    for (const auto& name : listFolders(path, L"*")) ok = removeTree(path + L"\\" + name) && ok;
+    return (RemoveDirectoryW(path.c_str()) != 0 || GetLastError() == ERROR_FILE_NOT_FOUND || GetLastError() == ERROR_PATH_NOT_FOUND) && ok;
+}
+
+uint64_t folderSize(const std::wstring& path) {
+    uint64_t total = 0;
+    for (const auto& name : list(path, L"*")) total += size(path + L"\\" + name);
+    return total;
+}
+
 LineLog::LineLog(std::wstring path) : path_(std::move(path)) { write(path_, std::string_view()); }
 
 void LineLog::line(const std::string& text) { append(path_, timeOfDay() + " " + text + "\r\n"); }

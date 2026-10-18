@@ -64,6 +64,13 @@ void hk_tests_java_set_screen(int width, int height, int dpi);
 void hk_tests_java_set_script(int count, char **steps);
 void hk_java_tests_log(int level, const char *line, void *user);
 
+/*
+ * Bundles of split APKs (hk_bundle_tests.c): the test app's .apks and .xapk out of `java_dir` (build/guest/java), unpacked
+ * under `scratch`, and the real bundles in `real_dir` where it is not NULL. megler_init first: the expansion files go to its
+ * data folder. Returns the number of failed checks.
+ */
+int hk_bundle_tests_run(const char *java_dir, const char *scratch, const char *real_dir);
+
 #ifdef __cplusplus
 }
 #endif

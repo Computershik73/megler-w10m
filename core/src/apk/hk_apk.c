@@ -15,6 +15,8 @@
 #include "../elf/hk_elf.h"
 #include "../ndk/hk_egl.h"
 #include "../zip/hk_zip.h"
+#include "hk_bundle.h"
+#include "hk_json.h"
 
 /* -------------------------------------------------------- string pools */
 
@@ -128,12 +130,15 @@ static bool arsc_open(arsc *a, const u8 *data, u32 size)
  * The value of resource `id` as text: a string resource's string, or a file
  * resource's path. Among configurations, `want_file` prefers the densest one
  * whose value ends in .png or .webp (an icon); otherwise the default
- * configuration is preferred. False when the resource is not a string.
+ * configuration is preferred. False when the resource is not a string, or
+ * when nothing here is better than `*best_score` already is: the score of
+ * what was found before, in another table of the same app (a split's), which
+ * this raises to what it finds. NULL starts from nothing.
  */
-static bool arsc_string(const arsc *a, u32 id, bool want_file, char *out, size_t cap)
+static bool arsc_string(const arsc *a, u32 id, bool want_file, char *out, size_t cap, u32 *best)
 {
     u32 pkg_id = id >> 24, type_id = (id >> 16) & 0xFF, entry = id & 0xFFFF;
-    u32 off, best_score = 0;
+    u32 off, best_score = best ? *best : 0;
     bool found = false;
     if (!a->data) return false;
     off = hk_rd16(a->data + 2) + a->strings.size;
@@ -192,6 +197,7 @@ static bool arsc_string(const arsc *a, u32 id, bool want_file, char *out, size_t
         }
         off += psize;
     }
+    if (best) *best = best_score;
     return found;
 }
 
@@ -210,6 +216,9 @@ static bool arsc_string(const arsc *a, u32 id, bool want_file, char *out, size_t
 #define ATTR_VERSION_CODE 0x0101021bu
 #define ATTR_VERSION_NAME 0x0101021cu
 #define ATTR_TARGET_SDK 0x01010270u
+#define ATTR_IS_FEATURE_SPLIT 0x0101055bu
+#define ATTR_IS_SPLIT_REQUIRED 0x01010591u
+#define ATTR_REQUIRED_SPLIT_TYPES 0x0101064eu
 
 typedef struct attr {
     u32 id;                /* 0 when the attribute has no resource id */
@@ -294,6 +303,15 @@ static void start_element(manifest_ctx *c, const char *tag, const attr *attrs, i
             if (!attrs[i].id && !strcmp(attrs[i].name, "package")) hk_strlcpy(info->package, attrs[i].text, sizeof(info->package));
             if (attrs[i].id == ATTR_VERSION_CODE) info->version_code = (int)attrs[i].data;
             if (attrs[i].id == ATTR_VERSION_NAME) hk_strlcpy(info->version_name, attrs[i].text, sizeof(info->version_name));
+            /* A split's own name and the feature it is of, which have no resource ids; and what a base says of its splits. */
+            if (!attrs[i].id && !strcmp(attrs[i].name, "split")) hk_strlcpy(info->split, attrs[i].text, sizeof(info->split));
+            if (!attrs[i].id && !strcmp(attrs[i].name, "configForSplit")) hk_strlcpy(info->config_for_split, attrs[i].text, sizeof(info->config_for_split));
+            if (attrs[i].id == ATTR_IS_FEATURE_SPLIT && attrs[i].type == 0x12) info->feature_split = attrs[i].data != 0;
+            if (attrs[i].id == ATTR_IS_SPLIT_REQUIRED && attrs[i].type == 0x12 && attrs[i].data) info->split_required = true;
+            if (attrs[i].id == ATTR_REQUIRED_SPLIT_TYPES && attrs[i].text[0]) {
+                hk_strlcpy(info->required_split_types, attrs[i].text, sizeof(info->required_split_types));
+                info->split_required = true;
+            }
         }
     } else if (!strcmp(tag, "uses-sdk")) {
         for (i = 0; i < nattrs; i++) {
@@ -361,6 +379,8 @@ static void start_element(manifest_ctx *c, const char *tag, const attr *attrs, i
             add_meta(c->act_meta, &c->act_nmeta, (int)HK_COUNT(c->act_meta), name->text, text);
         } else if (c->in_application) {
             add_meta(info->meta, &info->nmeta, (int)HK_COUNT(info->meta), name->text, text);
+            /* What Google Play's own library checks at an app's start (its "missing splits" check): the base is not whole alone. */
+            if (!strcmp(name->text, "com.android.vending.splits.required") && !strcmp(text, "true")) info->split_required = true;
         }
     }
 }
@@ -442,8 +462,9 @@ static bool parse_manifest(hk_apk_info *info, const arsc *res, const u8 *xml, u3
         }
         off += csize;
     }
-    if (!info->label[0] && c.label_ref) arsc_string(res, c.label_ref, false, info->label, sizeof(info->label));
-    if (c.icon_ref) arsc_string(res, c.icon_ref, true, info->icon_path, sizeof(info->icon_path));
+    if (!info->label[0] && c.label_ref) arsc_string(res, c.label_ref, false, info->label, sizeof(info->label), NULL);
+    info->icon_id = c.icon_ref;
+    info->label_id = c.label_ref;
     return info->package[0] != 0;
 }
 
@@ -502,28 +523,46 @@ static void abi_seen(const hk_zip_entry *e, void *user)
     if (info->nabis < (int)HK_COUNT(info->abis)) hk_strlcpy(info->abis[info->nabis++], name, sizeof(info->abis[0]));
 }
 
-static void classify(hk_apk_info *info, const hk_zip *z)
+static void abi_add(hk_apk_info *info, const char *name)
+{
+    int i;
+    for (i = 0; i < info->nabis; i++)
+        if (!strcmp(info->abis[i], name)) return;
+    if (info->nabis < (int)HK_COUNT(info->abis)) hk_strlcpy(info->abis[info->nabis++], name, sizeof(info->abis[0]));
+}
+
+/*
+ * What the app is and whether it runs, from its manifest and the native libraries of all its APKs (zips[0] the base, the
+ * rest its splits). `bundle_abis` are the ABIs of the splits that the unpacking of a bundle left out: they are the app's,
+ * and say what it has besides what is here, but are never the one used.
+ */
+static void classify(hk_apk_info *info, hk_zip *const *zips, int nzips, char (*bundle_abis)[24], int nbundle_abis)
 {
     lib_walk w;
-    char prefix[40];
-    int i;
-    bool v7 = false, v5 = false, any64 = false;
-    hk_zip_each(z, "lib/", abi_seen, info);
+    char prefix[40], others[120];
+    int i, k;
+    bool v7 = false, v5 = false, any64 = false, in_parts = info->nsplits > 0 || info->nleft_out > 0, abi_split_missing;
+    for (k = 0; k < nzips; k++) hk_zip_each(zips[k], "lib/", abi_seen, info);
     for (i = 0; i < info->nabis; i++) {
         if (!strcmp(info->abis[i], "armeabi-v7a")) v7 = true;
         else if (!strcmp(info->abis[i], "armeabi")) v5 = true;
-        else if (!strcmp(info->abis[i], "arm64-v8a")) any64 = true;
     }
     if (v7) strcpy(info->abi, "armeabi-v7a");
     else if (v5) strcpy(info->abi, "armeabi");
+    for (i = 0; i < nbundle_abis; i++) abi_add(info, bundle_abis[i]);
+    others[0] = 0;
+    for (i = 0; i < info->nabis; i++) {
+        if (!strcmp(info->abis[i], "arm64-v8a")) any64 = true;
+        if (strcmp(info->abis[i], "armeabi-v7a") && strcmp(info->abis[i], "armeabi") && strlen(others) + strlen(info->abis[i]) + 3 < sizeof(others))
+            snprintf(others + strlen(others), sizeof(others) - strlen(others), "%s%s", others[0] ? ", " : "", info->abis[i]);
+    }
 
     memset(&w, 0, sizeof(w));
-    w.zip = z;
     w.info = info;
     if (info->abi[0]) {
         snprintf(prefix, sizeof(prefix), "lib/%s/", info->abi);
         w.prefix = prefix;
-        hk_zip_each(z, prefix, lib_seen, &w);
+        for (k = 0; k < nzips; k++) hk_zip_each(zips[k], prefix, lib_seen, &w);
     }
 
     if (w.has[L_UNITY]) strcpy(info->engine, "unity");
@@ -538,14 +577,29 @@ static void classify(hk_apk_info *info, const hk_zip *z)
      * Everything else that has bytecode and an activity to start is an ordinary Android app: Java, which loads what
      * native libraries it has itself (System.loadLibrary) when it wants them. The Java driver runs it.
      */
-    else if (info->activity[0] && hk_zip_find(z, "classes.dex")) strcpy(info->engine, "java");
+    else if (info->activity[0] && hk_zip_find(zips[0], "classes.dex")) strcpy(info->engine, "java");
     else strcpy(info->engine, "unknown");
     info->supported = hk_driver_supported(info->engine);
 
     /* A NativeActivity with no android.app.lib_name loads "main". */
     if (!strcmp(info->engine, "native-activity") && !info->native_library[0]) strcpy(info->native_library, "main");
 
-    if (!strcmp(info->engine, "java") && info->supported && (!info->nabis || info->abi[0])) {
+    /*
+     * The base of an app in several APKs, read without the split that has its native code: its manifest says there is one
+     * for each kind of processor (android:requiredSplitTypes with "base__abi"), and none is here. Android does not install a
+     * base without the splits it requires.
+     */
+    abi_split_missing = !info->nabis && strstr(info->required_split_types, "__abi") != NULL;
+
+    if (info->split[0]) {
+        info->runnable = false;
+        snprintf(info->reason, sizeof(info->reason), "This APK is not an app by itself but a part of one (its split \"%s\"). Add the whole bundle (.apks or .xapk) it came in.",
+                 info->split);
+    } else if (abi_split_missing) {
+        info->runnable = false;
+        hk_strlcpy(info->reason, "This APK is the base of an app that comes in several APKs, and its native code is in a split APK of its own, which is not here. Add the whole bundle (.apks or .xapk) the app came in.",
+                   sizeof(info->reason));
+    } else if (!strcmp(info->engine, "java") && info->supported && (!info->nabis || info->abi[0])) {
         /*
          * Java, with no native libraries or with ones this processor can run: the Java driver runs it on the Dalvik runtime,
          * if the files for that are installed (the driver says when they are not). One whose libraries are all for other
@@ -557,8 +611,12 @@ static void classify(hk_apk_info *info, const hk_zip *z)
         hk_strlcpy(info->reason, "This app has no native code: it is written in Java only, which this layer does not run yet.", sizeof(info->reason));
     } else if (!info->abi[0]) {
         info->runnable = false;
-        snprintf(info->reason, sizeof(info->reason), "This APK has no 32-bit ARM code (only %s). Windows 10 Mobile is a 32-bit system and cannot run it; look for a version of the app that still includes armeabi-v7a.",
-                 any64 ? "arm64-v8a" : info->abis[0]);
+        if (in_parts)
+            snprintf(info->reason, sizeof(info->reason), "This app has no 32-bit ARM code: the bundle it came in has native code for %s only. Windows 10 Mobile is a 32-bit system and cannot run it; look for a version of the app that still includes armeabi-v7a.",
+                     others[0] ? others : info->abis[0]);
+        else
+            snprintf(info->reason, sizeof(info->reason), "This APK has no 32-bit ARM code (only %s). Windows 10 Mobile is a 32-bit system and cannot run it; look for a version of the app that still includes armeabi-v7a.",
+                     any64 ? "arm64-v8a" : info->abis[0]);
     } else if (!info->supported) {
         info->runnable = false;
         if (!strcmp(info->engine, "unknown"))
@@ -576,65 +634,196 @@ static void classify(hk_apk_info *info, const hk_zip *z)
     if (!strcmp(info->engine, "native-activity") && info->has_code && strcmp(info->activity, "android.app.NativeActivity"))
         note(info, "Its activity (%s) is the app's own Java class on top of NativeActivity. That Java code is not run here: the app starts, and gets as far as it can without it.",
              info->activity);
+    /* A base alone that says it needs its splits, and runs all the same as far as anyone can tell from here. */
+    if (!info->split[0] && !abi_split_missing && info->split_required && !in_parts)
+        note(info, "This APK is only the base of an app that comes in several APKs (its manifest says it needs them): pictures for some screen densities, some languages or other parts of it may be missing. If it came in a bundle (.apks or .xapk), add the bundle instead.");
 }
 
-bool hk_apk_read_info(const char *apk_path, hk_apk_info *info)
+/*
+ * An APK's manifest, with its resources for the label: the archive is left open in `z` for the caller, and closed when
+ * the APK cannot be read (info->error then says why).
+ */
+static bool read_manifest(const char *apk_path, hk_zip *z, hk_apk_info *info)
 {
-    hk_zip z;
     const hk_zip_entry *me, *re;
     u8 *manifest, *resources = NULL;
     size_t msize = 0, rsize = 0;
     arsc res;
     memset(info, 0, sizeof(*info));
-    if (!hk_zip_open(&z, apk_path, info->error, sizeof(info->error))) return false;
-    me = hk_zip_find(&z, "AndroidManifest.xml");
+    if (!hk_zip_open(z, apk_path, info->error, sizeof(info->error))) return false;
+    me = hk_zip_find(z, "AndroidManifest.xml");
     if (!me) {
         hk_strlcpy(info->error, "not an APK: there is no AndroidManifest.xml in it", sizeof(info->error));
-        hk_zip_close(&z);
+        hk_zip_close(z);
         return false;
     }
-    manifest = hk_zip_read(&z, me, 16u << 20, &msize);
-    re = hk_zip_find(&z, "resources.arsc");
-    if (re) resources = hk_zip_read(&z, re, 64u << 20, &rsize);
+    manifest = hk_zip_read(z, me, 16u << 20, &msize);
+    re = hk_zip_find(z, "resources.arsc");
+    if (re) resources = hk_zip_read(z, re, 64u << 20, &rsize);
     arsc_open(&res, resources, (u32)rsize);
     if (!manifest || !parse_manifest(info, &res, manifest, (u32)msize)) {
         hk_strlcpy(info->error, "the APK's manifest cannot be read", sizeof(info->error));
         free(manifest);
         free(resources);
-        hk_zip_close(&z);
+        hk_zip_close(z);
         return false;
     }
     free(manifest);
     free(resources);
+    return true;
+}
+
+/* The last part of a path, for a person. */
+static const char *file_name(const char *path)
+{
+    const char *slash = strrchr(path, '/'), *back = strrchr(path, '\\');
+    if (back && (!slash || back > slash)) slash = back;
+    return slash ? slash + 1 : path;
+}
+
+bool hk_apk_read_app(const char *apk_path, const char *const *splits, int nsplits, const char *record_dir, hk_apk_info *info)
+{
+    hk_zip *zips[1 + HK_APK_MAX_SPLITS];
+    int given[1 + HK_APK_MAX_SPLITS];      /* for each archive read, 0 the base, or 1 + its place in `splits` */
+    hk_apk_info *part = NULL;
+    hk_bundle_record *record = NULL;
+    u32 icon_score = 0, label_score = 0;
+    int nz, k;
+    zips[0] = (hk_zip *)hk_alloc(sizeof(hk_zip));
+    if (!read_manifest(apk_path, zips[0], info)) {
+        free(zips[0]);
+        return false;
+    }
+    nz = 1;
+    given[0] = 0;
+    for (k = 0; k < nsplits; k++) {
+        const char *name = file_name(splits[k]);
+        if (nz > HK_APK_MAX_SPLITS) {
+            note(info, "Only %d split APKs are read with an app: %s and those after it are left out.", HK_APK_MAX_SPLITS, name);
+            break;
+        }
+        if (!part) part = (hk_apk_info *)hk_alloc(sizeof(*part));
+        zips[nz] = (hk_zip *)hk_alloc(sizeof(hk_zip));
+        if (!read_manifest(splits[k], zips[nz], part)) {
+            note(info, "The split APK %s cannot be read (%s) and is left out.", name, part->error);
+            free(zips[nz]);
+            continue;
+        }
+        /* Android installs a split only with a base of its own package, and only one that says it is a split. */
+        if (strcmp(part->package, info->package) || !part->split[0]) {
+            if (strcmp(part->package, info->package)) note(info, "%s is a part of another app (%s) and is left out.", name, part->package);
+            else note(info, "%s is not a split APK (its manifest names no split) and is left out.", name);
+            hk_zip_close(zips[nz]);
+            free(zips[nz]);
+            continue;
+        }
+        hk_strlcpy(info->splits[info->nsplits++], part->split, sizeof(info->splits[0]));
+        given[nz++] = k + 1;
+    }
+    free(part);
+    if (record_dir) {
+        record = (hk_bundle_record *)hk_alloc(sizeof(*record));
+        if (hk_bundle_record_read(record_dir, record)) {
+            for (k = 0; k < record->nleft_out && k < (int)HK_COUNT(info->left_out); k++) hk_strlcpy(info->left_out[k], record->left_out[k], sizeof(info->left_out[0]));
+            info->nleft_out = k;
+        } else {
+            record->nabis = 0;
+        }
+    }
+    /*
+     * The label and the icon, through every APK's resources: a split has entries of the base's resources for its own
+     * configurations, a density split the pictures for its density -- often the only pictures of the icon there are.
+     */
+    for (k = 0; k < nz && (info->icon_id || (info->label_id && !info->label[0])); k++) {
+        const hk_zip_entry *re = hk_zip_find(zips[k], "resources.arsc");
+        size_t rsize = 0;
+        u8 *resources = re ? hk_zip_read(zips[k], re, 64u << 20, &rsize) : NULL;
+        arsc res;
+        if (!resources) continue;
+        arsc_open(&res, resources, (u32)rsize);
+        if (info->icon_id && arsc_string(&res, info->icon_id, true, info->icon_path, sizeof(info->icon_path), &icon_score)) info->icon_apk = given[k];
+        if (info->label_id && !info->label[0]) arsc_string(&res, info->label_id, false, info->label, sizeof(info->label), &label_score);
+        free(resources);
+    }
     if (!info->label[0]) {
         const char *dot = strrchr(info->package, '.');
         hk_strlcpy(info->label, dot ? dot + 1 : info->package, sizeof(info->label));
     }
-    /* An icon the resources did not lead to: the usual names, densest first. */
-    if (!info->icon_path[0] || !hk_zip_find(&z, info->icon_path)) {
+    /* An icon the resources did not lead to: the usual names, densest first, in the APKs in turn. */
+    for (k = 0; k < nz && given[k] != info->icon_apk; k++) { }
+    if (!info->icon_path[0] || k == nz || !hk_zip_find(zips[k], info->icon_path)) {
         static const char *const dens[] = { "xxxhdpi", "xxhdpi", "xhdpi", "hdpi", "mdpi" };
         static const char *const kinds[] = { "mipmap", "drawable" };
         static const char *const names[] = { "ic_launcher", "icon", "app_icon", "ic_launcher_round" };
         static const char *const sufs[] = { "-v4", "" };
         static const char *const exts[] = { "png", "webp" };
-        int d, k, n, s, x;
+        int d, n, s, x, a;
         info->icon_path[0] = 0;
+        info->icon_apk = 0;
         for (d = 0; d < 5 && !info->icon_path[0]; d++)
             for (k = 0; k < 2 && !info->icon_path[0]; k++)
                 for (n = 0; n < 4 && !info->icon_path[0]; n++)
                     for (s = 0; s < 2 && !info->icon_path[0]; s++)
-                        for (x = 0; x < 2; x++) {
-                            char path[200];
-                            snprintf(path, sizeof(path), "res/%s-%s%s/%s.%s", kinds[k], dens[d], sufs[s], names[n], exts[x]);
-                            if (hk_zip_find(&z, path)) {
-                                hk_strlcpy(info->icon_path, path, sizeof(info->icon_path));
-                                break;
+                        for (x = 0; x < 2 && !info->icon_path[0]; x++)
+                            for (a = 0; a < nz; a++) {
+                                char path[200];
+                                snprintf(path, sizeof(path), "res/%s-%s%s/%s.%s", kinds[k], dens[d], sufs[s], names[n], exts[x]);
+                                if (hk_zip_find(zips[a], path)) {
+                                    hk_strlcpy(info->icon_path, path, sizeof(info->icon_path));
+                                    info->icon_apk = given[a];
+                                    break;
+                                }
                             }
-                        }
     }
-    classify(info, &z);
-    hk_zip_close(&z);
+    classify(info, zips, nz, record ? record->abis : NULL, record ? record->nabis : 0);
+    for (k = 0; k < nz; k++) {
+        hk_zip_close(zips[k]);
+        free(zips[k]);
+    }
+    free(record);
     return true;
+}
+
+bool hk_apk_read_info(const char *apk_path, hk_apk_info *info) { return hk_apk_read_app(apk_path, NULL, 0, NULL, info); }
+
+typedef struct split_list {
+    const char *dir;
+    char **paths;
+    int n, cap;
+} split_list;
+
+static void split_seen(const char *name, bool is_dir, void *user)
+{
+    split_list *l = (split_list *)user;
+    size_t n = strlen(name);
+    if (is_dir || n < 5 || name[0] == '.') return;
+    if (!(name[n - 4] == '.' && (name[n - 3] | 32) == 'a' && (name[n - 2] | 32) == 'p' && (name[n - 1] | 32) == 'k')) return;
+    if (l->n == l->cap) {
+        l->cap = l->cap ? l->cap * 2 : 8;
+        l->paths = (char **)hk_realloc(l->paths, sizeof(char *) * (size_t)l->cap);
+    }
+    l->paths[l->n++] = hk_sprintf("%s/%s", l->dir, name);
+}
+
+static int by_path(const void *a, const void *b) { return strcmp(*(char *const *)a, *(char *const *)b); }
+
+int hk_apk_list_splits(const char *dir, char ***paths)
+{
+    split_list l;
+    memset(&l, 0, sizeof(l));
+    l.dir = dir;
+    *paths = NULL;
+    if (!dir || !dir[0] || !hk_path_list(dir, split_seen, &l, NULL)) return 0;
+    if (l.n > 1) qsort(l.paths, (size_t)l.n, sizeof(char *), by_path);
+    *paths = l.paths;
+    return l.n;
+}
+
+void hk_apk_free_list(char **paths, int n)
+{
+    int i;
+    for (i = 0; i < n; i++) free(paths[i]);
+    free(paths);
 }
 
 void hk_apk_info_free(hk_apk_info *info) { (void)info; }
@@ -649,59 +838,8 @@ const char *hk_apk_meta_value(const hk_apk_info *info, const char *name)
 
 /* ------------------------------------------------------------------ report */
 
-typedef struct jbuf {
-    char *s;
-    size_t n, cap;
-} jbuf;
-
-static void jraw(jbuf *j, const char *text)
-{
-    size_t len = strlen(text);
-    if (j->n + len + 1 > j->cap) {
-        j->cap = (j->n + len + 1) * 2;
-        j->s = (char *)hk_realloc(j->s, j->cap);
-    }
-    memcpy(j->s + j->n, text, len + 1);
-    j->n += len;
-}
-
-static void jstr(jbuf *j, const char *text)
-{
-    char tmp[8];
-    jraw(j, "\"");
-    for (; *text; text++) {
-        u8 c = (u8)*text;
-        if (c == '"' || c == '\\') {
-            tmp[0] = '\\';
-            tmp[1] = (char)c;
-            tmp[2] = 0;
-        } else if (c < 0x20) {
-            snprintf(tmp, sizeof(tmp), "\\u%04x", c);
-        } else {
-            tmp[0] = (char)c;
-            tmp[1] = 0;
-        }
-        jraw(j, tmp);
-    }
-    jraw(j, "\"");
-}
-
-static void jkey(jbuf *j, const char *key, bool first)
-{
-    if (!first) jraw(j, ",");
-    jstr(j, key);
-    jraw(j, ":");
-}
-
-static void jint(jbuf *j, long v)
-{
-    char tmp[24];
-    snprintf(tmp, sizeof(tmp), "%ld", v);
-    jraw(j, tmp);
-}
-
 typedef struct lib_report {
-    jbuf *j;
+    hk_jbuf *j;
     const hk_zip *zip;
     const char *prefix;
     bool first;
@@ -727,7 +865,7 @@ static const u8 *elf_at(const u8 *d, size_t n, u32 vaddr, u32 need)
 static void lib_report_one(const hk_zip_entry *e, void *user)
 {
     lib_report *r = (lib_report *)user;
-    jbuf *j = r->j;
+    hk_jbuf *j = r->j;
     const char *name = e->name + strlen(r->prefix);
     const u8 *d;
     u8 *owned = NULL;
@@ -735,15 +873,15 @@ static void lib_report_one(const hk_zip_entry *e, void *user)
     u32 arm = 0, thumb = 0, missing = 0;
     bool parsed = false;
     if (strchr(name, '/') || strlen(name) < 4 || strcmp(name + strlen(name) - 3, ".so")) return;
-    if (!r->first) jraw(j, ",");
+    if (!r->first) hk_jraw(j, ",");
     r->first = false;
-    jraw(j, "{");
-    jkey(j, "name", true);
-    jstr(j, name);
-    jkey(j, "size", false);
-    jint(j, (long)e->usize);
-    jkey(j, "needs", false);
-    jraw(j, "[");
+    hk_jraw(j, "{");
+    hk_jkey(j, "name", true);
+    hk_jstr(j, name);
+    hk_jkey(j, "size", false);
+    hk_jint(j, (long)e->usize);
+    hk_jkey(j, "needs", false);
+    hk_jraw(j, "[");
 
     owned = hk_zip_read(r->zip, e, 512u << 20, &n);
     d = owned;
@@ -773,9 +911,9 @@ static void lib_report_one(const hk_zip_entry *e, void *user)
                 if (str && str[strsz - 1] == 0) {
                     for (k = 0; k < ndyn && dyn[k].d_tag != DT_NULL; k++) {
                         if (dyn[k].d_tag != DT_NEEDED || dyn[k].d_val >= strsz) continue;
-                        if (!first_need) jraw(j, ",");
+                        if (!first_need) hk_jraw(j, ",");
                         first_need = false;
-                        jstr(j, str + dyn[k].d_val);
+                        hk_jstr(j, str + dyn[k].d_val);
                     }
                     /* How many symbols: the SysV table says outright; the GNU one by its last chain. */
                     if (hash) {
@@ -825,128 +963,183 @@ static void lib_report_one(const hk_zip_entry *e, void *user)
         }
     }
     free(owned);
-    jraw(j, "]");
+    hk_jraw(j, "]");
     if (parsed) {
-        jkey(j, "armFunctions", false);
-        jint(j, (long)arm);
-        jkey(j, "thumbFunctions", false);
-        jint(j, (long)thumb);
-        jkey(j, "importsNotInSystem", false);
-        jint(j, (long)missing);
+        hk_jkey(j, "armFunctions", false);
+        hk_jint(j, (long)arm);
+        hk_jkey(j, "thumbFunctions", false);
+        hk_jint(j, (long)thumb);
+        hk_jkey(j, "importsNotInSystem", false);
+        hk_jint(j, (long)missing);
         r->arm_total += arm;
         r->thumb_total += thumb;
     }
-    jraw(j, "}");
+    hk_jraw(j, "}");
 }
 
-char *megler_apk_report(const char *apk_path)
+/* The report of an app in one or more APKs (megler.h): the base, its splits, and the folder with a bundle's record, if any. */
+static char *report(const char *apk_path, char *const *splits, int nsplits, const char *record_dir)
 {
-    hk_apk_info info;
-    jbuf j;
-    hk_zip z;
-    char err[160];
-    int i;
+    hk_apk_info *info = (hk_apk_info *)hk_alloc(sizeof(*info));
+    hk_jbuf j;
+    int i, k;
     memset(&j, 0, sizeof(j));
-    jraw(&j, "{");
-    if (!hk_apk_read_info(apk_path, &info)) {
-        jkey(&j, "ok", true);
-        jraw(&j, "false");
-        jkey(&j, "error", false);
-        jstr(&j, info.error);
-        jraw(&j, "}");
+    hk_jraw(&j, "{");
+    if (!hk_apk_read_app(apk_path, (const char *const *)splits, nsplits, record_dir, info)) {
+        hk_jkey(&j, "ok", true);
+        hk_jraw(&j, "false");
+        hk_jkey(&j, "error", false);
+        hk_jstr(&j, info->error);
+        hk_jraw(&j, "}");
+        free(info);
         return j.s;
     }
-    jkey(&j, "ok", true);
-    jraw(&j, "true");
-    jkey(&j, "package", false);
-    jstr(&j, info.package);
-    jkey(&j, "label", false);
-    jstr(&j, info.label);
-    jkey(&j, "versionName", false);
-    jstr(&j, info.version_name);
-    jkey(&j, "versionCode", false);
-    jint(&j, info.version_code);
-    jkey(&j, "minSdk", false);
-    jint(&j, info.min_sdk);
-    jkey(&j, "targetSdk", false);
-    jint(&j, info.target_sdk);
-    jkey(&j, "abis", false);
-    jraw(&j, "[");
-    for (i = 0; i < info.nabis; i++) {
-        if (i) jraw(&j, ",");
-        jstr(&j, info.abis[i]);
+    hk_jkey(&j, "ok", true);
+    hk_jraw(&j, "true");
+    hk_jkey(&j, "package", false);
+    hk_jstr(&j, info->package);
+    hk_jkey(&j, "label", false);
+    hk_jstr(&j, info->label);
+    hk_jkey(&j, "versionName", false);
+    hk_jstr(&j, info->version_name);
+    hk_jkey(&j, "versionCode", false);
+    hk_jint(&j, info->version_code);
+    hk_jkey(&j, "minSdk", false);
+    hk_jint(&j, info->min_sdk);
+    hk_jkey(&j, "targetSdk", false);
+    hk_jint(&j, info->target_sdk);
+    hk_jkey(&j, "abis", false);
+    hk_jraw(&j, "[");
+    for (i = 0; i < info->nabis; i++) {
+        if (i) hk_jraw(&j, ",");
+        hk_jstr(&j, info->abis[i]);
     }
-    jraw(&j, "]");
-    if (info.abi[0]) {
-        jkey(&j, "abi", false);
-        jstr(&j, info.abi);
+    hk_jraw(&j, "]");
+    if (info->abi[0]) {
+        hk_jkey(&j, "abi", false);
+        hk_jstr(&j, info->abi);
     }
-    jkey(&j, "engine", false);
-    jstr(&j, info.engine);
-    jkey(&j, "supported", false);
-    jraw(&j, info.supported ? "true" : "false");
-    jkey(&j, "activity", false);
-    jstr(&j, info.activity);
-    jkey(&j, "orientation", false);
-    jstr(&j, info.orientation == HK_APK_LANDSCAPE ? "landscape" : info.orientation == HK_APK_PORTRAIT ? "portrait" : "unspecified");
-    if (info.native_library[0]) {
-        jkey(&j, "nativeLibrary", false);
-        jstr(&j, info.native_library);
+    hk_jkey(&j, "engine", false);
+    hk_jstr(&j, info->engine);
+    hk_jkey(&j, "supported", false);
+    hk_jraw(&j, info->supported ? "true" : "false");
+    hk_jkey(&j, "activity", false);
+    hk_jstr(&j, info->activity);
+    hk_jkey(&j, "orientation", false);
+    hk_jstr(&j, info->orientation == HK_APK_LANDSCAPE ? "landscape" : info->orientation == HK_APK_PORTRAIT ? "portrait" : "unspecified");
+    if (info->native_library[0]) {
+        hk_jkey(&j, "nativeLibrary", false);
+        hk_jstr(&j, info->native_library);
     }
-    jkey(&j, "hasIcon", false);
-    jraw(&j, info.icon_path[0] ? "true" : "false");
-    jkey(&j, "libraries", false);
-    jraw(&j, "[");
-    if (info.abi[0] && hk_zip_open(&z, apk_path, err, sizeof(err))) {
+    hk_jkey(&j, "hasIcon", false);
+    hk_jraw(&j, info->icon_path[0] ? "true" : "false");
+    /* The splits it was read with, and those the unpacking of its bundle left out. */
+    if (info->nsplits || info->nleft_out) {
+        hk_jkey(&j, "splits", false);
+        hk_jraw(&j, "[");
+        for (i = 0; i < info->nsplits; i++) {
+            if (i) hk_jraw(&j, ",");
+            hk_jstr(&j, info->splits[i]);
+        }
+        hk_jraw(&j, "]");
+        hk_jkey(&j, "splitsLeftOut", false);
+        hk_jraw(&j, "[");
+        for (i = 0; i < info->nleft_out; i++) {
+            if (i) hk_jraw(&j, ",");
+            hk_jstr(&j, info->left_out[i]);
+        }
+        hk_jraw(&j, "]");
+    }
+    hk_jkey(&j, "libraries", false);
+    hk_jraw(&j, "[");
+    if (info->abi[0]) {
+        /* The libraries of every APK of the app's, the base's first: a split for the processor has them in an app in parts. */
         lib_report r;
         char prefix[40];
         memset(&r, 0, sizeof(r));
-        snprintf(prefix, sizeof(prefix), "lib/%s/", info.abi);
+        snprintf(prefix, sizeof(prefix), "lib/%s/", info->abi);
         r.j = &j;
-        r.zip = &z;
         r.prefix = prefix;
         r.first = true;
-        r.info = &info;
-        hk_zip_each(&z, prefix, lib_report_one, &r);
-        hk_zip_close(&z);
+        r.info = info;
+        for (k = -1; k < nsplits; k++) {
+            hk_zip z;
+            char err[160];
+            if (!hk_zip_open(&z, k < 0 ? apk_path : splits[k], err, sizeof(err))) continue;
+            r.zip = &z;
+            hk_zip_each(&z, prefix, lib_report_one, &r);
+            hk_zip_close(&z);
+        }
         if (r.arm_total) {
-            if (info.nnotes < (int)HK_COUNT(info.notes))
-                snprintf(info.notes[info.nnotes++], sizeof(info.notes[0]),
+            if (info->nnotes < (int)HK_COUNT(info->notes))
+                snprintf(info->notes[info->nnotes++], sizeof(info->notes[0]),
                          "%u of its %u exported functions are in ARM (not Thumb) mode. Whether a phone keeps such code running is what Device checks measures.",
                          r.arm_total, r.arm_total + r.thumb_total);
         }
     }
-    jraw(&j, "]");
-    jkey(&j, "runnable", false);
-    jraw(&j, info.runnable ? "true" : "false");
-    if (!info.runnable) {
-        jkey(&j, "reason", false);
-        jstr(&j, info.reason);
+    hk_jraw(&j, "]");
+    hk_jkey(&j, "runnable", false);
+    hk_jraw(&j, info->runnable ? "true" : "false");
+    if (!info->runnable) {
+        hk_jkey(&j, "reason", false);
+        hk_jstr(&j, info->reason);
     }
-    jkey(&j, "notes", false);
-    jraw(&j, "[");
-    for (i = 0; i < info.nnotes; i++) {
-        if (i) jraw(&j, ",");
-        jstr(&j, info.notes[i]);
+    hk_jkey(&j, "notes", false);
+    hk_jraw(&j, "[");
+    for (i = 0; i < info->nnotes; i++) {
+        if (i) hk_jraw(&j, ",");
+        hk_jstr(&j, info->notes[i]);
     }
-    jraw(&j, "]}");
+    hk_jraw(&j, "]}");
+    free(info);
     return j.s;
 }
 
-bool megler_apk_icon(const char *apk_path, uint8_t **data, size_t *size)
+char *megler_apk_report(const char *apk_path) { return report(apk_path, NULL, 0, NULL); }
+
+char *megler_apk_report_splits(const char *apk_path, const char *splits_dir)
 {
-    hk_apk_info info;
-    hk_zip z;
-    const hk_zip_entry *e;
-    char err[160];
-    u8 *bytes;
+    char **splits = NULL, *out;
+    int n = hk_apk_list_splits(splits_dir, &splits);
+    out = report(apk_path, splits, n, splits_dir && splits_dir[0] ? splits_dir : NULL);
+    hk_apk_free_list(splits, n);
+    return out;
+}
+
+bool megler_apk_icon_splits(const char *apk_path, const char *splits_dir, uint8_t **data, size_t *size)
+{
+    hk_apk_info *info = (hk_apk_info *)hk_alloc(sizeof(*info));
+    char **splits = NULL;
+    int n = hk_apk_list_splits(splits_dir, &splits);
+    u8 *bytes = NULL;
     *data = NULL;
     *size = 0;
-    if (!hk_apk_read_info(apk_path, &info) || !info.icon_path[0]) return false;
-    if (!hk_zip_open(&z, apk_path, err, sizeof(err))) return false;
-    e = hk_zip_find(&z, info.icon_path);
-    bytes = e ? hk_zip_read(&z, e, 8u << 20, size) : NULL;
-    hk_zip_close(&z);
+    if (hk_apk_read_app(apk_path, (const char *const *)splits, n, NULL, info) && info->icon_path[0]) {
+        hk_zip z;
+        char err[160];
+        const hk_zip_entry *e;
+        if (hk_zip_open(&z, info->icon_apk ? splits[info->icon_apk - 1] : apk_path, err, sizeof(err))) {
+            e = hk_zip_find(&z, info->icon_path);
+            if (e) bytes = hk_zip_read(&z, e, 8u << 20, size);
+            hk_zip_close(&z);
+        }
+    }
+    /* None in the APKs: the icon the bundle came with, which megler_bundle_unpack keeps beside the splits. */
+    if (!bytes && splits_dir && splits_dir[0]) {
+        char *own = hk_sprintf("%s/%s", splits_dir, HK_BUNDLE_ICON);
+        size_t got = 0;
+        bytes = hk_file_read_all(own, &got);
+        if (bytes && got > 0 && got <= (8u << 20)) *size = got;
+        else {
+            free(bytes);
+            bytes = NULL;
+        }
+        free(own);
+    }
+    hk_apk_free_list(splits, n);
+    free(info);
     *data = bytes;
     return bytes != NULL;
 }
+
+bool megler_apk_icon(const char *apk_path, uint8_t **data, size_t *size) { return megler_apk_icon_splits(apk_path, NULL, data, size); }

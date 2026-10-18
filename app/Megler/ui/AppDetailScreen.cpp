@@ -131,7 +131,11 @@ private:
                 facts.push_back(labeledContent("Android SDK", format("min %d, target %d", r.minSdk, r.targetSdk)));
             if (!r.activity.empty()) facts.push_back(labeledContent("Activity", r.activity, true));
             if (!r.nativeLibrary.empty()) facts.push_back(labeledContent("Native Library", r.nativeLibrary, true));
-            facts.push_back(labeledContent("File", entry.id + " · " + formattedByteCount(entry.size)));
+            // An app that came as a bundle: the splits it is run with, and what of the bundle was not kept.
+            if (!r.splits.empty()) facts.push_back(labeledContent("Split APKs", joined(r.splits, ", "), true));
+            if (!r.splitsLeftOut.empty()) facts.push_back(labeledContent("Left Out of the Bundle", joined(r.splitsLeftOut, ", "), true));
+            facts.push_back(labeledContent("File", entry.id + (entry.splitsDir.empty() ? "" : format(" and %u splits", unsigned(r.splits.size()))) +
+                                                       " · " + formattedByteCount(entry.size)));
             add(column, listSection("About", facts));
 
             if (!r.libraries.empty()) {
@@ -163,8 +167,10 @@ private:
         // The copy of a running app is open in the core.
         remove.IsEnabled(session::snapshot().apkId != id_ || !session::spent());
         add(column, remove);
-        auto note = text("Removes Megler's copy of the APK. The app's own files and saves (LocalState\\apps) stay.", font::footnote,
-                         weightNormal(), p.secondaryLabel);
+        auto note = text(entry.splitsDir.empty() ? "Removes Megler's copy of the APK. The app's own files and saves (LocalState\\apps) stay."
+                                                 : "Removes Megler's copy of the app's APKs. The app's own files and saves, and the expansion files "
+                                                   "its bundle brought (LocalState\\apps), stay.",
+                         font::footnote, weightNormal(), p.secondaryLabel);
         note.Margin(ThicknessHelper::FromLengths(16, 7, 16, 0));
         add(column, note);
 

@@ -18,6 +18,7 @@ Back. No real app has been tried.
 | An undefined instruction reaching the fault handler and the thread resumed elsewhere | **works on the phone**, in Thumb and in ARM state; 5 µs a time |
 | A thread staying in ARM state | **it does on the phone**: 1.5 billion iterations (0.8 s) undisturbed |
 | APK reader, manifest and resources | **passes on the phone**; read CPU-Z's and a Java app's real APKs correctly on PC (label, version, ABIs, icon) |
+| Apps in several APKs: a bundle of split APKs (.apks, .xapk) unpacked into its base and the splits this phone can use (32-bit ARM, the densities nearest the screen's, English and the phone's languages, feature splits, asset packs), an .xapk's OBB put in the app's own `Android/obb`; the report of the app as one; the app run with its splits (docs/JAVA.md, "Split APKs and bundles") | **passes under qemu and on PC**: `hk_tests --bundles`, 125 checks -- the test app `splits` as an .apks and an .xapk, and three real bundles: BiP 4.2.42 and MangaDex 1.0.0.0 accepted (package, version, ABI), Magnit 8.107.1 refused for having native code for arm64-v8a only; and the test app from each bundle through `megler_run` under qemu, 32 checks each (its library loaded from `config.armeabi_v7a`, a picture and strings found in its density and language splits, an asset pack, a feature split's code, `splitNames` and `splitSourceDirs` as Android gives them, the OBB). **Not tried on a phone**: the library's picker for .apks and .xapk and its unpacking are the shell's |
 | Loader: REL, packed (APS2) and RELR relocations, GNU and SysV hash, constructors, scope | **passes on the phone** |
 | Thumb-2 guest library: data, calls both ways, floats, variadics, 64-bit division, heap, `qsort` callbacks, `setjmp`, threads, TLS, files, pipes | **passes on the phone** |
 | The same library built in ARM mode | **passes on the phone** |
@@ -450,6 +451,18 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   `Android/data/<its package>/files`), and `Music`, `Pictures`, `Movies`, `DCIM` and
   whatever the user adds in Settings being the phone's own folders. `statfs`
   answers the phone's real room (34.9 GB free of 56.7 on that phone).
+  **Apps in several APKs** (2026-10-18; docs/JAVA.md, "Split APKs and
+  bundles"): the library takes .apks and .xapk files beside plain APKs. Such
+  a bundle is unpacked by the core into the base and the splits this phone
+  can use, kept as `LocalState\apks\<name>.apk` and the folder
+  `<name>.apk.splits` (the splits as `split_<name>.apk`, the bundle's icon,
+  and the core's record of what it kept and left out); an .xapk's expansion
+  files go straight into the app's own `Android/obb`. The report and the run
+  take the base with the folder, so the app is one app: its native library
+  out of its `config.armeabi_v7a` split, its resources merged from all its
+  APKs, its assets and feature splits' code found, its split names and paths
+  what Android would give. Under qemu and on the PC (the table above), not
+  yet on the phone.
   **Text** is Android's own since 0.1.0.124: the fonts of Android 9's named
   families (Roboto, Roboto Condensed, Noto Serif, Droid Sans Mono and four
   more, 7.7 MB) are in the package's Android folder and the shell's drawing

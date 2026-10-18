@@ -46,6 +46,14 @@ bool hk_zip_stored_at(const hk_zip *z, const hk_zip_entry *e, u64 *offset);
 bool hk_zip_pread(const hk_zip *z, u64 offset, void *buf, size_t n);
 /* Every entry whose name starts with `prefix`. */
 void hk_zip_each(const hk_zip *z, const char *prefix, void (*cb)(const hk_zip_entry *e, void *user), void *user);
+/*
+ * An entry written out to a file of the host's (made, or emptied first), a piece at a time: neither its compressed nor its
+ * inflated bytes are ever all in memory, for an APK inside a bundle of APKs is hundreds of megabytes. Its CRC-32 is checked.
+ * `progress`, when given, is called after each piece with the bytes written so far. False, with the file removed and the
+ * reason in `err`, when the entry is damaged or the file cannot be written.
+ */
+bool hk_zip_extract(const hk_zip *z, const hk_zip_entry *e, const char *path, void (*progress)(void *user, u64 written), void *user,
+                    char *err, size_t errlen);
 
 #ifdef __cplusplus
 }

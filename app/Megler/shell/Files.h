@@ -30,6 +30,12 @@ bool copy(const std::wstring& from, const std::wstring& to);
 
 /// The names (not paths) of the files in `directory` matching `pattern` ("*.apk").
 std::vector<std::wstring> list(const std::wstring& directory, const std::wstring& pattern);
+/// The same for its folders.
+std::vector<std::wstring> listFolders(const std::wstring& directory, const std::wstring& pattern);
+/// A folder with everything in it, its own folders too; false when something of it could not be removed.
+bool removeTree(const std::wstring& path);
+/// The sizes of the files in a folder (not in its folders), added up; 0 for no folder.
+uint64_t folderSize(const std::wstring& path);
 
 /// One line per call into a file started afresh, each stamped with the time
 /// of day: the probe's, the self-test's and the unattended run's logs.

@@ -40,7 +40,7 @@ code cannot enter it. So:
 │   bionic/   libc, libm, libdl, liblog, pthreads, files             │
 │   ld/       the dynamic linker; guest thread-local storage         │
 │   arm/      what is rewritten in guest code; the assembly stubs    │
-│   apk/ zip/ the APK, its manifest and resources                    │
+│   apk/ zip/ the APK, its manifest and resources; bundles of splits │
 │   host/     the OS: Win32 app container, or POSIX for the tests    │
 ├──────────────────────────────────────────────────────────────────┤
 │ ANGLE (libEGL.dll, libGLESv2.dll) → Direct3D 11                    │
@@ -677,10 +677,16 @@ app sees, and where it is under the data folder (`LocalState` on a phone):
 
 | Android | Here |
 |---|---|
+| `/data/app/<package>-1/` | the folder the app's APK is in (the shell's library, `LocalState\apks`), and each of its split APKs, wherever it is, as `split_<name>.apk` in it, a mount of that file alone (docs/JAVA.md, "Split APKs and bundles") |
 | `/data/data/<package>`, `/data/user/0/<package>` | `apps/<package>/data` |
 | `/storage/emulated/0`, and its other names `/sdcard`, `/mnt/sdcard`, `/storage/self/primary`, `/storage/sdcard0` | `sdcard`: **one storage for every app**, with Android's standard folders in it from the start (`Alarms`, `DCIM`, `Documents`, `Download`, `Movies`, `Music`, `Notifications`, `Pictures`, `Podcasts`, `Ringtones`) |
 | `/storage/emulated/0/Android/data/<package>`, `.../Android/obb/<package>` | `apps/<package>/sdcard/Android/data/<package>`, `.../obb/<package>`: the app's own part stays with the app. Another package's is that package's own part, if it has run here (`hk_fs_other_app`), as Android 9 lets an app with the storage permission reach every app's; a package that has not run has none |
 | `/storage/emulated/0/<name>` for a link | a folder of the phone's own, through the shell |
+
+An app's own part of the storage is written to before the app has ever run
+when it comes in an .xapk: the expansion files the bundle brings are put
+there as it is unpacked (`megler_bundle_unpack`, which asks `hk_run_own_storage`
+where that is), so a game finds its OBB at its first start, as on Android.
 
 The other names of the storage are rewritten to the one before a path is looked
 up, as Android's symbolic links would be followed, so `realpath` and `getcwd`

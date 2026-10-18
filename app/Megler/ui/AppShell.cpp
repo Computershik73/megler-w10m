@@ -12,6 +12,10 @@
 #include "shell/Strings.h"
 #include "ui/Theme.h"
 
+#include "megler.h"
+
+#include <winrt/Windows.System.UserProfile.h>
+
 namespace megler::app::ui {
 
 using namespace winrt;
@@ -453,20 +457,61 @@ void AppShell::confirm(std::string title, std::string message, std::string confi
 
 namespace {
 
+/// The languages whose splits a bundle's unpacking keeps: English, in which an
+/// app's default strings are as a rule, and the languages the phone's owner
+/// prefers (Windows' list, the first three), by their codes: "en,ru".
+std::string bundleLanguages() {
+    std::string list = "en";
+    int added = 0;
+    try {
+        for (auto const& tag : winrt::Windows::System::UserProfile::GlobalizationPreferences::Languages()) {
+            std::string code = narrow(tag);
+            const size_t dash = code.find('-');
+            if (dash != std::string::npos) code.resize(dash);
+            for (auto& ch : code) ch = char(tolower((unsigned char)ch));
+            if (code.empty() || ("," + list + ",").find("," + code + ",") != std::string::npos) continue;
+            list += "," + code;
+            if (++added == 3) break;
+        }
+    } catch (const hresult_error&) {
+    }
+    return list;
+}
+
+/// megler_bundle_unpack's progress: from the worker thread, read by the poll.
+void unpackProgress(void* user, uint64_t done, uint64_t total) {
+    auto* progress = static_cast<ImportProgress*>(user);
+    progress->total = total;
+    progress->copied = done;
+}
+
 winrt::fire_and_forget pickAndCopy(std::shared_ptr<ImportProgress> progress,
                                    std::function<void(std::string, std::string)> done) {
     using namespace winrt::Windows::Storage;
     using namespace winrt::Windows::Storage::Pickers;
     std::string id, error;
+    // What a bundle is unpacked for, asked here on the UI thread: the density a Java app is told the screen has (160 for
+    // each of Windows' view pixels: player/PlayerScreen), and the phone's languages.
+    double scale = 1.0;
+    try {
+        scale = winrt::Windows::Graphics::Display::DisplayInformation::GetForCurrentView().RawPixelsPerViewPixel();
+    } catch (const hresult_error&) {
+    }
+    const int density = std::max(120, std::min(640, int(160.0 * (scale > 0 ? scale : 1.0) + 0.5)));
+    const std::string languages = bundleLanguages();
+    winrt::apartment_context ui;
     try {
         FileOpenPicker picker;
         picker.ViewMode(PickerViewMode::List);
         picker.SuggestedStartLocation(PickerLocationId::Downloads);
         picker.FileTypeFilter().Append(L".apk");
+        picker.FileTypeFilter().Append(L".apks");
+        picker.FileTypeFilter().Append(L".xapk");
         StorageFile file = co_await picker.PickSingleFileAsync();
         if (file) {
             const std::string name = narrow(file.Name());
             const std::string target = Library::idFor(name);
+            const bool bundle = Library::isBundle(name);
             auto properties = co_await file.GetBasicPropertiesAsync();
             const uint64_t size = properties.Size();
             progress->copied = 0;
@@ -481,7 +526,8 @@ winrt::fire_and_forget pickAndCopy(std::shared_ptr<ImportProgress> progress,
             // picker's grant covers; the copy is written with Win32 into
             // LocalState, under a .part name until it is whole.
             const std::wstring finalPath = Library::instance().directory() + L"\\" + widen(target);
-            const std::wstring partPath = finalPath + L".part";
+            // A bundle's copy is unpacked into finalPath and its splits' folder, and then goes.
+            const std::wstring partPath = finalPath + (bundle ? L".bundle.part" : L".part");
             CREATEFILE2_EXTENDED_PARAMETERS params = {};
             params.dwSize = sizeof(params);
             params.dwFileAttributes = FILE_ATTRIBUTE_NORMAL;
@@ -507,8 +553,42 @@ winrt::fire_and_forget pickAndCopy(std::shared_ptr<ImportProgress> progress,
                 out.close();
                 if (error.empty() && size && copied != size)
                     error = format("the copy ended after %llu of %llu bytes", (unsigned long long)copied, (unsigned long long)size);
-                if (error.empty() && !files::move(partPath, finalPath))
-                    error = format("the copy could not be put in place (error %lu)", GetLastError());
+                if (error.empty() && bundle) {
+                    // Unpacked on a worker thread: hundreds of megabytes take seconds on a phone.
+                    progress->unpacking = true;
+                    progress->copied = 0;
+                    progress->total = 0;
+                    const std::string bundlePath = narrow(partPath), apkPath = narrow(finalPath),
+                                      splitsPath = narrow(Library::splitsDirFor(finalPath));
+                    shellLog::write(format("import: unpacking %s for %d dpi, languages %s", name.c_str(), density, languages.c_str()));
+                    co_await winrt::resume_background();
+                    std::string answer;
+                    if (char* json = megler_bundle_unpack(bundlePath.c_str(), apkPath.c_str(), splitsPath.c_str(), density, languages.c_str(),
+                                                        &unpackProgress, progress.get())) {
+                        answer = json;
+                        megler_free(json);
+                    }
+                    files::remove(partPath);
+                    co_await ui;
+                    winrt::Windows::Data::Json::JsonObject o{nullptr};
+                    if (!winrt::Windows::Data::Json::JsonObject::TryParse(hs(answer), o) || !o || !o.HasKey(L"ok")) {
+                        error = "the bundle could not be unpacked";
+                    } else if (!o.GetNamedBoolean(L"ok", false)) {
+                        error = narrow(o.GetNamedString(L"error", L"the bundle could not be unpacked"));
+                    } else {
+                        const auto count = [&](const wchar_t* key) {
+                            return o.HasKey(key) && o.GetNamedValue(key).ValueType() == winrt::Windows::Data::Json::JsonValueType::Array
+                                       ? unsigned(o.GetNamedArray(key).Size())
+                                       : 0u;
+                        };
+                        shellLog::write(format("import: %s unpacked: its base and %u splits kept, %u left out, %u expansion files", name.c_str(),
+                                               count(L"splits"), count(L"leftOut"), count(L"expansions")));
+                    }
+                } else if (error.empty()) {
+                    if (!files::move(partPath, finalPath)) error = format("the copy could not be put in place (error %lu)", GetLastError());
+                    // An app in one APK has no splits: a folder of them left by a bundle of the same name is another app's.
+                    else files::removeTree(Library::splitsDirFor(finalPath));
+                }
                 if (error.empty()) {
                     id = target;
                     Library::instance().added(id);

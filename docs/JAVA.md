@@ -567,6 +567,83 @@ on this. It finds the copies libcore's start loaded from the package's
 package. The same Self-test shows libcore's native libraries loaded on the
 phone.
 
+### An app in several APKs (both hosts; the app under qemu-arm)
+
+`core/tests/app/splits` is built as Google Play has an app built from an
+Android App Bundle: a base APK with none of the app's native code, none of
+its pictures for one density and none of its strings for one language, and
+eleven splits -- for three processors (only `armeabi_v7a` with the real
+library; `arm64_v8a` and `x86` carry the same file under their names), three
+densities (`xxhdpi`, `mdpi`, `ldpi`, made by aapt2's `--split`, which puts
+every density's pictures into each, as bundletool does), three languages
+(`en`, `ru`, `de`), a feature split `extra` with a class of its own and an
+asset pack `pack` with a file under `assets/pack/`. `tools/build-split-app.py`
+(called by `tools/build-test-app.sh` for an app folder with a file named
+`splits`, which lists them) bundles them as `splits.apks` in bundletool's
+layout (`splits/base-master.apk`, `splits/base-xxhdpi.apk`..., a standalone
+APK and a `toc.pb`) and `splits.xapk` in APKPure's (`megler.test.splits.apk`,
+`config.xxhdpi.apk`..., `icon.png`, `manifest.json` with the splits and an
+expansion file, `Android/obb/megler.test.splits/main.7.megler.test.splits.obb`).
+
+`hk_tests --bundles` (`core/tests/hk_bundle_tests.c`, on both hosts, 125
+checks) unpacks both as the shell does, for 320 dpi in English and Russian:
+the same seven splits kept from each (`config.armeabi_v7a`, `config.en`,
+`config.mdpi`, `config.ru`, `config.xxhdpi`, `extra`, `pack`) and the others
+left out with their reasons (another processor, by its ABI; another density;
+another language; the standalone APK), the record, no work files left, the
+progress counted to its end, the expansion file in the app's own
+`Android/obb` after the .xapk and nowhere after the .apks, the icon found in
+the density split (the base has no picture of it) and the bundle's own
+`icon.png` kept; the report of the app as one (`armeabi-v7a` used, the three
+ABIs listed, the library of the split listed, Java, runnable); a second
+unpacking with Russian no longer wanted, which leaves neither that split nor
+a stale file of the folder's; a damaged bundle and one with no base, which
+leave nothing; and a bundle made by the test from the app's APKs with SAI's
+names and only the arm64 split, whose report says it cannot run because
+"the bundle it came in has native code for arm64-v8a only". Then the three
+real bundles the phone's owner has, where they are copied into
+`build/bundles` (not in the repository; the PC takes half a second for BiP,
+qemu two):
+
+| Bundle | Kept | Left out | Report |
+|---|---|---|---|
+| BiP 4.2.42-HEAD (.apks, 144 MB) | base (185 MB), `config.armeabi_v7a`, `config.xxhdpi`, `config.xxxhdpi` | three processors' splits, four densities' | `com.turkcell.bip`, 4450, `armeabi-v7a`, Java, upright, runnable |
+| MangaDex 1.0.0.0 (.xapk) | base, `config.en`, `config.ru`, `config.xxhdpi` | fifteen languages | `org.mangadex.mangadex`, Java with no native code, runnable; the icon a PNG of the density split |
+| Magnit 8.107.1 (.apks with manifest.json) | base, `config.en`, `config.xhdpi` | `config.arm64_v8a` | `ru.tander.magnit`, not runnable: "This app has no 32-bit ARM code: the bundle it came in has native code for arm64-v8a only..." |
+
+`hk_tests --java splits <bundle>` (qemu-arm, twice: from the .apks and from
+the .xapk, 32 checks each) unpacks the bundle into its data folder as the
+shell does, for the screen's density, and starts the app from the base and
+the folder through `megler_run`. The app says in thirteen steps what it found:
+`ApplicationInfo.splitNames` sorted as Android sorts them, each of
+`splitSourceDirs` beside the base as `/data/app/megler.test.splits-1/split_<name>.apk`
+and an APK a `ZipFile` opens; `PackageInfo.splitNames` the same;
+`getPackageCodePath()` the base; `System.loadLibrary` of the library that only
+`config.armeabi_v7a` has, and its answer; a picture only the density splits
+have, at the size its density gives it here (16 px for 24 at 480 dpi on a
+320 dpi screen) and of its colour, and one of the mdpi split; the string of
+`config.en` for this English phone, that of `config.ru` through a
+`Resources` made for Russian, and the base's for German, whose split was left
+out; an asset of the base and one of the asset pack, both listed in the
+assets' root; the feature split's class through the app's class loader; and
+the expansion file in `getObbDir()` after the .xapk. From outside: the core's
+line that the app is in eight APKs, the library placed and loaded from the
+split, and the density split's picture in the window, magenta in its middle
+(`build/java-pictures/splits-apks.bmp`, `splits-xapk.bmp`).
+
+And one real app from its bundle, by hand: BiP through `hk_tests --java app`
+with its .apks (not run by default; "Real apps" below), unpacked for 320 dpi
+(base, `config.armeabi_v7a`, `config.hdpi`, `config.xhdpi`). It starts as an
+app in four APKs, its base's thirty DEX files on the class path, and loads
+its native libraries out of the split as it asks for them -- Crashlytics',
+React Native's and Hermes' (`libc++_shared`, `libfbjni`, `libjsi`,
+`libreactnative`, `libhermes`) through SoLoader -- connects to its servers, and
+ends in its first activity's `onStart` on its own theme engine's lookup of an
+attribute ("color com.turkcell.bip:attr/themeHeaderBackground not found in
+theme: Day"). That attribute and the styles that give it are in the base's
+own table, not in a split, so this is a matter of themes for another day,
+not of splits.
+
 ### OpenGL ES from Java (both hosts; the app under qemu-arm)
 
 There is no OpenGL ES under qemu or on this PC: no ANGLE for either (the
@@ -916,7 +993,10 @@ boxes, PNG is the only picture format), writes a picture when the app is
 still and one more after each step of the script, and checks nothing. Verbose
 2 adds the framework's touch log, 3 its view dump. Three apps of the user's
 (`build/apps`, not in the repository) were run this way at 720 x 1280 and 280
-dpi; each starts in under half a minute.
+dpi; each starts in under half a minute. Given a bundle of split APKs (a name
+that ends in `.apks` or `.xapk`), it unpacks it first as the shell does, for
+the screen's density, and starts the base with its splits ("An app in several
+APKs" above says what came of BiP).
 
 Two things for an app that does nothing where it should do something, which
 is what a swallowed exception or a call that never happens looks like.
@@ -2061,8 +2141,11 @@ no native code or has it for 32-bit ARM.
   in between are left out; the whole of it, with the stack, is in the log.
 - **The APK's files**: `Native.readApkFile` and the asset calls read the
   app's APK (0), the platform's resources (1: `framework/framework-res.apk` of
-  the root, when it is there) and the split APKs (2 and up) through
-  `zip/hk_zip.c`; a stored file can also be had as a descriptor and an offset.
+  the root, when it is there) and the app's split APKs (2 to 11:
+  `megler_run_config.splits_dir` and `split_apks`; "Split APKs and bundles"
+  below) through `zip/hk_zip.c`; a stored file can also be had as a
+  descriptor and an offset. An asset is looked for in the base and then in
+  the splits, and a folder of assets is listed from all of them.
 - **What is not answered yet** answers "no" in a way the framework's Java
   already handles, said once in the log for each class, with the methods that
   first asked (so that it can be told whether the app wants it or the
@@ -2087,7 +2170,11 @@ no native code or has it for 32-bit ARM.
 An APK with `classes.dex`, a launcher activity and native libraries is the
 engine `java` like one without (`hk_apk.c`), provided the libraries include
 32-bit ARM ones (`armeabi-v7a`, else `armeabi`); one with only `arm64-v8a` or
-x86 libraries is refused with a sentence that says so. The engines that are
+x86 libraries is refused with a sentence that says so. In an app in several
+APKs the libraries are in its split for the processor
+(`config.armeabi_v7a.apk`): the report looks for them in every APK of the
+app, and the linker takes them from whichever has them ("Split APKs and
+bundles" below). The engines that are
 recognised by their libraries (Unity, a NativeActivity and the rest) are looked
 for first and keep their drivers.
 
@@ -2378,6 +2465,75 @@ composed, as for Java's EGL.
 
 *Tested* by the app `natives` under qemu, the window steps, twice (the shell
 composing, and the core): "A Java app with native libraries" above.
+
+### Split APKs and bundles
+
+An app built as an Android App Bundle is installed by Google Play as a base
+APK and splits: config splits for what depends on the phone -- the processor
+(`config.armeabi_v7a`: the native libraries), the screen's density
+(`config.xxhdpi`: the pictures) and the languages (`config.ru`: the strings)
+-- and feature splits and asset packs with more code, resources and assets.
+Outside Google Play they come as one file: an `.apks` (SAI's, bundletool's)
+or an `.xapk` (APKPure's, which may carry expansion files). Here such an app
+is kept as its base and a folder of its splits, and runs as one app, as
+Android runs an installed app with its splits.
+
+**Unpacking** (`megler_bundle_unpack`, `core/src/apk/hk_bundle.c`). The shell
+copies the picked bundle into its library and has the core unpack it into the
+base's path and a folder beside it, then removes the copy. What is kept is
+what an installer for this phone would install: the split for 32-bit ARM
+(never another processor's: Windows 10 Mobile runs no other), the density
+splits nearest the density a Java app is told the screen has (one at or
+above it, one below), the splits of the languages the shell names (English
+and the phone's own), and every split of another kind. The APKs are told
+apart by their manifests (the base names no split; a split names itself),
+and the unwanted are left out by their file names, which keep bundletool's
+`config.<qualifier>` in all three layouts, so they are never unpacked. The
+splits are written as `split_<name>.apk`, Android's names for installed
+splits; at most ten, which is what the framework reads. An .xapk's expansion
+files are written into the app's own `Android/obb/<package>/` (or
+`Android/data`), where the app finds them when it first runs; anything that
+would go elsewhere is left out. The folder's `bundle.json` records what was
+kept, what was left out and why; the report reads it for the ABIs of the
+splits left out. The answer to the shell is the same JSON.
+
+**The report** (`megler_apk_report_splits`) is the base's manifest with the
+native libraries of every APK, the engine decided on all of them, the label
+and icon looked up in every APK's resources, and the record's left-out ABIs
+among `abis`: a bundle whose only native code was for arm64 is refused with
+the sentence that says so, as a plain APK with only 64-bit code is. A base
+added alone whose manifest says it needs splits (`isSplitRequired`,
+Google Play's `com.android.vending.splits.required`) gets a note; one whose
+`requiredSplitTypes` names the ABI and has no native code is refused; a
+split added alone is refused as no app.
+
+**Running** (`megler_run_config.splits_dir`, gathered with `split_apks` into
+one list in `run/hk_run.c`; a split of another app is dropped). The linker
+takes native libraries out of whichever APK has them, so `place_libraries`
+writes the split's into `nativeLibraryDir` as it does the base's. The Java
+driver opens the splits as APKs 2 to 11, mounts each file beside the base as
+`/data/app/<package>-1/split_<name>.apk` and answers those paths to
+`Native.splitPaths`; the framework makes `ApplicationInfo.splitNames` (sorted)
+and `splitSourceDirs` of them, and the app's `PathClassLoader` path. A
+feature split's DEX files are added to the class path after the base's, and
+the class loader finds them under the split's path (`DexFile`); a split
+without code throws the `IOException` a resource-only APK throws on Android,
+which `DexPathList` keeps aside. `PackageInfo.splitNames` is
+`ApplicationInfo`'s. The resources are the framework's: `Resources` reads the
+base's `resources.arsc` and merges every split's into the same package
+(`ResTable.merge`: each configuration of a type joins the type's list,
+reading its own table's bytes and strings), as Android's `ResTable` makes one
+package group; a file is read from the base, else from the splits. Assets
+are found in the base and then the splits, and listed from all
+(`app_apk_with` in `hk_java.c`); native code's `AAssetManager` already looked
+in every APK the linker has.
+
+Not done: the components a feature split declares in its own manifest are not
+known (the framework reads the base's manifest alone; bundletool merges an
+install-time feature's components into the base's, which is the usual case);
+isolated split loading and `<uses-split>` dependencies (one class loader has
+everything); `PackageInfo` of splits' revision codes (zeros); more than ten
+splits.
 
 ### Drawing: `megler.Gfx` and the shell
 
@@ -3330,6 +3486,10 @@ native code is.
   digests, random numbers, MACs and ciphers are had without it, and TLS and
   whatever asks conscrypt's provider by name for more than a digest are not.
   conscrypt's `SSLEngine` (what Netty and gRPC use) has not been tried.
+- An app in several APKs runs as one ("Split APKs and bundles"), but the
+  components declared only in a feature split's manifest are not known, every
+  split is on one class path, and an app is given ten splits at most. Not yet
+  tried on a phone.
 - Bytecode cannot call a method of a class only C implements.
 - Thread interruption does not wake a waiting thread. A thread's state is not
   freed when it ends.

@@ -72,6 +72,9 @@ void megler_free(void *p);
  *                                      which on a phone means upright unless it is turned
  *     "nativeLibrary": "main",         android.app.lib_name, for a NativeActivity
  *     "hasIcon": true,                 whether megler_apk_icon will find one
+ *     "splits": ["config.armeabi_v7a", "config.xxhdpi"],   for an app in several APKs (megler_apk_report_splits): the
+ *     "splitsLeftOut": ["config.arm64_v8a"],               splits it was read with, and those the unpacking of its
+ *                                                          bundle left out; both absent for an app in one APK
  *     "libraries": [ { "name": "libmain.so", "size": 123456, "needs": ["libc.so", "liblog.so"],
  *                      "armFunctions": 0, "thumbFunctions": 812,     exported functions by mode
  *                      "importsNotInSystem": 3 } ],                  imports this layer's system libraries lack
@@ -89,6 +92,64 @@ char *megler_apk_report(const char *apk_path);
  * any density; otherwise a WebP, which Windows 10 Mobile cannot decode.
  */
 bool megler_apk_icon(const char *apk_path, uint8_t **data, size_t *size);
+
+/*
+ * An app in several APKs: a base and its split APKs, as Google Play installs an app built as an Android App Bundle.
+ * Config splits hold what is for one kind of phone -- config.armeabi_v7a.apk the native libraries for 32-bit ARM,
+ * config.xxhdpi.apk the pictures for one screen density, config.ru.apk one language's strings -- and feature splits
+ * more code and resources. Outside Google Play such an app comes as a bundle of them (megler_bundle_unpack, below) and is
+ * kept as its base APK and a folder of its splits, the folder megler_bundle_unpack makes.
+ *
+ * megler_apk_report_splits is megler_apk_report of the app as one: what the base's manifest says, the native libraries and
+ * the engine looked for in every APK, "splits" and "splitsLeftOut" added. `splits_dir` is the folder: its .apk files are
+ * the splits (none, or NULL: the base alone). What the unpacking left out of the bundle counts too: the ABIs of the
+ * splits for other processors are among "abis", and an app whose bundle has native code for other processors only is
+ * not runnable, with a reason that says so. A split that is another app's, or no split, is left out and noted.
+ * megler_apk_icon_splits finds the icon in every APK (a density split often has the only pictures of it) and else takes the
+ * icon the bundle came with.
+ */
+char *megler_apk_report_splits(const char *apk_path, const char *splits_dir);
+bool megler_apk_icon_splits(const char *apk_path, const char *splits_dir, uint8_t **data, size_t *size);
+
+/*
+ * A bundle of split APKs as they go about outside Google Play: an .apks file (SAI's, bundletool's, APKPure's: the base
+ * APK and its splits in a ZIP archive, perhaps with APKPure's manifest.json and an icon) or an .xapk (APKPure's:
+ * manifest.json, the APK or the base and its splits, an icon, and perhaps expansion files under Android/obb/<package>/).
+ * It is unpacked into what this phone can use, as an installer picks what to install:
+ *
+ *   apk_path      where the base APK is written (replaced if it is there)
+ *   splits_dir    the folder the splits kept are written into, as split_<name>.apk (Android's names for installed splits),
+ *                 with the icon the bundle came with (icon.png) and a record of what was done (bundle.json), which
+ *                 megler_apk_report_splits reads. What was in it before is removed: a split of an older version is not
+ *                 read with a newer base.
+ *   density_dpi   the density Android will be told the screen has: of the splits for densities, the nearest at or above
+ *                 it and the nearest below it are kept (a bundle with one keeps that one)
+ *   languages     the languages whose splits are kept, as their codes: "en,ru". NULL or "": English
+ *   progress      called now and then with the bytes written so far and how many there will be; may be NULL
+ *
+ * Kept: the base; the split for 32-bit ARM (armeabi-v7a, else armeabi), never one for another processor; the density
+ * and language splits above; every other split (feature splits, asset packs). At most ten splits. Which APK is which is
+ * read from their manifests (the base names no split); the splits not wanted are left out by their file names, which
+ * keep bundletool's (config.arm64_v8a.apk, split_config.arm64_v8a.apk, splits/base-arm64_v8a.apk), without unpacking
+ * them first. The expansion files are written where the app finds them when it runs, its own part of the shared
+ * storage (/storage/emulated/0/Android/obb/<package>/ is <data_dir>/apps/<package>/sdcard/Android/obb/<package>/),
+ * as manifest.json says or as the bundle has them; one meant for anywhere else is left out.
+ *
+ * Returns JSON (free with megler_free; NULL only when out of memory), the same as the record:
+ *
+ *   { "ok": true, "bundle": "BiP.apks", "package": "com.turkcell.bip", "versionCode": 4450, "versionName": "4.2.42",
+ *     "base": "com.turkcell.bip.apk",                                 its name in the bundle
+ *     "splits": [ { "name": "config.armeabi_v7a", "from": "config.armeabi_v7a.apk", "file": "split_config.armeabi_v7a.apk" } ],
+ *     "leftOut": [ { "name": "config.arm64_v8a", "from": "config.arm64_v8a.apk", "abi": "arm64-v8a", "why": "..." } ],
+ *     "expansions": [ { "from": "Android/obb/...", "size": 123, "to": "/storage/emulated/0/Android/obb/..." } ],
+ *     "icon": true }
+ *
+ * or { "ok": false, "error": "..." }, a sentence, and then nothing it wrote is left. It reads the bundle and writes;
+ * it takes as long as the files take to unpack (seconds for hundreds of megabytes on a phone): not on the UI thread.
+ * The base and the splits it writes are what megler_apk_report_splits and megler_run_config.splits_dir take.
+ */
+char *megler_bundle_unpack(const char *bundle_path, const char *apk_path, const char *splits_dir, int density_dpi, const char *languages,
+                         void (*progress)(void *user, uint64_t done, uint64_t total), void *user);
 
 /* ---------------------------------------------------------------- running
  *
@@ -1222,7 +1283,13 @@ typedef struct megler_keyboard_host {
 
 typedef struct megler_run_config {
     const char *apk_path;
-    /* Split APKs of the same app (config.armeabi_v7a.apk and the like), if any. */
+    /*
+     * An app in several APKs (megler_apk_report_splits): its splits, as a folder whose .apk files they are (the folder
+     * megler_bundle_unpack makes), and as a list of paths; either may be left NULL. The app runs as one, as Android runs
+     * an installed app with its splits: native libraries out of the split that has them, its resources and assets out of
+     * all of them, the code of feature splits on its class path. At most ten splits are opened for a Java app.
+     */
+    const char *splits_dir;
     const char *const *split_apks;
     int split_count;
     /* The surface the app draws to, in pixels, and the density Android should report (160 is 1:1; a phone is 320-480). */

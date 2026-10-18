@@ -48,9 +48,11 @@ protected:
 };
 
 /// An APK on its way into the library: the picker is up (no name yet), or
-/// what was picked is being copied.
+/// what was picked is being copied -- and, for a bundle of split APKs, then
+/// unpacked (`unpacking`; copied and total are then the unpacking's bytes).
 struct ImportProgress {
     bool active = false;
+    bool unpacking = false;
     std::string name;
     uint64_t copied = 0, total = 0;
 };
@@ -84,10 +86,13 @@ public:
     void confirm(std::string title, std::string message, std::string confirmTitle, bool destructive,
                  std::function<void()> onConfirm);
 
-    /// The file picker for an .apk, and the copy of what was picked into the
-    /// library (LocalState\apks): a container can't open a picked file by
-    /// path, and the core reads APKs by path. `done` gets the library's id of
-    /// the copy, empty when nothing was picked, or an error.
+    /// The file picker for an .apk, or a bundle of split APKs (.apks, .xapk),
+    /// and the copy of what was picked into the library (LocalState\apks): a
+    /// container can't open a picked file by path, and the core reads APKs by
+    /// path. A bundle's copy is unpacked there by the core (megler_bundle_unpack)
+    /// into the base and the splits this phone can use, and then removed.
+    /// `done` gets the library's id of the copy, empty when nothing was picked,
+    /// or an error.
     void importApk(std::function<void(std::string id, std::string error)> done);
     const ImportProgress& importProgress() const { return *import_; }
 

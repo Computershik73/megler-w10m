@@ -77,6 +77,8 @@ ApkReport ApkReport::parse(const std::string& json) {
         r.activity = stringOf(o, L"activity");
         r.nativeLibrary = stringOf(o, L"nativeLibrary");
         r.notes = stringsOf(o, L"notes");
+        r.splits = stringsOf(o, L"splits");
+        r.splitsLeftOut = stringsOf(o, L"splitsLeftOut");
         if (o.HasKey(L"libraries") && o.GetNamedValue(L"libraries").ValueType() == JsonValueType::Array) {
             for (IJsonValue const& item : o.GetNamedArray(L"libraries")) {
                 if (item.ValueType() != JsonValueType::Object) continue;
@@ -140,8 +142,14 @@ void Library::load() {
         std::lock_guard<std::mutex> lock(mutex_);
         directory_ = platform::localStateDirectory() + L"\\apks";
         files::makeDirectory(directory_);
-        // A copy that never finished (the app was ended under the picker's stream).
+        // A copy that never finished (the app was ended under the picker's stream), and a bundle's unpacking likewise.
         for (const auto& part : files::list(directory_, L"*.part")) files::remove(directory_ + L"\\" + part);
+        for (const auto& part : files::listFolders(directory_, L"*.splits.part")) files::removeTree(directory_ + L"\\" + part);
+        // Splits whose base is gone.
+        for (const auto& name : files::listFolders(directory_, L"*.apk.splits")) {
+            const std::wstring folder = directory_ + L"\\" + name;
+            if (!files::exists(folder.substr(0, folder.size() - 7))) files::removeTree(folder);
+        }
         // A cache whose APK is gone (removed while it was still being read).
         for (const wchar_t* pattern : {L"*.apk.json", L"*.apk.icon"}) {
             for (const auto& name : files::list(directory_, pattern)) {
@@ -182,6 +190,10 @@ void Library::load() {
             entry.id = narrow(name);
             entry.path = directory_ + L"\\" + name;
             entry.size = files::size(entry.path);
+            if (files::exists(splitsDirFor(entry.path))) {
+                entry.splitsDir = splitsDirFor(entry.path);
+                entry.size += files::folderSize(entry.splitsDir);
+            }
             std::string json;
             if (files::read(entry.path + L".json", json) && !json.empty()) {
                 entry.report = ApkReport::parse(json);
@@ -224,9 +236,20 @@ unsigned Library::generation() const {
     return generation_;
 }
 
+bool Library::isBundle(const std::string& pickedName) {
+    auto endsWith = [&](const char* tail) {
+        const size_t n = strlen(tail);
+        return pickedName.size() > n && _stricmp(pickedName.c_str() + pickedName.size() - n, tail) == 0;
+    };
+    return endsWith(".apks") || endsWith(".xapk");
+}
+
 std::string Library::idFor(const std::string& pickedName) {
     std::string id;
-    for (unsigned char ch : pickedName) {
+    std::string name = pickedName;
+    // A bundle is kept as its base, an .apk.
+    if (isBundle(name)) name.resize(name.size() - 5);
+    for (unsigned char ch : name) {
         // Bytes above ASCII are UTF-8 of a name in another script: kept.
         const bool safe = isalnum(ch) || ch == '.' || ch == '-' || ch == '_' || ch == '+' || ch >= 0x80;
         id += safe ? char(ch) : '_';
@@ -248,6 +271,10 @@ void Library::added(const std::string& id) {
         entry.id = id;
         entry.path = path;
         entry.size = files::size(path);
+        if (files::exists(splitsDirFor(path))) {
+            entry.splitsDir = splitsDirFor(path);
+            entry.size += files::folderSize(entry.splitsDir);
+        }
         auto existing = std::find_if(entries_.begin(), entries_.end(), [&](const ApkEntry& e) { return e.id == id; });
         if (existing != entries_.end())
             *existing = std::move(entry);
@@ -303,6 +330,7 @@ void Library::remove(const std::string& id) {
     files::remove(it->path);
     files::remove(it->path + L".json");
     files::remove(it->path + L".icon");
+    if (!it->splitsDir.empty()) files::removeTree(it->splitsDir);
     entries_.erase(it);
     ++generation_;
     shellLog::write("library: removed " + id);
@@ -351,8 +379,11 @@ void Library::analyse(const std::string& id) {
         path = directory_ + L"\\" + widen(id);
     }
     const std::string utf8Path = narrow(path);
+    // An app in several APKs is reported on, and its icon looked for, as one: the base and its splits' folder.
+    const std::string utf8Splits = files::exists(splitsDirFor(path)) ? narrow(splitsDirFor(path)) : std::string();
+    const char* splits = utf8Splits.empty() ? nullptr : utf8Splits.c_str();
     std::string json;
-    if (char* report = megler_apk_report(utf8Path.c_str())) {
+    if (char* report = megler_apk_report_splits(utf8Path.c_str(), splits)) {
         json = report;
         megler_free(report);
     }
@@ -362,15 +393,16 @@ void Library::analyse(const std::string& id) {
     std::wstring iconPath;
     uint8_t* icon = nullptr;
     size_t iconSize = 0;
-    if (megler_apk_icon(utf8Path.c_str(), &icon, &iconSize) && icon && iconSize > 0) {
+    if (megler_apk_icon_splits(utf8Path.c_str(), splits, &icon, &iconSize) && icon && iconSize > 0) {
         if (files::write(path + L".icon", std::string_view(reinterpret_cast<const char*>(icon), iconSize))) iconPath = path + L".icon";
     } else {
         files::remove(path + L".icon");
     }
     if (icon) megler_free(icon);
 
-    shellLog::write(format("library: %s is %s (%s) -- %s", id.c_str(), parsed.package.empty() ? "?" : parsed.package.c_str(),
-                           parsed.engine.empty() ? "?" : parsed.engine.c_str(), parsed.status().c_str()));
+    shellLog::write(format("library: %s is %s (%s%s) -- %s", id.c_str(), parsed.package.empty() ? "?" : parsed.package.c_str(),
+                           parsed.engine.empty() ? "?" : parsed.engine.c_str(),
+                           parsed.splits.empty() ? "" : format(", with %u splits", unsigned(parsed.splits.size())).c_str(), parsed.status().c_str()));
     std::lock_guard<std::mutex> lock(mutex_);
     for (auto& entry : entries_) {
         if (entry.id != id) continue;

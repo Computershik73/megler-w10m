@@ -6,6 +6,17 @@
 //   apks\Game.apk.icon     megler_apk_icon's bytes (PNG or WebP), when there is one
 //   apks\reports.version   which build made the cached reports
 //
+// An app that came as a bundle of split APKs (.apks, .xapk) is its base APK
+// and, beside it, the folder megler_bundle_unpack made of its splits:
+//
+//   apks\Game.apk          the base
+//   apks\Game.apk.splits\  split_config.armeabi_v7a.apk and the other splits
+//                          kept, the bundle's icon.png, and bundle.json, the
+//                          core's record of what it kept and left out
+//
+// The core is given both, for the report (megler_apk_report_splits) and to run
+// the app (megler_run_config.splits_dir), and they go together.
+//
 // -- so the list opens at once from the cache. Reading an APK takes a moment
 // (its libraries are scanned), so it happens on a worker thread: when an APK
 // is added, when its cache is missing, and for every APK after an update of
@@ -47,6 +58,8 @@ struct ApkReport {
     std::string activity, nativeLibrary;
     std::vector<ApkLibrary> libraries;
     std::vector<std::string> notes;
+    /// For an app in several APKs: the splits it is read with, and those its bundle's unpacking left out.
+    std::vector<std::string> splits, splitsLeftOut;
 
     static ApkReport parse(const std::string& json);
     /// Whether Play can be offered.
@@ -65,7 +78,8 @@ struct ApkReport {
 struct ApkEntry {
     std::string id;        // the copy's file name: "Game.apk"
     std::wstring path;     // the copy
-    uint64_t size = 0;
+    std::wstring splitsDir; // its splits' folder (path + ".splits"), empty for an app in one APK
+    uint64_t size = 0;     // the copy's, with its splits'
     bool analysed = false; // false until a report has been read or made
     bool analysing = false;
     ApkReport report;
@@ -89,8 +103,14 @@ public:
     unsigned generation() const;
     const std::wstring& directory() const { return directory_; }
 
-    /// The file name a picked file's copy gets: its own name, made safe.
+    /// The file name a picked file's copy gets: its own name, made safe. A
+    /// bundle's (.apks, .xapk) is its name with .apk for its own extension:
+    /// what it is kept as is its base.
     static std::string idFor(const std::string& pickedName);
+    /// Whether a picked file is a bundle of split APKs, by its name.
+    static bool isBundle(const std::string& pickedName);
+    /// The folder a copy's splits are in, whether or not it is there.
+    static std::wstring splitsDirFor(const std::wstring& path) { return path + L".splits"; }
     /// A complete copy now lies at directory()\id: lists it and reads it.
     void added(const std::string& id);
     /// The demo the package carries (demo\megler-demo.apk: a picture, touch and
@@ -104,8 +124,9 @@ public:
     /// package has no such file or the copy failed.
     bool addPackaged(const std::string& name);
     static bool hasPackaged(const std::string& name);
-    /// Deletes the copy and its cache. The app's own files (LocalState\apps)
-    /// are the core's and stay.
+    /// Deletes the copy, its splits and its cache. The app's own files
+    /// (LocalState\apps, with the expansion files a bundle brought) are the
+    /// core's and stay.
     void remove(const std::string& id);
 
 private:
