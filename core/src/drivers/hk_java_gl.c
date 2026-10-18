@@ -143,7 +143,7 @@ enum {
     F_GET_STRING, F_GET_STRINGI, F_SHADER_SOURCE, F_GET_SHADERIV, F_GET_SHADER_LOG, F_GET_PROGRAMIV, F_GET_PROGRAM_LOG, F_GET_SHADER_SOURCE,
     F_ACTIVE_ATTRIB, F_ACTIVE_UNIFORM, F_TF_VARYING, F_BLOCKIV, F_BLOCK_NAME, F_PIPELINEIV, F_PIPELINE_LOG, F_RESOURCEIV, F_RESOURCE_NAME,
     F_UNIFORM_INDICES, F_TF_VARYINGS, F_SHADER_PROGRAMV, F_MAP_RANGE, F_BUFFER_I64V, F_BUFFER_POINTERV, F_DEBUG_LOG,
-    F_GET_INTEGERV, F_BIND_FRAMEBUFFER, F_BIND_BUFFER, F_PIXEL_STOREI, F_READ_PIXELS, F_FINISH,
+    F_GET_INTEGERV, F_BIND_FRAMEBUFFER, F_BIND_BUFFER, F_PIXEL_STOREI, F_READ_PIXELS, F_FINISH, F_FLUSH,
     F_COUNT
 };
 static void *g_fn[F_COUNT];
@@ -1253,17 +1253,21 @@ static void pace(gl_surf *s)
 }
 
 /*
- * A swap where the shell composes the window: the frame finished in the surface's texture (glFinish: this thread may wait,
- * the app's main thread and the UI thread never do) and handed to the shell by the texture's shared handle; the shell has
+ * A swap where the shell composes the window: the frame handed to the shell by the texture's shared handle; the shell has
  * copied what it keeps when gl_frame returns, and the app draws the next frame into the same texture. Where ANGLE shares the
  * texture with a keyed mutex (ndk/hk_egl.c), ANGLE's device lets go of it for the copy -- the shell acquires it, copies,
- * releases -- and takes it back before the app draws again. False: the shell cannot take frames, and the window is composed
+ * releases -- and takes it back before the app draws again; the mutex orders the two devices' work on the graphics
+ * processor, so the frame is only flushed (glFlush), and the shell does not wait for its copy either: this thread goes on to
+ * the next frame while the graphics processor still draws this one. (Finished here with glFinish, the thread waited for the
+ * whole frame every swap -- a fifth of Asphalt 9's GL thread on its loading screen -- and the processor and the graphics
+ * processor took turns.) Without a mutex the frame is finished (glFinish: this thread may wait, the app's main thread and the
+ * UI thread never do), and the shell waits for its copy. False: the shell cannot take frames, and the window is composed
  * here from now on.
  */
 static bool shell_frame(gl_surf *s, layer *l, bool *shown, u64 *finished)
 {
     typedef void (*fn_finish)(void);
-    fn_finish finish = FN(fn_finish, F_FINISH, "glFinish");
+    fn_finish finish = FN(fn_finish, F_FINISH, "glFinish"), flush = FN(fn_finish, F_FLUSH, "glFlush");
     bool active, taken;
     *shown = false;
     *finished = hk_time_monotonic_ns();
@@ -1275,7 +1279,8 @@ static bool shell_frame(gl_surf *s, layer *l, bool *shown, u64 *finished)
         s->mutex = s->share ? hk_egl_surface_mutex(E.display, s->handle) : NULL;
     }
     if (!s->share || !finish) return false;
-    finish();
+    if (s->mutex && flush) flush();
+    else finish();
     *finished = hk_time_monotonic_ns();
     hk_lock_acquire(&g_window_lock);
     active = l->active;

@@ -3179,6 +3179,10 @@ bool showComposed(Box part, bool fresh) {
 /// with a keyed mutex (gecko-w10m's ANGLE shares every pbuffer so), the copy
 /// is made holding it: the core lets go of it on ANGLE's side for the call,
 /// and Direct3D drops a copy made without it (the frame was then nothing).
+/// The mutex also orders the two devices' work: ANGLE's device takes it
+/// back before it draws the next frame, which therefore lands after this
+/// copy on the graphics processor; so the copy is not waited for then (nor
+/// has the core finished the frame: it only flushed it).
 /// The first frame may come before any view has been drawn: Direct2D and the
 /// graphics processor are started for it then, as for a canvas (refused, the
 /// core composes the window for good, the frames read back).
@@ -3251,8 +3255,9 @@ bool glFrame(void*, int layer, void* handle, int width, int height) {
         if (l.mutex) l.mutex->ReleaseSync(0);
         context->Flush();
         host.unlockDevice();
-        // The copy waited for, half a second at the most: ANGLE's device may draw into its texture as soon as this returns.
-        while (c.copied) {
+        // Without a mutex, the copy waited for, half a second at the most: ANGLE's device may draw into its texture as soon as
+        // this returns.
+        while (c.copied && !l.mutex) {
             host.lockDevice();
             const HRESULT hr = context->GetData(c.copied.get(), nullptr, 0, 0);
             host.unlockDevice();
