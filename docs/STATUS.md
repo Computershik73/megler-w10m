@@ -265,8 +265,14 @@ frames are copied; at most 6000 lines; `dvm/hk_dvm_object.c`); and
 `trace-calls-<prefix>`, the prefix a class name with dots (every call of a method
 of a class whose name starts with it, with its thread and depth, and its return
 with the value or the exception it ends with; up to eight such flags; at most 8000
-lines; `dvm/hk_dvm_interp.c`, the flags read by `hk_flags_each`). The
-data app's second run under qemu has all four on, and the test finds their lines.
+lines; `dvm/hk_dvm_interp.c`, the flags read by `hk_flags_each`); and
+`trace-cpu` (every five seconds, the processor the app had in the phone's cores,
+and its eight busiest threads that ran guest code, by id and name, each as a
+share of one core: whether a slow app is held by one thread; at most 2000 lines;
+`bionic/hk_bionic.c`). `trace-net` also says, when the app closes a connection,
+what went over it: the bytes and calls each way, the first sixteen bytes each
+way, when the first came in, the other end's close, errors and timeouts. The
+data app's second run under qemu has all five on, and the test finds their lines.
 For OpenGL ES drawn on a view (a GLSurfaceView, or native code's EGL surface on a
 SurfaceView's window): `trace-surfaces` (every three seconds each window surface's
 frame read back just before it is handed over -- its centre and a 4 x 4 grid of
