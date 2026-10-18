@@ -339,6 +339,394 @@ void hk_bionic_native_stacks_start(void)
     if (t) hk_thread_detach(t);
 }
 
+/*
+ * The flag trace-profile: where the app's busiest threads spend their time, sampled -- what a game that is slow with
+ * the graphics processor idle is doing instead. Every second the three guest threads that had the most of the processor
+ * (a tenth of a core at least) are chosen, and each is stopped about sixty times a second for as long as its pc and the
+ * top 2 KB of its stack take to copy (no lock is taken while it is stopped). A sample whose pc is in the system's own
+ * code (ntdll, KERNELBASE, kernel32) is a wait -- a thread stopped in a system call is blocked there, nearly always -- and
+ * is put to the first return address on its stack that is neither the system's nor the layer's (Megler.exe, whose locks
+ * and condition variables the app's waits go through): what it waits for, in ANGLE, the driver or the app. Every ten
+ * seconds the log says, for each thread sampled then, its share of a core and its samples by module, running and
+ * waiting; and since the start the six addresses it ran at and waited from most. LocalState\profile.txt has every
+ * address of every thread with its count, rewritten every ten seconds: tools/profile-names.py names them by function
+ * with the build's maps (ANGLE's, the layer's, an app library's exported symbols). Only on Windows, as
+ * trace-native-stacks. At most 1000 lines a run.
+ */
+#define PROF_THREADS 3
+#define PROF_SLOTS 8192u
+#define PROF_WORDS 512
+#define PROF_MODULES 96
+#define PROF_TOP 6
+
+enum { PROF_OTHER, PROF_SYSTEM, PROF_LAYER };
+
+typedef struct prof_module {
+    char name[48];
+    hk_addr base;
+    int kind;
+} prof_module;
+
+typedef struct prof_slot {
+    i32 tid;                           /* 0: free */
+    hk_thread *host;
+    char name[32];
+    u64 chosen_at;                     /* when it was last among the busiest */
+    u32 samples, waits, unknown;       /* since it was first chosen; unknown: waits whose caller was not found */
+    u32 w_samples, w_waits, w_unknown, w_run_unknown;   /* this window's */
+    u64 w_cpu_ns;
+    u32 w_run_mod[PROF_MODULES], w_wait_mod[PROF_MODULES];
+    hk_addr run_addr[PROF_SLOTS], wait_addr[PROF_SLOTS];
+    u32 run_count[PROF_SLOTS], wait_count[PROF_SLOTS];
+} prof_slot;
+
+static prof_module *g_pmod;
+static int g_npmod;
+static u16 *g_ppage;                   /* each 64 KB of the address space: its module's index + 1; 0xFFFF none; 0 not looked at */
+static volatile i32 g_prof_lines;
+
+static bool prof_line_left(void) { return hk_atomic_add(&g_prof_lines, 1) <= 1000; }
+
+static int prof_kind(const char *name)
+{
+    static const char *const system[] = { "ntdll.dll", "kernelbase.dll", "kernel32.dll" };
+    char low[48];
+    size_t i;
+    for (i = 0; name[i] && i + 1 < sizeof(low); i++) low[i] = (char)(name[i] >= 'A' && name[i] <= 'Z' ? name[i] + 32 : name[i]);
+    low[i] = 0;
+    for (i = 0; i < HK_COUNT(system); i++)
+        if (!strcmp(low, system[i])) return PROF_SYSTEM;
+    return !strcmp(low, "megler.exe") ? PROF_LAYER : PROF_OTHER;
+}
+
+/* The module an address is in, by its 64 KB (no two modules share one: Windows maps them at that granularity, as the
+   layer's loader does an app's libraries); -1 for none. Only the profiler's thread calls it. */
+static int prof_module_of(hk_addr a, hk_addr *off)
+{
+    bool cached = (a >> 16) < 65536u;
+    u32 page = (u32)(a >> 16);
+    int m = -1;
+    if (cached && g_ppage[page]) {
+        if (g_ppage[page] == 0xFFFF) return -1;
+        m = g_ppage[page] - 1;
+    } else {
+        const char *lib = NULL;
+        const void *sym = NULL, *base = NULL;
+        char name[96];
+        hk_addr mbase = 0;
+        bool found = false;
+        int i;
+        if (hk_ld_is_guest_code(a)) {
+            hk_ld_symbol_at((const void *)a, &lib, &sym, &base);
+            if (lib && base) {
+                hk_strlcpy(name, lib, sizeof(name));
+                mbase = (hk_addr)base;
+                found = true;
+            }
+        } else if (hk_host_module_at(a, name, sizeof(name), &mbase)) {
+            found = true;
+        }
+        if (found) {
+            for (i = 0; i < g_npmod; i++)
+                if (g_pmod[i].base == mbase && !strcmp(g_pmod[i].name, name)) break;
+            if (i == g_npmod && g_npmod < PROF_MODULES) {
+                hk_strlcpy(g_pmod[i].name, name, sizeof(g_pmod[i].name));
+                g_pmod[i].base = mbase;
+                g_pmod[i].kind = prof_kind(g_pmod[i].name);
+                g_npmod++;
+            }
+            if (i < g_npmod) m = i;
+        }
+        if (cached) g_ppage[page] = m >= 0 ? (u16)(m + 1) : 0xFFFF;
+    }
+    if (m >= 0 && off) *off = a - g_pmod[m].base;
+    return m;
+}
+
+static void prof_add(hk_addr *addr, u32 *count, hk_addr a)
+{
+    u32 h = (u32)(a >> 1) * 2654435761u, i;
+    for (i = 0; i < 64; i++) {
+        u32 at = (h + i) & (PROF_SLOTS - 1);
+        if (addr[at] == a) {
+            count[at]++;
+            return;
+        }
+        if (!addr[at]) {
+            addr[at] = a;
+            count[at] = 1;
+            return;
+        }
+    }
+    /* (Nothing free near it: the sample is in the totals only.) */
+}
+
+static void prof_sample(prof_slot *s, u32 *words)
+{
+    hk_gthread *g;
+    hk_thread_regs regs;
+    hk_addr pc;
+    int n = 0, k, m;
+    hk_lock_acquire(&g_thread_lock);
+    g = s->tid > 0 && s->tid < (i32)HK_COUNT(g_tid_thread) ? g_tid_thread[s->tid] : NULL;
+    if (!g || g->sig_thread != s->host || !hk_thread_suspend(s->host, &regs)) {
+        hk_lock_release(&g_thread_lock);
+        return;
+    }
+    if (g->stack_lo && g->stack_hi && regs.sp >= (hk_addr)g->stack_lo && regs.sp < (hk_addr)g->stack_hi) {
+        hk_addr top = (hk_addr)g->stack_hi, at = regs.sp & ~(hk_addr)3;
+        n = (int)((top - at) / 4 < PROF_WORDS ? (top - at) / 4 : PROF_WORDS);
+        memcpy(words, (const void *)at, (size_t)n * 4);
+    }
+    hk_thread_resume(s->host);
+    hk_lock_release(&g_thread_lock);
+    pc = regs.pc & ~(hk_addr)1;
+    s->samples++;
+    s->w_samples++;
+    m = pc >= 0x10000 ? prof_module_of(pc, NULL) : -1;
+    if (m >= 0 && g_pmod[m].kind == PROF_SYSTEM) {
+        int from = -1;
+        hk_addr w = 0;
+        for (k = 0; k < n && from < 0; k++) {
+            int wm;
+            w = (hk_addr)(words[k] & ~1u);
+            if (w < 0x10000) continue;
+            wm = prof_module_of(w, NULL);
+            if (wm >= 0 && g_pmod[wm].kind == PROF_OTHER) from = wm;
+        }
+        s->waits++;
+        s->w_waits++;
+        if (from >= 0) {
+            prof_add(s->wait_addr, s->wait_count, w);
+            s->w_wait_mod[from]++;
+        } else {
+            s->unknown++;
+            s->w_unknown++;
+        }
+    } else {
+        prof_add(s->run_addr, s->run_count, pc);
+        if (m >= 0) s->w_run_mod[m]++;
+        else s->w_run_unknown++;
+    }
+}
+
+/* "module 12%" for each module with 2 % of the samples or more, the most first. */
+static size_t prof_modules_text(char *out, size_t size, const u32 *by_mod, u32 total)
+{
+    bool said[PROF_MODULES];
+    size_t at = 0;
+    int i, found = 0;
+    memset(said, 0, sizeof(said));
+    out[0] = 0;
+    for (;;) {
+        int best = -1;
+        for (i = 0; i < g_npmod; i++)
+            if (!said[i] && by_mod[i] && (best < 0 || by_mod[i] > by_mod[best])) best = i;
+        if (best < 0 || by_mod[best] * 50 < total || at + 64 >= size) break;
+        said[best] = true;
+        at += (size_t)snprintf(out + at, size - at, "%s%s %u%%", found++ ? ", " : "", g_pmod[best].name, (unsigned)(by_mod[best] * 100 / total));
+    }
+    return at;
+}
+
+/* The `PROF_TOP` addresses with the most samples, as "module+0x1234 3.1%". */
+static size_t prof_top_text(char *out, size_t size, const hk_addr *addr, const u32 *count, u32 total)
+{
+    u32 took[PROF_TOP];
+    size_t at = 0;
+    int t, found = 0;
+    u32 i;
+    out[0] = 0;
+    for (t = 0; t < PROF_TOP; t++) {
+        u32 best = PROF_SLOTS;
+        int k;
+        hk_addr off = 0;
+        int m;
+        for (i = 0; i < PROF_SLOTS; i++) {
+            bool before = false;
+            if (!addr[i]) continue;
+            for (k = 0; k < t; k++)
+                if (took[k] == i) before = true;
+            if (!before && (best == PROF_SLOTS || count[i] > count[best])) best = i;
+        }
+        if (best == PROF_SLOTS || at + 80 >= size) break;
+        took[t] = best;
+        m = prof_module_of(addr[best], &off);
+        at += (size_t)snprintf(out + at, size - at, "%s%s+0x%x %.1f%%", found++ ? ", " : "", m >= 0 ? g_pmod[m].name : "?", (unsigned)off,
+                               total ? 100.0 * count[best] / total : 0.0);
+    }
+    return at;
+}
+
+static size_t prof_dump_hist(char *out, size_t size, const char *what, const hk_addr *addr, const u32 *count)
+{
+    size_t at = 0;
+    u32 i;
+    for (i = 0; i < PROF_SLOTS && at + 96 < size; i++) {
+        hk_addr off = 0;
+        int m;
+        if (!addr[i]) continue;
+        m = prof_module_of(addr[i], &off);
+        at += (size_t)snprintf(out + at, size - at, "%s %s 0x%x %u\n", what, m >= 0 ? g_pmod[m].name : "?", (unsigned)(m >= 0 ? off : addr[i]),
+                               (unsigned)count[i]);
+    }
+    return at;
+}
+
+const char *megler_data_dir(void);
+
+static void prof_report(prof_slot *slots, double seconds, double since)
+{
+    char mods[600], waits[600];
+    size_t cap = 4096, at = 0;
+    char *file;
+    int i;
+    u32 k;
+    for (i = 0; i < PROF_THREADS; i++) {
+        prof_slot *s = &slots[i];
+        size_t n;
+        if (!s->tid || !s->w_samples) continue;
+        n = prof_modules_text(mods, sizeof(mods), s->w_run_mod, s->w_samples);
+        if (s->w_run_unknown * 50 >= s->w_samples)
+            snprintf(mods + n, sizeof(mods) - n, "%soutside any module %u%%", n ? ", " : "", (unsigned)(s->w_run_unknown * 100 / s->w_samples));
+        n = prof_modules_text(waits, sizeof(waits), s->w_wait_mod, s->w_samples);
+        if (s->w_unknown * 50 >= s->w_samples)
+            snprintf(waits + n, sizeof(waits) - n, "%sa caller not found %u%%", n ? ", " : "", (unsigned)(s->w_unknown * 100 / s->w_samples));
+        if (prof_line_left())
+            hk_info("profile: thread %d \"%s\", %.2f of a core: %u samples in %.1f s; running %u%% (%s), waiting %u%% (for %s)", (int)s->tid, s->name,
+                    (double)s->w_cpu_ns / (seconds * 1e9), (unsigned)s->w_samples, seconds, (unsigned)((s->w_samples - s->w_waits) * 100 / s->w_samples),
+                    mods[0] ? mods : "-", (unsigned)(s->w_waits * 100 / s->w_samples), waits[0] ? waits : "-");
+        prof_top_text(mods, sizeof(mods), s->run_addr, s->run_count, s->samples);
+        prof_top_text(waits, sizeof(waits), s->wait_addr, s->wait_count, s->samples);
+        if (prof_line_left())
+            hk_info("profile: thread %d since it was first sampled: ran most at %s; waited most for %s", (int)s->tid, mods[0] ? mods : "-", waits[0] ? waits : "-");
+        s->w_samples = s->w_waits = s->w_unknown = s->w_run_unknown = 0;
+        s->w_cpu_ns = 0;
+        memset(s->w_run_mod, 0, sizeof(s->w_run_mod));
+        memset(s->w_wait_mod, 0, sizeof(s->w_wait_mod));
+    }
+    /* The whole of it, for tools/profile-names.py. */
+    for (i = 0; i < PROF_THREADS; i++)
+        for (k = 0; k < PROF_SLOTS; k++) cap += (slots[i].run_addr[k] ? 96 : 0) + (slots[i].wait_addr[k] ? 96 : 0);
+    file = (char *)hk_alloc(cap);
+    at += (size_t)snprintf(file + at, cap - at, "# Megler trace-profile, %.0f s after it began: samples by address (module, offset in it, count); "
+                                                "run: where a thread was, wait: what a thread in the system's code waited for\n", since);
+    for (i = 0; i < PROF_THREADS; i++) {
+        prof_slot *s = &slots[i];
+        if (!s->tid) continue;
+        at += (size_t)snprintf(file + at, cap - at, "thread %d \"%s\" samples %u waits %u unknown %u\n", (int)s->tid, s->name, (unsigned)s->samples,
+                               (unsigned)s->waits, (unsigned)s->unknown);
+        at += prof_dump_hist(file + at, cap - at, "run", s->run_addr, s->run_count);
+        at += prof_dump_hist(file + at, cap - at, "wait", s->wait_addr, s->wait_count);
+    }
+    {
+        char path[700];
+        snprintf(path, sizeof(path), "%s/profile.txt", megler_data_dir());
+        if (!hk_file_write_all(path, file, at) && prof_line_left()) hk_info("profile: %s could not be written", path);
+    }
+    free(file);
+    /* Addresses that were in no module are looked at again: a library may have been loaded there since. */
+    for (k = 0; k < 65536u; k++)
+        if (g_ppage[k] == 0xFFFF) g_ppage[k] = 0;
+}
+
+/* Every second: the busiest guest threads, each given a slot (kept while it stays among them; the one chosen longest ago
+   gives its slot up). */
+static void prof_choose(prof_slot *slots, u64 *before, hk_thread **host, u64 span, u64 now)
+{
+    struct { i32 tid; u64 ns; hk_thread *h; char name[32]; } top[PROF_THREADS];
+    int n = 0, i, k;
+    memset(top, 0, sizeof(top));
+    hk_lock_acquire(&g_thread_lock);
+    for (i = 1; i < (int)HK_COUNT(g_tid_thread); i++) {
+        hk_gthread *g = g_tid_thread[i];
+        hk_thread *h = g ? g->sig_thread : NULL;
+        u64 ns, d;
+        if (!h || h == hk_thread_current()) continue;
+        ns = hk_thread_cpu_ns(h);
+        d = host[i] == h && ns >= before[i] ? ns - before[i] : 0;
+        before[i] = ns;
+        host[i] = h;
+        for (k = 0; k < PROF_THREADS; k++)
+            if (slots[k].tid == i && slots[k].host == h) slots[k].w_cpu_ns += d;
+        if (d * 10 < span) continue;
+        for (k = n; k > 0 && top[k - 1].ns < d; k--)
+            if (k < PROF_THREADS) top[k] = top[k - 1];
+        if (k < PROF_THREADS) {
+            top[k].tid = i;
+            top[k].ns = d;
+            top[k].h = h;
+            hk_strlcpy(top[k].name, g->name, sizeof(top[k].name));
+            if (n < PROF_THREADS) n++;
+        }
+    }
+    hk_lock_release(&g_thread_lock);
+    for (i = 0; i < n; i++) {
+        int at = -1, oldest = -1;
+        for (k = 0; k < PROF_THREADS; k++) {
+            if (slots[k].tid == top[i].tid && slots[k].host == top[i].h) at = k;
+            if (oldest < 0 || slots[k].chosen_at < slots[oldest].chosen_at) oldest = k;
+        }
+        if (at < 0) {
+            for (k = 0; k < PROF_THREADS && at < 0; k++)
+                if (!slots[k].tid) at = k;
+            if (at < 0) at = oldest;
+            memset(&slots[at], 0, sizeof(slots[at]));
+            slots[at].tid = top[i].tid;
+            slots[at].host = top[i].h;
+            hk_strlcpy(slots[at].name, top[i].name, sizeof(slots[at].name));
+            slots[at].w_cpu_ns = top[i].ns;
+        }
+        slots[at].chosen_at = now;
+    }
+}
+
+static void prof_observer(void *unused)
+{
+    prof_slot *slots = (prof_slot *)hk_alloc(sizeof(prof_slot) * PROF_THREADS);
+    u64 *before = (u64 *)hk_alloc(sizeof(u64) * HK_COUNT(g_tid_thread));
+    hk_thread **host = (hk_thread **)hk_alloc(sizeof(hk_thread *) * HK_COUNT(g_tid_thread));
+    u32 *words = (u32 *)hk_alloc(PROF_WORDS * 4);
+    u64 began = hk_time_monotonic_ns(), chose = began, reported = began;
+    int i;
+    (void)unused;
+    g_pmod = (prof_module *)hk_alloc(sizeof(prof_module) * PROF_MODULES);
+    g_ppage = (u16 *)hk_alloc(sizeof(u16) * 65536u);
+    prof_choose(slots, before, host, ~0ull, began);
+    for (;;) {
+        u64 now;
+        hk_sleep_ns(10000000ull);
+        now = hk_time_monotonic_ns();
+        if (now - chose >= 1000000000ull) {
+            /* (Only the threads still chosen within the last ten seconds are sampled.) */
+            prof_choose(slots, before, host, now - chose, now);
+            chose = now;
+        }
+        for (i = 0; i < PROF_THREADS; i++)
+            if (slots[i].tid && now - slots[i].chosen_at < 10000000000ull) prof_sample(&slots[i], words);
+        if (now - reported >= 10000000000ull) {
+            prof_report(slots, (double)(now - reported) / 1e9, (double)(now - began) / 1e9);
+            reported = now;
+        }
+    }
+}
+
+void hk_bionic_profile_start(void)
+{
+    static volatile i32 started;
+    hk_thread *t;
+    if (hk_atomic_xchg(&started, 1)) return;
+#if !defined(_WIN32)
+    if (prof_line_left()) hk_info("profile: threads are not sampled on this host (a thread is stopped by a signal here, which it may hold back)");
+    return;
+#endif
+    t = hk_thread_start(prof_observer, NULL, 64u * 1024u, "profile-observer");
+    if (t) {
+        hk_thread_detach(t);
+        if (prof_line_left()) hk_info("profile: sampling the busiest threads sixty times a second, said every ten seconds (the flag trace-profile)");
+    }
+}
+
 void hk_bionic_cpu_trace_start(void)
 {
     static volatile i32 started;

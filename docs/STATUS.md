@@ -281,7 +281,17 @@ lines; `dvm/hk_dvm_interp.c`, the flags read by `hk_flags_each`); and
 `trace-cpu` (every five seconds, the processor the app had in the phone's cores,
 and its eight busiest threads that ran guest code, by id and name, each as a
 share of one core: whether a slow app is held by one thread; at most 2000 lines;
-`bionic/hk_bionic.c`). `trace-net` also says, when the app closes a connection,
+`bionic/hk_bionic.c`); and `trace-profile` (every second the three busiest
+threads that ran guest code are chosen and each is sampled about sixty times a
+second -- stopped while its pc and the top 2 KB of its stack are copied; a
+sample in the system's own code is a wait, put to the first return address on
+the stack outside the system and the layer; every ten seconds the log says each
+thread's share of a core and its samples by module, running and waiting, and
+the six addresses it ran at and waited for most, and `LocalState\profile.txt`
+has every address with its count, which `tools/profile-names.py` names by
+function with the build's maps and an app library's exported symbols: where a
+game that is slow with the graphics processor idle spends its time; Windows
+only; at most 1000 lines; `bionic/hk_bionic.c`). `trace-net` also says, when the app closes a connection,
 what went over it: the bytes and calls each way, the first sixteen bytes each
 way, when the first came in, the other end's close, errors and timeouts. Of a
 connection made it says which call the app learnt it by (`getsockopt SO_ERROR`,
@@ -289,7 +299,7 @@ connect itself or asked again, a send, a receive), the first bytes each way as
 they go, and every twenty seconds, for each connection still open whose counts
 changed, the same counts with how long ago bytes last went each way: a
 connection an app keeps open, and waits on, is otherwise never said. The
-data app's second run under qemu has all five on, and the test finds their lines.
+data app's second run under qemu has all of them on, and the test finds their lines.
 For OpenGL ES drawn on a view (a GLSurfaceView, or native code's EGL surface on a
 SurfaceView's window): `trace-surfaces` (every three seconds each window surface's
 frame read back just before it is handed over -- its centre and a 4 x 4 grid of

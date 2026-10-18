@@ -395,6 +395,7 @@ bool hk_run_start(const megler_run_config *config)
             config->width, config->height, config->density_dpi);
     if (hk_flag("trace-cpu")) hk_bionic_cpu_trace_start();
     if (hk_flag("trace-native-stacks")) hk_bionic_native_stacks_start();
+    if (hk_flag("trace-profile")) hk_bionic_profile_start();
     if (!g_driver->start(&g_config, &info)) {
         hk_atomic_xchg(&g_active, 0);
         if (!g_error[0]) hk_run_set_error("the app did not start");
