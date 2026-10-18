@@ -255,6 +255,24 @@ of a class whose name starts with it, with its thread and depth, and its return
 with the value or the exception it ends with; up to eight such flags; at most 8000
 lines; `dvm/hk_dvm_interp.c`, the flags read by `hk_flags_each`). The
 data app's second run under qemu has all four on, and the test finds their lines.
+For OpenGL ES drawn on a view (a GLSurfaceView, or native code's EGL surface on a
+SurfaceView's window): `trace-surfaces` (every three seconds each window surface's
+frame read back just before it is handed over -- its centre and a 4 x 4 grid of
+pixels, R, G, B, A, rows from the top -- with where its view last said it is,
+when, and who composes it; and the views' picture at the same grid over each
+placed view, its alpha, `00` where the view's hole lets the frame through:
+`java: trace-surfaces: ...` lines, `drivers/hk_java_gl.c`) and `gl-compose-here`
+(the core composes the window from frames read back, as where EGL shares no
+textures, instead of the shell on the graphics processor). A black frame, a frame
+the views hide, and a frame the shell loses tell apart so: the first has a black
+grid, the second alpha other than `00` over it, the third a good grid and alpha
+`00` and a black screen that `gl-compose-here` mends. Without a flag the log says
+each view's first six places (`java: OpenGL layer N (class) is at x,y wxh in the
+window`), every EGL call of the app's for these surfaces that EGL refused with its
+error (`egl: ... was refused (EGL error 0x...)`), and the OpenGL frames' minute
+lines end with who composes and where each layer is, or that it is nowhere (its
+view has not drawn its hole). The natives app runs under qemu with
+`trace-surfaces` on, and the test checks its lines.
 
 **Sound.** FMOD said "Error initializing output device" twice and made no player.
 It had not got as far as OpenSL ES: before that it asks `AudioManager.getProperty`

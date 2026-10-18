@@ -185,6 +185,8 @@ static struct {
     void *user;
     bool (*canvas_fn)(void *user, void *canvas, int width, int height);
     void *canvas_user;
+    bool (*probe_due)(void);
+    void (*probe)(const void *pixels, int width, int height, int stride);
 } g_present;
 /* The bitmaps' counts, each bitmap's list of canvases and their two flags, and the typefaces made. */
 static hk_lock g_lock = HK_LOCK_INIT;
@@ -3546,7 +3548,14 @@ N(G_present)
         only = b->canvases;
         if (only && !only->next && only->host && !only->stale && !b->rgba_locks) shown = g_present.canvas_fn(g_present.canvas_user, only->host, b->w, b->h);
         hk_lock_release(&g_lock);
-        if (shown) return;
+        if (shown) {
+            /* (A look at what was shown, for a diagnosis, when one is asked for: the memory brought up to date for it.) */
+            if (g_present.probe && g_present.probe_due && g_present.probe_due()) {
+                bm_settle(b);
+                g_present.probe(b->px, b->w, b->h, b->stride);
+            }
+            return;
+        }
     }
     bm_settle(b);
     g_present.fn(g_present.user, b->px, b->w, b->h, b->stride);
@@ -3653,6 +3662,12 @@ void hk_java_gfx_set_present_canvas(bool (*fn)(void *user, void *canvas, int wid
 {
     g_present.canvas_fn = fn;
     g_present.canvas_user = user;
+}
+
+void hk_java_gfx_set_present_probe(bool (*due)(void), void (*probe)(const void *pixels, int width, int height, int stride))
+{
+    g_present.probe_due = due;
+    g_present.probe = probe;
 }
 
 void hk_java_gfx_stats(uint64_t *bitmap_bytes, uint32_t *bitmaps)

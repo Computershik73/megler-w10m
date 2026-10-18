@@ -66,6 +66,13 @@ void hk_java_gl_window_swap(void *surface, int width, int height);
 /* On no view: the frame the last swap read back, R, G, B, A, rows bottom first, and its size; NULL before the first. */
 const void *hk_java_gl_window_pixels(void *surface, int *width, int *height);
 void hk_java_gl_window_destroy(void *surface);
+/*
+ * The flag trace-surfaces, where the shell shows the views from its own picture (megler_gfx_host.present): whether the views'
+ * picture is due to be looked at over the OpenGL layers (every three seconds), and then the picture, brought up to date in
+ * memory for it (hk_java_gfx.c's present).
+ */
+bool hk_java_gl_views_probe_due(void);
+void hk_java_gl_views_probe(const void *pixels, int width, int height, int stride);
 /* hk_java_ndk.c: the view's surface has gone (EGLNative.forget): the windows native code has of it are no longer valid. */
 void hk_java_ndk_view_gone(hk_jobj *view);
 

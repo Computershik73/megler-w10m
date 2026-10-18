@@ -385,6 +385,21 @@ static surface *window_surface(EGLSurface h)
 /* The surface of EGL's that a window's own stands for now, and its size. */
 static EGLSurface window_real(surface *s, int *width, int *height) { return (EGLSurface)s->window->ops->egl_handle(s->native, width, height); }
 
+/*
+ * An EGL call of the app's that EGL refused: said in the log, the first ten of each kind, with the error -- which stays the
+ * app's to read with eglGetError, as if nothing had asked first.
+ */
+static void refused(const char *what, volatile i32 *said)
+{
+    typedef EGLint (*fn_error)(void);
+    fn_error err = A(fn_error, "eglGetError");
+    EGLint e = err ? err() : 0;
+    i32 n;
+    if (e && e != EGL_SUCCESS) g_error = e;
+    n = hk_atomic_add(said, 1);
+    if (n <= 10) hk_warn("egl: %s was refused (EGL error 0x%x)%s", what, (unsigned)e, n == 10 ? "; the next of these are not said" : "");
+}
+
 /* What EGL itself is to be given for a surface the app names. */
 static EGLSurface real_of(EGLSurface h)
 {
@@ -569,14 +584,19 @@ void *hk_egl_surface_mutex(void *d, void *surface)
 
 static EGLSurface g_eglCreatePbufferSurface(EGLDisplay d, EGLConfig config, const EGLint *attribs)
 {
-    static volatile i32 said, refused;
+    static volatile i32 said, refused_mutex, refused_made;
     fn_pbuffer real = A(fn_pbuffer, "eglCreatePbufferSurface");
     EGLSurface h = real ? real(d, config, attribs) : NULL;
-    void *mutex = h ? hk_egl_surface_mutex(d, h) : NULL;
+    void *mutex;
+    if (!h) {
+        refused("eglCreatePbufferSurface", &refused_made);
+        return NULL;
+    }
+    mutex = hk_egl_surface_mutex(d, h);
     if (!mutex) return h;
     if (!hk_atomic_xchg(&said, 1))
         hk_info("egl: ANGLE shares its pbuffers' textures with a keyed mutex: each is held by ANGLE's device from its making, else what is drawn in it is dropped");
-    if (!hk_egl_keyed_mutex(mutex, true) && hk_atomic_add(&refused, 1) <= 10)
+    if (!hk_egl_keyed_mutex(mutex, true) && hk_atomic_add(&refused_mutex, 1) <= 10)
         hk_warn("egl: a new pbuffer's keyed mutex could not be acquired: what is drawn in it will be dropped");
     return h;
 }
@@ -588,7 +608,9 @@ static EGLSurface g_eglCreatePbufferSurface(EGLDisplay d, EGLConfig config, cons
 static EGLContext g_eglCreateContext(EGLDisplay d, EGLConfig config, EGLContext share, const EGLint *attribs)
 {
     static int no_config = -1;
+    static volatile i32 said;
     fn_create_context real = A(fn_create_context, "eglCreateContext");
+    EGLContext made;
     hk_trace("eglCreateContext(share %p)", (void *)share);
     if (!real) return NULL;
     if (no_config < 0) {
@@ -596,7 +618,9 @@ static EGLContext g_eglCreateContext(EGLDisplay d, EGLConfig config, EGLContext 
         const char *ext = qs ? qs(d, EGL_EXTENSIONS) : NULL;
         no_config = ext && strstr(ext, "EGL_KHR_no_config_context") ? 1 : 0;
     }
-    return real(d, no_config ? NULL : config, share, attribs);
+    made = real(d, no_config ? NULL : config, share, attribs);
+    if (!made) refused("eglCreateContext", &said);
+    return made;
 }
 
 /* A free entry, taken (its handle set to something not null until the caller fills it); NULL when all are in use. */
@@ -647,6 +671,7 @@ static EGLSurface window_surface_create(EGLDisplay d, EGLConfig config, hk_nwind
     native = window->ops->egl_create(window, candidates, count);
     if (!native) {
         free_entry(s);
+        hk_warn("egl: no window surface on a view's window (EGL_BAD_ALLOC to the app)");
         g_error = EGL_BAD_ALLOC;
         return NULL;
     }
@@ -787,6 +812,7 @@ static EGLBoolean g_eglQuerySurface(EGLDisplay d, EGLSurface handle, EGLint attr
  */
 static EGLBoolean g_eglMakeCurrent(EGLDisplay d, EGLSurface draw, EGLSurface read, EGLContext ctx)
 {
+    static volatile i32 said;
     fn_make_current real = A(fn_make_current, "eglMakeCurrent");
     surface *wd = window_surface(draw), *wr = window_surface(read);
     EGLBoolean ok;
@@ -795,6 +821,8 @@ static EGLBoolean g_eglMakeCurrent(EGLDisplay d, EGLSurface draw, EGLSurface rea
     if (ok) {
         t_draw = ctx ? wd : NULL;
         t_read = ctx ? wr : NULL;
+    } else {
+        refused(wd || wr ? "eglMakeCurrent of a window surface on a view's window" : "eglMakeCurrent", &said);
     }
     return ok;
 }
@@ -825,6 +853,8 @@ static EGLBoolean window_swap(EGLDisplay d, surface *w)
     bool shown;
     if (t_draw != w) {
         /* As EGL has it: the surface swapped must be the calling thread's current one. */
+        static volatile i32 said;
+        if (hk_atomic_add(&said, 1) <= 10) hk_warn("egl: eglSwapBuffers of a window surface on a view's window that is not current on this thread: EGL_BAD_SURFACE");
         g_error = EGL_BAD_SURFACE;
         return 0;
     }
@@ -839,6 +869,9 @@ static EGLBoolean window_swap(EGLDisplay d, surface *w)
         if (!make || !context || !make(d, after, read, context())) hk_warn("egl: the window's surface of its new size could not be made current");
     }
     if (!shown) {
+        static volatile i32 said;
+        if (hk_atomic_add(&said, 1) <= 10)
+            hk_info("egl: eglSwapBuffers of a window surface whose view's surface has gone: EGL_BAD_NATIVE_WINDOW, as on Android (the app is to make a new one)");
         g_error = EGL_BAD_NATIVE_WINDOW;
         return 0;
     }

@@ -1390,7 +1390,7 @@ static void natives_windows(const int tap_at[2])
     static const u32 first[4] = { 0xFFFF00, 0xFF00FF, 0xFF00FF, 0xFF00FF }, second[4] = { 0x0000FF, 0x00FFFF, 0x00FFFF, 0x00FFFF };
     static const u32 painted[4] = { 0xFF0000, 0x00FF00, 0x0000FF, 0xFFFFFF }, texture_frame[4] = { 0xFF0000, 0x00FF00, 0x00FF00, 0x00FF00 };
     int line, egl[4], full[4], lock[4], texture[4];
-    char text[200];
+    char text[200], trace[400];
     memset(egl, 0, sizeof(egl));
     memset(lock, 0, sizeof(lock));
     memset(texture, 0, sizeof(texture));
@@ -1416,6 +1416,19 @@ static void natives_windows(const int tap_at[2])
     CHECK(quarters_shown(egl, first, 30));
     CHECK(quarters_shown(lock, painted, 30));
     CHECK(quarters_shown(texture, painted, 30));
+    /*
+     * The flag trace-surfaces (on for this app, hk_tests_java_run): the first frame read back just before it was handed over,
+     * its centre and its 4 x 4 grid the quarters drawn (R, G, B, A: yellow the top left, magenta the rest); the view's place
+     * in the window when it said it; and the views' picture over it clear at the whole grid (alpha 0: the hole).
+     */
+    snprintf(trace, sizeof(trace), "java: trace-surfaces: layer 0 (android/view/SurfaceView) frame %dx%d, swap 1: centre ff00ffff; grid (rows from the top) "
+             "ffff00ff ffff00ff ff00ffff ff00ffff / ffff00ff ffff00ff ff00ffff ff00ffff / ff00ffff ff00ffff ff00ffff ff00ffff / ff00ffff ff00ffff ff00ffff ff00ffff; ", egl[2], egl[3]);
+    CHECK(find_line(trace, 0) >= 0);
+    snprintf(trace, sizeof(trace), "java: OpenGL layer 0 (android/view/SurfaceView) is at %d,%d %dx%d in the window: its frames go there", egl[0], egl[1], egl[2], egl[3]);
+    CHECK(find_line(trace, 0) >= 0);
+    snprintf(trace, sizeof(trace), "java: trace-surfaces: the views' picture over layer 0 at %d,%d %dx%d, alpha (0 the hole): 00 00 00 00 / 00 00 00 00 / 00 00 00 00 / 00 00 00 00",
+             egl[0], egl[1], egl[2], egl[3]);
+    CHECK(find_line(trace, 0) >= 0);
     write_picture("natives-2");
     tap(tap_at[0], tap_at[1]);
     /* Phase 2: the surface half the view's size -- the same window, its size now that -- and the renderer's surface with it. */
@@ -1427,6 +1440,12 @@ static void natives_windows(const int tap_at[2])
     CHECK(find_line(text, 0) >= 0);
     CHECK(find_line("java: a window surface of native code's is ", 0) >= 0);
     CHECK(quarters_shown(egl, first, 30));
+    /* The surface of the new size traced at its first swap with where its frames go, and the views' hole there as last looked at. */
+    snprintf(trace, sizeof(trace), "java: trace-surfaces: layer 0 (android/view/SurfaceView) frame %dx%d, swap 1: centre ff00ffff; ", full[2] / 2, full[3] / 2);
+    line = find_line(trace, 0);
+    snprintf(trace, sizeof(trace), "; at %d,%d %dx%d, said ", full[0], full[1], full[2], full[3]);
+    CHECK(line >= 0 && strstr(line_at(line), trace) && strstr(line_at(line), GL.refuse ? " s ago, composed here; " : " s ago, composed by the shell; ")
+          && strstr(line_at(line), "; the views' alpha over it ") && strstr(line_at(line), " s ago: 00 00 00 00 / 00 00 00 00 / 00 00 00 00 / 00 00 00 00"));
     /* The texture drawn once with EGL from the main thread: read back, turned the right way up, given to the texture. */
     snprintf(text, sizeof(text), "I/NativesWindow: texture-egl surface %dx%d made=1 swapped=1 error=0x3000", texture[2], texture[3]);
     CHECK(find_line(text, 0) >= 0);
@@ -2216,6 +2235,16 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
     hk_camera_standin_refuse(g_camera_app && g_script_count && !strcmp(g_script[0], "denied"));
     /* The shell does not compose the window ("readback"): the core reads the GL frames back and composes it, as before. */
     GL.refuse = g_script_count && !strcmp(g_script[0], "readback");
+    /* natives runs with the flag trace-surfaces on (a file in the data folder's flags, as on the phone): natives_windows checks what it says. */
+    if (!strcmp(which, "natives")) {
+        char *flags = hk_sprintf("%s/flags", megler_data_dir()), *flag = hk_sprintf("%s/flags/trace-surfaces", megler_data_dir());
+        FILE *f;
+        hk_path_mkdirs(flags);
+        f = fopen(flag, "w");
+        if (f) fclose(f);
+        free(flags);
+        free(flag);
+    }
     /* The data app's second run is on another battery than the one the core has when nobody has said: what the app then reads is what was set here. */
     if (!strcmp(which, "data") && g_script_count && !strcmp(g_script[0], "run:2")) hk_battery_set(&k_battery_run2);
     /* And in a time zone the shell names, as it must, before the app starts: one with summer time, and in the second run a name that is no zone's. */

@@ -26,6 +26,11 @@ void hk_java_gfx_set_present(void (*fn)(void *user, const void *pixels, int widt
  * brought up to date and handed to the function above, as without this. Called under the bitmaps' lock.
  */
 void hk_java_gfx_set_present_canvas(bool (*fn)(void *user, void *canvas, int width, int height), void *user);
+/*
+ * After a picture shown that way: when `due` says so, the bitmap's memory is brought up to date and handed to `probe` (a
+ * diagnosis of what the window shows: hk_java_gl.c's trace-surfaces). Not under the bitmaps' lock.
+ */
+void hk_java_gfx_set_present_probe(bool (*due)(void), void (*probe)(const void *pixels, int width, int height, int stride));
 /* Bytes of bitmap memory now allocated and bitmaps alive, for the memory report. */
 void hk_java_gfx_stats(uint64_t *bitmap_bytes, uint32_t *bitmaps);
 /* Bytes the display lists of RenderNodes and Pictures now take, how many lists there are, and how many nodes. */
