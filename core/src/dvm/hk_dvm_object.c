@@ -44,11 +44,15 @@ u64 hk_dvm_executed_all(void)
     return n;
 }
 
+static bool g_stacks_trace;
+static void stacks_thread_ends(hk_dvm_thread *t);
+
 /* The calling thread has ended (the host's hook, hk_thread_set_end_hook): it is no longer one of the runtime's, to be stopped or scanned. */
 static void thread_ends(void)
 {
     hk_dvm_thread *t = t_self, **p;
     if (!t) return;
+    if (g_stacks_trace) stacks_thread_ends(t);
     hk_dvm_lock();
     for (p = &g_threads; *p; p = &(*p)->next)
         if (*p == t) {
@@ -701,14 +705,23 @@ void hk_dvm_monitor_trace_start(void)
 }
 
 /*
- * The flag trace-stacks (hk_java.c starts it): five seconds after the app's main thread starts and every ten seconds after,
- * the Java stack of every thread is said in the log, its 24 top frames -- where an app that stands still with nothing in the
- * log is waiting (VK mp3 mod's sign-in stopped after its anonymous token). Each thread is stopped only while its frames are
- * copied, under the VM lock, as for the monitor trace. A thread whose stack is what it was the round before is said in one
- * line. At most 30 rounds a run.
+ * The flag trace-stacks (hk_java.c starts it): five seconds after the app's main thread starts and every two seconds after,
+ * the Java stack of every thread whose stack changed since the round before is said in the log, its 24 top frames; the
+ * others are counted in one line. The first round says all of them. A thread that ends is said as it ends (thread_ends),
+ * and one that could not be stopped is named. That says where an app that stands still with nothing in the log is waiting,
+ * and which threads came and went in between (VK mp3 mod's sign-in stopped after its anonymous token, with every thread
+ * idle ten seconds later). Each thread is stopped only while its frames are copied, under the VM lock, as for the monitor
+ * trace. After the app was suspended the rounds go on from when it resumed. At most 6000 lines a run.
  */
 #define STACKS_THREADS 64
 #define STACKS_FRAMES 24
+
+static volatile i32 g_stacks_lines;
+
+static bool stacks_line_left(void)
+{
+    return hk_atomic_add(&g_stacks_lines, 1) <= 6000;
+}
 
 static bool same_stack(const monitor_sample *a, const monitor_sample *b)
 {
@@ -719,19 +732,35 @@ static bool same_stack(const monitor_sample *a, const monitor_sample *b)
     return true;
 }
 
+/* A thread that ends, said by itself on its way out (thread_ends), with the frames it still has. */
+static void stacks_thread_ends(hk_dvm_thread *t)
+{
+    monitor_sample s;
+    memset(&s, 0, sizeof(s));
+    monitor_sample_copy(t, &s);
+    if (stacks_line_left()) hk_info("stacks: thread %u \"%s\" ends, %d Java frames left", s.thread, s.name, s.frames);
+}
+
 static void stacks_observer(void *unused)
 {
     static monitor_sample now[STACKS_THREADS], before[STACKS_THREADS];
     int nbefore = 0, round = 1;
-    u64 next = hk_time_monotonic_ns() + 5000000000ull;
+    u64 next = hk_time_monotonic_ns() + 5000000000ull, last = 0;
     (void)unused;
-    while (round <= 30 && g_dvm.running) {
+    while (g_dvm.running && hk_atomic_add(&g_stacks_lines, 0) < 6000) {
         hk_dvm_thread *t;
         hk_thread_regs regs;
-        int count = 0, more = 0, i, j, k;
+        u32 missed[8];
+        int count = 0, more = 0, nmissed = 0, same = 0, i, j, k;
+        char missing[96];
+        u64 at;
         hk_sleep_ns(100000000ull);
-        if (hk_time_monotonic_ns() < next) continue;
-        next += 10000000000ull;
+        at = hk_time_monotonic_ns();
+        /* A sleep far longer than asked for: the app was suspended. The rounds go on from now, not to make up for it. */
+        if (last && at - last > 1000000000ull && next < at) next = at;
+        last = at;
+        if (at < next) continue;
+        next = at + 2000000000ull;
         memset(now, 0, sizeof(now));
         hk_dvm_lock();
         for (t = g_threads; t; t = t->next) {
@@ -739,25 +768,35 @@ static void stacks_observer(void *unused)
                 ++more;
                 continue;
             }
-            if (!t->host || !hk_thread_suspend(t->host, &regs)) continue;
+            if (!t->host || !hk_thread_suspend(t->host, &regs)) {
+                if (nmissed < (int)HK_COUNT(missed)) missed[nmissed++] = t->id;
+                continue;
+            }
             monitor_sample_copy(t, &now[count++]);
             hk_thread_resume(t->host);
         }
         hk_dvm_unlock();
-        hk_info("stacks: round %d, %d Java threads%s", round, count, more ? " (and more not said)" : "");
+        for (i = 0; i < count; ++i) {
+            for (k = 0; k < nbefore && !same_stack(&now[i], &before[k]); ++k) {}
+            if (k < nbefore) ++same;
+        }
+        missing[0] = 0;
+        for (i = 0, k = 0; i < nmissed && k < (int)sizeof(missing) - 16; ++i)
+            k += snprintf(missing + k, sizeof(missing) - (size_t)k, "%s%u", i ? ", " : "; not stopped: ", (unsigned)missed[i]);
+        if (!stacks_line_left()) break;
+        hk_info("stacks: round %d, %d Java threads, %d as two seconds before%s%s", round, count + nmissed + more, same, more ? " (and more not said)" : "",
+                missing);
         for (i = 0; i < count; ++i) {
             monitor_sample *s = &now[i];
             for (k = 0; k < nbefore && !same_stack(s, &before[k]); ++k) {}
-            if (k < nbefore && s->frames) {
-                hk_info("stacks: thread %u \"%s\": as ten seconds before, in %s.%s", s->thread, s->name, s->methods[0]->cls->name, s->methods[0]->name);
-                continue;
-            }
+            if (k < nbefore) continue;
+            if (!stacks_line_left()) break;
             if (s->object)
                 hk_info("stacks: thread %u \"%s\", waiting %.1f s for the monitor of a %s that thread %u holds:", s->thread, s->name,
                         (double)s->waiting_ns / 1e9, s->object_class ? s->object_class : "?", s->owner);
             else
                 hk_info("stacks: thread %u \"%s\"%s", s->thread, s->name, s->frames ? ":" : ": no Java frames");
-            for (j = 0; j < s->frames && j < STACKS_FRAMES; ++j) {
+            for (j = 0; j < s->frames && j < STACKS_FRAMES && stacks_line_left(); ++j) {
                 hk_dvm_method *m = s->methods[j];
                 int line = hk_dvm_dex_line(m, s->pcs[j]);
                 if (m->flags & DVM_ACC_NATIVE) hk_info("stacks:   %s.%s (native)", m->cls->name, m->name);
@@ -773,10 +812,13 @@ static void stacks_observer(void *unused)
 
 void hk_dvm_stacks_trace_start(void)
 {
-    hk_thread *observer = hk_thread_start(stacks_observer, NULL, 64u * 1024u, "stacks-observer");
+    hk_thread *observer;
+    if (g_stacks_trace) return;
+    g_stacks_trace = true;
+    observer = hk_thread_start(stacks_observer, NULL, 64u * 1024u, "stacks-observer");
     if (observer) {
         hk_thread_detach(observer);
-        hk_info("stacks: every Java thread's stack in 5 s and every 10 s after (the flag trace-stacks)");
+        hk_info("stacks: every Java thread's stack in 5 s, then those that changed every 2 s, and threads as they end (the flag trace-stacks)");
     } else {
         hk_warn("stacks: the observer could not start");
     }

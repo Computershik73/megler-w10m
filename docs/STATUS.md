@@ -243,9 +243,10 @@ where to, how it ended and how long it took, and every name it looks up with its
 addresses; `bionic/hk_net.c`, `hk_netdb.c`) and `trace-exceptions` (every Java
 exception thrown, once, with its message and the method it was thrown in, caught
 or not; `dvm/hk_dvm_interp.c`), at most 1000 and 2000 lines a run; and
-`trace-stacks` (five seconds in and every ten seconds after, every Java thread's
-stack, its 24 top frames, each thread stopped only while they are copied; a stack
-as it was the round before in one line; 30 rounds; `dvm/hk_dvm_object.c`). The
+`trace-stacks` (five seconds in, every Java thread's stack, its 24 top frames;
+then every two seconds those whose stack changed, the others counted; threads as
+they end, and any that could not be stopped; each thread stopped only while its
+frames are copied; at most 6000 lines; `dvm/hk_dvm_object.c`). The
 data app's second run under qemu has all three on, and the test finds their lines.
 
 **Sound.** FMOD said "Error initializing output device" twice and made no player.
