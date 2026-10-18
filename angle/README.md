@@ -11,14 +11,23 @@ directory are left as they are. `tools/build-appx.sh` takes that ANGLE where it
 is there. A change to a header is not followed into the objects that include
 it: these patches change `.cpp` files only.
 
-- `0001-buffer11-dynamic-writes.patch` -- `Buffer11.cpp`. A buffer made with a
-  static usage (`GL_STATIC_DRAW`) that the app writes again after it has drawn
-  from it is taken as dynamic, as ANGLE keeps a buffer made dynamic: its data in
-  system memory, the parts a draw uses streamed to that draw. And a dynamic
-  buffer is mapped (`glMapBufferRange`) in its system memory. Before, every
-  write to such a buffer, and every mapping of any buffer, went to a staging
-  copy of the whole buffer and from there, on the graphics processor, to the
-  buffer the draws read; the next write waited for that copy. Asphalt 9, which
-  streams its geometry, ran at one or two frames a second with a processor
-  three quarters idle. `BufferD3D::promoteStaticUsage` makes the buffer static
-  again once it is drawn from unchanged long enough.
+- `0002-buffer11-constant-buffer-ranges-reused.patch` -- `Buffer11.cpp`. Where
+  the driver has no constant buffer offsets (Direct3D 11.1's
+  `ConstantBufferOffsetting`), ANGLE makes a Direct3D buffer of its own for each
+  range of a uniform buffer an app binds (`glBindBufferRange`), keeps them by
+  offset, and deletes the least recently used once they come to twice the
+  buffer's size. An app that binds the next range of one large uniform buffer for
+  each draw had a buffer made, and one deleted, for nearly every draw: in a race
+  of Asphalt 9's, two thirds of its render thread was under
+  `ResourceManager11::allocate<ID3D11Buffer>` and the driver's calls into the
+  kernel, at one or two frames a second with the graphics processor idle. Once
+  the ranges' buffers come to that size, the least recently used one, when large
+  enough, is taken for the new offset instead, and written again (with
+  `WRITE_DISCARD`, so the draws already made with it keep what they read); one
+  used by the last 64 ranges asked for is never taken.
+
+(An earlier `0001-buffer11-dynamic-writes.patch` took a static buffer written
+after its draws as dynamic. It was made for a loading screen that ran at seven
+frames a second, which turned out to be the shell composing the window from
+frames read back, not ANGLE's buffers; with it and without it a race ran the
+same, and it is gone.)

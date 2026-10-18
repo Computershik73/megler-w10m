@@ -1,0 +1,47 @@
+--- a/src/libANGLE/renderer/d3d/d3d11/Buffer11.cpp
++++ b/src/libANGLE/renderer/d3d/d3d11/Buffer11.cpp
+@@ -862,7 +862,43 @@
+ 
+         if (!cacheEntry->storage)
+         {
+-            cacheEntry->storage  = allocateStorage(BUFFER_USAGE_UNIFORM);
++            // megler-w10m: where the driver has no constant buffer offsets, each range of a uniform
++            // buffer an app binds is a buffer of its own here, kept by its offset, the least
++            // recently used one deleted once they come to twice the buffer's size. An app that
++            // keeps its uniforms in one large buffer and binds the next range of it for each draw
++            // has a new offset nearly every time: a Direct3D buffer was made (and one deleted) for
++            // nearly every draw, which in a race of Asphalt 9's was two thirds of its render
++            // thread, at one or two frames a second. So once the ranges' buffers come to that size,
++            // the least recently used one, if it is large enough, is taken for the new offset
++            // instead of being deleted, and its data is written again (it is mapped with
++            // WRITE_DISCARD: the draws already made with it keep what they read). One used by the
++            // last 64 ranges asked for is never taken: a draw binds fewer than that, and must not
++            // find one of its own ranges written over.
++            BufferStorage *reused = nullptr;
++            if (mConstantBufferStorageAdditionalSize + static_cast<size_t>(size) > 2 * getSize())
++            {
++                auto oldest = mConstantBufferRangeStoragesCache.end();
++                for (auto iter = mConstantBufferRangeStoragesCache.begin();
++                     iter != mConstantBufferRangeStoragesCache.end(); ++iter)
++                {
++                    if (iter->second.storage &&
++                        (oldest == mConstantBufferRangeStoragesCache.end() ||
++                         iter->second.lruCount < oldest->second.lruCount))
++                    {
++                        oldest = iter;
++                    }
++                }
++                if (oldest != mConstantBufferRangeStoragesCache.end() &&
++                    oldest->second.lruCount + 64 < mMaxConstantBufferLruCount &&
++                    oldest->second.storage->getSize() >= static_cast<size_t>(size))
++                {
++                    reused = oldest->second.storage;
++                    // (Erasing another element of the map leaves cacheEntry where it is.)
++                    mConstantBufferRangeStoragesCache.erase(oldest);
++                    reused->setDataRevision(0);
++                }
++            }
++            cacheEntry->storage  = reused ? reused : allocateStorage(BUFFER_USAGE_UNIFORM);
+             cacheEntry->lruCount = ++mMaxConstantBufferLruCount;
+         }
+ 
