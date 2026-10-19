@@ -283,6 +283,7 @@ public class Main extends Activity {
         connectivity();
         location();
         timezone();
+        locale();
         tls();
         keystore(run);
         codecs();
@@ -687,6 +688,24 @@ public class Main extends Activity {
             return sticky != null && returned[0] != null && info != null && active != null && info.getType() == active.getType() && info.isConnected() == active.isConnected()
                     && sticky.getIntExtra(android.net.ConnectivityManager.EXTRA_NETWORK_TYPE, -1) == active.getType()
                     && !sticky.getBooleanExtra(android.net.ConnectivityManager.EXTRA_NO_CONNECTIVITY, false);
+        });
+    }
+
+    /**
+     * The phone's language and region: which they are the test says before the app starts (megler_set_locale) and reads off the line
+     * logged here; what the step itself holds is that the ways of asking agree: Locale, LocaleList, the resources' configuration,
+     * and the country TelephonyManager says the network and the SIM are in (an app's default country for a phone number).
+     */
+    private void locale() {
+        step("locale", () -> {
+            java.util.Locale locale = java.util.Locale.getDefault();
+            android.telephony.TelephonyManager tm = (android.telephony.TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
+            String network = tm.getNetworkCountryIso(), sim = tm.getSimCountryIso();
+            java.util.Locale config = getResources().getConfiguration().getLocales().get(0);
+            Log.i("DataTest", "locale is " + locale.toLanguageTag() + " network=" + network + " sim=" + sim + " config=" + config.toLanguageTag());
+            detail = locale + " list " + android.os.LocaleList.getDefault() + " config " + config;
+            return locale.equals(android.os.LocaleList.getDefault().get(0)) && locale.equals(config)
+                    && network.equals(locale.getCountry().toLowerCase(java.util.Locale.ROOT)) && sim.equals(network);
         });
     }
 

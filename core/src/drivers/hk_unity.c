@@ -301,7 +301,7 @@ static const char *meta_value(const char *name)
     return NULL;
 }
 
-static void locale_tag(hk_jcall *c) { c->ret.l = hk_jni_new_string("en-US"); }
+static void locale_tag(hk_jcall *c) { c->ret.l = hk_jni_new_string(hk_locale_tag()); }
 static void ret_first_string(hk_jcall *c) { c->ret.l = hk_jni_new_string(arg_text(c, 0)); }
 static void ret_one(hk_jcall *c) { c->ret.i = 1; }
 static void ret_empty_ints(hk_jcall *c) { c->ret.l = hk_jni_new_prim_array('I', 0); }

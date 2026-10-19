@@ -1001,6 +1001,37 @@ the app's line -- the zone's rules, not an offset -- and the second run in
 `Nowhere/At_All`, which must start all the same, say `12:00 +0000` twice,
 and leave the warning in the log.
 
+### The language and region (the runtime on libcore and the app, under qemu-arm)
+
+The shell names the phone's language and region before it starts an app, as
+a BCP 47 tag (`megler_set_locale("ru-RU")`, megler.h; `hk_locale_set` in
+`core/src/bionic`): the first language in Windows' settings, with its script
+if it names one, and the phone's home region (`player/PhoneState.cpp`), or
+the tag chosen in Settings. With none named, and in place of a tag that does
+not begin with a language, it is "en-US", which is what every app had before.
+
+A Java app's `Locale.getDefault()` is that tag. libcore makes its default
+locale first of the property `user.locale` (`Locale.initDefault`), and on
+Android that property comes from the runtime's command line; here
+`VMRuntime.properties()` gives it, and libcore applies it after its own
+properties. (Not `System.specialProperties`: where libopenjdk.so runs, that
+native is the library's and the runtime's fallback is never called -- the
+first attempt put it there, and the apps still had en-US.) The framework's
+`LocaleList`, the resources' configuration and `TelephonyManager`'s network
+and SIM country follow from the default locale: an app that takes the SIM's
+country as the default for a phone number gets the phone's region (urent
+does, and had "us"). The properties `persist.sys.locale` and `ro.product.locale`
+say the tag, a native app's `AConfiguration` has its language and region,
+and the JNI world's `Locale` and Unity's tag are the same.
+
+Tested twice. In the core's tests (`test_locale`): a tag's language and
+region apart ("zh_Hant_tw" is "zh" and "TW", "es-419" has a region of three
+digits, "de" none), and a tag that is not a language's, or an empty one,
+leaves "en-US". And in the data app, the `locale` step: `Locale`,
+`LocaleList`, the configuration and `TelephonyManager` must agree. The
+harness starts the first run in "en-US" and the second in "ru-RU", and reads
+the tag and the country off the app's line.
+
 ### Real apps (qemu-arm; nothing here is run by default)
 
 `hk_tests --java app <apk> <data dir> <android root> <picture dir> <verbose>

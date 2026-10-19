@@ -182,6 +182,43 @@ static void test_timezone(void)
 }
 
 /*
+ * The phone's language and region (megler_set_locale; hk_locale_set underneath): "en-US" until set; a tag kept as given, an
+ * underscore taken for a hyphen; its language and region apart, past a script and to a region of three digits; one that does
+ * not begin with a language "en-US" again. The properties persist.sys.locale and ro.product.locale say it.
+ */
+static void test_locale(void)
+{
+    char language[8], region[8];
+    say("the language and region");
+    CHECK_STR(hk_locale_tag(), "en-US");
+    hk_locale_set("ru-RU");
+    CHECK_STR(hk_locale_tag(), "ru-RU");
+    CHECK_STR(hk_sysprop("persist.sys.locale"), "ru-RU");
+    CHECK_STR(hk_sysprop("ro.product.locale"), "ru-RU");
+    hk_locale_parts(language, sizeof(language), region, sizeof(region));
+    CHECK_STR(language, "ru");
+    CHECK_STR(region, "RU");
+    hk_locale_set("zh_Hant_tw");
+    CHECK_STR(hk_locale_tag(), "zh-Hant-tw");
+    hk_locale_parts(language, sizeof(language), region, sizeof(region));
+    CHECK_STR(language, "zh");
+    CHECK_STR(region, "TW");
+    hk_locale_set("es-419");
+    hk_locale_parts(language, sizeof(language), region, sizeof(region));
+    CHECK_STR(language, "es");
+    CHECK_STR(region, "419");
+    hk_locale_set("de");
+    hk_locale_parts(language, sizeof(language), region, sizeof(region));
+    CHECK_STR(language, "de");
+    CHECK_STR(region, "");
+    hk_locale_set("1x-RU");
+    CHECK_STR(hk_locale_tag(), "en-US");
+    hk_locale_set("");
+    CHECK_STR(hk_locale_tag(), "en-US");
+    CHECK_STR(hk_sysprop("persist.sys.locale"), "en-US");
+}
+
+/*
  * A DEX file handed over in memory, as a library that carries Java code inside its native one hands it over
  * (dalvik.system.InMemoryDexClassLoader; JUCE, which comScore in MX Player is built with, does): m.dex, which nothing has
  * put on the path, read into a byte array, wrapped in a ByteBuffer and given to the loader, whose class then runs.
@@ -373,6 +410,7 @@ void test_libcore(const hk_dvm_test_config *config, u64 started_ns, const hk_dvm
         (unsigned)(s.object_bytes >> 10), (unsigned)(s.meta_bytes >> 10));
     /* The time zones are a file read through libcore's own libraries. */
     if (natives) test_timezone();
+    test_locale();
     /* (InMemoryDexClassLoader goes through java.io, whose native half is libcore's.) */
     if (natives) test_in_memory_dex(fixtures);
     test_in_place(fixtures);

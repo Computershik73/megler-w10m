@@ -1419,6 +1419,14 @@ uint32_t megler_frames(void);
 void megler_set_timezone(const char *id);
 
 /*
+ * The language and region an app is told the phone has, as a BCP 47 tag ("ru-RU", "en-US", "zh-Hant-TW"): Java's
+ * Locale.getDefault() and the resources it chooses, the property persist.sys.locale, a native app's AConfiguration, the
+ * country TelephonyManager says the SIM and the network are in. Before megler_run: a Java app reads it as it starts. NULL, an
+ * empty tag or one that is not a language's leaves "en-US", which is also what an app has until the first call.
+ */
+void megler_set_locale(const char *tag);
+
+/*
  * The battery, in Android's own numbers. Any thread, any time, also while an
  * app runs. Until the first call an app has a full, healthy battery on mains
  * power (4.2 V, 25.0 degrees); NULL is that battery again.

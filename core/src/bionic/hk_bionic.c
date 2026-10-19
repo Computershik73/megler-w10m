@@ -901,6 +901,60 @@ void hk_timezone_set(const char *id)
 
 const char *hk_timezone_id(void) { return g_timezone; }
 
+/* The phone's language and region (hk_bionic.h), kept here as the time zone is. */
+static char g_locale[40] = "en-US";
+
+static bool alpha(char ch) { return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z'); }
+
+void hk_locale_set(const char *tag)
+{
+    size_t i, first = 0;
+    bool ok = tag != NULL && tag[0] != 0 && strlen(tag) < sizeof(g_locale);
+    for (i = 0; ok && tag[i]; i++) {
+        char ch = tag[i] == '_' ? '-' : tag[i];
+        ok = alpha(ch) || (ch >= '0' && ch <= '9') || ch == '-';
+        if (ch == '-' && !first) first = i;
+    }
+    if (ok) {
+        if (!first) first = strlen(tag);
+        ok = first >= 2 && first <= 3 && alpha(tag[0]) && alpha(tag[1]) && (first == 2 || alpha(tag[2]));
+    }
+    if (!ok) tag = "en-US";
+    hk_strlcpy(g_locale, tag, sizeof(g_locale));
+    for (i = 0; g_locale[i]; i++)
+        if (g_locale[i] == '_') g_locale[i] = '-';
+    hk_sysprop_set("persist.sys.locale", g_locale);
+    hk_sysprop_set("ro.product.locale", g_locale);
+}
+
+const char *hk_locale_tag(void) { return g_locale; }
+
+void hk_locale_parts(char *language, size_t language_size, char *region, size_t region_size)
+{
+    const char *p = g_locale;
+    size_t n = 0;
+    language[0] = region[0] = 0;
+    while (p[n] && p[n] != '-') n++;
+    if (language_size) {
+        size_t i;
+        for (i = 0; i < n && i + 1 < language_size; i++) language[i] = (char)(p[i] >= 'A' && p[i] <= 'Z' ? p[i] + 32 : p[i]);
+        language[i] = 0;
+    }
+    /* The region: the first subtag after the language of two letters or three digits (a script's four letters come between). */
+    while (p[n] == '-') {
+        const char *s = p + n + 1;
+        size_t len = 0;
+        while (s[len] && s[len] != '-') len++;
+        if ((len == 2 && alpha(s[0]) && alpha(s[1])) || (len == 3 && s[0] >= '0' && s[0] <= '9')) {
+            size_t i;
+            for (i = 0; i < len && i + 1 < region_size; i++) region[i] = (char)(s[i] >= 'a' && s[i] <= 'z' ? s[i] - 32 : s[i]);
+            region[i] = 0;
+            return;
+        }
+        n += 1 + len;
+    }
+}
+
 /* The API level the device says it has: one number for the property, the NDK's AConfiguration and android_get_device_api_level. */
 int hk_sdk_level(void)
 {
@@ -942,12 +996,16 @@ static void default_props(void)
         { "ro.sf.lcd_density", "320" },
         { "persist.sys.timezone", "UTC" },
         { "persist.sys.locale", "en-US" },
+        { "ro.product.locale", "en-US" },
         { "ro.opengles.version", "131072" },
     };
     size_t i;
     for (i = 0; i < HK_COUNT(d); i++) hk_sysprop_set(d[i][0], d[i][1]);
     /* A zone the shell named before this ran is not undone by the default. */
     if (g_timezone[0]) hk_sysprop_set("persist.sys.timezone", g_timezone);
+    /* (Likewise the language and region.) */
+    hk_sysprop_set("persist.sys.locale", g_locale);
+    hk_sysprop_set("ro.product.locale", g_locale);
 }
 
 /* ------------------------------------------------------------------- init */

@@ -992,7 +992,19 @@ N(VMRuntime_classPath) { c->ret.l = hk_dvm_new_string("."); }
 N(VMRuntime_vmVersion) { c->ret.l = hk_dvm_new_string("2.1.0"); }
 N(VMRuntime_vmLibrary) { c->ret.l = hk_dvm_new_string("libart.so"); }
 N(VMRuntime_instructionSet) { c->ret.l = hk_dvm_new_string("arm"); }
-N(VMRuntime_properties) { c->ret.l = hk_dvm_new_array("[Ljava/lang/String;", 0); }
+/*
+ * The runtime's command line, -D properties libcore applies after its own (System.initUnchangeableSystemProperties): user.locale,
+ * the phone's language and region, which Locale.getDefault() is made of first (hk_locale_tag). Here and not in the special
+ * properties, which are libopenjdk.so's where it runs.
+ */
+N(VMRuntime_properties)
+{
+    char locale[64];
+    hk_jobj *a = hk_dvm_new_array("[Ljava/lang/String;", 1);
+    snprintf(locale, sizeof(locale), "user.locale=%s", hk_locale_tag());
+    if (a) a->u.oarr.v[0] = hk_dvm_new_string(locale);
+    c->ret.l = a;
+}
 N(VMRuntime_getTargetHeapUtilization) { c->ret.f = 0.75f; }
 
 /* newNonMovableArray and newUnpaddedArray: an array of the class's elements. No array moves here, and none is padded. */

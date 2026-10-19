@@ -122,6 +122,12 @@ void megler_set_timezone(const char *id)
     if (id && id[0]) hk_info("phone: the time zone is %s", hk_timezone_id());
 }
 
+void megler_set_locale(const char *tag)
+{
+    hk_locale_set(tag);
+    hk_info("phone: the language and region are %s", hk_locale_tag());
+}
+
 /*
  * The battery is the core's hk_battery (run/hk_run.h), which has all that Android's intent says; the shell's has what a
  * phone with Windows can say, and the rest is made up here, plausibly: a lithium cell's voltage runs from about 3.4 V

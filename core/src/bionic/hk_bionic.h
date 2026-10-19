@@ -234,6 +234,14 @@ void hk_sysprop_set(const char *name, const char *value);
  */
 void hk_timezone_set(const char *id);
 const char *hk_timezone_id(void);
+/*
+ * The phone's language and region (megler_set_locale), a BCP 47 tag: "en-US" until one is set, and in place of one that does
+ * not begin with a language (two or three letters). The property persist.sys.locale says it. hk_locale_parts gives its
+ * language, lower case, and its region, upper case ("" when it names none): "zh-Hant-TW" is "zh" and "TW".
+ */
+void hk_locale_set(const char *tag);
+const char *hk_locale_tag(void);
+void hk_locale_parts(char *language, size_t language_size, char *region, size_t region_size);
 
 /* exit() from guest code: the driver decides what it means (the default ends the process). */
 extern void (*hk_guest_exit_hook)(int status);

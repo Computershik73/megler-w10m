@@ -635,8 +635,23 @@ static void g_cfg_from_am(g_config *c, void *am) { (void)am; if (c) *c = g_devic
 static void g_cfg_copy(g_config *d, const g_config *s) { if (d && s) *d = *s; }
 static int g_cfg_zero(const g_config *c) { (void)c; return 0; }
 static void g_cfg_set(g_config *c, int v) { (void)c; (void)v; }
-static void g_cfg_language(const g_config *c, char *out) { (void)c; out[0] = 'e'; out[1] = 'n'; }
-static void g_cfg_country(const g_config *c, char *out) { (void)c; out[0] = 'U'; out[1] = 'S'; }
+/* The phone's language and region (hk_locale_parts): AConfiguration has two letters of each, nothing written for none. */
+static void g_cfg_language(const g_config *c, char *out)
+{
+    char language[8], region[8];
+    (void)c;
+    hk_locale_parts(language, sizeof(language), region, sizeof(region));
+    out[0] = language[0];
+    out[1] = language[0] ? language[1] : 0;
+}
+static void g_cfg_country(const g_config *c, char *out)
+{
+    char language[8], region[8];
+    (void)c;
+    hk_locale_parts(language, sizeof(language), region, sizeof(region));
+    out[0] = region[0];
+    out[1] = region[0] ? region[1] : 0;
+}
 static void g_cfg_set_str(g_config *c, const char *v) { (void)c; (void)v; }
 static int g_cfg_orientation(const g_config *c) { return c->width >= c->height ? 2 : 1; }   /* LAND, PORT */
 static int g_cfg_touchscreen(const g_config *c) { (void)c; return 3; }                      /* FINGER */

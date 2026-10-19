@@ -1663,7 +1663,7 @@ static int run_data(void)
                                             and an https URL through Android's HTTP client; or, where its library is not in the Android root, the
                                             stand-in that fails politely), Android's key store's key pairs, and the list of decoders: the stand-in's
                                             H.264, AAC and MP3 (hk_codec_standin.c), and no H.265. */
-                                         "battery", "connectivity", "location", "timezone", "tls", "tls-loopback", "tls-https", "keystore", "codecs",
+                                         "battery", "connectivity", "location", "timezone", "locale", "tls", "tls-loopback", "tls-https", "keystore", "codecs",
                                          /* And what Android's WebView asks of the platform before it shows a page, each answered as Android
                                             answers it: the app's id within its user (UserHandle.getAppId), whether cleartext HTTP is
                                             permitted (NetworkSecurityPolicy), a compatibility change's state for the app's target
@@ -1765,6 +1765,8 @@ static int run_data(void)
     CHECK(find_line(run == 2 && want == 2 ? "I/DataTest: timezone is GMT winter=2023-01-15 12:00 +0000 summer=2023-07-15 12:00 +0000"
                                            : "I/DataTest: timezone is Europe/Berlin winter=2023-01-15 13:00 +0100 summer=2023-07-15 14:00 +0200", 0) >= 0);
     if (run == 2 && want == 2) CHECK(find_line("java: the phone's time zone is given as \"Nowhere/At_All\", which the Android root's tzdata does not have", 0) >= 0);
+    /* And the language and region are the ones named before the start (megler_set_locale, below): English (United States) in the first run, Russian (Russia) in the second. */
+    CHECK(find_line(run == 2 && want == 2 ? "I/DataTest: locale is ru-RU network=ru sim=ru config=ru-RU" : "I/DataTest: locale is en-US network=us sim=us config=en-US", 0) >= 0);
     /* A popup list that wraps its content has room for all its rows, inside what the list and the popup's background keep clear. */
     expect_line("I/DataTest: popup ok rows=3", &at, 30);
     /* A platform DialogFragment's dialog, made by its onCreateDialog, shows over the activity and goes with dismiss(). */
@@ -2286,6 +2288,8 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
     if (!strcmp(which, "data") && g_script_count && !strcmp(g_script[0], "run:2")) hk_battery_set(&k_battery_run2);
     /* And in a time zone the shell names, as it must, before the app starts: one with summer time, and in the second run a name that is no zone's. */
     if (!strcmp(which, "data")) megler_set_timezone(g_script_count && !strcmp(g_script[0], "run:2") ? "Nowhere/At_All" : "Europe/Berlin");
+    /* And in the language and region the shell names, likewise before the start: English (United States), and in the second run Russian (Russia). */
+    if (!strcmp(which, "data")) megler_set_locale(g_script_count && !strcmp(g_script[0], "run:2") ? "ru-RU" : "en-US");
     /* For an app that is not a test's, HK_JAVA_TIMEZONE names the zone it is started in: a real app as on a phone that has one. */
     if (!strcmp(which, "app") && getenv("HK_JAVA_TIMEZONE")) megler_set_timezone(getenv("HK_JAVA_TIMEZONE"));
     /* The test apps' frames drawn in part are each checked against the whole screen drawn again (megler.ViewRoot.checkPart). */

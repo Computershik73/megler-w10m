@@ -198,9 +198,26 @@ static void file_delete(hk_jcall *c)
 static void env_getExternalStorageDirectory(hk_jcall *c) { c->ret.l = app_dir(hk_fs_external_dir()); }
 static void env_getExternalStorageState(hk_jcall *c) { c->ret.l = hk_jni_new_string("mounted"); }
 static void locale_getDefault(hk_jcall *c) { c->ret.l = g_locale; }
-static void locale_getLanguage(hk_jcall *c) { c->ret.l = hk_jni_new_string("en"); }
-static void locale_getCountry(hk_jcall *c) { c->ret.l = hk_jni_new_string("US"); }
-static void locale_toString(hk_jcall *c) { c->ret.l = hk_jni_new_string("en_US"); }
+/* The phone's language and region (hk_locale_parts). */
+static void locale_getLanguage(hk_jcall *c)
+{
+    char language[8], region[8];
+    hk_locale_parts(language, sizeof(language), region, sizeof(region));
+    c->ret.l = hk_jni_new_string(language);
+}
+static void locale_getCountry(hk_jcall *c)
+{
+    char language[8], region[8];
+    hk_locale_parts(language, sizeof(language), region, sizeof(region));
+    c->ret.l = hk_jni_new_string(region);
+}
+static void locale_toString(hk_jcall *c)
+{
+    char language[8], region[8], text[20];
+    hk_locale_parts(language, sizeof(language), region, sizeof(region));
+    snprintf(text, sizeof(text), "%s%s%s", language, region[0] ? "_" : "", region);
+    c->ret.l = hk_jni_new_string(text);
+}
 static void window_getDecorView(hk_jcall *c) { c->ret.l = permanent(hk_jni_new_object("android/view/View")); }
 static void wm_getDefaultDisplay(hk_jcall *c) { c->ret.l = g_display; }
 static void display_getWidth(hk_jcall *c) { c->ret.i = g_width; }
