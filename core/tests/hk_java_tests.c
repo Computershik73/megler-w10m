@@ -2052,7 +2052,7 @@ static bool camera_shown(const int r[4], const int want[4], int seconds)
 static int run_camera(void)
 {
     static const char *const steps[] = { "permission", "features", "info", "open", "busy", "parameters", "orientation", "buffers" };
-    static const char *const after[] = { "preview", "autofocus", "torch", "callback", "one-shot", "stop", "release" };
+    static const char *const after[] = { "preview", "autofocus", "torch", "callback", "one-shot", "stop", "release", "camera2" };
     /* Top left, top right, bottom left, bottom right: the back camera's quarters turned 90 degrees; the front's mirrored, then turned 90. */
     static const int back[4] = { CQ_B, CQ_R, CQ_W, CQ_G }, front[4] = { CQ_W, CQ_G, CQ_B, CQ_R };
     hk_camera_standin_counts k;

@@ -27,9 +27,13 @@ import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -466,6 +470,12 @@ public class Main extends Activity {
             again.release();
             return used.contains("release()");
         });
+        /*
+         * camera2, as CameraX asks it: the cameras and their characteristics, the back one opened, a session with an ImageReader
+         * of YUV_420_888 and a repeating request, and three images whose planes are the stand-in's picture (its number, its red
+         * top left and white bottom right) and whose timestamps are their results' SENSOR_TIMESTAMP (CameraX pairs them by it).
+         */
+        step("camera2", this::camera2);
         /* The front camera, opened on this thread, which has no looper: its callbacks come on the main one. Fixed focus, no light. */
         step("front", () -> {
             Camera front = Camera.open(1);
@@ -493,6 +503,86 @@ public class Main extends Activity {
             return params && got && frames.allRight && frames.allOn("main") && focused && f.success && "main".equals(f.thread) && seen;
         });
         Log.i(T, "done ok=" + ok + " failed=" + failed);
+    }
+
+    private static boolean near(int got, int want) { return Math.abs(got - want) <= 2; }
+
+    private boolean camera2() throws Exception {
+        android.hardware.camera2.CameraManager cm = (android.hardware.camera2.CameraManager) getSystemService(Context.CAMERA_SERVICE);
+        String[] ids = cm.getCameraIdList();
+        android.hardware.camera2.CameraCharacteristics ch = cm.getCameraCharacteristics("0");
+        Integer facing = ch.get(android.hardware.camera2.CameraCharacteristics.LENS_FACING);
+        Integer orientation = ch.get(android.hardware.camera2.CameraCharacteristics.SENSOR_ORIENTATION);
+        android.hardware.camera2.params.StreamConfigurationMap map = ch.get(android.hardware.camera2.CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+        android.util.Size[] yuv = map == null ? null : map.getOutputSizes(ImageFormat.YUV_420_888);
+        Integer frontFacing = cm.getCameraCharacteristics("1").get(android.hardware.camera2.CameraCharacteristics.LENS_FACING);
+        boolean chars = ids.length == 2 && facing != null && facing == android.hardware.camera2.CameraMetadata.LENS_FACING_BACK && orientation != null
+                && orientation == 90 && yuv != null && Arrays.asList(yuv).contains(new android.util.Size(640, 480)) && frontFacing != null
+                && frontFacing == android.hardware.camera2.CameraMetadata.LENS_FACING_FRONT;
+        Log.i(T, "camera2 ids=" + Arrays.toString(ids) + " facing=" + facing + " orientation=" + orientation + " yuv=" + Arrays.toString(yuv));
+        final android.media.ImageReader reader = android.media.ImageReader.newInstance(640, 480, ImageFormat.YUV_420_888, 2);
+        final Set<Long> results = Collections.synchronizedSet(new HashSet<Long>()), stamps = Collections.synchronizedSet(new HashSet<Long>());
+        final List<String> problems = Collections.synchronizedList(new ArrayList<String>());
+        final CountDownLatch images = new CountDownLatch(3), opened = new CountDownLatch(1), configured = new CountDownLatch(1), closed = new CountDownLatch(1);
+        reader.setOnImageAvailableListener(r -> {
+            android.media.Image im = r.acquireLatestImage();
+            if (im == null) return;
+            try {
+                android.media.Image.Plane[] p = im.getPlanes();
+                ByteBuffer y = p[0].getBuffer(), u = p[1].getBuffer(), v = p[2].getBuffer();
+                int number = (y.get(0) & 0xff) | (y.get(1) & 0xff) << 8;
+                int last = (480 / 2 - 1) * p[1].getRowStride() + (640 / 2 - 1) * p[1].getPixelStride();
+                int yTL = y.get(8) & 0xff, uTL = u.get(0) & 0xff, vTL = v.get(0) & 0xff;
+                int yBR = y.get(479 * p[0].getRowStride() + 639) & 0xff, uBR = u.get(last) & 0xff, vBR = v.get(last) & 0xff;
+                boolean right = im.getFormat() == ImageFormat.YUV_420_888 && im.getWidth() == 640 && im.getHeight() == 480 && p.length == 3
+                        && p[0].getPixelStride() == 1 && p[0].getRowStride() == 640 && p[1].getPixelStride() == 2 && p[2].getPixelStride() == 2
+                        && near(yTL, 81) && near(uTL, 90) && near(vTL, 240) && near(yBR, 235) && near(uBR, 128) && near(vBR, 128) && number > 0;
+                if (!right) problems.add("image " + number + ": Y " + yTL + "/" + yBR + " U " + uTL + "/" + uBR + " V " + vTL + "/" + vBR);
+                stamps.add(im.getTimestamp());
+            } finally {
+                im.close();
+            }
+            images.countDown();
+        }, cameraHandler);
+        final android.hardware.camera2.CameraDevice[] device = new android.hardware.camera2.CameraDevice[1];
+        cm.openCamera("0", new android.hardware.camera2.CameraDevice.StateCallback() {
+            @Override public void onOpened(android.hardware.camera2.CameraDevice d) { device[0] = d; opened.countDown(); }
+            @Override public void onDisconnected(android.hardware.camera2.CameraDevice d) { problems.add("disconnected"); }
+            @Override public void onError(android.hardware.camera2.CameraDevice d, int e) { problems.add("error " + e); opened.countDown(); }
+            @Override public void onClosed(android.hardware.camera2.CameraDevice d) { closed.countDown(); }
+        }, cameraHandler);
+        if (!opened.await(20, TimeUnit.SECONDS) || device[0] == null) return false;
+        final android.hardware.camera2.CameraCaptureSession[] session = new android.hardware.camera2.CameraCaptureSession[1];
+        device[0].createCaptureSession(Arrays.asList(reader.getSurface()), new android.hardware.camera2.CameraCaptureSession.StateCallback() {
+            @Override public void onConfigured(android.hardware.camera2.CameraCaptureSession s) { session[0] = s; configured.countDown(); }
+            @Override public void onConfigureFailed(android.hardware.camera2.CameraCaptureSession s) { problems.add("configure failed"); configured.countDown(); }
+        }, cameraHandler);
+        if (!configured.await(20, TimeUnit.SECONDS) || session[0] == null) return false;
+        android.hardware.camera2.CaptureRequest.Builder b = device[0].createCaptureRequest(android.hardware.camera2.CameraDevice.TEMPLATE_PREVIEW);
+        b.addTarget(reader.getSurface());
+        b.setTag("megler");
+        session[0].setRepeatingRequest(b.build(), new android.hardware.camera2.CameraCaptureSession.CaptureCallback() {
+            @Override public void onCaptureCompleted(android.hardware.camera2.CameraCaptureSession s, android.hardware.camera2.CaptureRequest r,
+                                                     android.hardware.camera2.TotalCaptureResult result) {
+                Long ts = result.get(android.hardware.camera2.CaptureResult.SENSOR_TIMESTAMP);
+                if (ts != null) results.add(ts);
+                if (!"megler".equals(r.getTag()) || result.get(android.hardware.camera2.CaptureResult.CONTROL_AE_STATE) == null
+                    || result.get(android.hardware.camera2.CaptureResult.CONTROL_AF_MODE) == null)
+                    problems.add("result " + ts + " of " + r.getTag());
+            }
+        }, cameraHandler);
+        boolean got = images.await(20, TimeUnit.SECONDS);
+        session[0].stopRepeating();
+        session[0].close();
+        device[0].close();
+        boolean wasClosed = closed.await(10, TimeUnit.SECONDS);
+        reader.close();
+        boolean paired;
+        synchronized (stamps) {
+            paired = !stamps.isEmpty() && results.containsAll(stamps);
+        }
+        Log.i(T, "camera2 images=" + got + " closed=" + wasClosed + " paired=" + paired + " results=" + results.size() + " problems=" + problems);
+        return chars && got && wasClosed && paired && problems.isEmpty();
     }
 
     /** The back camera's parameters as an app reads and sets them. */
