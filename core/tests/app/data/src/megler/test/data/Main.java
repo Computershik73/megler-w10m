@@ -283,6 +283,7 @@ public class Main extends Activity {
         connectivity();
         dnsServers();
         systemLibs();
+        apacheHttpLegacy();
         preloadedDrawables();
         location();
         timezone();
@@ -701,6 +702,23 @@ public class Main extends Activity {
             }
             detail = "files=" + files + " loadLibrary(z)=" + loaded;
             return files && "ok".equals(loaded);
+        });
+    }
+
+    /**
+     * Android's legacy Apache HTTP client, which this app's manifest asks for (<uses-library android:name="org.apache.http.legacy">),
+     * as Instagram's does: org.apache.http.Header there for its native code to find, a BasicHeader made and read, and the
+     * classes the app's class loader's, as a shared library's are on Android. By reflection: the SDK's android.jar has none of it.
+     */
+    private void apacheHttpLegacy() {
+        step("apache-http-legacy", () -> {
+            Class<?> header = Class.forName("org.apache.http.Header");
+            Class<?> basic = Class.forName("org.apache.http.message.BasicHeader");
+            Object h = basic.getConstructor(String.class, String.class).newInstance("X-Megler", "legacy");
+            String name = (String) header.getMethod("getName").invoke(h), value = (String) header.getMethod("getValue").invoke(h);
+            boolean appLoader = header.getClassLoader() == Main.class.getClassLoader();
+            detail = name + ": " + value + ", the app's class loader " + appLoader;
+            return "X-Megler".equals(name) && "legacy".equals(value) && appLoader;
         });
     }
 

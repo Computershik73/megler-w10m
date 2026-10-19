@@ -33,6 +33,9 @@ typedef struct hk_apk_info {
     char func_name[96];            /* android.app.func_name */
     hk_apk_meta meta[48];          /* <meta-data> of the application and the launcher activity */
     int nmeta;
+    /* The platform's libraries the application asks for (<uses-library android:name>, required or not), in the manifest's order. */
+    char uses_libraries[8][96];
+    int nuses_libraries;
     char engine[32];
     bool supported, runnable;
     char reason[240];

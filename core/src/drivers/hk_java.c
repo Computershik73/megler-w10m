@@ -56,6 +56,7 @@ static struct {
     char *root;                        /* the Android root, a host path */
     char activity[200], application[200], package[128];
     char guest_apk[400];               /* the APK's path as the app sees it */
+    bool apache_http;                  /* the app gets Android's legacy Apache HTTP client (org.apache.http.legacy): see apache_http_wanted */
     /*
      * The app's splits (megler_run_config.split_apks, as many as there is room for): their names from their manifests
      * ("config.armeabi_v7a"), their paths as the app sees them (Native.splitPaths), and whether they have code.
@@ -1112,6 +1113,23 @@ static void call_trace_flag(const char *rest, void *user)
     hk_dvm_call_trace_add(rest);
 }
 
+/*
+ * The platform's libraries the app's class loader has before the app's own code, as Android's LoadedApk puts a shared
+ * library's jar ahead of the APK: Android's legacy Apache HTTP client (org.apache.http.legacy.dex in the Android root's
+ * framework, tools/dvm-android-root.sh), when apache_http_wanted says so. Instagram's network library (liger) finds
+ * org.apache.http.Header in its JNI_OnLoad; without it its start ended in "Failed to call JNI_OnLoad from 'liger'". Its
+ * absence from the root is said and the app runs on.
+ */
+static void add_shared_libraries(void)
+{
+    char *path;
+    if (!J.apache_http) return;
+    path = hk_sprintf("%s/framework/org.apache.http.legacy.dex", J.root);
+    if (hk_dvm_add_dex_file(path)) hk_info("java: the app's class path has Android's legacy Apache HTTP client (org.apache.http.legacy) before its own code");
+    else hk_warn("java: the app asks for Android's legacy Apache HTTP client (org.apache.http.legacy), and it is not in the Android root (%s)", path);
+    free(path);
+}
+
 static void main_thread(void *arg)
 {
     char *framework = hk_sprintf("%s/framework/megler-framework.dex", J.root), *res = hk_sprintf("%s/framework/framework-res.apk", J.root);
@@ -1124,7 +1142,7 @@ static void main_thread(void *arg)
     why[0] = 0;
     if (!hk_dvm_start_android(J.root)) snprintf(why, sizeof(why), "the Java runtime did not start on the Android root %s", J.root);
     else if (!hk_dvm_add_dex_file(framework)) snprintf(why, sizeof(why), "the Java framework is not in the Android root (%s)", framework);
-    else if (hk_dvm_app_follows(), hk_dvm_add_apk(J.config->apk_path) < 1) snprintf(why, sizeof(why), "the APK has no classes.dex that can be read");
+    else if (hk_dvm_app_follows(), add_shared_libraries(), hk_dvm_add_apk(J.config->apk_path) < 1) snprintf(why, sizeof(why), "the APK has no classes.dex that can be read");
     if (!why[0]) {
         hk_jvalue sdk;
         if (hk_flag("trace-monitors")) hk_dvm_monitor_trace_start();
@@ -1219,6 +1237,21 @@ bool hk_java_ended(int *status, const char **reason)
     return true;
 }
 
+/*
+ * Whether the app gets Android's old Apache HTTP client, org.apache.http.legacy, on its class path: as Android 9's package
+ * manager gives it -- to an app whose manifest asks for it (<uses-library>, required or not) and to every app that targets
+ * an Android before 9 (OrgApacheHttpLegacyUpdater). Since Android 9 it is not on the boot class path, so an app that has
+ * its own copy of those classes and asks for neither keeps its own.
+ */
+static bool apache_http_wanted(const hk_apk_info *info)
+{
+    int i;
+    if (info->target_sdk > 0 && info->target_sdk < 28) return true;
+    for (i = 0; i < info->nuses_libraries; i++)
+        if (!strcmp(info->uses_libraries[i], "org.apache.http.legacy")) return true;
+    return false;
+}
+
 static bool java_start(const megler_run_config *config, const hk_apk_info *info)
 {
     hk_stat st;
@@ -1231,6 +1264,7 @@ static bool java_start(const megler_run_config *config, const hk_apk_info *info)
     hk_strlcpy(J.activity, info->activity, sizeof(J.activity));
     hk_strlcpy(J.application, info->application, sizeof(J.application));
     hk_strlcpy(J.package, info->package, sizeof(J.package));
+    J.apache_http = apache_http_wanted(info);
     /* The splits, in megler_run's order, which is info->splits' (run/hk_run.c): as many as the framework reads. */
     J.nsplits = config->split_count < info->nsplits ? config->split_count : info->nsplits;
     if (J.nsplits > MAX_SPLITS) {

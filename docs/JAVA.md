@@ -2168,6 +2168,22 @@ no native code or has it for 32-bit ARM.
   and its `Context`, starts the content providers, calls
   `Application.onCreate`, makes the launcher `Activity` and calls `onCreate`,
   `onStart`, `onResume`, and loops.
+- **The platform's libraries an app asks for.** Android's legacy Apache HTTP
+  client, `org.apache.http.legacy`, is not on Android 9's boot class path. An
+  app gets it on its own class path, ahead of its APK, when its manifest asks
+  for it (`<uses-library>`, required or not) or when it targets an Android
+  before 9, as Android 9's package manager gives it. Here the Java driver adds
+  `framework/org.apache.http.legacy.dex` from the Android root right after
+  `hk_dvm_app_follows` (`add_shared_libraries`), so its classes are the app's
+  class loader's. `hk_apk.c` reads the manifest's `<uses-library>` names into
+  `uses_libraries`, and the APK report lists them as `usesLibraries`. The DEX
+  file is the emulator image's `oat/arm64/org.apache.http.legacy.boot.vdex`,
+  taken out by `tools/android9-unpack.sh` and turned into DEX by
+  `tools/android9-boot.sh` like the boot jars. Instagram 333 asks for it: its
+  network library `liger` finds `org.apache.http.Header` in its `JNI_OnLoad`,
+  and without it the app ended with "Failed to call JNI_OnLoad from 'liger'".
+  The data app asks for it too, and its step "apache-http-legacy" makes and
+  reads a `BasicHeader` through it and finds the classes are its own loader's.
 - **Input is asked for, not delivered.** The framework's main loop calls
   `Native.pollInput` between messages, every 8 ms at most. `megler_touch`,
   `megler_key` and `megler_set_paused` only queue (256 events; a move may be

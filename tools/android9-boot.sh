@@ -16,7 +16,9 @@
 #
 # libcore is the first six: core-oj, core-libart, conscrypt, okhttp,
 # bouncycastle, apache-xml (the order Android 9's BOOTCLASSPATH has them in).
-# The rest is the framework and what it leans on.
+# The rest is the framework and what it leans on, and org.apache.http.legacy,
+# Android's old Apache HTTP client, which is not on the boot class path but on
+# the class path of an app that asks for it.
 #
 # Needs a JDK and an Android SDK's build-tools (for d8.jar and dexdump):
 #   MEGLER_JAVA        java                      (C:\Program Files\Java\jdk1.8.0_202\bin\java.exe)

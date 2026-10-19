@@ -393,6 +393,9 @@ static void start_element(manifest_ctx *c, const char *tag, const attr *attrs, i
             c->seen[c->nseen].name_hash = name_hash(c->cur_activity);
             c->seen[c->nseen++].orientation = c->cur_orientation;
         }
+    } else if (c->in_application && !c->in_activity && !strcmp(tag, "uses-library") && name) {
+        if (info->nuses_libraries < (int)HK_COUNT(info->uses_libraries))
+            hk_strlcpy(info->uses_libraries[info->nuses_libraries++], name->text, sizeof(info->uses_libraries[0]));
     } else if (!strcmp(tag, "intent-filter")) {
         c->in_filter = true;
     } else if (c->in_filter && c->in_activity && name) {
@@ -1040,6 +1043,15 @@ static char *report(const char *apk_path, char *const *splits, int nsplits, cons
     hk_jint(&j, info->min_sdk);
     hk_jkey(&j, "targetSdk", false);
     hk_jint(&j, info->target_sdk);
+    if (info->nuses_libraries) {
+        hk_jkey(&j, "usesLibraries", false);
+        hk_jraw(&j, "[");
+        for (i = 0; i < info->nuses_libraries; i++) {
+            if (i) hk_jraw(&j, ",");
+            hk_jstr(&j, info->uses_libraries[i]);
+        }
+        hk_jraw(&j, "]");
+    }
     hk_jkey(&j, "abis", false);
     hk_jraw(&j, "[");
     for (i = 0; i < info->nabis; i++) {

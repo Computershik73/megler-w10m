@@ -8,6 +8,11 @@
 #   framework/<name>.dex    the boot class path's bytecode, one DEX file each:
 #                           core-oj, core-libart, conscrypt, okhttp,
 #                           bouncycastle, apache-xml
+#   framework/org.apache.http.legacy.dex
+#                           Android's legacy Apache HTTP client, not on the
+#                           boot class path: an app that asks for it in its
+#                           manifest, or targets an Android before 9, has it
+#                           on its class path (drivers/hk_java.c)
 #   framework/core-oj.jar, core-libart.jar
 #                           the jars as the device has them: no bytecode in
 #                           them, but what else libcore opens them for (ICU4J
@@ -88,6 +93,8 @@ put() { # source, destination folder
   if [ -f "$1" ]; then cp -u "$1" "$2/"; else echo "  (not there: ${1#$ROOT/})"; fi
 }
 for name in core-oj core-libart conscrypt okhttp bouncycastle apache-xml; do put "$A9/boot/$name.dex" "$OUT/framework"; done
+# Android's legacy Apache HTTP client, for the apps that get it on their class path (drivers/hk_java.c, add_shared_libraries).
+put "$A9/boot/org.apache.http.legacy.dex" "$OUT/framework"
 bash "$ROOT/tools/build-libcore-overlay.sh"
 put "$ROOT/build/libcore-overlay/megler-libcore.dex" "$OUT/framework"
 for name in core-oj core-libart; do put "$A9/system/framework/$name.jar" "$OUT/framework"; done

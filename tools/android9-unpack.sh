@@ -66,6 +66,9 @@ for f in $(names /system/framework); do
     boot*.vdex|framework-res.apk|core-oj.jar|core-libart.jar|ext.jar|org.apache.http.legacy.boot.jar) take "/system/framework/$f" "$OUT/framework/$f" ;;
   esac
 done
+# Android's legacy Apache HTTP client, which an app gets on its class path when it asks for it (drivers/hk_java.c): not on
+# the boot class path since Android 9, so its bytecode is in a .vdex of its own; named as the boot jars' are, for vdex-dex.py.
+take /system/framework/oat/arm64/org.apache.http.legacy.boot.vdex "$OUT/framework/boot-org.apache.http.legacy.vdex"
 for f in $(names /system/usr/icu); do take "/system/usr/icu/$f" "$OUT/usr/icu/$f"; done
 for f in $(names /system/usr/share/zoneinfo); do take "/system/usr/share/zoneinfo/$f" "$OUT/usr/share/zoneinfo/$f"; done
 "$DEBUGFS" -R "rdump /system/etc/security/cacerts $OUT/etc/security" "$IMG" 2> /dev/null
