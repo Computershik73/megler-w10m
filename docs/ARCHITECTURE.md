@@ -197,6 +197,20 @@ leaves the fault fatal, named by library and offset in the crash report.
 
 ### Everything else that differs
 
+Some apps overwrite libc entry points to install inline hooks. On ARM, `abort`,
+`signal`, `bsd_signal`, `sysv_signal` and `sigaction` therefore resolve to separate
+guest mmap pages, each with a relocatable Thumb NOP prefix and a tail jump to the
+host implementation. Imports and dlsym see the same stable entry. A hook can copy
+the prefix into a trampoline and resume the original without modifying Megler's
+executable image. Each entry has its own page so protection changes do not affect
+the other functions. The existing mmap write/execute handling applies; host text
+still rejects executable mprotect requests. Other exports remain direct shims.
+
+The ARM/Thumb guest test installs a sysv_signal hook, calls its copied original,
+restores the entry, and temporarily replaces abort. It requests write access
+before installation and removal and tests execution after an RWX request.
+This passes under qemu; the Instagram run on Windows still needs verification.
+
 | | Android (bionic, 32-bit) | Here |
 |---|---|---|
 | `pthread_mutex_t`, `pthread_cond_t`, `sem_t` | one 32-bit word each, statically initialised | implemented in that word, bionic's bit layout, waiting on its address (`WaitOnAddress`; a futex under Linux) |

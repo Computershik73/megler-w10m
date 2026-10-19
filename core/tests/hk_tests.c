@@ -886,7 +886,7 @@ static void test_mmap_commit(void)
     /* Inline hooks must see failure, not permission to overwrite a host
      * bionic implementation. Neither request may change the host page. */
     {
-        void *host_page = (void *)HK_ALIGN_DOWN((hk_addr)hk_bionic_find("abort"), (hk_addr)HK_PAGE);
+        void *host_page = (void *)HK_ALIGN_DOWN((hk_addr)test_mmap_commit, (hk_addr)HK_PAGE);
         typedef int *(*errno_fn)(void);
         errno_fn errno_ = (errno_fn)hk_bionic_find("__errno");
         CHECK(host_page && errno_);
@@ -1968,6 +1968,7 @@ static void test_library(hk_lib *lib, const char *what, const char *scratch)
     CHECK_INT(FN(lib, int (*)(void), "t_props")(), 28);
     CHECK_INT(FN(lib, int (*)(void), "t_dl")(), 4);
     CHECK_INT(FN(lib, int (*)(void), "t_loader_dl")(), 5);
+    CHECK_INT(FN(lib, int (*)(void), "t_libc_inline_hook")(), 0);
     CHECK_INT(FN(lib, int (*)(void), "t_libc_more")(), 6);
     CHECK_INT(FN(lib, int (*)(void), "t_shm")(), 9);
     CHECK_INT(FN(lib, int (*)(void), "t_ashmem")(), 10);

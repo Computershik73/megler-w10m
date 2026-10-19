@@ -1158,3 +1158,73 @@ int t_stack(const char *s)
     strcpy(buf, s);
     return (int)strlen(buf);
 }
+
+
+/* libc inline hooks must modify guest entries, never the host's text. Copy the
+ * overwritten instructions and jump back, as Android hook installers do. */
+int mprotect(void *, size_t, int);
+void *sysv_signal(int, void *);
+static void *(*hook_original)(int, void *);
+static int hook_calls;
+static void *hook_signal(int sig, void *handler)
+{
+    hook_calls++;
+    return hook_original(sig, handler);
+}
+static void hook_abort(void) { hook_calls++; }
+static void hook_handler(int sig) { (void)sig; }
+static void hook_jump(unsigned char *p, void *to)
+{
+    unsigned short op[2] = { 0xf8df, 0xf000 }; /* ldr.w pc, [pc, #0] */
+    unsigned addr = (unsigned)(size_t)to;
+    memcpy(p, op, 4);
+    memcpy(p + 4, &addr, 4);
+}
+int t_libc_inline_hook(void)
+{
+    void *libc = dlopen("libc.so", 0);
+    void *entry = dlsym(libc, "sysv_signal"), *ab = dlsym(libc, "abort");
+    unsigned char *code = (void *)((size_t)entry & ~(size_t)1);
+    unsigned char *abort_code = (void *)((size_t)ab & ~(size_t)1);
+    unsigned char saved[8], abort_saved[8], *tramp;
+    void *page = (void *)((size_t)code & ~(size_t)4095);
+    void *abort_page = (void *)((size_t)abort_code & ~(size_t)4095);
+    int (*flush)(long, long, long) = dlsym(libc, "cacheflush");
+    void *old;
+    int result = 0;
+    if (!entry || !ab || !flush || !(1 & (size_t)entry) || page == abort_page) return -1;
+    if (entry != (void *)sysv_signal || dlsym(libc, "sysv_signal") != entry) return -2;
+    tramp = mmap(0, 4096, 3, 0x22, -1, 0);
+    if (tramp == (void *)-1) return -3;
+    memcpy(saved, code, 8);
+    memcpy(abort_saved, abort_code, 8);
+    memcpy(tramp, saved, 8);
+    hook_jump(tramp + 8, (void *)((size_t)(code + 8) | 1));
+    if (mprotect(tramp, 4096, 5)) { munmap(tramp, 4096); return -4; }
+    hook_original = (void *)((size_t)tramp | 1);
+    old = hook_original(10, 0);
+    if (mprotect(page, 4096, 7)) { munmap(tramp, 4096); return -5; }
+    hook_calls = 0;
+    hook_jump(code, hook_signal);
+    flush((long)code, (long)(code + 8), 0);
+    /* Execute while still requested RWX, then request write access again as
+     * hook installers do before restoring the prologue. */
+    if (sysv_signal(10, hook_handler) != 0 || hook_calls != 1) result = -6;
+    if (mprotect(page, 4096, 7)) return -14;
+    memcpy(code, saved, 8);
+    flush((long)code, (long)(code + 8), 0);
+    if (mprotect(page, 4096, 5)) result = -7;
+    if (sysv_signal(10, old) != (void *)hook_handler || hook_calls != 1) result = -8;
+    munmap(tramp, 4096);
+    if (mprotect(abort_page, 4096, 7)) return -9;
+    hook_jump(abort_code, hook_abort);
+    flush((long)abort_code, (long)(abort_code + 8), 0);
+    if (mprotect(abort_page, 4096, 5)) return -10;
+    ((void (*)(void))ab)();
+    if (hook_calls != 2) result = -11;
+    if (mprotect(abort_page, 4096, 7)) return -12;
+    memcpy(abort_code, abort_saved, 8);
+    flush((long)abort_code, (long)(abort_code + 8), 0);
+    if (mprotect(abort_page, 4096, 5)) return -13;
+    return result;
+}

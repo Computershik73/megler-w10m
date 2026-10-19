@@ -21,6 +21,37 @@ static u32 name_hash(const char *s)
     return h;
 }
 
+/* Apps install inline hooks on these libc entry points. Give each name its
+ * own guest mapping rather than exposing writable pages of the host image.
+ * The NOP prefix can be copied into a hook's trampoline without relocation;
+ * the tail jump preserves arguments, flags, lr and the caller's stack.
+ * Separate pages also keep a protection change to one entry off the others.
+ * The mmap layer supplies the existing write/execute fault transitions.
+ */
+static void make_hookable_exports(void)
+{
+#if HK_HOST_ARM32
+    static const char *const names[] = { "abort", "signal", "bsd_signal", "sysv_signal", "sigaction" };
+    size_t n;
+    for (n = 0; n < HK_COUNT(names); ++n) {
+        u32 slot = name_hash(names[n]) & (REG_SLOTS - 1);
+        u8 *code;
+        unsigned off;
+        while (g_reg[slot].name && strcmp(g_reg[slot].name, names[n])) slot = (slot + 1) & (REG_SLOTS - 1);
+        if (!g_reg[slot].name) hk_fatal("bionic: missing hookable export %s", names[n]);
+        code = hk_g_mmap2(NULL, HK_PAGE, 3, 0x22, -1, 0); /* private anonymous RW */
+        if (code == (void *)(hk_addr)-1) hk_fatal("bionic: cannot map entry for %s", names[n]);
+        for (off = 0; off < 32; off += 2) hk_wr16(code + off, 0xBF00); /* nop */
+        hk_wr16(code + 32, 0xF8DF); /* ldr.w pc, [pc, #0] */
+        hk_wr16(code + 34, 0xF000);
+        hk_wr32(code + 36, (u32)(hk_addr)g_reg[slot].addr);
+        if (!hk_mem_protect(code, HK_PAGE, HK_PROT_RX)) hk_fatal("bionic: cannot seal entry for %s", names[n]);
+        hk_icache_flush(code, HK_PAGE);
+        g_reg[slot].addr = (void *)((hk_addr)code | 1u);
+    }
+#endif
+}
+
 void hk_bionic_register(const hk_sym *table)
 {
     for (; table->name; table++) {
@@ -1306,4 +1337,5 @@ void hk_bionic_init(void)
     hk_bionic_register(hk_aaudio_table());
     hk_bionic_register(hk_ahb_table());
     hk_bionic_register(hk_java_ndk_table());
+    make_hookable_exports();
 }

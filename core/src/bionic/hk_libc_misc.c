@@ -9,7 +9,6 @@
 #include "hk_fd.h"
 
 long hk_g_futex(volatile i32 *addr, int op, int val, const void *timeout);
-void *hk_g_mmap2(void *addr, size_t len, int prot, int flags, int fd, u32 pgoffset);
 
 /* ---------------------------------------------------------------- process */
 

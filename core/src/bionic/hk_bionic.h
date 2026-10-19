@@ -52,6 +52,7 @@ typedef struct hk_sym {
 /* Registered once at startup, by hk_bionic_init. */
 void hk_bionic_init(void);
 void hk_bionic_register(const hk_sym *table);
+void *hk_g_mmap2(void *addr, size_t len, int prot, int flags, int fd, u32 pgoffset);
 void *hk_bionic_find(const char *name);
 bool hk_bionic_is_system_lib(const char *soname);
 
