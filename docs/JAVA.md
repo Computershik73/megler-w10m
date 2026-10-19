@@ -4288,18 +4288,14 @@ on a looper thread of its own and takes it back with `next()`.
   descriptor where it is stored, as Chromium maps its ICU data.
 
 - `android/hardware/camera2/CameraManager.java`, `getCameraIdList` and
-  `getCameraIdListNoLazy`, generated signatures that answered null: an empty
-  list, what a device without a camera says. The WebView counts the cameras
-  with `getCameraIdList().length` as soon as a page asks for its media
-  devices, and the NullPointerException, thrown inside Chromium's native
-  code, ended the app on VK's "not a robot" page. The phone's cameras are
-  offered through the old API instead (the next item), and this list stays
-  empty on purpose: camera2's devices, capture sessions and image readers
-  are not built, and a list of cameras that cannot be opened would send an
-  app that asks camera2 first down a way that fails, where an empty list
-  sends it to the old API. The data app's step "cameras" reads the list
-  (empty, not null) and `Camera.getNumberOfCameras()`, 0 there: the data app
-  is run without the stand-in's cameras, a phone with none.
+  `getCameraIdListNoLazy`, generated signatures that answered null: the
+  phone's cameras (camera2 under "The cameras" below), and an empty list,
+  never null, on a device without one. The WebView counts the cameras with
+  `getCameraIdList().length` as soon as a page asks for its media devices,
+  and the NullPointerException, thrown inside Chromium's native code, ended
+  the app on VK's "not a robot" page. The data app's step "cameras" reads
+  the list (empty, not null) and `Camera.getNumberOfCameras()`, 0 there: the
+  data app is run without the stand-in's cameras, a phone with none.
 
 - `android/hardware/Camera.java` and `megler/CameraNative.java` (new), in
   place of the generated stub, whose `getNumberOfCameras()` answered 0 and
@@ -4806,8 +4802,7 @@ in the overlay's list above).
   failed")`, said in the log), zoom, exposure compensation, focus and
   metering areas, face detection (refused as Android refuses it where there
   is none), the `AutoFocusMoveCallback` (never called), RenderScript
-  allocations as preview targets, a `SurfaceTexture` drawn by OpenGL ES, and
-  camera2 (an empty list, above).
+  allocations as preview targets, and a `SurfaceTexture` drawn by OpenGL ES.
 
 The tests:
 - the core's ("the cameras behind a Java app's android.hardware.Camera",
@@ -4829,7 +4824,7 @@ The tests:
   kept, each one or the other; and a camera left open closed at the app's
   end.
 - the test app `camera` under qemu with the same stand-in
-  (`core/tests/app/camera`, 38 checks): the permission; the features; the
+  (`core/tests/app/camera`, 40 checks): the permission; the features; the
   cameras' information and an unknown one refused; `open()` on a
   `HandlerThread`, `open(9)` refused, the same camera again refused; the
   parameters offered, read through Android's getters and `get`, flattened
@@ -4851,9 +4846,54 @@ The tests:
   rounded rectangle toggled to inverse, markers in a layer), so that the
   test finds the picture under the frame, the frame's canvas the frame's
   size, and its white corners. And once more with
-  every camera refused (13 checks): the first open fails with "Fail to
+  every camera refused (14 checks): the first open fails with "Fail to
   connect to camera service" and the core's log line says the user or the
   system refused it.
+
+camera2, which CameraX speaks and nothing else (urent's QR scanner: a
+CameraX `Preview` on a `PreviewView` and an `ImageAnalysis` handing each
+image to Huawei's ScanKit), is over the same natives:
+- `camera2/CameraManager.java` lists the cameras by index ("0", "1"),
+  answers their characteristics and opens them;
+  `camera2/impl/MeglerCameras.java` makes the characteristics from what the
+  camera says when opened once: hardware level LEGACY, the capability
+  BACKWARD_COMPATIBLE (CameraX drops a camera without it), facing,
+  orientation, a stream map of the camera's sizes for YUV_420_888, NV21,
+  JPEG and the private format, its frame rates, focus modes, the torch.
+- `camera2/impl/MeglerCameraDevice.java` is the device and its sessions, one
+  stream at a time as a LEGACY camera has it: the size of the session's
+  `ImageReader` when it has one, else the camera's nearest to 1280 x 720.
+  Each picture answers the next request queued by `capture`, else the
+  repeating one, and goes to the request's targets: an `ImageReader` gets it
+  as an image, a `SurfaceView` or `SurfaceTexture` as a bitmap turned
+  upright (mirrored for the front camera). `PreviewView` uses a
+  `TextureView` on a LEGACY camera and lays it out at the stream's size,
+  then scales the view, so the upright bitmap squeezed into it comes out
+  right. The result is a `TotalCaptureResult` whose `SENSOR_TIMESTAMP` is
+  the image's timestamp (CameraX's `MetadataImageReader` pairs images and
+  results by it), with the focus state following `CONTROL_AF_MODE` and
+  `CONTROL_AF_TRIGGER`, exposure and white balance CONVERGED, and
+  `FLASH_MODE` TORCH lighting the torch.
+- `android/media/ImageReader.java` in place of the stub (null surface, no
+  images): NV21 buffers the camera fills, given as YUV_420_888's three
+  planes as Android's devices give them (Y pixel stride 1, U and V 2, row
+  stride the width), `maxImages` enforced.
+- The metadata classes (`CameraCharacteristics`, `CaptureRequest`,
+  `CaptureResult`, `CameraCaptureSession`'s state callback, and
+  `params/StreamConfigurationMap`, `OutputConfiguration`,
+  `SessionConfiguration`) are written from the generated stubs by
+  `tools/compat/camera2-overlays.py`: each key a real key with Android's
+  name, values kept by name.
+- **Not done:** an `ImageReader` of another size than the stream (it gets
+  no pictures, said once in the log), JPEG captures, reprocessing,
+  high-speed and custom sessions (`onConfigureFailed`), zoom, regions,
+  manual sensor control, and a display turned from 0.
+- The test app `camera`'s step "camera2": two cameras, facing and
+  orientation, 640 x 480 among the YUV sizes; the back camera opened, a
+  session of a 640 x 480 `ImageReader`, a repeating request with a tag;
+  three images with the stand-in's picture in their planes (its number,
+  the red top left and white bottom right in YUV), the strides, and each
+  image's timestamp among the results' `SENSOR_TIMESTAMP`s; closed.
 
 The shell's side is `player/CameraHost.cpp`, over Windows.Media.Capture
 (docs/ARCHITECTURE.md, "Cameras"): the cameras found as media frame source
