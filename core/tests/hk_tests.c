@@ -204,6 +204,38 @@ static void test_host(const char *scratch)
         free(other);
         CHECK(offset > -16 * 3600 && offset < 16 * 3600);
     }
+    {
+        /* Paths longer than Win32's MAX_PATH, as an app's own folders and names make them (Instagram's unpacked libraries). */
+        char name[121];
+        char *top, *deep, *file, *dotted, *moved;
+        list_seen seen;
+        size_t n = 0;
+        u8 *all;
+        memset(name, 'n', 120);
+        name[120] = 0;
+        top = hk_sprintf("%s/host/long-%s", scratch, name);
+        deep = hk_sprintf("%s/%s", top, name);
+        file = hk_sprintf("%s/lib-%s.so", deep, name);
+        dotted = hk_sprintf("%s/./%s/../%s/lib-%s.so", top, name, name, name);
+        moved = hk_sprintf("%s/moved.so", deep);
+        CHECK(strlen(file) > 300);
+        CHECK(hk_path_mkdirs(deep));
+        CHECK(hk_file_write_all(file, "long", 4));
+        CHECK(hk_path_stat(file, &st, &err) && st.size == 4 && !st.is_dir);
+        all = hk_file_read_all(dotted, &n);
+        CHECK(all && n == 4 && !memcmp(all, "long", 4));
+        free(all);
+        memset(&seen, 0, sizeof(seen));
+        CHECK(hk_path_list(deep, list_one, &seen, &err) && seen.count == 1 && seen.files == 1);
+        CHECK(hk_path_rename(file, moved, &err) && hk_path_stat(moved, &st, &err) && st.size == 4);
+        CHECK(hk_path_remove(moved, &err));
+        CHECK(hk_path_rmdir(deep, &err) && hk_path_rmdir(top, &err));
+        free(top);
+        free(deep);
+        free(file);
+        free(dotted);
+        free(moved);
+    }
     CHECK(hk_file_open(sub, HK_O_READ, &err) == NULL && err == HK_E_ISDIR);
     CHECK(!hk_path_stat("/no/such/thing/at/all", &st, &err) && err == HK_E_NOENT);
     CHECK(!hk_path_rmdir(sub, &err) && err == HK_E_NOTEMPTY);

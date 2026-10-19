@@ -885,6 +885,19 @@ exactly as named, stat'ed, renamed (to the name with a dot more) and
 removed, on both hosts and through the shell's own Windows.Storage host
 (`hk_tests --storage-windows`).
 
+Paths can be longer than Win32 takes as they are: 259 characters for a
+file, 247 for a folder. Instagram's Superpack unpacks 344 libraries into
+`lib-compressed` in the app's data folder, and on the phone one of them,
+`libxplat_js_react-native-github_packages_react-native_ReactCommon_react_nativemodule_intersectionobserver_intersectionobserverAndroid.so`,
+is 262 characters with that folder's path in front; Superpack stopped there
+with "could not open file to write" and the app ended. The Win32 host layer
+now hands Windows such a path, when it is a drive's absolute one, as `\\?\`
+and the whole path, its `.` and `..` parts resolved, which Win32 takes up to
+32767 characters (`long_path` in `hk_host_win32.c`); shorter paths go as
+they were. The core's host test makes a folder, a file of more than 300
+characters, reads it through a path with `.` and `..` in it, lists, renames
+and removes them.
+
 ### The battery (both hosts; the app under qemu-arm)
 
 The core answers for the battery in one place, `hk_battery_read`

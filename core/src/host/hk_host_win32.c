@@ -1225,6 +1225,46 @@ static int err_of(DWORD e)
 }
 #define SET_ERR() do { if (err) *err = err_of(GetLastError()); } while (0)
 
+/*
+ * A drive's absolute path that Win32 would refuse for its length, as "\\?\" and the whole path, which Win32 takes up to
+ * 32767 characters: MAX_PATH (260 with the terminating zero) for a file, 12 less for CreateDirectory, which keeps room for
+ * an 8.3 name. Apps' own names can be that long: Instagram's Superpack unpacks a library whose path in the app's data folder
+ * is 262 characters, and stopped at "could not open file to write". "\\?\" takes every part as a name, so "." and ".." parts
+ * are resolved here. Shorter paths, and relative ones, are returned as they were: Win32's own handling of names, which the
+ * rest of this file relies on, stays theirs. Frees `w` when it returns another string.
+ */
+static wchar_t *long_path(wchar_t *w)
+{
+    size_t n = wcslen(w), i = 2, o;
+    wchar_t *l;
+    if (n < MAX_PATH - 12 || !((w[0] >= L'A' && w[0] <= L'Z') || (w[0] >= L'a' && w[0] <= L'z')) || w[1] != L':' || w[2] != L'\\')
+        return w;
+    l = (wchar_t *)hk_alloc(sizeof(wchar_t) * (n + 6));
+    memcpy(l, L"\\\\?\\", 4 * sizeof(wchar_t));
+    l[4] = w[0];
+    l[5] = L':';
+    o = 6;
+    while (i < n) {
+        size_t j, len;
+        while (i < n && w[i] == L'\\') i++;
+        for (j = i; j < n && w[j] != L'\\'; j++) {}
+        len = j - i;
+        if (len == 2 && w[i] == L'.' && w[i + 1] == L'.') {
+            while (o > 6 && l[o - 1] != L'\\') o--;
+            if (o > 6) o--;
+        } else if (len && !(len == 1 && w[i] == L'.')) {
+            l[o++] = L'\\';
+            memcpy(l + o, w + i, len * sizeof(wchar_t));
+            o += len;
+        }
+        i = j;
+    }
+    if (o == 6) l[o++] = L'\\';
+    l[o] = 0;
+    free(w);
+    return l;
+}
+
 /* UTF-8 with forward slashes to what Win32 takes, with the names in it that Windows refuses mapped (hk_host.h); malloc'd. */
 static wchar_t *wide_path(const char *path)
 {
@@ -1240,7 +1280,7 @@ static wchar_t *wide_path(const char *path)
     /* A trailing separator makes several calls fail ("C:\dir\"); a bare root keeps its own. */
     n = (int)wcslen(w);
     while (n > 3 && w[n - 1] == L'\\') w[--n] = 0;
-    return w;
+    return long_path(w);
 }
 
 static char *utf8_of(const wchar_t *w)
