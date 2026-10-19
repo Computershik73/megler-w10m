@@ -14,6 +14,7 @@
 #include "auto/AutoRun.h"
 #include "library/Library.h"
 #include "player/Session.h"
+#include "shell/Files.h"
 #include "shell/Platform.h"
 #include "shell/Settings.h"
 #include "shell/ShellLog.h"
@@ -77,8 +78,22 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
 
     void OnLaunched(LaunchActivatedEventArgs const& args) {
         shellLog::write("app: launched (previous state " + std::to_string(int(args.PreviousExecutionState())) + ")");
+        copySystemDlls();
         ensureContent();
         Window::Current().Activate();
+    }
+
+    // The flag copy-system-dlls: the phone's ntdll.dll and KERNELBASE.dll
+    // copied into LocalState, to be read on the PC with a disassembler --
+    // what an address of theirs in a crash report is, which no public
+    // symbols say for the phone's build.
+    static void copySystemDlls() {
+        const std::wstring local = platform::localStateDirectory();
+        if (!files::exists(local + L"\\flags\\copy-system-dlls")) return;
+        for (const wchar_t* name : {L"ntdll.dll", L"KERNELBASE.dll"}) {
+            const bool ok = files::copy(std::wstring(L"C:\\Windows\\System32\\") + name, local + L"\\" + name);
+            shellLog::write(std::string("flags: copy-system-dlls: ") + narrow(name) + (ok ? " copied" : " could not be copied"));
+        }
     }
 
     void ensureContent() {
