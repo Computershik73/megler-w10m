@@ -4074,6 +4074,23 @@ on a looper thread of its own and takes it back with `next()`.
   when the activity started for a result is floating (a dialog's theme),
   Android shows the one under it too; here its window waits as well, since
   a window added later would lie above the dialog.
+- `megler/AppRunner.java`, `startActivity` with `FLAG_ACTIVITY_CLEAR_TOP` for
+  an activity already in the stack, as Android does it. The activities above
+  it go. Then, when its launch mode is standard and the intent has no
+  `FLAG_ACTIVITY_SINGLE_TOP`, it goes too and the activity is started again
+  with the new intent; otherwise it is brought back (`onRestart` and
+  `onStart` when it was stopped) and hears `onNewIntent`. It is found by its
+  class, as Android compares `realActivity`, so an activity started through
+  an alias is found by an intent that names the activity. The original kept
+  the old activity whatever its mode, gave it the intent by `setIntent`
+  alone, and called its `onActivityResult(-1, RESULT_CANCELED, null)`, which
+  Android never does. Instagram 333's signed-out screen, brought back so after
+  it had downloaded its Russian strings, finished on that, and with no
+  activity left the app ended with status 0. The crash app's first activity,
+  started through an alias, goes through both cases with `Top` before it
+  starts the activity that throws: a new first activity for the flag alone,
+  `onNewIntent` with `FLAG_ACTIVITY_SINGLE_TOP`, and no result it did not ask
+  for.
 
 - `android/widget/LinearLayout.java`, four statements: what a child with a
   weight and a size of 0 is given when the layout's own size is not exact.

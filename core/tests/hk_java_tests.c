@@ -1879,7 +1879,19 @@ static int run_crash(void)
      */
     expect_line("I/CrashTest: gate onCreate", &at, 60);
     expect_line("I/CrashTest: first order resume,result:7:-1,resume,focus:true,", &at, 60);
+    /*
+     * FLAG_ACTIVITY_CLEAR_TOP as Android has it, First found by its class though started through an alias: with the flag
+     * alone, Top goes and so does First, and a new First is made; with FLAG_ACTIVITY_SINGLE_TOP as well, Top goes and the
+     * second First stays and hears onNewIntent. No onActivityResult that nothing asked for (the original gave one).
+     */
+    expect_line("I/CrashTest: top onCreate standard", &at, 60);
+    expect_line("I/CrashTest: first onCreate again creations=2", &at, 60);
+    expect_line("I/CrashTest: top onCreate single", &at, 60);
+    expect_line("I/CrashTest: first onNewIntent third creations=2", &at, 60);
     expect_line("I/CrashTest: second onCreate, about to throw", &at, 60);
+    CHECK(find_line("I/CrashTest: first onDestroy null", 0) >= 0 && find_line("I/CrashTest: top onDestroy standard", 0) >= 0 &&
+          find_line("I/CrashTest: top onDestroy single", 0) >= 0 && find_line("I/CrashTest: first onDestroy again", 0) < 0);
+    CHECK(find_line("I/CrashTest: first unexpected result", 0) < 0);
     for (tries = 0; tries < 3000 && running(); tries++) hk_sleep_ns(10000000ull);
     CHECK(g_exited && g_status == -1);
     say("  the app's end, as the shell is told it: %s", g_reason);

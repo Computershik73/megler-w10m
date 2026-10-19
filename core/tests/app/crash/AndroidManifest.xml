@@ -23,6 +23,8 @@
             </intent-filter>
         </activity-alias>
         <activity android:name=".Second" />
+        <!-- Starts First again with FLAG_ACTIVITY_CLEAR_TOP, and with FLAG_ACTIVITY_SINGLE_TOP as well (First's comment). -->
+        <activity android:name=".Top" />
         <activity android:name=".Gate" />
     </application>
 </manifest>
