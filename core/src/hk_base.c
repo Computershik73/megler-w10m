@@ -28,6 +28,16 @@ void hk_logv(int level, const char *fmt, va_list ap)
     char line[1024];
     if (level < g_min_level) return;
     vsnprintf(line, sizeof(line), fmt, ap);
+    if (g_log_owner && g_log_owner == hk_thread_self_id()) {
+        /*
+         * A fault or an exception on this thread while it writes a line, which the handler reports through the log too:
+         * the lock is this thread's already, and taken again it would never come (the profiler's thread stood so, and
+         * every thread that logged after it). The line goes out without it.
+         */
+        hk_host_print(line);
+        if (g_sink) g_sink(level, line, g_sink_user);
+        return;
+    }
     hk_lock_acquire(&g_log_lock);
     g_log_owned_at = hk_time_monotonic_ns();
     g_log_writing = line;
