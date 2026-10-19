@@ -1663,7 +1663,7 @@ static int run_data(void)
                                             and an https URL through Android's HTTP client; or, where its library is not in the Android root, the
                                             stand-in that fails politely), Android's key store's key pairs, and the list of decoders: the stand-in's
                                             H.264, AAC and MP3 (hk_codec_standin.c), and no H.265. */
-                                         "battery", "connectivity", "location", "timezone", "locale", "tls", "tls-loopback", "tls-https", "keystore", "codecs",
+                                         "battery", "connectivity", "location", "timezone", "locale", "phone-number", "tls", "tls-loopback", "tls-https", "keystore", "codecs",
                                          /* And what Android's WebView asks of the platform before it shows a page, each answered as Android
                                             answers it: the app's id within its user (UserHandle.getAppId), whether cleartext HTTP is
                                             permitted (NetworkSecurityPolicy), a compatibility change's state for the app's target

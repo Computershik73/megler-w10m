@@ -284,6 +284,7 @@ public class Main extends Activity {
         location();
         timezone();
         locale();
+        phoneNumber();
         tls();
         keystore(run);
         codecs();
@@ -706,6 +707,31 @@ public class Main extends Activity {
             detail = locale + " list " + android.os.LocaleList.getDefault() + " config " + config;
             return locale.equals(android.os.LocaleList.getDefault().get(0)) && locale.equals(config)
                     && network.equals(locale.getCountry().toLowerCase(java.util.Locale.ROOT)) && sim.equals(network);
+        });
+    }
+
+    /**
+     * PhoneNumberUtils as Android answers: which characters are a number's (an app's own formatter is fed only those), separators
+     * stripped, keypad letters made digits, the network and post-dial portions, a loose comparison of the same number written two
+     * ways, and NANP's dashes.
+     */
+    private void phoneNumber() {
+        step("phone-number", () -> {
+            String stripped = android.telephony.PhoneNumberUtils.stripSeparators("+7 (912) 345-67-89");
+            String normal = android.telephony.PhoneNumberUtils.normalizeNumber("1-800-FLOWERS");
+            String network = android.telephony.PhoneNumberUtils.extractNetworkPortion("+1 650,123;4");
+            String post = android.telephony.PhoneNumberUtils.extractPostDialPortion("+1 650,123;4");
+            android.text.SpannableStringBuilder typed = new android.text.SpannableStringBuilder("6505551234");
+            android.telephony.PhoneNumberUtils.formatNumber(typed, android.telephony.PhoneNumberUtils.FORMAT_NANP);
+            String nanp = typed.toString();
+            boolean same = android.telephony.PhoneNumberUtils.compare("+7 912 345 67 89", "8 (912) 345-67-89");
+            boolean other = android.telephony.PhoneNumberUtils.compare("+7 912 345 67 89", "+7 912 345 67 80");
+            detail = stripped + " " + normal + " " + network + " " + post + " " + nanp + " same=" + same + " other=" + other;
+            return android.telephony.PhoneNumberUtils.isNonSeparator('7') && android.telephony.PhoneNumberUtils.isNonSeparator('+')
+                    && !android.telephony.PhoneNumberUtils.isNonSeparator(' ') && !android.telephony.PhoneNumberUtils.isNonSeparator('(')
+                    && android.telephony.PhoneNumberUtils.isReallyDialable('#') && !android.telephony.PhoneNumberUtils.isReallyDialable('N')
+                    && "+79123456789".equals(stripped) && "18003569377".equals(normal) && "+1650".equals(network) && ",123;4".equals(post)
+                    && "650-555-1234".equals(nanp) && same && !other;
         });
     }
 
