@@ -131,6 +131,13 @@ typedef struct hk_thread_regs {
 } hk_thread_regs;
 bool hk_thread_suspend(hk_thread *t, hk_thread_regs *out);
 void hk_thread_resume(hk_thread *t);
+/*
+ * Another thread of the process by its id (as hk_thread_self_id says it on that thread), one the layer may not have
+ * started: stopped while its registers and up to `max_words` words of its stack from sp up are copied (no further than
+ * the memory there is committed), then let go. For the hang report. The words copied, or -1 when it could not be stopped
+ * (posix: always).
+ */
+int hk_thread_snapshot_id(u32 id, hk_thread_regs *regs, u32 *words, int max_words);
 /* Called on a thread started by hk_thread_start as it ends (its function returned, or hk_thread_exit): the collector forgets it. */
 void hk_thread_set_end_hook(void (*fn)(void));
 void hk_thread_yield(void);

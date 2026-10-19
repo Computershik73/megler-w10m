@@ -403,6 +403,15 @@ void hk_thread_exit(void)
 }
 u32 hk_thread_self_id(void) { return (u32)syscall(SYS_gettid); }
 u32 hk_thread_id(const hk_thread *t) { (void)t; return 0; }
+
+int hk_thread_snapshot_id(u32 id, hk_thread_regs *regs, u32 *words, int max_words)
+{
+    (void)id;
+    (void)words;
+    (void)max_words;
+    memset(regs, 0, sizeof(*regs));
+    return -1;
+}
 void hk_thread_yield(void) { sched_yield(); }
 
 void hk_sleep_ns(u64 ns)

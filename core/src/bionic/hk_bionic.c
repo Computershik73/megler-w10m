@@ -842,12 +842,15 @@ void hk_bionic_profile_start(void)
  * (the line it was writing; the function that took the threads' lock, and the thread trace-profile was stopping), and
  * where each thread that runs guest code is: pc, lr and its stack's way back, as trace-native-stacks says. The threads are
  * found and stopped without either lock -- while another thread holds the threads' lock no thread's record can go, and
- * each is stopped only while its registers and stack are copied. Said first as bare addresses in LocalState\hang.txt (to
+ * each is stopped only while its registers and stack are copied. A holder that is not one of them (a thread of the
+ * system's, which the exception handler logs from as from any other) is looked at by its id, deeper: its stack holds the
+ * exception it is handling and the frames of whoever raised it. Said first as bare addresses in LocalState\hang.txt (to
  * name them may need a lock the stand-still holds), then with module and offset there and in the log, past its lock.
  */
 #define HANG_SECONDS 10
 #define HANG_THREADS 60
 #define HANG_WORDS 1024
+#define HANG_HOLDER_WORDS 4096
 
 typedef struct hang_thread {
     i32 tid;
@@ -857,6 +860,14 @@ typedef struct hang_thread {
     u32 words[HANG_WORDS];
     int nwords;
 } hang_thread;
+
+/* A holder that is not a guest thread, by its host id. */
+typedef struct hang_holder {
+    u32 host_id;
+    hk_addr pc, lr;
+    u32 words[HANG_HOLDER_WORDS];
+    int nwords;
+} hang_holder;
 
 static size_t hang_add(char *out, size_t cap, size_t at, const char *fmt, ...)
 {
@@ -876,9 +887,10 @@ static void hang_write(const char *text, size_t size)
     hk_file_write_all(path, text, size);
 }
 
-/* `threads` and `text` are the watchdog's, made at its start: the allocator's lock may be what stands still. */
-static void hang_report(hang_thread *threads, const char *what, char *text, size_t text_cap)
+/* `threads`, `holders` and `text` are the watchdog's, made at its start: the allocator's lock may be what stands still. */
+static void hang_report(hang_thread *threads, hang_holder *holders, const u32 *holder_ids, const char *what, char *text, size_t text_cap)
 {
+    int nholders = 0;
     char where[128];
     size_t at = 0, mark;
     int n = 0, i, k;
@@ -907,6 +919,21 @@ static void hang_report(hang_thread *threads, const char *what, char *text, size
         n++;
     }
     if (locked) hk_lock_release(&g_thread_lock);
+    /* The holders that are none of those threads. */
+    for (k = 0; k < 2; k++) {
+        hk_thread_regs regs;
+        hang_holder *hd = &holders[nholders];
+        bool guest = false;
+        if (!holder_ids[k] || (k == 1 && holder_ids[1] == holder_ids[0])) continue;
+        for (i = 0; i < n && !guest; i++) guest = threads[i].host_id == holder_ids[k];
+        if (guest) continue;
+        hd->nwords = hk_thread_snapshot_id(holder_ids[k], &regs, hd->words, HANG_HOLDER_WORDS);
+        if (hd->nwords < 0) continue;
+        hd->host_id = holder_ids[k];
+        hd->pc = regs.pc;
+        hd->lr = regs.n > 13 ? regs.r[13] : 0;
+        nholders++;
+    }
     at = hang_add(text, text_cap, at, "hang: %s\n", what);
     mark = at;
     /* First the bare addresses: the words of each stack that may be code, unnamed. */
@@ -918,6 +945,18 @@ static void hang_report(hang_thread *threads, const char *what, char *text, size
         for (k = 0; k < s->nwords && shown < 24; k++)
             if (s->words[k] >= 0x10000u && (hk_ld_is_guest_code(s->words[k] & ~1u) || (s->words[k] & 1u))) {
                 at = hang_add(text, text_cap, at, " 0x%x", (unsigned)s->words[k]);
+                shown++;
+            }
+        at = hang_add(text, text_cap, at, "\n");
+    }
+    for (i = 0; i < nholders; i++) {
+        hang_holder *hd = &holders[i];
+        int shown = 0;
+        at = hang_add(text, text_cap, at, "hang: host thread %u, not one of the app's: pc 0x%x, lr 0x%x; on the stack:", (unsigned)hd->host_id, (unsigned)hd->pc,
+                      (unsigned)hd->lr);
+        for (k = 0; k < hd->nwords && shown < 64; k++)
+            if (hd->words[k] >= 0x10000u && (hd->words[k] & 1u)) {
+                at = hang_add(text, text_cap, at, " 0x%x", (unsigned)hd->words[k]);
                 shown++;
             }
         at = hang_add(text, text_cap, at, "\n");
@@ -934,6 +973,22 @@ static void hang_report(hang_thread *threads, const char *what, char *text, size
         at = hang_add(text, text_cap, at, ", lr %s; on the stack:", code_at(s->lr, where, sizeof(where)) ? where : "?");
         for (k = 0; k < s->nwords && found < 14; k++) {
             u32 w = s->words[k] & ~1u;
+            if (w == last || !code_at(w, where, sizeof(where))) continue;
+            at = hang_add(text, text_cap, at, "%s %s", found ? "," : "", where);
+            last = w;
+            found++;
+        }
+        at = hang_add(text, text_cap, at, "\n");
+    }
+    for (i = 0; i < nholders; i++) {
+        hang_holder *hd = &holders[i];
+        u32 last = 0;
+        int found = 0;
+        at = hang_add(text, text_cap, at, "hang: host thread %u, not one of the app's: pc %s", (unsigned)hd->host_id,
+                      code_at(hd->pc, where, sizeof(where)) ? where : "?");
+        at = hang_add(text, text_cap, at, ", lr %s; on the stack:", code_at(hd->lr, where, sizeof(where)) ? where : "?");
+        for (k = 0; k < hd->nwords && found < 48; k++) {
+            u32 w = hd->words[k] & ~1u;
             if (w == last || !code_at(w, where, sizeof(where))) continue;
             at = hang_add(text, text_cap, at, "%s %s", found ? "," : "", where);
             last = w;
@@ -958,6 +1013,7 @@ static void hang_report(hang_thread *threads, const char *what, char *text, size
 static void hang_observer(void *unused)
 {
     hang_thread *threads = (hang_thread *)hk_alloc(sizeof(hang_thread) * HANG_THREADS);
+    hang_holder *holders = (hang_holder *)hk_alloc(sizeof(hang_holder) * 2);
     char *text = (char *)hk_alloc(64u * 1024u);
     u32 said_log = 0, said_threads = 0;
     u64 said_log_at = 0, said_threads_at = 0;
@@ -967,6 +1023,7 @@ static void hang_observer(void *unused)
         u32 log_owner = 0, thread_owner;
         u64 log_since = 0, thread_since, now;
         char line[300], what[900];
+        u32 holder_ids[2];
         const char *site;
         size_t at = 0;
         bool log_stuck, threads_stuck;
@@ -982,11 +1039,13 @@ static void hang_observer(void *unused)
         if (threads_stuck && thread_owner == said_threads && thread_since == said_threads_at) threads_stuck = false;
         if (!log_stuck && !threads_stuck) continue;
         what[0] = 0;
+        holder_ids[0] = holder_ids[1] = 0;
         if (hk_log_holder(&log_owner, &log_since, line, sizeof(line)) && now - log_since >= HANG_SECONDS * 1000000000ull) {
             at = hang_add(what, sizeof(what), at, "the log's lock held %.1f s by host thread %u, writing \"%s\"; ", (double)(now - log_since) / 1e9,
                           (unsigned)log_owner, line);
             said_log = log_owner;
             said_log_at = log_since;
+            holder_ids[0] = log_owner;
         }
         if (thread_owner && now - thread_since >= HANG_SECONDS * 1000000000ull) {
             i32 stopping = g_prof_stopping;
@@ -996,12 +1055,14 @@ static void hang_observer(void *unused)
             at = hang_add(what, sizeof(what), at, "; ");
             said_threads = thread_owner;
             said_threads_at = thread_since;
+            holder_ids[1] = thread_owner;
         }
         hang_add(what, sizeof(what), at, "the app stands still");
-        hang_report(threads, what, text, 64u * 1024u);
+        hang_report(threads, holders, holder_ids, what, text, 64u * 1024u);
         reports++;
     }
     free(text);
+    free(holders);
     free(threads);
 }
 

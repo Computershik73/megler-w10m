@@ -434,6 +434,38 @@ void hk_thread_resume(hk_thread *t)
     if (t && t->self) ResumeThread(t->self);
 }
 
+#if WINAPI_FAMILY == WINAPI_FAMILY_APP
+/* Left out of the app partition by the SDK's headers, in the phone's kernelbase like any other. */
+WINBASEAPI HANDLE WINAPI OpenThread(DWORD dwDesiredAccess, BOOL bInheritHandle, DWORD dwThreadId);
+#endif
+
+int hk_thread_snapshot_id(u32 id, hk_thread_regs *regs, u32 *words, int max_words)
+{
+    hk_thread t;
+    MEMORY_BASIC_INFORMATION mbi;
+    HANDLE h;
+    int n = 0;
+    memset(regs, 0, sizeof(*regs));
+    if (!id || id == GetCurrentThreadId()) return -1;
+    h = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, id);
+    if (!h) return -1;
+    memset(&t, 0, sizeof(t));
+    t.self = h;
+    t.id = id;
+    if (!hk_thread_suspend(&t, regs)) {
+        CloseHandle(h);
+        return -1;
+    }
+    if (regs->sp && VirtualQuery((const void *)(DWORD_PTR)regs->sp, &mbi, sizeof(mbi)) && mbi.State == MEM_COMMIT) {
+        hk_addr end = (hk_addr)(DWORD_PTR)mbi.BaseAddress + (hk_addr)mbi.RegionSize, at = regs->sp & ~(hk_addr)3;
+        n = (int)((end - at) / 4 < (hk_addr)max_words ? (end - at) / 4 : (hk_addr)max_words);
+        memcpy(words, (const void *)(DWORD_PTR)at, (size_t)n * 4);
+    }
+    ResumeThread(h);
+    CloseHandle(h);
+    return n;
+}
+
 hk_thread *hk_thread_start(hk_thread_fn fn, void *arg, size_t stack_size, const char *name)
 {
     hk_thread *t = (hk_thread *)hk_alloc(sizeof(*t));
