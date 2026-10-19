@@ -1,14 +1,14 @@
 // megler-w10m overlay of Megler/src/java-framework/gen-src/android/hardware/camera2/CameraManager.java (tools/build-framework.sh).
-// It differs in getCameraIdList and getCameraIdListNoLazy, which were generated signatures that answered null: they answer
-// an empty list, what the platform gives on a device without a camera. The phone's cameras are not offered to an app here:
-// they are through the old android.hardware.Camera (the overlay's). camera2's devices, capture sessions and image readers
-// are not built, and a list of cameras that cannot be opened would send an app that asks camera2 first down a way that
-// fails, where an empty list sends it to the old API.
+// It differs in giving the phone's cameras: their ids, their characteristics and opening them (camera2/impl/MeglerCameras and
+// MeglerCameraDevice, over megler.CameraNative), where the generated stub answered null. A camera's id is its index ("0").
 //
-// Why. Android's System WebView asks it how many cameras there are as soon as a page enumerates its media devices
-// (org.chromium.media.VideoCaptureFactory.getNumberOfCameras, getCameraIdList().length); VK's check that a visitor is no
-// robot does, and the NullPointerException, thrown in Chromium's native code, ended the app. Everything else is the
-// original's, unchanged.
+// Why. CameraX, which most apps that scan a code use (urent's QR scanner), knows only camera2: with no cameras here it said
+// "No available camera can be found" and showed black. (The list was empty, not null, before camera2 was built: Android's
+// System WebView asks how many cameras there are as soon as a page enumerates its media devices, and a null ended the app
+// in Chromium's native code.) An app that asks the old android.hardware.Camera still has it, the overlay's.
+//
+// The availability callbacks hear every camera available once, at once; torch callbacks and setTorchMode are not done.
+// Everything else is the original's, unchanged.
 package android.hardware.camera2;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
@@ -22,12 +22,14 @@ public final class CameraManager {
     public static boolean isHiddenPhysicalCamera(java.lang.String p0) { return false; }
     public static boolean physicalCallbacksAreEnabledForUnavailableCamera() { return false; }
     public static java.lang.String reportExtensionSessionStats(android.hardware.CameraExtensionSessionStats p0) { return null; }
-    public android.hardware.camera2.CameraCharacteristics getCameraCharacteristics(java.lang.String p0) { return null; }
-    public android.hardware.camera2.CameraCharacteristics getCameraCharacteristics(java.lang.String p0, boolean p1) { return null; }
+    public android.hardware.camera2.CameraCharacteristics getCameraCharacteristics(java.lang.String p0) {
+        return android.hardware.camera2.impl.MeglerCameras.characteristics(android.hardware.camera2.impl.MeglerCameras.index(p0));
+    }
+    public android.hardware.camera2.CameraCharacteristics getCameraCharacteristics(java.lang.String p0, boolean p1) { return getCameraCharacteristics(p0); }
     public android.hardware.camera2.CameraDevice.CameraDeviceSetup getCameraDeviceSetup(java.lang.String p0) { return null; }
     public android.hardware.camera2.CameraExtensionCharacteristics getCameraExtensionCharacteristics(java.lang.String p0) { return null; }
-    public java.lang.String[] getCameraIdList() { return new java.lang.String[0]; }
-    public java.lang.String[] getCameraIdListNoLazy() { return new java.lang.String[0]; }
+    public java.lang.String[] getCameraIdList() { return android.hardware.camera2.impl.MeglerCameras.ids(); }
+    public java.lang.String[] getCameraIdListNoLazy() { return android.hardware.camera2.impl.MeglerCameras.ids(); }
     public android.hardware.ICameraService getCameraService() { return (android.hardware.ICameraService) meglerProps.get("CameraService"); }
     public android.content.AttributionSourceState getClientAttribution() { return (android.content.AttributionSourceState) meglerProps.get("ClientAttribution"); }
     public android.content.AttributionSourceState getClientAttribution(int p0, boolean p1) { return null; }
@@ -42,15 +44,26 @@ public final class CameraManager {
     public boolean isCameraDeviceSharingSupported(java.lang.String p0) { return false; }
     public boolean isCameraServiceDisabled() { return (meglerProps.get("CameraServiceDisabled") instanceof Boolean ? (Boolean) meglerProps.get("CameraServiceDisabled") : false); }
     public boolean isConcurrentSessionConfigurationSupported(java.util.Map p0) { return false; }
-    public void openCamera(java.lang.String p0, int p1, java.util.concurrent.Executor p2, android.hardware.camera2.CameraDevice.StateCallback p3) {}
-    public void openCamera(java.lang.String p0, android.hardware.camera2.CameraDevice.StateCallback p1, android.os.Handler p2) {}
-    public void openCamera(java.lang.String p0, java.util.concurrent.Executor p1, android.hardware.camera2.CameraDevice.StateCallback p2) {}
-    public void openCamera(java.lang.String p0, boolean p1, android.os.Handler p2, android.hardware.camera2.CameraDevice.StateCallback p3) {}
+    public void openCamera(java.lang.String p0, int p1, java.util.concurrent.Executor p2, android.hardware.camera2.CameraDevice.StateCallback p3) { openCamera(p0, p2, p3); }
+    public void openCamera(java.lang.String p0, android.hardware.camera2.CameraDevice.StateCallback p1, android.os.Handler p2) {
+        android.hardware.camera2.impl.MeglerCameraDevice.open(android.hardware.camera2.impl.MeglerCameras.index(p0), p0, p1, android.hardware.camera2.impl.MeglerCameraDevice.executorOf(p2));
+    }
+    public void openCamera(java.lang.String p0, java.util.concurrent.Executor p1, android.hardware.camera2.CameraDevice.StateCallback p2) {
+        if (p1 == null) throw new IllegalArgumentException("executor was null");
+        android.hardware.camera2.impl.MeglerCameraDevice.open(android.hardware.camera2.impl.MeglerCameras.index(p0), p0, p2, p1);
+    }
+    public void openCamera(java.lang.String p0, boolean p1, android.os.Handler p2, android.hardware.camera2.CameraDevice.StateCallback p3) { openCamera(p0, p3, p2); }
     public void openCameraImpl(java.lang.String p0, android.hardware.camera2.CameraDevice.StateCallback p1, java.util.concurrent.Executor p2, int p3, android.content.res.CameraCompatibilityInfo p4, boolean p5) {}
     public void openSharedCamera(java.lang.String p0, java.util.concurrent.Executor p1, android.hardware.camera2.CameraDevice.StateCallback p2) {}
     public android.hardware.camera2.CameraCharacteristics prepareCameraCharacteristics(java.lang.String p0, android.hardware.camera2.impl.CameraMetadataNative p1, android.hardware.ICameraService p2) { return null; }
-    public void registerAvailabilityCallback(android.hardware.camera2.CameraManager.AvailabilityCallback p0, android.os.Handler p1) {}
-    public void registerAvailabilityCallback(java.util.concurrent.Executor p0, android.hardware.camera2.CameraManager.AvailabilityCallback p1) {}
+    public void registerAvailabilityCallback(android.hardware.camera2.CameraManager.AvailabilityCallback p0, android.os.Handler p1) {
+        registerAvailabilityCallback(android.hardware.camera2.impl.MeglerCameraDevice.executorOf(p1), p0);
+    }
+    /** Every camera available, said once, at once, as Android says the cameras there are to a callback newly registered. */
+    public void registerAvailabilityCallback(java.util.concurrent.Executor p0, android.hardware.camera2.CameraManager.AvailabilityCallback p1) {
+        if (p0 == null || p1 == null) return;
+        for (java.lang.String id : android.hardware.camera2.impl.MeglerCameras.ids()) p0.execute(() -> p1.onCameraAvailable(id));
+    }
     public void registerDeviceStateListener(android.hardware.camera2.CameraCharacteristics p0) {}
     public void registerTorchCallback(android.hardware.camera2.CameraManager.TorchCallback p0, android.os.Handler p1) {}
     public void registerTorchCallback(java.util.concurrent.Executor p0, android.hardware.camera2.CameraManager.TorchCallback p1) {}
