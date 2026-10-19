@@ -30,6 +30,7 @@
 #include "hk_host.h"
 
 #include <signal.h>
+#include <malloc.h>
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -793,6 +794,74 @@ static void note_callers(hk_addr sp, const char *what)
     if (found) hk_err("%s", line);
 }
 
+#if defined(_M_ARM)
+/*
+ * A system call refused with STATUS_INVALID_HANDLE comes back through ntdll's KiRaiseUserExceptionDispatcher, which raises
+ * the exception from a frame of its own: the exception record at sp, then the caller's r0, r1 and r11 and the way back, which
+ * its epilogue restores (add sp, #N ; pop.w {r0, r1, r11, pc}). Continued the ordinary way, the exception goes back through
+ * ZwContinue with a CONTEXT kept on that same stack, and the system refuses one that is aligned to four bytes and not eight
+ * (STATUS_DATATYPE_MISALIGNMENT, 0x80000002): the thread then ran on into the next function in ntdll with that number for a
+ * pointer and faulted. On urent's WebView every such call was made on a stack aligned to four. So the epilogue is done here
+ * instead, on a CONTEXT of this layer's own, aligned, given to NtContinue: the system call returns to its caller with the
+ * status the system gave it, as it would have. Only when the code there is that epilogue and the record is at sp; false
+ * otherwise, and the exception is continued the ordinary way.
+ */
+typedef LONG(NTAPI *nt_continue_fn)(CONTEXT *context, BOOLEAN test_alert);
+static nt_continue_fn g_nt_continue;
+static HK_THREAD_LOCAL CONTEXT *t_return_context;
+
+/* The words of the caller's stack, bare, for the log: whose call it was (a guest library's address is told by the ld lines). */
+static void note_words(hk_addr sp, const char *what)
+{
+    char line[600];
+    void *lo = NULL, *hi = NULL;
+    size_t n;
+    int i;
+    hk_thread_stack_bounds(&lo, &hi);
+    sp &= ~(hk_addr)3;
+    if (sp < (hk_addr)lo || sp >= (hk_addr)hi) return;
+    snprintf(line, sizeof(line), "host: %s, sp %08x:", what, (unsigned)sp);
+    n = strlen(line);
+    for (i = 0; i < 40 && sp + (hk_addr)i * 4 + 4 <= (hk_addr)hi && n + 12 < sizeof(line); i++) {
+        snprintf(line + n, sizeof(line) - n, " %08x", (unsigned)((const u32 *)sp)[i]);
+        n = strlen(line);
+    }
+    hk_err("%s", line);
+}
+
+static bool return_from_raise_user_exception(EXCEPTION_POINTERS *ep, bool say)
+{
+    const u16 *code = (const u16 *)((DWORD_PTR)ep->ExceptionRecord->ExceptionAddress & ~(DWORD_PTR)1);
+    CONTEXT *c = ep->ContextRecord, *to;
+    const DWORD *saved;
+    DWORD sp;
+    MEMORY_BASIC_INFORMATION mbi;
+    if (!g_nt_continue) return false;
+    if (!VirtualQuery(code, &mbi, sizeof(mbi)) || mbi.State != MEM_COMMIT || !(mbi.Protect & (PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE)))
+        return false;
+    /* add sp, #imm7*4 ; pop.w {r0, r1, r11, pc} -- and the record where the dispatcher put it, at sp. */
+    if ((code[0] & 0xFF80u) != 0xB000u || code[1] != 0xE8BDu || code[2] != 0x8803u) return false;
+    if ((DWORD_PTR)ep->ExceptionRecord != c->Sp) return false;
+    sp = c->Sp + (DWORD)(code[0] & 0x7Fu) * 4u;
+    saved = (const DWORD *)(DWORD_PTR)sp;
+    if (!t_return_context) t_return_context = (CONTEXT *)_aligned_malloc(sizeof(CONTEXT), 16);
+    if (!t_return_context) return false;
+    to = t_return_context;
+    *to = *c;
+    to->R0 = saved[0];
+    to->R1 = saved[1];
+    to->R11 = saved[2];
+    to->Pc = saved[3];
+    to->Lr = saved[3];
+    to->Sp = sp + 16;
+    /* Its state from bit 0 of Pc, and the T bit to agree. */
+    to->Cpsr = (to->Pc & 1u) ? (to->Cpsr | 0x20u) : (to->Cpsr & ~0x20u);
+    if (say) note_words(to->Sp, "the caller's stack");
+    g_nt_continue(to, FALSE);
+    return false; /* (NtContinue does not come back unless it refused the context.) */
+}
+#endif
+
 /* Not for anyone to handle: C++ exceptions, a thread's name for a debugger, debug output, WinRT's error bookkeeping. */
 static bool exception_is_traffic(DWORD code)
 {
@@ -927,12 +996,17 @@ static LONG CALLBACK on_exception(EXCEPTION_POINTERS *ep)
          */
         if (!(er->ExceptionFlags & EXCEPTION_NONCONTINUABLE)) {
             static volatile LONG said;
-            if (InterlockedIncrement(&said) <= 8) {
+            const bool say = InterlockedIncrement(&said) <= 8;
+            if (say) {
                 note_exception(ep, "continued (a handle that was not open: the call fails, as Linux's EBADF)");
 #if defined(_M_ARM)
                 note_callers((hk_addr)ep->ContextRecord->Sp, "the invalid handle");
 #endif
             }
+#if defined(_M_ARM)
+            /* (Returns only when the frame is not the dispatcher's.) */
+            return_from_raise_user_exception(ep, say);
+#endif
             return EXCEPTION_CONTINUE_EXECUTION;
         }
         f.kind = HK_FAULT_OTHER;
@@ -1022,6 +1096,12 @@ void hk_fault_set_handler(hk_fault_handler h)
     if (!installed) {
         installed = true;
         if (!AddVectoredExceptionHandler(1, on_exception)) hk_err("host: no vectored exception handler; faults in guest code cannot be repaired");
+#if defined(_M_ARM)
+        {
+            HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+            g_nt_continue = ntdll ? (nt_continue_fn)(void *)GetProcAddress(ntdll, "NtContinue") : NULL;
+        }
+#endif
         SetUnhandledExceptionFilter(on_unhandled);
         signal(SIGABRT, on_abort);
         _set_invalid_parameter_handler(on_invalid_parameter);
