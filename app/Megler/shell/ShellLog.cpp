@@ -33,7 +33,9 @@ char levelLetter(int level) {
 
 void emit(int level, const std::string& message) {
     const std::string line = timeOfDay() + " " + levelLetter(level) + " " + message;
-    OutputDebugStringA(("[megler] " + line + "\n").c_str());
+    // To a debugger only: with none, OutputDebugStringA's exception reaches
+    // nobody (and its dispatch faulted on the phone; see hk_host_print).
+    if (IsDebuggerPresent()) OutputDebugStringA(("[megler] " + line + "\n").c_str());
     if (gOwner.load() == GetCurrentThreadId()) {
         // Entered again from a fault on this thread while it was writing:
         // the file only, past the lock it already holds.
