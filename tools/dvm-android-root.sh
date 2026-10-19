@@ -60,6 +60,12 @@
 #                           the name of the platform's WebView support, which
 #                           the WebView loads by name: a file that says so, as
 #                           its natives are the core's (hk_java_webview.c)
+#   lib/libc.so, libz.so ...
+#                           the names of the system's libraries the core
+#                           answers itself (hk_bionic_is_system_lib), each a
+#                           file that says so: code that looks for them in
+#                           /system/lib before loading (Facebook's SoLoader)
+#                           finds them there
 #
 # Files are copied only when they are missing or older than their source, and
 # the script says what the folder holds and how large it is.
@@ -160,10 +166,22 @@ else
   echo "  (not there: build/webview/webview.apk: tools/webview-fetch.sh fetches Android's System WebView)"
   rm -rf "$OUT/app/webview" "$OUT/lib/libwebviewchromium_plat_support.so"
 fi
+# The system's libraries whose functions the core answers itself, each named in lib by a file that says so, as Android has
+# them as files in /system/lib: Facebook's SoLoader looks for an app library's system dependencies there before it loads
+# it, and Instagram stopped at "couldn't find DSO to load: libz.so". The names are the core's own list (hk_bionic.c,
+# hk_bionic_is_system_lib); a library of that name is loaded by its name, whatever its file holds. A file already there
+# (libcore's, the WebView's support above) is left as it is.
+SYSLIBS=0
+for name in $(sed -n '/^bool hk_bionic_is_system_lib/,/^}/p' "$ROOT/core/src/bionic/hk_bionic.c" | grep -o '"lib[^"]*\.so"' | tr -d '"'); do
+  [ "$name" = libwebviewchromium_plat_support.so ] && continue
+  [ -f "$OUT/lib/$name" ] || echo "A library of the system's whose functions the core answers itself (core/src/bionic/hk_bionic.c, hk_bionic_is_system_lib): it is loaded by its name." > "$OUT/lib/$name"
+  SYSLIBS=$((SYSLIBS + 1))
+done
+[ "$SYSLIBS" -gt 0 ] || { echo "no system libraries named in core/src/bionic/hk_bionic.c (hk_bionic_is_system_lib)" >&2; exit 1; }
 # The Java framework an app with an Activity runs on, where it has been built (tools/build-framework.sh).
 FW="no Java framework"
 if [ -f "$ROOT/build/framework/megler-framework.dex" ]; then
   cp -u "$ROOT/build/framework/megler-framework.dex" "$OUT/framework/"
   FW="the Java framework"
 fi
-echo "${OUT#$ROOT/}: $(size "$OUT") KB in all: framework $(size "$OUT/framework") KB ($FW, $RES_SAID), lib $(size "$OUT/lib") KB ($LIBS libraries), $CERTS certificates, $FONTS fonts, usr $(size "$OUT/usr") KB, $WEBVIEW"
+echo "${OUT#$ROOT/}: $(size "$OUT") KB in all: framework $(size "$OUT/framework") KB ($FW, $RES_SAID), lib $(size "$OUT/lib") KB ($LIBS libraries and $SYSLIBS of the system's named), $CERTS certificates, $FONTS fonts, usr $(size "$OUT/usr") KB, $WEBVIEW"

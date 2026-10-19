@@ -2117,6 +2117,7 @@ framework/core-oj.jar, core-libart.jar       the jars as the device has them (no
 framework/megler-framework.dex                  the Java framework (tools/build-framework.sh); for an app, not for libcore
 framework/framework-res.apk                   the platform's own resources, Android 9's; for an app
 lib/*.so                                      libcore's native libraries, 32-bit ARM, conscrypt's among them
+lib/libc.so, libz.so ...                      the names of the system's libraries the core answers, files that say so
 etc/security/cacerts/*                        the certificate authorities Android 9 trusts, for conscrypt
 usr/icu/icudt60l.dat                          ICU's data
 usr/share/zoneinfo/tzdata, tzlookup.xml       the time zones
@@ -2286,6 +2287,22 @@ not run `JNI_OnLoad` again. What comes back when it fails is ART's sentence
 "..."`, `Bad JNI version returned from JNI_OnLoad in "...": N`); a library the
 APK does not have at all never gets that far, and is libcore's own
 `UnsatisfiedLinkError` with the class loader in it.
+
+**The system's libraries as files.** The core answers `libc.so`, `libz.so`,
+`libandroid.so` and the rest of `hk_bionic_is_system_lib`'s list itself, by
+name, so on Android's they are files in `/system/lib` and here they were not.
+Facebook's SoLoader looks for each system library an app library needs in
+`/system/lib` (a `DirectorySoSource` on the library path) before loading the
+app's, and Instagram 333 ended in `attachBaseContext` with "couldn't find DSO
+to load: libz.so", a dependency of its `libdextricksmerged.so`.
+`tools/dvm-android-root.sh` now puts a file of each name of that list in the
+root's `lib` (read from `hk_bionic.c`, so the list is kept in one place), a
+line of text that says what it is; `/system/lib` is that folder. Nothing reads
+them as libraries: the linker, `dlopen` and `JVM_NativeLoad` take a system
+library by its name before they look for a file, as they did. The data app's
+step "system-libs" finds `libz.so`, `libandroid.so` and `liblog.so` there, no
+file of a name that is not one, and `System.loadLibrary("z")`, which finds the
+file through the class loader, loads.
 
 **Binding.** A native method is looked for in this order: the C tables of the
 runtime and the drivers (`hk_dvm_register`); what a library registered with

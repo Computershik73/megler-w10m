@@ -282,6 +282,7 @@ public class Main extends Activity {
         battery();
         connectivity();
         dnsServers();
+        systemLibs();
         location();
         timezone();
         locale();
@@ -678,6 +679,27 @@ public class Main extends Activity {
             Log.i("DataTest", "dns-servers " + dns);
             detail = String.valueOf(dns);
             return dns != null && !dns.isEmpty() && dns.get(0) != null && dns.get(0).getHostAddress() != null;
+        });
+    }
+
+    /**
+     * The system's libraries as files in /system/lib, where Facebook's SoLoader looks for an app library's system dependencies
+     * before loading it (Instagram's libz.so), and System.loadLibrary of one of them, which finds that file and loads the
+     * library by its name. A name that is no library of the system's is no file there.
+     */
+    private void systemLibs() {
+        step("system-libs", () -> {
+            boolean files = new java.io.File("/system/lib/libz.so").isFile() && new java.io.File("/system/lib/libandroid.so").isFile()
+                    && new java.io.File("/system/lib/liblog.so").isFile() && !new java.io.File("/system/lib/libno-such-thing.so").exists();
+            String loaded;
+            try {
+                System.loadLibrary("z");
+                loaded = "ok";
+            } catch (UnsatisfiedLinkError e) {
+                loaded = e.getMessage();
+            }
+            detail = "files=" + files + " loadLibrary(z)=" + loaded;
+            return files && "ok".equals(loaded);
         });
     }
 
