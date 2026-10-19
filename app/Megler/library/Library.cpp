@@ -401,7 +401,19 @@ void Library::analyse(const std::string& id) {
     uint8_t* icon = nullptr;
     size_t iconSize = 0;
     if (megler_apk_icon_splits(utf8Path.c_str(), splits, &icon, &iconSize) && icon && iconSize > 0) {
-        if (files::write(path + L".icon", std::string_view(reinterpret_cast<const char*>(icon), iconSize))) iconPath = path + L".icon";
+        // The same picture as before (every APK is read again once a new build is installed): the file is left as it
+        // is, and a list showing it sees nothing change. A new one is written beside it and moved into its place, so
+        // that it is never read half written.
+        const std::string_view bytes(reinterpret_cast<const char*>(icon), iconSize);
+        const std::wstring target = path + L".icon";
+        std::string before;
+        if (files::read(target, before) && before == bytes) {
+            iconPath = target;
+        } else if (files::write(target + L".new", bytes) && files::move(target + L".new", target)) {
+            iconPath = target;
+        } else {
+            files::remove(target + L".new");
+        }
     } else {
         files::remove(path + L".icon");
     }
