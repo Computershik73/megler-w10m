@@ -10,6 +10,10 @@ static hk_log_sink g_sink;
 static void *g_sink_user;
 static int g_min_level = HK_LOG_INFO;
 static hk_lock g_log_lock = HK_LOCK_INIT;
+/* Who holds g_log_lock (hk_log_holder): the host thread, since when, and the line, in its own frame while it writes it. */
+static volatile u32 g_log_owner;
+static volatile u64 g_log_owned_at;
+static const char *volatile g_log_writing;
 
 void hk_log_set_sink(hk_log_sink sink, void *user)
 {
@@ -25,9 +29,34 @@ void hk_logv(int level, const char *fmt, va_list ap)
     if (level < g_min_level) return;
     vsnprintf(line, sizeof(line), fmt, ap);
     hk_lock_acquire(&g_log_lock);
+    g_log_owned_at = hk_time_monotonic_ns();
+    g_log_writing = line;
+    g_log_owner = hk_thread_self_id();
     hk_host_print(line);
     if (g_sink) g_sink(level, line, g_sink_user);
+    g_log_owner = 0;
     hk_lock_release(&g_log_lock);
+}
+
+bool hk_log_holder(u32 *thread, u64 *since_ns, char *line, size_t size)
+{
+    u32 owner = g_log_owner;
+    const char *writing = g_log_writing;
+    if (!owner) return false;
+    *thread = owner;
+    *since_ns = g_log_owned_at;
+    /* (The line is in the holder's frame, which stays while it holds the lock: read only while it still does.) */
+    if (size) {
+        line[0] = 0;
+        if (writing && g_log_owner == owner) hk_strlcpy(line, writing, size);
+    }
+    return g_log_owner == owner;
+}
+
+void hk_log_unlocked(int level, const char *line)
+{
+    hk_host_print(line);
+    if (g_sink) g_sink(level, line, g_sink_user);
 }
 
 void hk_log(int level, const char *fmt, ...)

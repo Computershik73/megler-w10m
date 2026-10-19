@@ -62,6 +62,13 @@ void hk_logv(int level, const char *fmt, va_list ap);
 typedef void (*hk_log_sink)(int level, const char *line, void *user);
 void hk_log_set_sink(hk_log_sink sink, void *user);
 void hk_log_set_level(int min_level);
+/*
+ * For a watchdog (the hang report, hk_bionic.c): the host thread that holds the log's lock, since when (monotonic ns), and
+ * the line it is writing; false when nobody holds it. hk_log_unlocked hands a line to the host and the sink without the
+ * lock, for saying that the lock itself stands still; nothing else may use it.
+ */
+bool hk_log_holder(u32 *thread, u64 *since_ns, char *line, size_t size);
+void hk_log_unlocked(int level, const char *line);
 /* The trace: a line into a ring that only a crash report prints (hk_base.c). Cheap enough for every call that matters. */
 void hk_trace(const char *fmt, ...) HK_PRINTF(1, 2);
 /* Prints the newest `newest` lines of it (0: all it holds) to the log. */

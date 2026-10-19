@@ -469,6 +469,7 @@ void hk_thread_exit(void)
     ExitThread(0);
 }
 u32 hk_thread_self_id(void) { return GetCurrentThreadId(); }
+u32 hk_thread_id(const hk_thread *t) { return t ? (u32)t->id : 0; }
 void hk_thread_yield(void) { SwitchToThread(); }
 
 #if WINAPI_FAMILY == WINAPI_FAMILY_APP

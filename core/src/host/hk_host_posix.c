@@ -402,6 +402,7 @@ void hk_thread_exit(void)
     pthread_exit(NULL);
 }
 u32 hk_thread_self_id(void) { return (u32)syscall(SYS_gettid); }
+u32 hk_thread_id(const hk_thread *t) { (void)t; return 0; }
 void hk_thread_yield(void) { sched_yield(); }
 
 void hk_sleep_ns(u64 ns)

@@ -291,7 +291,16 @@ the six addresses it ran at and waited for most, and `LocalState\profile.txt`
 has every address with its count, which `tools/profile-names.py` names by
 function with the build's maps and an app library's exported symbols: where a
 game that is slow with the graphics processor idle spends its time; Windows
-only; at most 1000 lines; `bionic/hk_bionic.c`). `trace-net` also says, when the app closes a connection,
+only; at most 1000 lines; `bionic/hk_bionic.c`). Without any flag, on Windows, a
+watchdog looks every two seconds at who holds the log's lock and the guest
+threads' lock: one held by the same thread for ten seconds is an app that stands
+still, whose core lines have stopped while the shell's go on (urent did, on the
+page after asking for its SMS code). Once for each such stand-still it says who
+holds which lock since when, the line that thread was writing or the function
+that took the threads' lock (and the thread `trace-profile` was stopping), and
+where every thread that runs guest code is, as `trace-native-stacks` says it:
+first as bare addresses in `LocalState\hang.txt`, then named there and in the
+log past its lock; at most five reports; `bionic/hk_bionic.c`. `trace-net` also says, when the app closes a connection,
 what went over it: the bytes and calls each way, the first sixteen bytes each
 way, when the first came in, the other end's close, errors and timeouts. Of a
 connection made it says which call the app learnt it by (`getsockopt SO_ERROR`,

@@ -86,6 +86,8 @@ void hk_thread_detach(hk_thread *t);   /* frees t */
 /* Ends the calling thread where it stands. */
 HK_NORETURN void hk_thread_exit(void);
 u32 hk_thread_self_id(void);
+/* Another thread's id as hk_thread_self_id says it on that thread; 0 where the host does not keep it (posix). */
+u32 hk_thread_id(const hk_thread *t);
 /*
  * The calling thread runs the app's code from here on: it gives way to the
  * threads of the shell (its UI thread above all) whenever they have something

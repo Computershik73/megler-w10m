@@ -393,6 +393,7 @@ bool hk_run_start(const megler_run_config *config)
     hk_atomic_xchg(&g_active, 1);
     hk_info("run: %s (%s) with the %s driver, %dx%d at %d dpi", info.package, info.label[0] ? info.label : "no label", g_driver->name,
             config->width, config->height, config->density_dpi);
+    hk_bionic_hang_watch_start();
     if (hk_flag("trace-cpu")) hk_bionic_cpu_trace_start();
     if (hk_flag("trace-native-stacks")) hk_bionic_native_stacks_start();
     if (hk_flag("trace-profile")) hk_bionic_profile_start();

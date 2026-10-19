@@ -91,40 +91,60 @@ static hk_lock g_thread_lock = HK_LOCK_INIT;
 static u8 g_tid_used[4096];             /* a bit per thread id; ids are reused, as the kernel's are */
 static hk_gthread *g_tid_thread[32761];  /* the live thread of each id in use */
 static i32 g_tid_next = 1;
+/* Who holds g_thread_lock, since when and where (the hang report): taken and let go only through these two. */
+static volatile u32 g_thread_lock_owner;
+static volatile u64 g_thread_lock_at;
+static const char *volatile g_thread_lock_site;
+/* The guest thread prof_sample is stopping while it holds the lock, 0 for none. */
+static volatile i32 g_prof_stopping;
+
+static void thread_lock(const char *site)
+{
+    hk_lock_acquire(&g_thread_lock);
+    g_thread_lock_at = hk_time_monotonic_ns();
+    g_thread_lock_site = site;
+    g_thread_lock_owner = hk_thread_self_id();
+}
+
+static void thread_unlock(void)
+{
+    g_thread_lock_owner = 0;
+    hk_lock_release(&g_thread_lock);
+}
 
 i32 hk_gthread_take_tid(hk_gthread *thread)
 {
     i32 n;
-    hk_lock_acquire(&g_thread_lock);
+    thread_lock("hk_gthread_take_tid");
     for (n = 0; n < 32760; n++) {
         i32 t = g_tid_next;
         g_tid_next = g_tid_next >= 32760 ? 1 : g_tid_next + 1;
         if (!(g_tid_used[t >> 3] & (1 << (t & 7)))) {
             g_tid_used[t >> 3] |= (u8)(1 << (t & 7));
             g_tid_thread[t] = thread;
-            hk_lock_release(&g_thread_lock);
+            thread_unlock();
             return t;
         }
     }
-    hk_lock_release(&g_thread_lock);
+    thread_unlock();
     hk_fatal("bionic: out of thread ids");
 }
 
 void hk_gthread_release_tid(i32 tid)
 {
-    hk_lock_acquire(&g_thread_lock);
+    thread_lock("hk_gthread_release_tid");
     g_tid_used[tid >> 3] &= (u8)~(1 << (tid & 7));
     g_tid_thread[tid] = NULL;
-    hk_lock_release(&g_thread_lock);
+    thread_unlock();
 }
 
 hk_thread *hk_gthread_host_of_tid(i32 tid)
 {
     /* (A host thread's record lives as long as the process; the guest thread's goes at its join, hence the lock.) */
     hk_thread *h = NULL;
-    hk_lock_acquire(&g_thread_lock);
+    thread_lock("hk_gthread_host_of_tid");
     if (tid > 0 && tid < (i32)HK_COUNT(g_tid_thread) && g_tid_thread[tid]) h = g_tid_thread[tid]->sig_thread;
-    hk_lock_release(&g_thread_lock);
+    thread_unlock();
     return h;
 }
 
@@ -153,7 +173,7 @@ static int cpu_round(u64 *before, hk_thread **host, cpu_use *top, int *threads)
 {
     int i, k, n = 0;
     *threads = 0;
-    hk_lock_acquire(&g_thread_lock);
+    thread_lock("cpu_round");
     for (i = 1; i < (int)HK_COUNT(g_tid_thread); i++) {
         hk_gthread *g = g_tid_thread[i];
         hk_thread *h = g ? g->sig_thread : NULL;
@@ -175,7 +195,7 @@ static int cpu_round(u64 *before, hk_thread **host, cpu_use *top, int *threads)
             if (n < CPU_TOP) n++;
         }
     }
-    hk_lock_release(&g_thread_lock);
+    thread_unlock();
     return n;
 }
 
@@ -274,7 +294,7 @@ static void stacks_round(native_stack *stacks, int *lines)
     return;
 #endif
     hk_dvm_lock();
-    hk_lock_acquire(&g_thread_lock);
+    thread_lock("stacks_round");
     for (i = 1; i < (int)HK_COUNT(g_tid_thread) && n < 60; i++) {
         hk_gthread *g = g_tid_thread[i];
         hk_thread *h = g ? g->sig_thread : NULL;
@@ -294,7 +314,7 @@ static void stacks_round(native_stack *stacks, int *lines)
         hk_thread_resume(h);
         n++;
     }
-    hk_lock_release(&g_thread_lock);
+    thread_unlock();
     hk_dvm_unlock();
     for (i = 0; i < n && *lines < 1500; i++) {
         native_stack *s = &stacks[i];
@@ -533,19 +553,22 @@ static void prof_sample(prof_slot *s, u32 *words)
     hk_thread_regs regs;
     hk_addr pc;
     int n = 0, k, m;
-    hk_lock_acquire(&g_thread_lock);
+    thread_lock("prof_sample");
     g = s->tid > 0 && s->tid < (i32)HK_COUNT(g_tid_thread) ? g_tid_thread[s->tid] : NULL;
+    g_prof_stopping = s->tid;
     if (!g || g->sig_thread != s->host || !hk_thread_suspend(s->host, &regs)) {
-        hk_lock_release(&g_thread_lock);
+        g_prof_stopping = 0;
+        thread_unlock();
         return;
     }
+    g_prof_stopping = 0;
     if (g->stack_lo && g->stack_hi && regs.sp >= (hk_addr)g->stack_lo && regs.sp < (hk_addr)g->stack_hi) {
         hk_addr top = (hk_addr)g->stack_hi, at = regs.sp & ~(hk_addr)3;
         n = (int)((top - at) / 4 < PROF_WORDS ? (top - at) / 4 : PROF_WORDS);
         memcpy(words, (const void *)at, (size_t)n * 4);
     }
     hk_thread_resume(s->host);
-    hk_lock_release(&g_thread_lock);
+    thread_unlock();
     pc = regs.pc & ~(hk_addr)1;
     s->samples++;
     s->w_samples++;
@@ -721,7 +744,7 @@ static void prof_choose(prof_slot *slots, u64 *before, hk_thread **host, u64 spa
     struct { i32 tid; u64 ns; hk_thread *h; char name[32]; } top[PROF_THREADS];
     int n = 0, i, k;
     memset(top, 0, sizeof(top));
-    hk_lock_acquire(&g_thread_lock);
+    thread_lock("prof_choose");
     for (i = 1; i < (int)HK_COUNT(g_tid_thread); i++) {
         hk_gthread *g = g_tid_thread[i];
         hk_thread *h = g ? g->sig_thread : NULL;
@@ -744,7 +767,7 @@ static void prof_choose(prof_slot *slots, u64 *before, hk_thread **host, u64 spa
             if (n < PROF_THREADS) n++;
         }
     }
-    hk_lock_release(&g_thread_lock);
+    thread_unlock();
     for (i = 0; i < n; i++) {
         int at = -1, oldest = -1;
         for (k = 0; k < PROF_THREADS; k++) {
@@ -809,6 +832,189 @@ void hk_bionic_profile_start(void)
         hk_thread_detach(t);
         if (prof_line_left()) hk_info("profile: sampling the busiest threads sixty times a second, said every ten seconds (the flag trace-profile)");
     }
+}
+
+/*
+ * The hang report, in every run on Windows: a watchdog that looks every two seconds at who holds the log's lock and the
+ * guest threads' lock. Nothing the layer does holds either for long, so one held by the same thread for ten seconds is an
+ * app that stands still -- a deadlock, which says nothing of itself: the core's lines stop (each waits for the log's lock)
+ * while the shell's go on. Once for each such stand-still it says who holds which lock since when and what it was doing
+ * (the line it was writing; the function that took the threads' lock, and the thread trace-profile was stopping), and
+ * where each thread that runs guest code is: pc, lr and its stack's way back, as trace-native-stacks says. The threads are
+ * found and stopped without either lock -- while another thread holds the threads' lock no thread's record can go, and
+ * each is stopped only while its registers and stack are copied. Said first as bare addresses in LocalState\hang.txt (to
+ * name them may need a lock the stand-still holds), then with module and offset there and in the log, past its lock.
+ */
+#define HANG_SECONDS 10
+#define HANG_THREADS 60
+#define HANG_WORDS 1024
+
+typedef struct hang_thread {
+    i32 tid;
+    u32 host_id;
+    char name[32];
+    hk_addr pc, lr;
+    u32 words[HANG_WORDS];
+    int nwords;
+} hang_thread;
+
+static size_t hang_add(char *out, size_t cap, size_t at, const char *fmt, ...)
+{
+    va_list ap;
+    int n;
+    if (at >= cap) return at;
+    va_start(ap, fmt);
+    n = vsnprintf(out + at, cap - at, fmt, ap);
+    va_end(ap);
+    return n < 0 ? at : (at + (size_t)n < cap ? at + (size_t)n : cap - 1);
+}
+
+static void hang_write(const char *text, size_t size)
+{
+    char path[700];
+    snprintf(path, sizeof(path), "%s/hang.txt", megler_data_dir());
+    hk_file_write_all(path, text, size);
+}
+
+/* `threads` and `text` are the watchdog's, made at its start: the allocator's lock may be what stands still. */
+static void hang_report(hang_thread *threads, const char *what, char *text, size_t text_cap)
+{
+    char where[128];
+    size_t at = 0, mark;
+    int n = 0, i, k;
+    bool locked = false;
+    /* The threads under g_thread_lock if it comes free within a second; without it if it does not: held by another, no record can go meanwhile. */
+    for (k = 0; k < 50 && !(locked = hk_lock_try(&g_thread_lock)); k++) hk_sleep_ns(20000000ull);
+    for (i = 1; i < (int)HK_COUNT(g_tid_thread) && n < HANG_THREADS; i++) {
+        hk_gthread *g = g_tid_thread[i];
+        hk_thread *h = g ? g->sig_thread : NULL;
+        hk_thread_regs regs;
+        hang_thread *s = &threads[n];
+        if (!h || h == hk_thread_current() || !hk_thread_suspend(h, &regs)) continue;
+        s->tid = i;
+        s->host_id = hk_thread_id(h);
+        memcpy(s->name, g->name, sizeof(s->name));
+        s->name[sizeof(s->name) - 1] = 0;
+        s->pc = regs.pc;
+        s->lr = regs.n > 13 ? regs.r[13] : 0;
+        s->nwords = 0;
+        if (g->stack_lo && g->stack_hi && regs.sp >= (hk_addr)g->stack_lo && regs.sp < (hk_addr)g->stack_hi) {
+            hk_addr top = (hk_addr)g->stack_hi, from = regs.sp & ~(hk_addr)3;
+            s->nwords = (int)((top - from) / 4 < HANG_WORDS ? (top - from) / 4 : HANG_WORDS);
+            memcpy(s->words, (const void *)from, (size_t)s->nwords * 4);
+        }
+        hk_thread_resume(h);
+        n++;
+    }
+    if (locked) hk_lock_release(&g_thread_lock);
+    at = hang_add(text, text_cap, at, "hang: %s\n", what);
+    mark = at;
+    /* First the bare addresses: the words of each stack that may be code, unnamed. */
+    for (i = 0; i < n; i++) {
+        hang_thread *s = &threads[i];
+        int shown = 0;
+        at = hang_add(text, text_cap, at, "hang: thread %d \"%s\" (host %u): pc 0x%x, lr 0x%x; on the stack:", (int)s->tid, s->name, (unsigned)s->host_id,
+                      (unsigned)s->pc, (unsigned)s->lr);
+        for (k = 0; k < s->nwords && shown < 24; k++)
+            if (s->words[k] >= 0x10000u && (hk_ld_is_guest_code(s->words[k] & ~1u) || (s->words[k] & 1u))) {
+                at = hang_add(text, text_cap, at, " 0x%x", (unsigned)s->words[k]);
+                shown++;
+            }
+        at = hang_add(text, text_cap, at, "\n");
+    }
+    hang_write(text, at);
+    /* Then named, in the file and in the log. */
+    at = mark;
+    for (i = 0; i < n; i++) {
+        hang_thread *s = &threads[i];
+        u32 last = 0;
+        int found = 0;
+        at = hang_add(text, text_cap, at, "hang: thread %d \"%s\" (host %u): pc %s", (int)s->tid, s->name, (unsigned)s->host_id,
+                      code_at(s->pc, where, sizeof(where)) ? where : "?");
+        at = hang_add(text, text_cap, at, ", lr %s; on the stack:", code_at(s->lr, where, sizeof(where)) ? where : "?");
+        for (k = 0; k < s->nwords && found < 14; k++) {
+            u32 w = s->words[k] & ~1u;
+            if (w == last || !code_at(w, where, sizeof(where))) continue;
+            at = hang_add(text, text_cap, at, "%s %s", found ? "," : "", where);
+            last = w;
+            found++;
+        }
+        at = hang_add(text, text_cap, at, "\n");
+    }
+    hang_write(text, at);
+    /* The log, line by line, past its lock (which may be what stands still). */
+    {
+        char *line = text, *end;
+        while (*line) {
+            end = strchr(line, '\n');
+            if (end) *end = 0;
+            hk_log_unlocked(HK_LOG_WARN, line);
+            if (!end) break;
+            line = end + 1;
+        }
+    }
+}
+
+static void hang_observer(void *unused)
+{
+    hang_thread *threads = (hang_thread *)hk_alloc(sizeof(hang_thread) * HANG_THREADS);
+    char *text = (char *)hk_alloc(64u * 1024u);
+    u32 said_log = 0, said_threads = 0;
+    u64 said_log_at = 0, said_threads_at = 0;
+    int reports = 0;
+    (void)unused;
+    while (reports < 5) {
+        u32 log_owner = 0, thread_owner;
+        u64 log_since = 0, thread_since, now;
+        char line[300], what[900];
+        const char *site;
+        size_t at = 0;
+        bool log_stuck, threads_stuck;
+        hk_sleep_ns(2000000000ull);
+        now = hk_time_monotonic_ns();
+        log_stuck = hk_log_holder(&log_owner, &log_since, line, sizeof(line)) && now - log_since >= HANG_SECONDS * 1000000000ull;
+        thread_owner = g_thread_lock_owner;
+        thread_since = g_thread_lock_at;
+        site = g_thread_lock_site;
+        threads_stuck = thread_owner && thread_owner == g_thread_lock_owner && now - thread_since >= HANG_SECONDS * 1000000000ull;
+        /* Once for each stand-still: the same holder since the same moment is the one already said. */
+        if (log_stuck && log_owner == said_log && log_since == said_log_at) log_stuck = false;
+        if (threads_stuck && thread_owner == said_threads && thread_since == said_threads_at) threads_stuck = false;
+        if (!log_stuck && !threads_stuck) continue;
+        what[0] = 0;
+        if (hk_log_holder(&log_owner, &log_since, line, sizeof(line)) && now - log_since >= HANG_SECONDS * 1000000000ull) {
+            at = hang_add(what, sizeof(what), at, "the log's lock held %.1f s by host thread %u, writing \"%s\"; ", (double)(now - log_since) / 1e9,
+                          (unsigned)log_owner, line);
+            said_log = log_owner;
+            said_log_at = log_since;
+        }
+        if (thread_owner && now - thread_since >= HANG_SECONDS * 1000000000ull) {
+            i32 stopping = g_prof_stopping;
+            at = hang_add(what, sizeof(what), at, "the guest threads' lock held %.1f s by host thread %u, in %s", (double)(now - thread_since) / 1e9,
+                          (unsigned)thread_owner, site ? site : "?");
+            if (stopping) at = hang_add(what, sizeof(what), at, " (stopping guest thread %d for trace-profile)", (int)stopping);
+            at = hang_add(what, sizeof(what), at, "; ");
+            said_threads = thread_owner;
+            said_threads_at = thread_since;
+        }
+        hang_add(what, sizeof(what), at, "the app stands still");
+        hang_report(threads, what, text, 64u * 1024u);
+        reports++;
+    }
+    free(text);
+    free(threads);
+}
+
+void hk_bionic_hang_watch_start(void)
+{
+    static volatile i32 started;
+    hk_thread *t;
+    if (hk_atomic_xchg(&started, 1)) return;
+#if !defined(_WIN32)
+    return;
+#endif
+    t = hk_thread_start(hang_observer, NULL, 64u * 1024u, "hang-observer");
+    if (t) hk_thread_detach(t);
 }
 
 void hk_bionic_cpu_trace_start(void)
