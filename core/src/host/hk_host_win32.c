@@ -2532,8 +2532,15 @@ void hk_random(void *buf, size_t n)
 
 void hk_host_print(const char *line)
 {
-    OutputDebugStringA(line);
-    OutputDebugStringA("\n");
+    /*
+     * To a debugger, when one is attached. OutputDebugStringA raises an exception and catches it, for every line: with no
+     * debugger that reaches nobody and costs a dispatch, and on the phone the dispatch itself faulted in ntdll (an access
+     * at 80000002) on a thread of urent's WebView, inside the log's lock, which stood every other thread still.
+     */
+    if (IsDebuggerPresent()) {
+        OutputDebugStringA(line);
+        OutputDebugStringA("\n");
+    }
 #if !HK_UWP
     fputs(line, stderr);
     fputc('\n', stderr);
