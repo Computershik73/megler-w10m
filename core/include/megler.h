@@ -1282,6 +1282,30 @@ typedef struct megler_keyboard_host {
 } megler_keyboard_host;
 
 /*
+ * The phone's bars, for an app whose user interface is Java: Android's status bar and navigation bar are the phone's own.
+ * The surface stays the whole screen and the bars lie over it, as on Android, where they are a window's insets: the app
+ * keeps its content off them, or draws under them when it lays itself out so.
+ *
+ * The app asks, through megler_system_bars_host in megler_run_config:
+ *   wanted(bars)  which bars its window wants hidden -- MEGLER_BAR_STATUS (Window's FLAG_FULLSCREEN, View's
+ *                 SYSTEM_UI_FLAG_FULLSCREEN, WindowInsetsController.hide(statusBars)) and MEGLER_BAR_NAVIGATION
+ *                 (SYSTEM_UI_FLAG_HIDE_NAVIGATION, hide(navigationBars)) -- and MEGLER_BAR_LIGHT_STATUS when its status bar is
+ *                 light, so that the bar's icons are to be dark. Called on the app's main thread, at its first frame and
+ *                 whenever that changes; the shell does what it asks on its UI thread and does not wait for it. Left NULL,
+ *                 the app runs and the bars are as the shell keeps them.
+ * The shell tells:
+ *   megler_set_insets(l, t, r, b)  how many pixels of each edge of the surface the bars cover now, 0 for a bar that is
+ *                 hidden. Call it when the bars come and go (the user's swipe, wanted above) and when the surface turns.
+ *                 Until it is called, nothing is covered.
+ */
+enum { MEGLER_BAR_STATUS = 1, MEGLER_BAR_NAVIGATION = 2, MEGLER_BAR_LIGHT_STATUS = 4 };
+
+typedef struct megler_system_bars_host {
+    void *user;
+    void (*wanted)(void *user, int bars);
+} megler_system_bars_host;
+
+/*
  * The phone's location, for a Java app's android.location.LocationManager.
  *
  * A fix is where the phone was and when: degrees on WGS 84, metres, metres a second, degrees clockwise from north, and the time
@@ -1360,6 +1384,8 @@ typedef struct megler_run_config {
     const char *android_root;
     /* The touch keyboard for a Java app's text fields (see megler_keyboard_host). May be left NULL. */
     megler_keyboard_host keyboard;
+    /* The bars a Java app wants hidden (see megler_system_bars_host). May be left NULL. */
+    megler_system_bars_host bars;
     /* The app has ended: by its own exit (status), by a crash (reason names it), or by megler_stop. Called once, from any thread. */
     void (*on_exit)(void *user, int status, const char *reason);
     void *user;
@@ -1391,6 +1417,8 @@ void megler_text_commit(const char *utf8);
 void megler_text_key(int key);
 void megler_keyboard_closed(void);
 void megler_keyboard_height(int pixels);
+/* How much of each edge of the surface the phone's bars cover, in pixels, for a Java app: see megler_system_bars_host. Any thread. */
+void megler_set_insets(int left, int top, int right, int bottom);
 /* The app went to the background or came back; lost or gained input focus. */
 void megler_set_paused(bool paused);
 void megler_set_focused(bool focused);

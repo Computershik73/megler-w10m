@@ -32,10 +32,18 @@ public:
     /// The navigation bar's trailing item, or null. Asked again after every
     /// refresh, so it can change with state.
     virtual winrt::Windows::UI::Xaml::UIElement toolbarItem() { return nullptr; }
-    /// The whole screen, in landscape, without the shell's bars.
+    /// The whole screen, in landscape, without the shell's bars, under the phone's.
     virtual bool fullScreen() { return false; }
     /// For a full-screen page: upright instead of in landscape.
     virtual bool upright() { return false; }
+    /// For a full-screen page: the phone's status bar and navigation bar hidden (the phone hides its navigation bar only in
+    /// full-screen mode, which hides the status bar too), and the status bar's icons dark, for a light bar under them.
+    virtual bool hideStatusBar() { return fullScreen(); }
+    virtual bool hideNavigationBar() { return fullScreen(); }
+    virtual bool lightStatusBar() { return false; }
+    /// How much of each edge of the window the phone's bars cover now, in view pixels (0 for a bar that is hidden): after
+    /// every change of the bars or of the window's visible part.
+    virtual void barsCover(double left, double top, double right, double bottom) {}
     /// Hardware Back while this page is on top. True: the page took it.
     virtual bool handleBack() { return false; }
     /// Every poll while visible, and right after being shown.
@@ -105,7 +113,7 @@ private:
     void buildChrome();
     void buildTabBar();
     void showTop();
-    void applyFullScreen(bool fullScreen, bool upright);
+    void applyFullScreen(bool fullScreen, bool upright, bool hideStatus, bool hideNavigation, bool lightStatus);
     void applyVisibleBounds();
     void poll();
     void updateDisplayRequest();
@@ -116,6 +124,7 @@ private:
     bool dialogOpen_ = false;
     bool fullScreen_ = false;
     bool upright_ = false;
+    bool hideStatus_ = false, hideNavigation_ = false, lightStatus_ = false;
     bool displayRequestActive_ = false;
     std::shared_ptr<ImportProgress> import_;
 

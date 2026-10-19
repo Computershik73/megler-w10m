@@ -548,6 +548,20 @@ static void on_exit_cb(void *user, int status, const char *reason)
 
 static const char *g_android_root;
 
+/* The bars the app asked away, in order (megler_system_bars_host.wanted, on the app's main thread): ",0,1" and so on. */
+static char g_bars_heard[128];
+static hk_lock g_bars_lock = HK_LOCK_INIT;
+
+static void bars_wanted(void *user, int bars)
+{
+    size_t n;
+    (void)user;
+    hk_lock_acquire(&g_bars_lock);
+    n = strlen(g_bars_heard);
+    if (n + 8 < sizeof(g_bars_heard)) snprintf(g_bars_heard + n, sizeof(g_bars_heard) - n, ",%d", bars);
+    hk_lock_release(&g_bars_lock);
+}
+
 static bool start(const char *apk, const char *android_root)
 {
     static megler_run_config cfg;
@@ -569,6 +583,8 @@ static bool start(const char *apk, const char *android_root)
     cfg.gfx.gl_place = gl_place;
     cfg.keyboard.show = keyboard_show;
     cfg.keyboard.hide = keyboard_hide;
+    cfg.bars.wanted = bars_wanted;
+    g_bars_heard[0] = 0;
     /* Decoders for MediaCodec that decode nothing but take samples only as a real one must have them (hk_codec_standin.c). */
     cfg.codec = *hk_codec_standin();
     if (g_camera_app) cfg.camera = *hk_camera_standin();
@@ -1653,6 +1669,32 @@ static void battery_changes(bool on_battery)
     CHECK(count_lines("I/DataTest: battery-heard ") == 4 && count_lines("I/DataTest: power-heard ") == (on_battery ? 2 : 1) && count_lines("OFF THE MAIN THREAD") == 0);
 }
 
+/*
+ * The phone's bars, as the shell has them. Said to cover 60 pixels at the top and 90 at the bottom (megler_set_insets), they
+ * keep the app's content off them: its decor moves it down by 60 and shortens it by 150. Then the app hides and shows them
+ * -- the status bar by its window's WindowInsetsController, both by its decor's system UI flags -- and the shell is asked
+ * each time (megler_system_bars_host): nothing hidden at the first frame, then the status bar, nothing, both, nothing.
+ */
+static void bars_and_insets(void)
+{
+    char heard[sizeof(g_bars_heard)];
+    int tries;
+    megler_set_insets(0, 60, 0, 90);
+    CHECK(wait_line("I/DataTest: bars-insets moved=60 shrunk=150", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: bars-step 4", 0, 30) >= 0);
+    for (tries = 0; tries < 100; tries++) {
+        hk_lock_acquire(&g_bars_lock);
+        hk_strlcpy(heard, g_bars_heard, sizeof(heard));
+        hk_lock_release(&g_bars_lock);
+        if (!strcmp(heard, ",0,1,0,3,0")) break;
+        hk_sleep_ns(20000000ull);
+    }
+    say("  the bars the app asked away: %s", heard);
+    CHECK(!strcmp(heard, ",0,1,0,3,0"));
+    CHECK(find_line("I/DataTest: bars hide FAILED", 0) < 0 && find_line("I/DataTest: bars show FAILED", 0) < 0);
+    megler_set_insets(0, 0, 0, 0);
+}
+
 static int run_data(void)
 {
     static const char *const steps[] = { "open", "kept", "insert", "query", "types", "update", "delete", "rollback", "commit", "constraint", "statement", "text",
@@ -1778,6 +1820,7 @@ static int run_data(void)
                                            : "I/DataTest: battery is level=100/100 status=5 plugged=1 health=2 voltage=4200 temperature=250 present=true technology=Li-ion capacity=100 charging=true",
                     0) >= 0);
     battery_changes(run == 2 && want == 2);
+    bars_and_insets();
     /*
      * The second run has the flags trace-net, trace-exceptions and trace-stacks on (tools/build-tests.sh puts them in its
      * data folder): the network steps' connections are said with where to and how they ended, the names looked up with their

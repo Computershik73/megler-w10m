@@ -109,59 +109,80 @@ void AppShell::applyVisibleBounds() {
     // Negative or absurd gaps mean the rectangles aren't comparable (they
     // were seen briefly during rotation); padding nothing beats padding wrong.
     auto sane = [](double v) { return v > 0 && v < 400 ? v : 0.0; };
-    Thickness padding{};
-    // The player has the whole display, under where the bars were.
-    if (!fullScreen_) {
-        padding.Left = sane(visible.X - window.X);
-        padding.Top = sane(visible.Y - window.Y);
-        padding.Right = sane((window.X + window.Width) - (visible.X + visible.Width));
-        padding.Bottom = sane((window.Y + window.Height) - (visible.Y + visible.Height));
-    }
-    if (root_) root_.Padding(padding);
+    Thickness covered{};
+    covered.Left = sane(visible.X - window.X);
+    covered.Top = sane(visible.Y - window.Y);
+    covered.Right = sane((window.X + window.Width) - (visible.X + visible.Width));
+    covered.Bottom = sane((window.Y + window.Height) - (visible.Y + visible.Height));
+    // A full-screen page (the player) has the whole display, under the bars where they are, and is told what they cover.
+    if (root_) root_.Padding(fullScreen_ ? Thickness{} : covered);
+    if (fullScreen_ && !stacks_.empty() && !currentStack().pages.empty())
+        currentStack().pages.back()->barsCover(covered.Left, covered.Top, covered.Right, covered.Bottom);
 }
 
-void AppShell::applyFullScreen(bool fullScreen, bool upright) {
+void AppShell::applyFullScreen(bool fullScreen, bool upright, bool hideStatus, bool hideNavigation, bool lightStatus) {
     upright = fullScreen && upright;
-    if (fullScreen == fullScreen_ && upright == upright_) return;
+    // The phone hides its navigation bar only in full-screen mode, and that hides the status bar too.
+    hideNavigation = fullScreen && hideNavigation;
+    hideStatus = fullScreen && (hideStatus || hideNavigation);
+    lightStatus = fullScreen && lightStatus;
+    if (fullScreen == fullScreen_ && upright == upright_ && hideStatus == hideStatus_ && hideNavigation == hideNavigation_ &&
+        lightStatus == lightStatus_)
+        return;
+    const bool turn = fullScreen != fullScreen_ || upright != upright_;
     fullScreen_ = fullScreen;
     upright_ = upright;
+    hideStatus_ = hideStatus;
+    hideNavigation_ = hideNavigation;
+    lightStatus_ = lightStatus;
     using namespace winrt::Windows::Graphics::Display;
-    try {
-        // The library is a portrait screen, games are landscape ones, and an
-        // app that is not a game is upright unless it says otherwise. Off a
-        // phone there is nothing to turn back to: no preference.
-        DisplayInformation::AutoRotationPreferences(
-            fullScreen && !upright ? (DisplayOrientations::Landscape | DisplayOrientations::LandscapeFlipped)
-                                   : (platform::isMobile() ? DisplayOrientations::Portrait : DisplayOrientations::None));
-    } catch (const hresult_error& e) {
-        shellLog::write("ui: AutoRotationPreferences failed: " + narrow(e.message()));
+    if (turn) {
+        try {
+            // The library is a portrait screen, games are landscape ones, and an
+            // app that is not a game is upright unless it says otherwise. Off a
+            // phone there is nothing to turn back to: no preference.
+            DisplayInformation::AutoRotationPreferences(
+                fullScreen && !upright ? (DisplayOrientations::Landscape | DisplayOrientations::LandscapeFlipped)
+                                       : (platform::isMobile() ? DisplayOrientations::Portrait : DisplayOrientations::None));
+        } catch (const hresult_error& e) {
+            shellLog::write("ui: AutoRotationPreferences failed: " + narrow(e.message()));
+        }
     }
     bool entered = false;
     try {
+        // A full-screen page lies under the phone's bars (UseCoreWindow), which then cover what they cover of it; the bars go
+        // only when it asks (the player: when its app does).
         auto view = ApplicationView::GetForCurrentView();
-        if (fullScreen) {
-            view.SetDesiredBoundsMode(ApplicationViewBoundsMode::UseCoreWindow);
+        view.SetDesiredBoundsMode(fullScreen ? ApplicationViewBoundsMode::UseCoreWindow : ApplicationViewBoundsMode::UseVisible);
+        if (hideNavigation)
             entered = view.TryEnterFullScreenMode();
-        } else {
+        else
             view.ExitFullScreenMode();
-            view.SetDesiredBoundsMode(ApplicationViewBoundsMode::UseVisible);
-        }
     } catch (const hresult_error& e) {
         shellLog::write("ui: full-screen mode failed: " + narrow(e.message()));
     }
     if (ApiInformation::IsTypePresent(L"Windows.UI.ViewManagement.StatusBar")) {
         try {
+            const auto& p = palette();
             auto status = StatusBar::GetForCurrentView();
-            if (fullScreen)
+            if (hideStatus) {
                 status.HideAsync();
-            else
+            } else {
+                // Over a full-screen page the bar is see-through: under it is what the app paints there (an Android app's
+                // decor paints its status bar's colour), with icons light or dark as the app's bar is.
+                status.BackgroundColor(p.background);
+                status.BackgroundOpacity(fullScreen ? 0.0 : 1.0);
+                status.ForegroundColor(fullScreen ? (lightStatus ? rgb(0x000000) : rgb(0xFFFFFF)) : p.label);
                 status.ShowAsync();
+            }
         } catch (...) {
         }
     }
-    shellLog::write(fullScreen ? std::string(upright ? "ui: upright, full screen" : "ui: landscape, full screen") +
-                                     (entered ? "" : " (full-screen mode refused)")
-                               : std::string("ui: back to portrait"));
+    shellLog::write(!fullScreen ? std::string("ui: back to portrait")
+                                : std::string(upright ? "ui: upright, full screen" : "ui: landscape, full screen") +
+                                      (hideNavigation ? (entered ? ", the phone's bars hidden" : ", the phone's bars hidden (full-screen mode refused)")
+                                       : hideStatus   ? ", the status bar hidden, the navigation bar shown"
+                                                      : ", the phone's bars shown"));
     applyVisibleBounds();
 }
 
@@ -261,7 +282,7 @@ void AppShell::refreshChrome() {
     auto& stack = currentStack();
     auto page = stack.pages.back();
     const bool full = page->fullScreen();
-    applyFullScreen(full, page->upright());
+    applyFullScreen(full, page->upright(), page->hideStatusBar(), page->hideNavigationBar(), page->lightStatusBar());
     setVisible(navigationBar_, !full);
     setVisible(tabBar_, !full);
     const bool canGoBack = stack.pages.size() > 1;

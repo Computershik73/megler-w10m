@@ -29,3 +29,9 @@
     public static native String[] listApkFiles(int apk, String prefix);
     /** The phone's name servers now, as text, the network's in use first (core: hk_net_dns_servers): android.net.LinkProperties.getDnsServers. */
     public static native String[] dnsServers();
+    /**
+     * The phone's bars the app's top window wants hidden -- 1 the status bar, 2 the navigation bar -- and 4 when its status
+     * bar is light, so that the bar's icons are to be dark (megler.h, megler_system_bars_host). megler.ViewRoot says it at its
+     * first frame and whenever it changes; the shell hides and shows the bars, and the insets that follow come through insets().
+     */
+    public static native void systemBars(int bars);

@@ -109,6 +109,29 @@ public class Main extends Activity {
             return v.onApplyWindowInsets(insets);
         });
         setContentView(column);
+        /*
+         * The phone's bars: once the test says what they cover (megler_set_insets), the decor keeps the content off them, and
+         * the content moves down by the top one and shrinks by both; then the app hides and shows them (bars()), and the test
+         * hears what it asks for (megler_system_bars_host).
+         */
+        column.addOnLayoutChangeListener(new android.view.View.OnLayoutChangeListener() {
+            int top = -1, height;
+            boolean moved;
+
+            @Override
+            public void onLayoutChange(android.view.View v, int l, int t, int r, int b, int ol, int ot, int or, int ob) {
+                int[] at = new int[2];
+                v.getLocationOnScreen(at);
+                if (top < 0) {
+                    top = at[1];
+                    height = v.getHeight();
+                } else if (!moved && at[1] != top) {
+                    moved = true;
+                    Log.i("DataTest", "bars-insets moved=" + (at[1] - top) + " shrunk=" + (height - v.getHeight()));
+                    bars(v);
+                }
+            }
+        });
         Log.i("DataTest", "onCreate");
         final Notes helper = new Notes(this, "notes.db", 1);
         final SQLiteDatabase db = helper.getWritableDatabase();
@@ -445,6 +468,38 @@ public class Main extends Activity {
                 dialog.dismiss();
             }, 400);
         }, 300);
+    }
+
+    /**
+     * The phone's bars hidden and shown, a step every 300 ms: the status bar by the window's WindowInsetsController (API 30, by
+     * reflection: this is built against 29), then both by the decor's system UI flags, each undone after. The test hears
+     * 1, 0, 3, 0 (megler_system_bars_host: 1 the status bar, 2 the navigation bar).
+     */
+    private void bars(android.view.View v) {
+        final android.view.Window w = getWindow();
+        final Runnable[] steps = {
+            () -> statusBar(w, "hide"),
+            () -> statusBar(w, "show"),
+            () -> w.getDecorView().setSystemUiVisibility(android.view.View.SYSTEM_UI_FLAG_FULLSCREEN | android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION),
+            () -> w.getDecorView().setSystemUiVisibility(0),
+        };
+        for (int i = 0; i < steps.length; i++) {
+            final int k = i;
+            v.postDelayed(() -> {
+                steps[k].run();
+                Log.i("DataTest", "bars-step " + (k + 1));
+            }, 300L * (i + 1));
+        }
+    }
+
+    private static void statusBar(android.view.Window w, String how) {
+        try {
+            Object controller = android.view.Window.class.getMethod("getInsetsController").invoke(w);
+            int status = (Integer) Class.forName("android.view.WindowInsets$Type").getMethod("statusBars").invoke(null);
+            Class.forName("android.view.WindowInsetsController").getMethod(how, int.class).invoke(controller, status);
+        } catch (Exception e) {
+            Log.i("DataTest", "bars " + how + " FAILED: " + e);
+        }
     }
 
     /**

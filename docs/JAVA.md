@@ -2726,6 +2726,54 @@ where the original leaned on CoreGraphics without saying.
   directly, through a list and in a node, on the stand-in and, in the
   Windows build, on the shell: the same pixels every way.
 
+### The phone's bars
+
+A Java app's status bar and navigation bar are the phone's own, as on
+Android, where they are a window's insets. The app's surface stays the whole
+screen, and the bars lie over it. The contract is in `megler.h`
+(`megler_system_bars_host` and `megler_set_insets`).
+
+- **The app asks.** At every frame `megler.ViewRoot` (overlaid, `updateBars`)
+  works out which bars the top activity window wants hidden and tells the
+  shell when that changes (`Native.systemBars` →
+  `bars.wanted(bars)`, on the app's main thread):
+  - the status bar for the window's `FLAG_FULLSCREEN` (the theme's
+    `windowFullscreen` included), `SYSTEM_UI_FLAG_FULLSCREEN`, or
+    `WindowInsetsController.hide(statusBars())`;
+  - the navigation bar for `SYSTEM_UI_FLAG_HIDE_NAVIGATION` or
+    `hide(navigationBars())`;
+  - and whether the status bar is light (`SYSTEM_UI_FLAG_LIGHT_STATUS_BAR`,
+    `APPEARANCE_LIGHT_STATUS_BARS`), so that its icons are to be dark.
+
+  What the controller hides is kept by the window's decor (`megler.DecorView`,
+  overlaid), which also answers before the window is attached, as Android's
+  `PendingInsetsController` does. So what an app asks in `onCreate` counts.
+- **The shell does it.** The player hides the phone's bars only when the app
+  asks: full-screen mode (`TryEnterFullScreenMode`) for the navigation bar,
+  which takes the status bar with it, or the status bar alone. A game, whose
+  engine is not Java, has the whole screen as before. Over an app the status
+  bar is see-through, so what the app's decor paints there (its status bar's
+  colour) shows, with light or dark icons as the app's bar is
+  (`ui/AppShell.cpp`, `applyFullScreen`). The player lies under the bars
+  (`UseCoreWindow`). While the keyboard is up, the navigation bar comes back
+  for its Back key, as before.
+- **The shell tells.** `megler_set_insets(l, t, r, b)` says how many pixels
+  of each edge of the surface the bars cover now. The player says it whenever
+  the window's visible part changes: the bars hidden or shown at the app's
+  word, the user's swipe that hides or brings back the navigation bar, a turn
+  (`PlayerScreen.cpp`, `tellInsets`). The core keeps it, also for an app
+  that has not started yet. `Native.insets()` gives it to the framework,
+  whose decor keeps the content off the bars, and the app lays itself out
+  again. Until then nothing was said, and the shell kept every app in full
+  screen whatever it asked.
+
+Tested in the data app (both runs). Told that the bars cover 60 pixels at the
+top and 90 at the bottom, its content moves down by 60 and shrinks by 150.
+Then it hides the status bar by its window's `WindowInsetsController` (by
+reflection: it is built against API 29), shows it, hides both bars by its
+decor's system UI flags, and clears them. The test hears 0 at the first
+frame, then 1, 0, 3, 0.
+
 ### The keyboard
 
 A Java app's text fields are edited with the shell's touch keyboard. The

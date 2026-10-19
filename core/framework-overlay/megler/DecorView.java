@@ -4,8 +4,14 @@
 // of its own, and that view in the decor -- the old way to put a navigation drawer over the whole window, the action bar
 // included, which VK mp3 mod does with a DrawerLayout. Android's decor then leaves that content alone. The original cast
 // the stack's parameters to FrameLayout.LayoutParams whatever they were, and VK ended at its first layout after its sign-in
-// with "DrawerLayout$LayoutParams cannot be cast to FrameLayout$LayoutParams" (package 271). Everything else is the
-// original's, unchanged.
+// with "DrawerLayout$LayoutParams cannot be cast to FrameLayout$LayoutParams" (package 271).
+//
+// And in the window's WindowInsetsController: the status and navigation bars it hides and shows, and the bars' appearance,
+// are kept here (meglerHiddenBars, meglerAppearance), by the controller of the attached window (megler.ViewRoot's) and by one of
+// the decor's own before that (Android's PendingInsetsController), so that what an app asks in onCreate counts; megler.ViewRoot
+// tells the shell which bars to hide. The original's controller before attach did nothing.
+//
+// Everything else is the original's, unchanged.
 package megler;
 
 import android.content.Context;
@@ -53,8 +59,34 @@ public final class DecorView extends FrameLayout {
         };
         return sFallback;
     }
-    /** The window's controller, before the decor is attached too (Android's PendingInsetsController). */
-    @Override public WindowInsetsController getWindowInsetsController() { WindowInsetsController c = super.getWindowInsetsController(); return c != null ? c : fallbackInsetsController(); }
+    /** The window's controller, before the decor is attached too (Android's PendingInsetsController): what it hides is kept here. */
+    @Override public WindowInsetsController getWindowInsetsController() {
+        WindowInsetsController c = super.getWindowInsetsController();
+        if (c != null) return c;
+        if (mPending == null) mPending = new WindowInsetsController() {
+            int behavior;
+            public void show(int t) { meglerHideBars(t, false); } public void hide(int t) { meglerHideBars(t, true); }
+            public void setSystemBarsAppearance(int a, int m) { meglerSetAppearance(a, m); } public int getSystemBarsAppearance() { return mAppearance; }
+            public void setSystemBarsBehavior(int b) { behavior = b; } public int getSystemBarsBehavior() { return behavior; }
+        };
+        return mPending;
+    }
+    /*
+     * The phone's bars as the window's WindowInsetsController asks for them: the status and navigation bars it hid
+     * (WindowInsets.Type bits) and its bars' appearance (APPEARANCE_LIGHT_STATUS_BARS). Kept by the decor, which is there
+     * before the window is attached; megler.ViewRoot tells the shell (Native.systemBars) at its next frame.
+     */
+    private int mHiddenBars, mAppearance;
+    private WindowInsetsController mPending;
+    public int meglerHiddenBars() { return mHiddenBars; }
+    public int meglerAppearance() { return mAppearance; }
+    public void meglerHideBars(int types, boolean hide) {
+        int bars = types & (WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+        if (bars == 0) return;
+        mHiddenBars = hide ? mHiddenBars | bars : mHiddenBars & ~bars;
+        requestApplyInsets();
+    }
+    public void meglerSetAppearance(int a, int mask) { mAppearance = (mAppearance & ~mask) | (a & mask); requestApplyInsets(); }
     public void setCloseOnTouchOutside(boolean c) { mCloseOnTouchOutside = c; }
     public boolean closeOnTouchOutside() { return mCloseOnTouchOutside; }
     /** The window background; its padding (a Material dialog's InsetDrawable: the card inset from the window's edges) keeps the

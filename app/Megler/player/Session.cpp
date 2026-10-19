@@ -2,6 +2,7 @@
 
 #include "player/Session.h"
 
+#include "player/BarsHost.h"
 #include "player/CameraHost.h"
 #include "player/CodecHost.h"
 #include "player/GfxHost.h"
@@ -214,6 +215,8 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         GfxHost::shared().setWindow(window->gfxWindow());
         config.android_root = nullptr;
         config.keyboard = KeyboardHost::shared().callbacks();
+        // The phone's bars a Java app wants hidden (player/BarsHost.h); what they cover goes back through setInsets.
+        config.bars = BarsHost::shared().callbacks();
         config.on_exit = &onExit;
         config.user = nullptr;
         const bool started = megler_run(&config);
@@ -268,6 +271,8 @@ void textKey(int key) { megler_text_key(key); }
 void keyboardClosed() { megler_keyboard_closed(); }
 
 void keyboardHeight(int pixels) { megler_keyboard_height(pixels < 0 ? 0 : pixels); }
+
+void setInsets(int left, int top, int right, int bottom) { megler_set_insets(left, top, right, bottom); }
 
 void setSuspended(bool suspended) {
     {

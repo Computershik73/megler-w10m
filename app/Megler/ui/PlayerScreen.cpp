@@ -17,6 +17,7 @@
 #include "pch.h"
 
 #include "library/Library.h"
+#include "player/BarsHost.h"
 #include "player/KeyboardHost.h"
 #include "player/Session.h"
 #include "player/WindowHost.h"
@@ -59,6 +60,8 @@ public:
             upright_ = entry->report.upright();
             java_ = entry->report.engine == "java";
         }
+        // A game has the whole screen; a Java app has the phone's bars, as on Android, until its window asks them away.
+        bars_ = java_ ? 0 : MEGLER_BAR_STATUS | MEGLER_BAR_NAVIGATION;
     }
 
     ~PlayerScreen() override {
@@ -73,6 +76,18 @@ public:
     std::string title() override { return title_; }
     bool fullScreen() override { return true; }
     bool upright() override { return upright_; }
+    // The bars the app wants hidden (BarsHost); the navigation bar comes back while the keyboard is up (showNavigationBar).
+    bool hideNavigationBar() override { return (bars_ & MEGLER_BAR_NAVIGATION) && !navigationBarShown_; }
+    bool hideStatusBar() override { return (bars_ & MEGLER_BAR_STATUS) || hideNavigationBar(); }
+    bool lightStatusBar() override { return (bars_ & MEGLER_BAR_LIGHT_STATUS) != 0; }
+
+    void barsCover(double left, double top, double right, double bottom) override {
+        cover_[0] = left;
+        cover_[1] = top;
+        cover_[2] = right;
+        cover_[3] = bottom;
+        tellInsets();
+    }
 
     bool handleBack() override {
         const session::State state = session::snapshot().state;
@@ -290,6 +305,8 @@ private:
             return;
         }
         if (auto window = session::window()) window->setPanelSize(float(width), float(height));
+        // What the phone's bars cover, now that the surface's size is known (the core keeps it for the app's start).
+        tellInsets();
     }
 
     void failBeforeStart(const std::string& why) {
@@ -463,10 +480,51 @@ private:
     static constexpr const wchar_t* keyboardStart = L"a ";
     static constexpr size_t keyboardStartLength = 2;
 
+    /// The bars the app's window wants hidden, and whether its status bar is light (UI thread): the shell hides and shows
+    /// the phone's bars, and what they then cover reaches the app through barsCover.
+    void barsWanted(int bars) {
+        if (bars == bars_) return;
+        bars_ = bars;
+        shellLog::write(format("player: the app wants %s%s",
+                               (bars & MEGLER_BAR_NAVIGATION) ? "the phone's bars hidden"
+                               : (bars & MEGLER_BAR_STATUS)   ? "the status bar hidden, the navigation bar shown"
+                                                            : "the phone's bars shown",
+                               (bars & MEGLER_BAR_LIGHT_STATUS) ? ", a light status bar" : ""));
+        shell_.refreshChrome();
+    }
+
+    /// What the phone's bars cover of the app's picture (barsCover, in view pixels), in the surface's pixels.
+    void tellInsets() {
+        const auto window = session::window();
+        if (!window || !touchLayer_) return;
+        const float layerWidth = float(touchLayer_.ActualWidth()), layerHeight = float(touchLayer_.ActualHeight());
+        const float surfaceWidth = float(window->surfaceWidth()), surfaceHeight = float(window->surfaceHeight());
+        const auto shown = WindowHost::letterbox(layerWidth, layerHeight, surfaceWidth, surfaceHeight);
+        if (shown.width <= 0 || shown.height <= 0) return;
+        // How much of the picture a bar that covers `covered` of the window's edge covers, the picture starting `from` that edge.
+        auto edge = [](double covered, float from, float size, float pixels) {
+            const double inside = std::min(std::max(covered - double(from), 0.0), double(size));
+            return int(inside / size * pixels + 0.5);
+        };
+        const int left = edge(cover_[0], shown.x, shown.width, surfaceWidth);
+        const int top = edge(cover_[1], shown.y, shown.height, surfaceHeight);
+        const int right = edge(cover_[2], layerWidth - (shown.x + shown.width), shown.width, surfaceWidth);
+        const int bottom = edge(cover_[3], layerHeight - (shown.y + shown.height), shown.height, surfaceHeight);
+        if (left == insets_[0] && top == insets_[1] && right == insets_[2] && bottom == insets_[3]) return;
+        insets_[0] = left;
+        insets_[1] = top;
+        insets_[2] = right;
+        insets_[3] = bottom;
+        shellLog::write(format("player: the phone's bars cover %d, %d, %d, %d pixels of the app's left, top, right, bottom", left, top,
+                               right, bottom));
+        session::setInsets(left, top, right, bottom);
+    }
+
     void attachKeyboard() {
         if (keyboardAttached_) return;
         keyboardAttached_ = true;
         KeyboardHost::shared().attach([this](int kind, int flags, int enter) { showKeyboard(kind, flags, enter); }, [this] { putKeyboardAway(false); });
+        BarsHost::shared().attach([this](int bars) { barsWanted(bars); });
         makeEditContext();
         try {
             auto pane = winrt::Windows::UI::ViewManagement::InputPane::GetForCurrentView();
@@ -552,6 +610,7 @@ private:
         if (!keyboardAttached_) return;
         keyboardAttached_ = false;
         KeyboardHost::shared().detach();
+        BarsHost::shared().detach();
         try {
             auto pane = winrt::Windows::UI::ViewManagement::InputPane::GetForCurrentView();
             if (paneShowing_) pane.Showing(paneShowing_);
@@ -575,15 +634,7 @@ private:
     void showNavigationBar(bool show) {
         if (show == navigationBarShown_) return;
         navigationBarShown_ = show;
-        try {
-            auto view = winrt::Windows::UI::ViewManagement::ApplicationView::GetForCurrentView();
-            if (show)
-                view.ExitFullScreenMode();
-            else
-                view.TryEnterFullScreenMode();
-        } catch (const hresult_error& e) {
-            shellLog::write("player: the navigation bar cannot be shown or hidden: " + narrow(e.message()));
-        }
+        shell_.refreshChrome();
     }
 
     /// putKeyboardAway, once the event that is being answered is over.
@@ -903,6 +954,9 @@ private:
     bool keyboardUp_ = false;     // Windows says it is on the screen
     bool typingSaid_ = false;     // the log has said that typing reaches the app
     bool navigationBarShown_ = false; // out of full-screen mode while the keyboard is up
+    int bars_ = 0;                    // the phone's bars the app wants hidden: MEGLER_BAR_*
+    double cover_[4] = {};            // what the bars cover of the window, in view pixels (barsCover)
+    int insets_[4] = {-1, -1, -1, -1}; // that, in the surface's pixels, as the app was last told it
     winrt::event_token paneShowing_{}, paneHiding_{};
 
     std::map<uint32_t, int> touches_;

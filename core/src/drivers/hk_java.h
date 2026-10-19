@@ -38,6 +38,8 @@ void hk_java_text(const char *utf8);
 void hk_java_text_key(int key);
 void hk_java_keyboard_closed(void);
 void hk_java_keyboard_height(int pixels);
+/* How much of each edge of the surface the phone's bars cover (megler.h, megler_set_insets). Kept for the next app when none runs. */
+void hk_java_set_insets(int left, int top, int right, int bottom);
 
 /* hk_java_sqlite.c: megler.Sqlite's native methods, on the SQLite compiled into the core -- or, in a build without it, their refusal. */
 const hk_jhle *hk_java_sqlite_natives(void);

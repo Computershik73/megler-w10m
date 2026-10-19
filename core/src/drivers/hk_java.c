@@ -476,12 +476,29 @@ N(Native_batteryTechnology)
     c->ret.l = hk_dvm_new_string(b.technology);
 }
 
+/*
+ * How much of each edge of the surface the phone's bars cover (megler_set_insets), kept apart from J, which a start clears:
+ * the shell may say it before the app runs.
+ */
+static volatile i32 g_bar_insets[4];
+
 N(Native_insets)
 {
-    /* Left, top, right, bottom of the screen the app must keep clear -- none: the shell gives the app a surface that is all its own -- and what the keyboard covers of its bottom. */
+    /* Left, top, right, bottom of the screen the app must keep clear -- what the phone's bars cover -- and what the keyboard covers of its bottom. */
     hk_jobj *a = hk_dvm_new_array("[I", 5);
-    if (a) ((i32 *)a->u.arr.data)[4] = J.keyboard_height;
+    int i;
+    if (a) {
+        for (i = 0; i < 4; i++) ((i32 *)a->u.arr.data)[i] = g_bar_insets[i];
+        ((i32 *)a->u.arr.data)[4] = J.keyboard_height;
+    }
     c->ret.l = a;
+}
+
+/* systemBars(bars): the bars the app's window wants hidden, and whether its status bar is light (megler.h, megler_system_bars_host). */
+N(Native_systemBars)
+{
+    const megler_system_bars_host *b = &J.config->bars;
+    if (b->wanted) b->wanted(b->user, c->args[0].i & (MEGLER_BAR_STATUS | MEGLER_BAR_NAVIGATION | MEGLER_BAR_LIGHT_STATUS));
 }
 
 /* ----------------------------------------------------------- the keyboard */
@@ -595,6 +612,7 @@ static const hk_jhle k_native[] = {
     { "megler/Native", "pollInput", NULL, Native_pollInput },
     { "megler/Native", "pollText", NULL, Native_pollText },
     { "megler/Native", "showKeyboard", NULL, Native_showKeyboard },
+    { "megler/Native", "systemBars", NULL, Native_systemBars },
     { "megler/Native", "setClipboard", NULL, Native_setClipboard },
     { "megler/Native", "getClipboard", NULL, Native_getClipboard },
     { "megler/Native", "share", NULL, Native_share },
@@ -1393,6 +1411,18 @@ void hk_java_keyboard_height(int pixels)
     if (!java_runs()) return;
     hk_atomic_xchg(&J.keyboard_height, pixels > 0 ? pixels : 0);
     push_event(EV_INSETS, 0, 0, 0);
+}
+
+void hk_java_set_insets(int left, int top, int right, int bottom)
+{
+    int in[4], i;
+    bool changed = false;
+    in[0] = left; in[1] = top; in[2] = right; in[3] = bottom;
+    for (i = 0; i < 4; i++) {
+        if (in[i] < 0) in[i] = 0;
+        if (hk_atomic_xchg(&g_bar_insets[i], in[i]) != in[i]) changed = true;
+    }
+    if (changed && java_runs()) push_event(EV_INSETS, 0, 0, 0);
 }
 
 static void java_stop(void)

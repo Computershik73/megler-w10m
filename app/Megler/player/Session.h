@@ -71,6 +71,9 @@ void textCommit(const std::string& utf8);
 void textKey(int key);
 void keyboardClosed();
 void keyboardHeight(int pixels);
+/// How many of the surface's pixels the phone's bars cover at each edge, for a Java app (megler_set_insets): it keeps its
+/// content off them. Kept by the core for the app that starts next.
+void setInsets(int left, int top, int right, int bottom);
 
 // The app's place on the phone, from the application's and the window's
 // events. Android has one "paused": here it is suspended or not visible.

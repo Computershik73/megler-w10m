@@ -39,6 +39,12 @@
 // top edge while the user typed into it. And it gave a dialog the part of it the keyboard covered as an inset, which a view
 // that fits system windows turned into padding, making the dialog taller still. An activity was always resized.
 //
+// And in the phone's bars (updateBars, at every frame): which of them the top activity window wants hidden -- its
+// FLAG_FULLSCREEN, its views' system UI visibility, what its WindowInsetsController hid -- is told to the shell
+// (Native.systemBars), which hides the phone's status and navigation bars accordingly and says the insets that follow; the
+// controller's hide and show of the bars are kept by the decor (megler.DecorView, overlaid). The original's controller did
+// the keyboard alone, and the shell kept every app in full screen whatever it asked.
+//
 // Why. Where a frame's time goes -- in Java and in which part of the frame, in the shell's drawing, in handing the picture
 // over -- is measured from the core's side (core/src/drivers/hk_java.c, "the frame meter", a line in the log every five
 // seconds while the app draws), and only the frame itself knows where its phases begin. Nothing else changes: the calls
@@ -245,9 +251,18 @@ public final class ViewRoot implements ViewParent {
     public WindowInsetsController insetsController() {
         if (mInsetsController == null) mInsetsController = new WindowInsetsController() {
             int appearance, behavior;
-            public void show(int types) { if ((types & WindowInsets.Type.ime()) != 0 && mFocused != null) InputMethods.show(mFocused); }
-            public void hide(int types) { if ((types & WindowInsets.Type.ime()) != 0) InputMethods.hide(); }
-            public void setSystemBarsAppearance(int a, int mask) { appearance = (appearance & ~mask) | (a & mask); }
+            public void show(int types) {
+                if ((types & WindowInsets.Type.ime()) != 0 && mFocused != null) InputMethods.show(mFocused);
+                if (mView instanceof DecorView) ((DecorView) mView).meglerHideBars(types, false);
+            }
+            public void hide(int types) {
+                if ((types & WindowInsets.Type.ime()) != 0) InputMethods.hide();
+                if (mView instanceof DecorView) ((DecorView) mView).meglerHideBars(types, true);
+            }
+            public void setSystemBarsAppearance(int a, int mask) {
+                appearance = (appearance & ~mask) | (a & mask);
+                if (mView instanceof DecorView) ((DecorView) mView).meglerSetAppearance(a, mask);
+            }
             public int getSystemBarsAppearance() { return appearance; }
             public void setSystemBarsBehavior(int b) { behavior = b; }
             public int getSystemBarsBehavior() { return behavior; }
@@ -277,11 +292,39 @@ public final class ViewRoot implements ViewParent {
         sScheduled = false;
         ArrayList<ViewRoot> roots = new ArrayList<>(sRoots);
         for (ViewRoot r : roots) if (!r.mRemoved) r.performLayout();
+        updateBars(roots);
         for (ViewRoot r : roots) if (!r.mRemoved && r.mObserver.dispatchOnPreDraw()) { scheduleFrame(); }
         Native.frameMark(2, 0);
         drawAll(roots);
         for (ViewRoot r : roots) if (!r.mRemoved) r.mObserver.dispatchOnDraw();
         Native.frameMark(3, sRedrawn);
+    }
+    /**
+     * The phone's bars the top activity window wants hidden, and whether its status bar is light, told to the shell when
+     * that changes (Native.systemBars: 1 the status bar, 2 the navigation bar, 4 light): the window's FLAG_FULLSCREEN, the
+     * system UI visibility its views set (SYSTEM_UI_FLAG_FULLSCREEN, _HIDE_NAVIGATION, _LIGHT_STATUS_BAR), and what its
+     * WindowInsetsController hid and its appearance (kept by the decor). Android's status bar goes for the first and the
+     * navigation bar for the second, and the window's insets follow; here the shell hides the phone's own bars and says the
+     * insets that follow (Native.insets). Asked at every frame after layout: a flag set, a controller asked and a window
+     * that comes or goes all bring one.
+     */
+    private static int sBars = -1;
+    private static void updateBars(ArrayList<ViewRoot> roots) {
+        ViewRoot top = null;
+        for (int i = roots.size() - 1; i >= 0 && top == null; i--) {
+            ViewRoot r = roots.get(i);
+            if (!r.mRemoved && r.mLp.type == WindowManager.LayoutParams.TYPE_BASE_APPLICATION && r.mView instanceof DecorView) top = r;
+        }
+        if (top == null) return;
+        DecorView decor = (DecorView) top.mView;
+        Window w = decor.getWindowMegler();
+        int sys = top.mSystemUi, hidden = decor.meglerHiddenBars(), bars = 0;
+        if ((w != null && w.meglerFullscreen()) || (sys & View.SYSTEM_UI_FLAG_FULLSCREEN) != 0 || (hidden & WindowInsets.Type.statusBars()) != 0) bars |= 1;
+        if ((sys & View.SYSTEM_UI_FLAG_HIDE_NAVIGATION) != 0 || (hidden & WindowInsets.Type.navigationBars()) != 0) bars |= 2;
+        if ((sys & View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR) != 0 || (decor.meglerAppearance() & WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS) != 0) bars |= 4;
+        if (bars == sBars) return;
+        sBars = bars;
+        Native.systemBars(bars);
     }
     /** Pixels of the screen the last drawAll drew: its dirty rectangle, or all of them when it drew the whole screen. */
     private static int sRedrawn;

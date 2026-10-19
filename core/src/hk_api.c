@@ -110,6 +110,7 @@ void megler_text_commit(const char *utf8) { hk_java_text(utf8); }
 void megler_text_key(int key) { hk_java_text_key(key); }
 void megler_keyboard_closed(void) { hk_java_keyboard_closed(); }
 void megler_keyboard_height(int pixels) { hk_java_keyboard_height(pixels); }
+void megler_set_insets(int left, int top, int right, int bottom) { hk_java_set_insets(left, top, right, bottom); }
 void megler_set_paused(bool paused) { hk_run_set_paused(paused); }
 void megler_set_focused(bool focused) { hk_run_set_focused(focused); }
 void megler_stop(void) { hk_run_stop(); }
