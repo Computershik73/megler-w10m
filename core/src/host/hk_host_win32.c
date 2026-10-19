@@ -916,6 +916,27 @@ static LONG CALLBACK on_exception(EXCEPTION_POINTERS *ep)
     case EXCEPTION_PRIV_INSTRUCTION:
         f.kind = HK_FAULT_OTHER;
         break;
+    case 0xC0000008u: /* STATUS_INVALID_HANDLE */
+        /*
+         * A handle that was not open, used or closed: an app's process has the system check every handle strictly, and
+         * says so with this exception, which nothing further down takes -- the search for a handler then went up into
+         * Android code, which has no unwinding tables, and ended the process with 0x80000002 (urent's WebView did, on the
+         * page after asking for its SMS code). On Linux the same call fails with EBADF and the program goes on. Continued,
+         * the exception makes the system call return STATUS_INVALID_HANDLE to its caller, which fails as on Linux. The
+         * first few are said, with who called.
+         */
+        if (!(er->ExceptionFlags & EXCEPTION_NONCONTINUABLE)) {
+            static volatile LONG said;
+            if (InterlockedIncrement(&said) <= 8) {
+                note_exception(ep, "continued (a handle that was not open: the call fails, as Linux's EBADF)");
+#if defined(_M_ARM)
+                note_callers((hk_addr)ep->ContextRecord->Sp, "the invalid handle");
+#endif
+            }
+            return EXCEPTION_CONTINUE_EXECUTION;
+        }
+        f.kind = HK_FAULT_OTHER;
+        break;
 #if defined(_M_ARM)
     case EXCEPTION_STACK_OVERFLOW:
         if (InterlockedCompareExchange(&g_spare_stack_taken, 1, 0) != 0) return EXCEPTION_CONTINUE_SEARCH;
