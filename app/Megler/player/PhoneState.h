@@ -8,11 +8,16 @@
 // temperature, and the core makes those up.
 #pragma once
 
+#include <string>
+
 namespace megler::app::phoneState {
 
 /// Tells the core the time zone and the battery as they are, and from then
 /// on every change of the battery, for as long as the process lives. Before
-/// an app is started; the first call does it and the others nothing.
+/// an app is started; the first call does it and the others nothing -- but
+/// the language and region, which Settings may change, at every call.
 void tell();
+/// The phone's own language and region, as Windows' settings have them, as a BCP 47 tag (ru-RU).
+std::string locale();
 
 } // namespace megler::app::phoneState

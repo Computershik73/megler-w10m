@@ -1,8 +1,9 @@
-// Settings: the size of the surface apps draw to, where apps are told the
-// phone is, the phone's folders that are in Android's storage, and what this
-// build and this phone are.
+// Settings: the size of the surface apps draw to, the language and region and
+// where apps are told the phone is, the phone's folders that are in Android's
+// storage, and what this build and this phone are.
 #include "pch.h"
 
+#include "player/PhoneState.h"
 #include "player/Session.h"
 #include "player/StorageHost.h"
 #include "shell/Platform.h"
@@ -241,6 +242,82 @@ private:
         return row;
     }
 
+    /// The language and region apps are told (player/PhoneState.h): the phone's, English (United States), or another tag.
+    UIElement localeSection() {
+        const std::string chosen = settings::get(settings::localeTag, "");
+        const bool other = !chosen.empty() && chosen != "en-US";
+        std::vector<UIElement> rows;
+        rows.push_back(button(choiceRow("The Phone's", phoneState::locale() + ", as in Windows' settings", chosen.empty()), [this] {
+            settings::set(settings::localeTag, "");
+            shellLog::write("settings: language and region: the phone's");
+            rebuild();
+        }, ButtonKind::plain, "The Phone's"));
+        rows.push_back(button(choiceRow("English (United States)", "en-US", chosen == "en-US"), [this] {
+            settings::set(settings::localeTag, "en-US");
+            shellLog::write("settings: language and region: en-US");
+            rebuild();
+        }, ButtonKind::plain, "English (United States)"));
+        rows.push_back(button(choiceRow("Another", (other ? chosen : std::string("A tag such as de-DE")) + " (tap to change)", other),
+                              [this] { setLocale(); }, ButtonKind::plain, "Another"));
+        return listSection("Language and Region", rows,
+                           "What apps are told the phone's language and region are: the texts they show, and the country they take it to be in "
+                           "(a phone number's form, the SIM's country). It applies to the next app started.");
+    }
+
+    /// Another language and region: a BCP 47 tag typed in, checked as the core checks it, kept, and chosen.
+    winrt::fire_and_forget setLocale() {
+        if (adding_) co_return;
+        adding_ = true;
+        const std::shared_ptr<Page> keep = shared_from_this();
+        std::string error;
+        try {
+            ContentDialog dialog;
+            dialog.Title(box_value(hs("Language and Region")));
+            auto content = vstack(10);
+            auto about = text("A language and a region as BCP 47 writes them: de-DE, uk-UA, pt-BR, zh-Hant-TW.", font::subheadline, weightNormal(),
+                              palette().secondaryLabel);
+            about.TextWrapping(TextWrapping::Wrap);
+            add(content, about);
+            TextBox box;
+            const std::string chosen = settings::get(settings::localeTag, "");
+            box.Text(hs(chosen.empty() ? phoneState::locale() : chosen));
+            box.MaxLength(35);
+            box.IsSpellCheckEnabled(false);
+            add(content, box);
+            dialog.Content(content);
+            dialog.PrimaryButtonText(L"Use This");
+            dialog.SecondaryButtonText(L"Cancel");
+            dialog.RequestedTheme(ElementTheme::Dark);
+            dialog.Background(brush(palette().card));
+            dialog.Foreground(brush(palette().label));
+            if (co_await dialog.ShowAsync() == ContentDialogResult::Primary) {
+                std::string tag = narrow(std::wstring(box.Text()));
+                while (!tag.empty() && tag.back() == ' ') tag.pop_back();
+                while (!tag.empty() && tag.front() == ' ') tag.erase(tag.begin());
+                for (char& ch : tag)
+                    if (ch == '_') ch = '-';
+                // As the core takes one (hk_locale_set): letters, digits and hyphens, beginning with a language of two or three letters.
+                bool ok = !tag.empty() && tag.size() < 36;
+                size_t first = tag.find('-');
+                if (first == std::string::npos) first = tag.size();
+                for (char ch : tag) ok = ok && (isalnum((unsigned char)ch) || ch == '-');
+                ok = ok && first >= 2 && first <= 3;
+                for (size_t i = 0; ok && i < first; i++) ok = isalpha((unsigned char)tag[i]) != 0;
+                if (ok) {
+                    settings::set(settings::localeTag, tag);
+                    shellLog::write("settings: language and region: " + tag);
+                } else {
+                    error = "\"" + tag + "\" is not a language and region as BCP 47 writes them, such as de-DE.";
+                }
+            }
+        } catch (const hresult_error& e) {
+            error = format("0x%08X %s", unsigned(e.code()), narrow(e.message()).c_str());
+        }
+        adding_ = false;
+        if (!error.empty()) shell_.alert("Not Changed", error);
+        rebuild();
+    }
+
     /// Where apps are told the phone is (player/LocationHost.h): the phone's location, or a place set here.
     UIElement locationSection() {
         const bool set = settings::get(settings::locationSource, "phone") == "set";
@@ -324,6 +401,8 @@ private:
         add(column, listSection("Render Size", choices,
                                 "The longer side of the picture an app draws, in pixels; the phone scales it to the screen. "
                                 "Smaller is faster. It applies to the next app started."));
+
+        add(column, localeSection());
 
         add(column, locationSection());
 

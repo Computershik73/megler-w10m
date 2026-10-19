@@ -2,6 +2,7 @@
 
 #include "player/PhoneState.h"
 
+#include "shell/Settings.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 
@@ -9,6 +10,7 @@
 
 #include <winrt/Windows.Globalization.h>
 #include <winrt/Windows.System.Power.h>
+#include <winrt/Windows.System.UserProfile.h>
 
 #include <climits>
 
@@ -65,9 +67,47 @@ void tellBattery() {
     }
 }
 
+/// The phone's language and region as a BCP 47 tag: its first display language's language (and script), its home region.
+std::string phoneLocale() {
+    using winrt::Windows::System::UserProfile::GlobalizationPreferences;
+    std::string language = "en", region;
+    try {
+        auto languages = GlobalizationPreferences::Languages();
+        if (languages.Size() > 0) language = narrow(std::wstring(languages.GetAt(0)));
+        region = narrow(std::wstring(GlobalizationPreferences::HomeGeographicRegion()));
+    } catch (const winrt::hresult_error&) {
+    }
+    // "ru-RU" -> "ru", "zh-Hant-TW" -> "zh-Hant": the language's own subtags, without the region it names.
+    std::string tag;
+    size_t at = 0;
+    for (int part = 0; at <= language.size(); part++) {
+        size_t end = language.find('-', at);
+        if (end == std::string::npos) end = language.size();
+        const std::string sub = language.substr(at, end - at);
+        if (part == 0) tag = sub;
+        else if (sub.size() == 4) tag += "-" + sub;
+        at = end + 1;
+    }
+    const bool letters = region.size() == 2 && isalpha((unsigned char)region[0]) && isalpha((unsigned char)region[1]);
+    const bool digits = region.size() == 3 && isdigit((unsigned char)region[0]);
+    if (letters || digits) tag += "-" + region;
+    return tag;
+}
+
+/// The language and region: as set in Settings, else the phone's. At every start: Settings may have changed it.
+void tellLocale() {
+    const std::string chosen = settings::get(settings::localeTag, "");
+    const std::string tag = chosen.empty() ? phoneLocale() : chosen;
+    megler_set_locale(tag.c_str());
+    shellLog::write("phone: the language and region are " + tag + (chosen.empty() ? " (the phone's)" : " (set in Settings)"));
+}
+
 } // namespace
 
+std::string locale() { return phoneLocale(); }
+
 void tell() {
+    tellLocale();
     {
         std::lock_guard<std::mutex> lock(gMutex);
         if (gTold) return;

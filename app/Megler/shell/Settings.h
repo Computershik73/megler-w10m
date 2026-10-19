@@ -28,6 +28,10 @@ constexpr const char* locationSource = "megler.location";
 constexpr const char* locationPlace = "megler.location.place";
 constexpr const char* locationPlaceDefault = "55.751244,37.618423";
 
+/// The language and region apps are told (player/PhoneState.h), a BCP 47 tag
+/// as ru-RU or en-US; empty: the phone's, from Windows' settings.
+constexpr const char* localeTag = "megler.locale";
+
 } // namespace megler::app::settings
 
 namespace megler::app::settings::location {
