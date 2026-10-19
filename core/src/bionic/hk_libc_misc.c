@@ -435,6 +435,16 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     }
 }
 
+u32 hk_bionic_syscall_raw(const u32 *r)
+{
+    int *err = hk_errno_ptr();
+    int saved = *err;
+    long result = g_syscall(r[7], r[0], r[1], r[2], r[3], r[4], r[5]);
+    if (result == -1) result = -*err;
+    *err = saved;
+    return (u32)result;
+}
+
 typedef struct g_rlimit {
     u32 cur, max;
 } g_rlimit;

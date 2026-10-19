@@ -1,13 +1,21 @@
-/*
- * A direct system call, as some code makes one past libc: getpid by its number, with `svc 0`. For the loader's flag
- * trap-svc (core/src/arm/hk_patch.c), which makes such a site a fault: the tests load this library with the trap on and look
- * at what became of the site. Nothing here is ever run.
- */
+/* Direct ARM EABI calls. The one-word push deliberately leaves sp 4 mod 8. */
 __attribute__((naked)) int t_svc_getpid(void)
 {
-    __asm__ volatile("push {r7}\n"
-                     "movw r7, #20\n"
-                     "svc 0\n"
-                     "pop {r7}\n"
-                     "bx lr\n");
+    __asm__ volatile("push {r7}\nmovw r7, #20\nsvc 0\npop {r7}\nbx lr\n");
+}
+
+__attribute__((naked)) int t_svc_literal(void)
+{
+    __asm__ volatile("push {r7}\nldr r7, 1f\nsvc 0\npop {r7}\nbx lr\n.balign 4\n1: .word 20\n");
+}
+
+__attribute__((naked)) int t_svc_unknown(void)
+{
+    __asm__ volatile("push {r7}\nmovw r7, #65535\nsvc 0\npop {r7}\nbx lr\n");
+}
+
+/* Chromium's cacheflush wrapper: start + length, flags 0, literal syscall nr. */
+__attribute__((naked)) int t_svc_cacheflush(void *start, unsigned length)
+{
+    __asm__ volatile("add r1, r0\nmovs r2, #0\npush {r7}\nldr r7, 1f\nsvc 0\npop {r7}\nbx lr\n.balign 4\n1: .word 0xf0002\n");
 }

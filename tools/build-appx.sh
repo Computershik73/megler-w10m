@@ -444,7 +444,9 @@ GUEST="$ROOT/build/guest/armeabi-v7a"
 DEMO="$ROOT/build/guest/demo/megler-demo.apk"
 if ! ls "$GUEST"/*.so > /dev/null 2>&1 || [ ! -f "$DEMO" ] || [ "$ROOT/core/tests/guest/t_demo.c" -nt "$DEMO" ] \
    || [ ! -f "$GUEST/libt_jni.so" ] || [ "$ROOT/core/tests/guest/t_jni.c" -nt "$GUEST/libt_jni.so" ] \
-   || [ ! -f "$GUEST/runtime/libt_ruser.so" ]; then
+   || [ ! -f "$GUEST/runtime/libt_ruser.so" ] \
+   || [ ! -f "$GUEST/libt_svc_arm.so" ] || [ ! -f "$GUEST/libt_svc_diag.so" ] \
+   || [ "$ROOT/core/tests/guest/t_svc.c" -nt "$GUEST/libt_svc.so" ]; then
   echo "    building the guest test libraries (tools/build-guest.sh)"
   bash "$ROOT/tools/build-guest.sh" > "$BUILD/build-guest.log" 2>&1 || echo "    WARNING: tools/build-guest.sh failed (build/appx-$ARCH/build-guest.log)" >&2
 fi

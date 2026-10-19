@@ -73,6 +73,11 @@ static bool on_fault(hk_fault *f)
     hk_addr pc = f->regs ? (f->regs[15] & ~1u) : 0;
     if (f->kind == HK_FAULT_ILLEGAL && f->regs) {
         hk_addr target = 0;
+        if (hk_patch_svc_target(pc, &target)) {
+            f->regs[0] = hk_bionic_syscall_raw(f->regs);
+            hk_fault_resume_at(f, target);
+            return true;
+        }
         if (hk_ld_plt_target(pc, &target) || hk_stubs_once_target(pc, &target)) {
             hk_fault_resume_at(f, target);
             hk_atomic_add(&g_plt_rescues, 1);

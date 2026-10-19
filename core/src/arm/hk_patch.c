@@ -228,55 +228,78 @@ static void patch_plt(hk_lib *lib, u8 *seg, size_t size)
 /* ---------------------------------------------------------- system calls */
 
 /*
- * Counted, not handled: `svc 0` right after a system call number goes into r7.
+ * Never execute a recognised Linux SVC on the host. Replace it with UDF and
+ * record its exact address so the fault handler can dispatch r7/r0..r5 and
+ * resume after it. The OS supplies an aligned handler stack even when the
+ * guest used push {r7}; no C call is made on that guest stack.
  *
- * With the flag trap-svc (a file of that name in the data folder's flags; for diagnosis, never on by itself) each such site
- * is also said in the log with its number and made an undefined instruction, `udf #165` in Thumb and in ARM (not clang's
- * `udf #254`, which is __builtin_trap's), so that
- * reaching it is a fault the crash report names by library and offset, on a phone as under qemu-arm -- where a direct system
- * call would otherwise go to Linux unseen and seem to work. Nothing is done in its place: the code faults there. This says
- * whether an app's code makes direct system calls at all, and where, which the count alone cannot.
+ * Executable segments also contain literal pools and Thumb-2 second halves.
+ * Keep the Thumb r7-producer check instead of replacing every DF00 halfword.
+ * In particular Chromium's cacheflush uses a literal load, not movw.
+ * trap-svc retains its diagnostic meaning: stop at the site without dispatch.
  */
 static volatile i32 g_trap_svc = -1;
 
 void hk_patch_set_trap_svc(bool on) { g_trap_svc = on ? 1 : 0; }
 
-static void count_svc(hk_lib *lib, u8 *seg, size_t size)
+static void patch_svc_site(hk_lib *lib, u8 *at, bool thumb, bool trap)
+{
+    hk_svc_site *site = trap ? NULL : malloc(sizeof(*site));
+    lib->stats.svc_sites++;
+    if (site) {
+        site->pc = (hk_addr)at | (thumb ? 1u : 0u);
+        site->next = lib->svc_sites;
+        lib->svc_sites = site;
+    } else if (!trap) {
+        /* Fail closed: never leave a host system call behind on allocation failure. */
+        hk_err("ld: %s: cannot record direct system call; it will fault", lib->name);
+    }
+    if (thumb) hk_wr16(at, site ? 0xDEA6 : 0xDEA5);
+    else hk_wr32(at, site ? 0xE7F00AF6u : 0xE7F00AF5u);
+}
+
+static void patch_svc(hk_lib *lib, u8 *seg, size_t size)
 {
     size_t i;
     bool trap;
     if (g_trap_svc < 0) g_trap_svc = hk_flag("trap-svc") ? 1 : 0;
     trap = g_trap_svc > 0;
-    for (i = 4; i + 2 <= size; i += 2) {
+    for (i = 2; i + 2 <= size; i += 2) {
         u16 a, b;
         if (hk_rd16(seg + i) != 0xDF00) continue;
         a = hk_rd16(seg + i - 2);
-        b = hk_rd16(seg + i - 4);
-        /* movs r7, #n  |  mov.w r7, #n / movw r7, #n */
-        if ((a & 0xFF00) == 0x2700 || (((b & 0xFBF0) == 0xF040 || (b & 0xFBF0) == 0xF240) && (a & 0x8F00) == 0x0700)) {
-            lib->stats.svc_sites++;
-            if (trap) {
-                hk_warn("ld: %s: a direct system call (Thumb, r7 set by %04x %04x) at +0x%x is made a fault (flag trap-svc)", lib->name, b, a,
-                        (unsigned)((hk_addr)(seg + i) - (hk_addr)lib->base));
-                hk_wr16(seg + i, 0xDEA5);
-            }
-        }
+        b = i >= 4 ? hk_rd16(seg + i - 4) : 0;
+        /* movs r7,#n; ldr r7,[pc,#n]; mov r7,rN; mov.w/movw r7,#n; ldr.w r7,[pc,+/-n]. */
+        if ((a & 0xFF00) == 0x2700 || (a & 0xFF00) == 0x4F00 || (a & 0xFF87) == 0x4607
+            || (((b & 0xFBF0) == 0xF040 || (b & 0xFBF0) == 0xF240) && (a & 0x8F00) == 0x0700)
+            || ((b == 0xF8DF || b == 0xF85F) && (a & 0xF000) == 0x7000))
+            patch_svc_site(lib, seg + i, true, trap);
     }
     for (i = (size_t)(HK_ALIGN_UP((hk_addr)seg, 4) - (hk_addr)seg); i + 4 <= size; i += 4)
-        if (hk_rd32(seg + i) == 0xEF000000u) {
-            lib->stats.svc_sites++;
-            if (trap) {
-                hk_warn("ld: %s: a direct system call (ARM) at +0x%x is made a fault (flag trap-svc)", lib->name, (unsigned)((hk_addr)(seg + i) - (hk_addr)lib->base));
-                hk_wr32(seg + i, 0xE7F00AF5u);
-            }
-        }
+        if (hk_rd32(seg + i) == 0xEF000000u)
+            patch_svc_site(lib, seg + i, false, trap);
+}
+
+bool hk_patch_svc_target(hk_addr pc, hk_addr *target)
+{
+    hk_lib *lib = hk_ld_lib_of((const void *)pc);
+    hk_svc_site *site;
+    if (!lib) return false;
+    for (site = lib->svc_sites; site; site = site->next) {
+        bool thumb = (site->pc & 1) != 0;
+        if ((site->pc & ~(hk_addr)1) != pc) continue;
+        if (thumb ? hk_rd16((const void *)pc) != 0xDEA6 : hk_rd32((const void *)pc) != 0xE7F00AF6u) return false;
+        *target = (pc + (thumb ? 2 : 4)) | (thumb ? 1u : 0u);
+        return true;
+    }
+    return false;
 }
 
 void hk_patch_segment(hk_lib *lib, u8 *seg, size_t size)
 {
     patch_plt(lib, seg, size);
     patch_tp_reads(lib, seg, size);
-    count_svc(lib, seg, size);
+    patch_svc(lib, seg, size);
 }
 
 /* ------------------------------------------------------ unresolved imports */

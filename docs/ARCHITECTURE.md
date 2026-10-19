@@ -171,18 +171,29 @@ instruction, so the translation keeps addresses and layout; it is designed
 
 ### Direct system calls
 
-`svc 0` with a Linux system call number means something else to Windows. bionic's
-own calls are replaced wholesale by the shims, so this matters only for code that
-makes system calls inline. The loader counts the sites (`svc 0` after a number goes
-into `r7`); they are not handled. `__clear_cache` in compiler-rt is one: a JIT inside
-an app will reach it.
+Before making a library executable, the loader replaces recognised Linux `svc 0`
+sites with UDF and records their addresses. The fault handler dispatches `r7`
+with arguments in `r0` through `r5` to the bionic syscall shims, writes the raw
+result (negative Linux errno on failure) to `r0`, and resumes after the instruction.
+Guest errno, sp and the other registers are preserved. Unknown numbers return
+`-ENOSYS` rather than entering the host kernel.
 
-Under qemu-arm a direct system call goes to Linux and works, unseen. To find out
-whether an app's code makes one, the flag `trap-svc` has the loader say each site in
-the log, with the instruction that set `r7`, and make it an undefined instruction
-(`udf #165`), so that reaching it is a fault the crash report names by library and
-offset -- under qemu as on a phone. Nothing is done in its place. The WebView's
-library has five such sites, none reached (docs/JAVA.md, "The WebView").
+The Thumb scanner recognises immediate/register moves and literal loads into
+`r7` immediately before `svc 0`; the ARM scanner recognises unconditional
+`svc 0`. It does not replace every DF00 halfword: executable segments also hold
+literal data and Thumb-2 instructions. Other sequences and newly generated JIT
+code still need interception support.
+
+Chromium's wrapper at `libwebviewchromium.so+0x2489a50` loads `0x000f0002`
+(`__ARM_NR_cacheflush`) from a literal and executes SVC at `+0x2489a58`.
+It now reaches the existing cache-flush shim. Its `push {r7}` leaves the guest
+stack at 4 mod 8; dispatch runs on the OS exception-handler stack. ARM/Thumb
+tests under qemu cover this shape, the shim's synthetic pid (which detects
+accidental pass-through to Linux), raw errors and unchanged errno. The Windows
+exception path with this wrapper still needs a phone run.
+
+The diagnostic flag `trap-svc` instead writes an unregistered `udf #165` and
+leaves the fault fatal, named by library and offset in the crash report.
 
 ### Everything else that differs
 

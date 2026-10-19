@@ -89,6 +89,8 @@ enum {
 };
 
 int *hk_errno_ptr(void);
+/* ARM EABI kernel convention: negative errno in r0, guest errno unchanged. */
+u32 hk_bionic_syscall_raw(const u32 *regs);
 void hk_set_errno(int guest_errno);
 /* A host file-layer error (HK_E_*) as a Linux errno. */
 int hk_errno_of(int host_err);

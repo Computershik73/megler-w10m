@@ -138,12 +138,11 @@ hk_lib *hk_ld_load_file(const char *host_path);
 
 /* Imports that nothing provided, bound to a stub that logs when called. */
 size_t hk_ld_unresolved_count(void);
-/*
- * Direct system calls (`svc 0` after a number goes into r7) in libraries loaded from now on are made undefined instructions
- * and said in the log, so that reaching one is a fault (arm/hk_patch.c). For diagnosis: the flag trap-svc turns it on for a
- * run; the tests turn it on and off.
- */
+/* Recognised direct Linux calls are intercepted by default. Diagnostic mode
+ * makes them fatal UDFs instead; it applies only to subsequently loaded code. */
 void hk_patch_set_trap_svc(bool on);
+/* Exact registered trap lookup; returns the continuation with its ISA bit. */
+bool hk_patch_svc_target(hk_addr pc, hk_addr *target);
 /* 0 quiet, 1 one line per library, 2 every unresolved import as well. */
 void hk_ld_set_verbosity(int v);
 
@@ -155,7 +154,7 @@ typedef struct hk_ld_stats {
     u32 arm_functions;     /* exported functions in ARM (not Thumb) mode */
     u32 thumb_functions;
     u32 unresolved;
-    u32 svc_sites;         /* direct system calls seen (not handled) */
+    u32 svc_sites;         /* direct system calls intercepted */
 } hk_ld_stats;
 void hk_ld_get_stats(const hk_lib *lib, hk_ld_stats *out);
 

@@ -5,6 +5,11 @@
 #include "../elf/hk_elf.h"
 #include "hk_ld.h"
 
+typedef struct hk_svc_site {
+    hk_addr pc;               /* bit 0: Thumb */
+    struct hk_svc_site *next;
+} hk_svc_site;
+
 struct hk_lib {
     char *name, *soname;
     u8 *map;                   /* the whole reservation: island, image, island; or, placed, the image and what follows it */
@@ -61,6 +66,7 @@ struct hk_lib {
     bool relocated, sealed, inited, initing;
     bool runtime;              /* one of Android's own (hk_ld_load_runtime), not the app's: the two never see each other */
     hk_ld_stats stats;
+    hk_svc_site *svc_sites;    /* immutable once executable; only our registered traps may resume */
     hk_lib *next;
 };
 

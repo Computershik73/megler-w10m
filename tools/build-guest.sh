@@ -53,6 +53,8 @@ SYS=("-L$(w "$STUBS")" -lc -lm -ldl -llog)
 # Native methods for the Dalvik runtime's tests: softfp, as an app's library is.
 "$CLANG" "${COMMON[@]}" -mthumb -Wl,--hash-style=both   -Wl,-soname,libt_jni.so -o "$(w "$OUT/libt_jni.so")" "$(w "$SRC/t_jni.c")" "${SYS[@]}"
 "$CLANG" "${COMMON[@]}" -mthumb -Wl,--hash-style=both   -Wl,-soname,libt_svc.so -o "$(w "$OUT/libt_svc.so")" "$(w "$SRC/t_svc.c")" "${SYS[@]}"
+"$CLANG" "${COMMON[@]}" -mthumb -Wl,--hash-style=both   -Wl,-soname,libt_svc_diag.so -o "$(w "$OUT/libt_svc_diag.so")" "$(w "$SRC/t_svc.c")" "${SYS[@]}"
+"$CLANG" "${COMMON[@]}" -marm -Wl,--hash-style=both   -Wl,-soname,libt_svc_arm.so -o "$(w "$OUT/libt_svc_arm.so")" "$(w "$SRC/t_svc.c")" "${SYS[@]}"
 # AAudio looked up by name, as an app that decodes its own sound does (core/src/ndk/hk_aaudio.c).
 "$CLANG" "${COMMON[@]}" -mthumb -Wl,--hash-style=both   -Wl,-soname,libt_aaudio.so -o "$(w "$OUT/libt_aaudio.so")" "$(w "$SRC/t_aaudio.c")" "${SYS[@]}"
 

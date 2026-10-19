@@ -657,7 +657,7 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   `ConnectivityManager` that follows the phone: the framework always says
   connected over Wi-Fi, whatever the phone has.
 - **ETC1 textures** (see above).
-- **Direct system calls** in guest code (`svc 0`), which a JIT inside an app makes.
+- **Direct system calls outside the recognised loader patterns**, including newly generated JIT code. Recognised ARM/Thumb `svc 0` wrappers now dispatch through the Linux shims; literal-loaded `cacheflush`, raw errno and a 4-byte-aligned guest stack pass under qemu-arm. The Windows exception path still needs a phone run (ARCHITECTURE.md, "Direct system calls").
 - **The on-screen keyboard**, sensors, the software `ANativeWindow_lock` path on a driver's window (a NativeActivity's; a `SurfaceView`'s has one).
 - **Room.** A 32-bit process has 2 GB of addresses, and a big game wants more (see Unity above).
 - C++ exceptions thrown through guest frames are untested (no NDK here to build a

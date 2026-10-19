@@ -2054,26 +2054,48 @@ static void test_guest(const char *libdir, const char *scratch)
     CHECK(hk_ld_load("libc.so") == NULL && hk_ld_load("libnothere.so") == NULL);
     test_guest_kinds(libdir);
 
-    /*
-     * A direct system call made a fault by the trap the flag trap-svc turns on (arm/hk_patch.c): loaded with it on, the
-     * library's `svc 0` is an undefined instruction, `udf #165`, and is still counted. Nothing of it is run.
-     */
+    /* Both ISAs must return the shim pid (4242), never the host kernel's pid.
+     * Literal r7 loads and a 4-byte-aligned guest sp reproduce Chromium's stub. */
+    {
+        const char *names[] = { "libt_svc.so", "libt_svc_arm.so" };
+        int j;
+        hk_patch_set_trap_svc(false);
+        for (j = 0; j < 2; ++j) {
+            hk_lib *svc = hk_ld_load(names[j]);
+            CHECK(svc != NULL);
+            if (svc) {
+                int saved = *hk_errno_ptr();
+                hk_ld_get_stats(svc, &st);
+                CHECK_INT(st.svc_sites, 4);
+                *hk_errno_ptr() = 123;
+                CHECK_INT(FN(svc, int (*)(void), "t_svc_getpid")(), 4242);
+                CHECK_INT(FN(svc, int (*)(void), "t_svc_literal")(), 4242);
+                CHECK_INT(FN(svc, int (*)(void), "t_svc_unknown")(), -38);
+                CHECK_INT(FN(svc, int (*)(void *, unsigned), "t_svc_cacheflush")(SYM(svc, "t_svc_getpid"), 2), 0);
+                CHECK_INT(*hk_errno_ptr(), 123);
+                *hk_errno_ptr() = saved;
+            }
+        }
+    }
+    /* Diagnostic mode still stops, and is not accepted as a dispatch trap. */
     {
         hk_lib *svc;
         const u8 *fn;
         bool trapped = false, left = false;
         int k;
         hk_patch_set_trap_svc(true);
-        svc = hk_ld_load("libt_svc.so");
+        svc = hk_ld_load("libt_svc_diag.so");
         hk_patch_set_trap_svc(false);
         CHECK(svc != NULL);
         if (svc) {
+            hk_addr target;
             hk_ld_get_stats(svc, &st);
-            CHECK_INT(st.svc_sites, 1);
+            CHECK_INT(st.svc_sites, 4);
             fn = (const u8 *)((hk_addr)SYM(svc, "t_svc_getpid") & ~(hk_addr)1);
             for (k = 0; k < 16; k += 2) {
                 trapped |= hk_rd16(fn + k) == 0xDEA5;
                 left |= hk_rd16(fn + k) == 0xDF00;
+                CHECK(!hk_patch_svc_target((hk_addr)(fn + k), &target));
             }
             CHECK(trapped && !left);
         }
