@@ -13,6 +13,9 @@ namespace megler::app::shellLog {
 namespace {
 
 std::mutex gMutex;
+// The thread inside emit() under gMutex: a fault there that the core reports
+// comes back to emit() on the same thread, which must not wait for itself.
+std::atomic<DWORD> gOwner{0};
 std::wstring gPathW;
 std::deque<std::string> gRing;
 uint64_t gFirst = 0;               // the number of the ring's first line
@@ -31,7 +34,17 @@ char levelLetter(int level) {
 void emit(int level, const std::string& message) {
     const std::string line = timeOfDay() + " " + levelLetter(level) + " " + message;
     OutputDebugStringA(("[megler] " + line + "\n").c_str());
+    if (gOwner.load() == GetCurrentThreadId()) {
+        // Entered again from a fault on this thread while it was writing:
+        // the file only, past the lock it already holds.
+        if (!gPathW.empty()) files::append(gPathW, line + "\r\n");
+        return;
+    }
     std::lock_guard<std::mutex> lock(gMutex);
+    struct Owner {
+        Owner() { gOwner.store(GetCurrentThreadId()); }
+        ~Owner() { gOwner.store(0); }
+    } owner;
     gRing.push_back(line);
     if (gRing.size() > ringCapacity) {
         gRing.pop_front();
