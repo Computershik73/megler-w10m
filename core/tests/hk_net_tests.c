@@ -605,6 +605,44 @@ static void test_udp(void)
     N.close(b);
 }
 
+/*
+ * A ping socket (Linux's SOCK_DGRAM with IPPROTO_ICMP), as Android's InetAddress.isReachable opens one: an echo request to
+ * 127.0.0.1 and its reply, the identifier the socket's port as getsockname says it and the sequence and data the
+ * request's; and a request that is no echo refused. Where the host gives a program without privileges no such socket
+ * (Linux's net.ipv4.ping_group_range), that is said and the rest left out; on Windows the core makes it (IcmpSendEcho2)
+ * and it must work.
+ */
+static void test_ping(void)
+{
+    u8 req[12] = { 8, 0, 0, 0, 0, 0, 0, 7, 'h', 'u', 's', 'k' }, reply[64], sa[16], from[28];
+    i32 tv[2] = { 2, 0 };
+    u32 len, from_len;
+    int s = N.socket(AF_INET_, SOCK_DGRAM_, 1 /* IPPROTO_ICMP */), n;
+    u16 id;
+    say("network: a ping socket: an echo request to 127.0.0.1 and its reply");
+#if !defined(_WIN32)
+    if (s < 0) {
+        say("  (no ping socket for this user here: errno %d)", err());
+        return;
+    }
+#endif
+    CHECK(s >= 0);
+    if (s < 0) return;
+    CHECK(N.setsockopt(s, SOL_SOCKET_, SO_RCVTIMEO_, tv, 8) == 0);
+    CHECK_INT(N.sendto(s, req, sizeof(req), 0, sa, sa4(sa, k_lo4, 0)), sizeof(req));
+    len = sizeof(sa);
+    CHECK(N.getsockname(s, sa, &len) == 0);
+    id = port_of(sa);
+    from_len = sizeof(from);
+    n = N.recvfrom(s, reply, sizeof(reply), 0, from, &from_len);
+    CHECK_INT(n, sizeof(req));
+    CHECK(reply[0] == 0 && reply[1] == 0 && ((reply[4] << 8) | reply[5]) == id && reply[6] == 0 && reply[7] == 7 && !memcmp(reply + 8, "megler", 4));
+    CHECK(from_len == 16 && !memcmp(from + 4, k_lo4, 4));
+    req[0] = 13;
+    CHECK(N.sendto(s, req, sizeof(req), 0, sa, sa4(sa, k_lo4, 0)) == -1 && err() == GE_INVAL);
+    N.close(s);
+}
+
 /* ----------------------------------------------------------------- options */
 
 static void test_options(void)
@@ -1477,6 +1515,7 @@ int hk_net_tests_run(hk_test_sink sink, void *user, int *checks)
     test_large(true);
     test_shutdown();
     test_udp();
+    test_ping();
     test_options();
     test_descriptor();
     test_waiting();

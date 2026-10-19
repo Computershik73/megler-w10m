@@ -22,6 +22,7 @@
 #include <windows.h>
 #include <bcrypt.h>
 #include <iphlpapi.h>
+#include <icmpapi.h>
 #include <mstcpip.h>
 #define COBJMACROS
 #include <d3d11.h>
@@ -1735,6 +1736,7 @@ struct hk_sock {
     volatile LONG peer_closed;         /* FD_CLOSE: the other side sends no more */
     volatile LONG reset;               /* ... because the connection was reset or aborted */
     int reuseaddr;                     /* kept here, not given to Windows (hk_sock_set) */
+    struct hk_ping *ping;              /* a ping socket's own (ping_open): no Windows socket then */
 };
 
 static void (*volatile g_sock_notify)(void);
@@ -1882,6 +1884,199 @@ static hk_sock *sock_wrap(SOCKET s, int family, int type, int *err)
     return k;
 }
 
+/*
+ * Ping sockets: Linux's socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP) (and AF_INET6 with IPPROTO_ICMPV6), through which a
+ * program without privileges sends ICMP echo requests and reads the replies. Android's InetAddress.isReachable tries one
+ * first (libcore's Inet6AddressImpl.icmpEcho), then a TCP connection to port 7, which nothing answers; urent asks
+ * isReachable of its hosts every few seconds and says "no internet connection" when none answers. Windows has no such
+ * socket (ICMP takes a raw one, for administrators), but it sends echoes for an app: IcmpSendEcho2 and Icmp6SendEcho2.
+ *
+ * So the socket is made here: a request written to it (type 8, or 128 for ICMPv6, then the code, checksum, identifier,
+ * sequence and data) becomes an echo sent by Windows on a thread of the pool, a second at most; its reply is kept, and
+ * reading the socket gives it as Linux does, the ICMP header and the data with no IP header, the identifier the socket's
+ * own (Linux puts its "port" there, which getsockname says) and the sequence the request's. No reply in time: nothing to
+ * read, as on Linux. One echo at a time: a request written while one is under way is taken and not sent.
+ */
+#define PING_DATA 2048
+
+typedef struct hk_ping {
+    HANDLE icmp;                       /* IcmpCreateFile's or Icmp6CreateFile's */
+    PTP_WORK work;                     /* the echo under way, on the pool */
+    u16 ident;                         /* the identifier Linux gives the socket: its port */
+    volatile LONG busy;                /* an echo is under way */
+    volatile LONG ready;               /* its reply is in `reply`, not read yet */
+    hk_sockaddr to;                    /* where the echo goes */
+    hk_sockaddr peer;                  /* connect's; family 0: none */
+    u8 request[8 + PING_DATA];
+    u32 request_len;
+    u8 reply[8 + PING_DATA];
+    u32 reply_len;
+} hk_ping;
+
+static u16 internet_checksum(const u8 *p, u32 n)
+{
+    u32 sum = 0, i;
+    for (i = 0; i + 1 < n; i += 2) sum += (u32)p[i] << 8 | p[i + 1];
+    if (n & 1) sum += (u32)p[n - 1] << 8;
+    while (sum >> 16) sum = (sum & 0xFFFF) + (sum >> 16);
+    return (u16)~sum;
+}
+
+static VOID CALLBACK ping_work(PTP_CALLBACK_INSTANCE instance, PVOID context, PTP_WORK work)
+{
+    hk_sock *k = (hk_sock *)context;
+    hk_ping *p = k->ping;
+    /* Room for a reply structure, the data echoed and an ICMP error's 8 bytes, as the functions ask. */
+    u8 replies[sizeof(ICMPV6_ECHO_REPLY) + sizeof(ICMP_ECHO_REPLY) + PING_DATA + 64];
+    const u8 *data = p->request + 8;
+    WORD size = (WORD)(p->request_len - 8);
+    DWORD n;
+    bool ok = false;
+    (void)instance;
+    (void)work;
+    if (k->family == HK_AF_INET) {
+        IPAddr to;
+        memcpy(&to, p->to.addr, 4);
+        n = IcmpSendEcho2(p->icmp, NULL, NULL, NULL, to, (LPVOID)data, size, NULL, replies, sizeof(replies), 1000);
+        ok = n > 0 && ((const ICMP_ECHO_REPLY *)replies)->Status == IP_SUCCESS;
+    } else {
+        SOCKADDR_IN6 from, to;
+        memset(&from, 0, sizeof(from));
+        memset(&to, 0, sizeof(to));
+        from.sin6_family = to.sin6_family = AF_INET6;
+        memcpy(&to.sin6_addr, p->to.addr, 16);
+        to.sin6_scope_id = p->to.scope_id;
+        n = Icmp6SendEcho2(p->icmp, NULL, NULL, NULL, &from, &to, (LPVOID)data, size, NULL, replies, sizeof(replies), 1000);
+        ok = n > 0 && ((const ICMPV6_ECHO_REPLY *)replies)->Status == IP_SUCCESS;
+    }
+    if (ok && !k->closing) {
+        u16 sum;
+        p->reply[0] = k->family == HK_AF_INET ? 0 : 129;   /* an echo reply */
+        p->reply[1] = 0;
+        p->reply[2] = p->reply[3] = 0;
+        p->reply[4] = (u8)(p->ident >> 8);
+        p->reply[5] = (u8)p->ident;
+        p->reply[6] = p->request[6];
+        p->reply[7] = p->request[7];
+        memcpy(p->reply + 8, data, size);
+        p->reply_len = 8u + size;
+        /* (ICMPv6's checksum takes the IP addresses in; nobody reading a ping socket checks it.) */
+        if (k->family == HK_AF_INET) {
+            sum = internet_checksum(p->reply, p->reply_len);
+            p->reply[2] = (u8)(sum >> 8);
+            p->reply[3] = (u8)sum;
+        }
+        InterlockedExchange(&p->ready, 1);
+    }
+    InterlockedExchange(&p->busy, 0);
+    if (ok && g_sock_notify) g_sock_notify();
+}
+
+static hk_sock *ping_open(int family, int type, int *err)
+{
+    static volatile LONG next;
+    hk_sock *k = (hk_sock *)hk_alloc(sizeof(*k));
+    hk_ping *p = (hk_ping *)hk_alloc(sizeof(*p));
+    LONG id;
+    k->s = INVALID_SOCKET;
+    k->ev = WSA_INVALID_EVENT;
+    k->family = family;
+    k->type = type;
+    k->ping = p;
+    p->icmp = family == HK_AF_INET ? IcmpCreateFile() : Icmp6CreateFile();
+    p->work = p->icmp != INVALID_HANDLE_VALUE ? CreateThreadpoolWork(ping_work, k, NULL) : NULL;
+    if (p->icmp == INVALID_HANDLE_VALUE || !p->work) {
+        *err = p->icmp == INVALID_HANDLE_VALUE ? HK_NE_PROTONOSUPPORT : HK_NE_NOBUFS;
+        if (p->icmp != INVALID_HANDLE_VALUE) IcmpCloseHandle(p->icmp);
+        free(p);
+        free(k);
+        return NULL;
+    }
+    if (!next) InterlockedCompareExchange(&next, (LONG)((GetCurrentProcessId() * 2654435761u ^ GetTickCount()) & 0xFFFF), 0);
+    do id = InterlockedIncrement(&next) & 0xFFFF;
+    while (!id);
+    p->ident = (u16)id;
+    return k;
+}
+
+static void ping_close(hk_sock *k)
+{
+    hk_ping *p = k->ping;
+    InterlockedExchange(&k->closing, 1);
+    WaitForThreadpoolWorkCallbacks(p->work, FALSE);
+    CloseThreadpoolWork(p->work);
+    IcmpCloseHandle(p->icmp);
+    free(p);
+    free(k);
+}
+
+static i32 ping_send(hk_sock *k, const void *buf, u32 n, const hk_sockaddr *to, int *err)
+{
+    hk_ping *p = k->ping;
+    const u8 *b = (const u8 *)buf;
+    const hk_sockaddr *dest = to ? to : p->peer.family ? &p->peer : NULL;
+    if (!dest) {
+        *err = HK_NE_DESTADDRREQ;
+        return -1;
+    }
+    if (dest->family != k->family) {
+        *err = HK_NE_AFNOSUPPORT;
+        return -1;
+    }
+    /* Linux takes echo requests only, a whole header at least. */
+    if (n < 8 || b[0] != (k->family == HK_AF_INET ? 8 : 128) || b[1] != 0) {
+        *err = HK_NE_INVAL;
+        return -1;
+    }
+    if (n > 8 + PING_DATA) {
+        *err = HK_NE_MSGSIZE;
+        return -1;
+    }
+    if (InterlockedCompareExchange(&p->busy, 1, 0) != 0) return (i32)n;
+    p->to = *dest;
+    memcpy(p->request, b, n);
+    p->request_len = n;
+    InterlockedExchange(&p->ready, 0);
+    SubmitThreadpoolWork(p->work);
+    return (i32)n;
+}
+
+static i32 ping_recv(hk_sock *k, void *buf, u32 n, int flags, hk_sockaddr *from, int *said, int *err)
+{
+    hk_ping *p = k->ping;
+    u32 len;
+    if (!p->ready) {
+        *err = HK_NE_AGAIN;
+        return -1;
+    }
+    len = p->reply_len < n ? p->reply_len : n;
+    memcpy(buf, p->reply, len);
+    if (said && len < p->reply_len) *said = HK_MSG_TRUNCATED;
+    if (from) {
+        *from = p->to;
+        from->port = 0;
+    }
+    if (!(flags & HK_MSG_PEEK)) InterlockedExchange(&p->ready, 0);
+    return (i32)len;
+}
+
+static bool ping_name(hk_sock *k, bool peer, hk_sockaddr *a, int *err)
+{
+    hk_ping *p = k->ping;
+    if (peer) {
+        if (!p->peer.family) {
+            *err = HK_NE_NOTCONN;
+            return false;
+        }
+        *a = p->peer;
+        return true;
+    }
+    memset(a, 0, sizeof(*a));
+    a->family = k->family;
+    a->port = p->ident;
+    return true;
+}
+
 hk_sock *hk_sock_open(int family, int type, int protocol, int *err)
 {
     int af = family == HK_AF_INET ? AF_INET : family == HK_AF_INET6 ? AF_INET6 : 0;
@@ -1895,6 +2090,7 @@ hk_sock *hk_sock_open(int family, int type, int protocol, int *err)
         *err = !af ? HK_NE_AFNOSUPPORT : HK_NE_SOCKTNOSUPPORT;
         return NULL;
     }
+    if (st == SOCK_DGRAM && ((af == AF_INET && protocol == IPPROTO_ICMP) || (af == AF_INET6 && protocol == IPPROTO_ICMPV6))) return ping_open(family, type, err);
     s = WSASocketW(af, st, protocol, NULL, 0, WSA_FLAG_OVERLAPPED | WSA_FLAG_NO_HANDLE_INHERIT);
     if (s == INVALID_SOCKET) {
         *err = net_err(WSAGetLastError());
@@ -1918,6 +2114,10 @@ void hk_sock_close(hk_sock *k)
 {
     u_long blocking = 0;
     if (!k) return;
+    if (k->ping) {
+        ping_close(k);
+        return;
+    }
     InterlockedExchange(&k->closing, 1);
     /* Twice: a callback still running when the wait was first taken away may have set it again before it saw `closing`. */
     SetThreadpoolWait(k->wait, NULL, NULL);
@@ -1936,7 +2136,13 @@ void hk_sock_close(hk_sock *k)
 bool hk_sock_bind(hk_sock *k, const hk_sockaddr *a, int *err)
 {
     SOCKADDR_STORAGE ss;
-    int len = addr_to_native(a, &ss);
+    int len;
+    if (k->ping) {
+        /* (A port asked for is the identifier, as on Linux.) */
+        if (a->port) k->ping->ident = a->port;
+        return true;
+    }
+    len = addr_to_native(a, &ss);
     if (!len) {
         *err = HK_NE_AFNOSUPPORT;
         return false;
@@ -1950,6 +2156,10 @@ bool hk_sock_bind(hk_sock *k, const hk_sockaddr *a, int *err)
 
 bool hk_sock_listen(hk_sock *k, int backlog, int *err)
 {
+    if (k->ping) {
+        *err = HK_NE_OPNOTSUPP;
+        return false;
+    }
     if (backlog < 1) backlog = 1;
     if (listen(k->s, backlog) != 0) {
         int e = WSAGetLastError();
@@ -1969,6 +2179,10 @@ bool hk_sock_listen(hk_sock *k, int backlog, int *err)
 
 hk_sock *hk_sock_accept(hk_sock *k, hk_sockaddr *peer, int *err)
 {
+    if (k->ping) {
+        *err = HK_NE_OPNOTSUPP;
+        return NULL;
+    }
     SOCKADDR_STORAGE ss;
     int len = (int)sizeof(ss);
     SOCKET n = accept(k->s, (struct sockaddr *)&ss, &len);
@@ -1991,6 +2205,14 @@ bool hk_sock_connect(hk_sock *k, const hk_sockaddr *a, int *err)
 {
     SOCKADDR_STORAGE ss;
     int len, e;
+    if (k->ping) {
+        if (a->family && a->family != k->family) {
+            *err = HK_NE_AFNOSUPPORT;
+            return false;
+        }
+        k->ping->peer = *a;
+        return true;
+    }
     if (!a->family) {
         /* No peer any more: Windows takes an address of zeros for that. */
         memset(&ss, 0, sizeof(ss));
@@ -2041,6 +2263,7 @@ i32 hk_sock_send(hk_sock *k, const void *buf, u32 n, int flags, const hk_sockadd
     SOCKADDR_STORAGE ss;
     int len = 0, f = native_flags(flags);
     u32 done = 0;
+    if (k->ping) return ping_send(k, buf, n, to, err);
     if (to && !(len = addr_to_native(to, &ss))) {
         *err = HK_NE_AFNOSUPPORT;
         return -1;
@@ -2065,6 +2288,7 @@ i32 hk_sock_recv(hk_sock *k, void *buf, u32 n, int flags, hk_sockaddr *from, int
     SOCKADDR_STORAGE ss;
     int len = (int)sizeof(ss), r;
     if (said) *said = 0;
+    if (k->ping) return ping_recv(k, buf, n, flags, from, said, err);
     memset(&ss, 0, sizeof(ss));
     r = recvfrom(k->s, (char *)buf, n > 0x7FFFFFFFu ? 0x7FFFFFFF : (int)n, native_flags(flags), from ? (struct sockaddr *)&ss : NULL, from ? &len : NULL);
     if (r == SOCKET_ERROR) {
@@ -2083,6 +2307,7 @@ i32 hk_sock_recv(hk_sock *k, void *buf, u32 n, int flags, hk_sockaddr *from, int
 
 bool hk_sock_shutdown(hk_sock *k, int how, int *err)
 {
+    if (k->ping) return true;
     if (shutdown(k->s, how == 0 ? SD_RECEIVE : how == 1 ? SD_SEND : SD_BOTH) != 0) {
         *err = net_err(WSAGetLastError());
         return false;
@@ -2094,6 +2319,7 @@ bool hk_sock_name(hk_sock *k, bool peer, hk_sockaddr *a, int *err)
 {
     SOCKADDR_STORAGE ss;
     int len = (int)sizeof(ss), r;
+    if (k->ping) return ping_name(k, peer, a, err);
     r = peer ? getpeername(k->s, (struct sockaddr *)&ss, &len) : getsockname(k->s, (struct sockaddr *)&ss, &len);
     if (r != 0) {
         int e = WSAGetLastError();
@@ -2115,6 +2341,7 @@ int hk_sock_ready(hk_sock *k)
     fd_set r, w, x;
     struct timeval none = { 0, 0 };
     int out = 0;
+    if (k->ping) return HK_SOCK_OUT | (k->ping->ready ? HK_SOCK_IN : 0);
     FD_ZERO(&r);
     FD_ZERO(&w);
     FD_ZERO(&x);
@@ -2142,6 +2369,7 @@ int hk_sock_error(hk_sock *k)
 {
     int e = 0, len = (int)sizeof(e);
     LONG kept;
+    if (k->ping) return HK_NE_OK;
     /* Windows says a failed attempt's error every time it is asked; Linux once, and 0 after. */
     if (k->failed && !k->error_pending) return HK_NE_OK;
     kept = InterlockedExchange(&k->connect_error, 0);
@@ -2155,6 +2383,7 @@ int hk_sock_error(hk_sock *k)
 i32 hk_sock_pending(hk_sock *k)
 {
     u_long n = 0;
+    if (k->ping) return k->ping->ready ? (i32)k->ping->reply_len : 0;
     if (ioctlsocket(k->s, FIONREAD, &n) != 0) return 0;
     return n > 0x7FFFFFFFu ? 0x7FFFFFFF : (i32)n;
 }
@@ -2217,6 +2446,8 @@ bool hk_sock_set(hk_sock *k, int option, int value, int *err)
     struct linger lg;
     const char *p = (const char *)&dw;
     int len = (int)sizeof(dw);
+    /* A ping socket's options (its time to live, its buffers) are Windows' own for each echo. */
+    if (k->ping) return true;
     if (option == HK_SO_REUSEADDR) {
         /*
          * Linux's SO_REUSEADDR lets a server bind a port that connections of
@@ -2250,6 +2481,10 @@ bool hk_sock_get(hk_sock *k, int option, int *value, int *err)
     int level, name, len;
     DWORD dw = 0;
     struct linger lg;
+    if (k->ping) {
+        *value = 0;
+        return true;
+    }
     if (option == HK_SO_REUSEADDR) {
         *value = k->reuseaddr;
         return true;
@@ -2281,6 +2516,10 @@ bool hk_sock_get(hk_sock *k, int option, int *value, int *err)
 bool hk_sock_multicast(hk_sock *k, bool join, const hk_sockaddr *group, const hk_sockaddr *iface, u32 index, int *err)
 {
     int r;
+    if (k->ping) {
+        *err = HK_NE_OPNOTSUPP;
+        return false;
+    }
     if (group->family == HK_AF_INET) {
         IP_MREQ m;
         memset(&m, 0, sizeof(m));
