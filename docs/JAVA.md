@@ -2304,6 +2304,19 @@ step "system-libs" finds `libz.so`, `libandroid.so` and `liblog.so` there, no
 file of a name that is not one, and `System.loadLibrary("z")`, which finds the
 file through the class loader, loads.
 
+**The linker's own entry points.** Android 8 and later's `libdl.so` is a thin
+layer over the linker's `__loader_dlopen`, `__loader_dlsym` and the rest
+(`bionic/linker/dlfcn.cpp`), each with the caller's address added, by which
+the linker picks the caller's namespace. Facebook's `libforce_dlopen.so`
+looks up `dl_iterate_phdr` and `__loader_dlopen` in `libdl.so` to open a
+library as a library already loaded would; Instagram's app state logger
+(`AppStateLoggerNative.registerSelfSigkillHandlers`) threw "Could not find
+__loader_dlopen from libdl.so" and the app ended. `hk_libdl.c` now has them,
+each the plain function with the caller's address ignored, since there are
+no namespaces here. The guest test `t_loader_dl` looks them up in `libdl.so`,
+opens `libc.so` and finds `strlen` through them, and is refused a library that
+is not there, with an error to read.
+
 **Binding.** A native method is looked for in this order: the C tables of the
 runtime and the drivers (`hk_dvm_register`); what a library registered with
 `RegisterNatives`; a function a library exports as `Java_<class>_<method>`,

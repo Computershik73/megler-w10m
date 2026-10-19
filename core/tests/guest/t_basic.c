@@ -451,6 +451,26 @@ int t_dl(void)
 }
 
 /*
+ * The linker's entry points that Android 8's libdl.so calls, looked up in libdl.so as Facebook's apps look them up (Instagram's
+ * __loader_dlopen): a library opened and a function found with a caller's address, and a library that is not there refused
+ * with an error to read.
+ */
+int t_loader_dl(void)
+{
+    void *dl = dlopen("libdl.so", 0), *libc;
+    void *(*open_as)(const char *, int, const void *) = dl ? dlsym(dl, "__loader_dlopen") : 0;
+    void *(*sym_as)(void *, const char *, const void *) = dl ? dlsym(dl, "__loader_dlsym") : 0;
+    char *(*error)(void) = dl ? dlsym(dl, "__loader_dlerror") : 0;
+    int (*len)(const char *);
+    if (!open_as || !sym_as || !error) return -1;
+    libc = open_as("libc.so", 0, (const void *)t_loader_dl);
+    len = libc ? sym_as(libc, "strlen", (const void *)t_loader_dl) : 0;
+    if (!len) return -2;
+    if (open_as("libno-such-thing.so", 0, (const void *)t_loader_dl) || !error()) return -3;
+    return len("seven");
+}
+
+/*
  * A frame far bigger than a page, written at its far end first. Nothing in
  * Android code feels its way down a stack, and a host that hands a stack out
  * page by page (Windows) must have handed all of it out beforehand.

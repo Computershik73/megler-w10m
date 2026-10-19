@@ -262,6 +262,26 @@ static void g_set_target_sdk(int v) { (void)v; }
 static void *g_android_get_exported_namespace(const char *name) { (void)name; return NULL; }
 static void g_android_update_ld_library_path(const char *path) { (void)path; }
 
+/*
+ * The linker's own entry points, which Android 8 and later's libdl.so calls (ld-android.so, bionic/linker/dlfcn.cpp): dlopen,
+ * dlsym and the rest, with the caller's address added, by which Android picks the caller's linker namespace. Apps look them
+ * up in libdl.so to open a library as another library would: Instagram's app state logger
+ * (AppStateLoggerNative.registerSelfSigkillHandlers) threw "Could not find __loader_dlopen from libdl.so" and ended the app's
+ * start. There are no namespaces here, so the caller changes nothing.
+ */
+static void *g_loader_dlopen(const char *name, int flags, const void *caller) { (void)caller; return g_dlopen(name, flags); }
+static void *g_loader_android_dlopen_ext(const char *name, int flags, const void *info, const void *caller)
+{
+    (void)caller;
+    return g_android_dlopen_ext(name, flags, info);
+}
+static void *g_loader_dlsym(void *handle, const char *name, const void *caller) { (void)caller; return g_dlsym(handle, name); }
+static void *g_loader_dlvsym(void *handle, const char *name, const char *version, const void *caller)
+{
+    (void)caller;
+    return g_dlvsym(handle, name, version);
+}
+
 const hk_sym hk_tab_dl[] = {
     HK_WRAP("dlopen", g_dlopen),
     HK_WRAP("android_dlopen_ext", g_android_dlopen_ext),
@@ -279,5 +299,18 @@ const hk_sym hk_tab_dl[] = {
     HK_WRAP("android_get_device_api_level", hk_sdk_level),
     HK_WRAP("android_get_exported_namespace", g_android_get_exported_namespace),
     HK_WRAP("android_update_LD_LIBRARY_PATH", g_android_update_ld_library_path),
+    HK_WRAP("__loader_dlopen", g_loader_dlopen),
+    HK_WRAP("__loader_android_dlopen_ext", g_loader_android_dlopen_ext),
+    HK_WRAP("__loader_dlsym", g_loader_dlsym),
+    HK_WRAP("__loader_dlvsym", g_loader_dlvsym),
+    HK_WRAP("__loader_dlclose", g_dlclose),
+    HK_WRAP("__loader_dlerror", g_dlerror_fn),
+    HK_WRAP("__loader_dladdr", g_dladdr),
+    HK_WRAP("__loader_dl_iterate_phdr", g_dl_iterate_phdr),
+    HK_WRAP("__loader_dl_unwind_find_exidx", g_find_exidx),
+    HK_WRAP("__loader_android_get_application_target_sdk_version", g_target_sdk),
+    HK_WRAP("__loader_android_set_application_target_sdk_version", g_set_target_sdk),
+    HK_WRAP("__loader_android_get_exported_namespace", g_android_get_exported_namespace),
+    HK_WRAP("__loader_android_update_LD_LIBRARY_PATH", g_android_update_ld_library_path),
     HK_END
 };
