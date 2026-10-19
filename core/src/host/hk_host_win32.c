@@ -209,6 +209,8 @@ struct hk_thread {
     hk_thread_fn fn;
     void *arg;
     DWORD id;
+    /* Other threads using `self` right now (self_take): the thread, ending, closes it only once there are none. */
+    volatile LONG users;
     /* An interruption under way (hk_thread_interrupt): what the thread was doing, to go back to. */
     volatile LONG interrupted;
     CONTEXT was;
@@ -224,10 +226,30 @@ static HANDLE own_handle(void)
     return h;
 }
 
+/*
+ * Another thread's use of a thread's own handle -- to stop it, read its registers or its times, or interrupt it: taken
+ * and given back, so that the thread, ending, closes the handle only once nobody is using it. Closed under a user, the
+ * handle made the user's next call one on an invalid handle, which an app's process is ended for (or, here, an exception
+ * the handler logged from the profiler's thread, which then stood still: urent, on the page after asking for its SMS
+ * code), or one on whatever object was given that number next. NULL when the handle has gone.
+ */
+static HANDLE self_take(hk_thread *t)
+{
+    HANDLE h;
+    InterlockedIncrement(&t->users);
+    h = (HANDLE)InterlockedCompareExchangePointer((PVOID volatile *)&t->self, NULL, NULL);
+    if (!h) InterlockedDecrement(&t->users);
+    return h;
+}
+
+static void self_give(hk_thread *t) { InterlockedDecrement(&t->users); }
+
 /* The thread is about to end: nobody interrupts it from here on (the core has stopped asking by now). */
 static void close_own_handle(hk_thread *t)
 {
     HANDLE h = (HANDLE)InterlockedExchangePointer((PVOID volatile *)&t->self, NULL);
+    /* (A use already under way takes a moment: a stop and a read of the registers, or of the times.) */
+    while (InterlockedCompareExchange(&t->users, 0, 0) != 0) SwitchToThread();
     if (h) CloseHandle(h);
 }
 
@@ -265,8 +287,10 @@ static u64 filetime_100ns(const FILETIME *f) { return (u64)f->dwHighDateTime << 
 u64 hk_thread_cpu_ns(hk_thread *t)
 {
     FILETIME created, ended, kernel, user;
-    HANDLE h = t ? t->self : GetCurrentThread();
-    if (!h || !GetThreadTimes(h, &created, &ended, &kernel, &user)) return 0;
+    HANDLE h = t ? self_take(t) : GetCurrentThread();
+    BOOL ok = h && GetThreadTimes(h, &created, &ended, &kernel, &user);
+    if (t && h) self_give(t);
+    if (!ok) return 0;
     return (filetime_100ns(&kernel) + filetime_100ns(&user)) * 100ull;
 }
 
@@ -332,7 +356,7 @@ bool hk_thread_interrupt(hk_thread *t)
     bool done = false;
     HANDLE h;
     if (!t || !g_interrupt_fn || !g_interrupt_in_guest || t->id == GetCurrentThreadId()) return false;
-    h = t->self;
+    h = self_take(t);
     if (!h) {
         InterlockedIncrement(&g_int_no_handle);
         return false;
@@ -340,12 +364,14 @@ bool hk_thread_interrupt(hk_thread *t)
     /* One at a time for a thread: the place to go back to is kept in one slot. */
     if (InterlockedCompareExchange(&t->interrupted, 1, 0) != 0) {
         InterlockedIncrement(&g_int_busy);
+        self_give(t);
         return false;
     }
     if (SuspendThread(h) == (DWORD)-1) {
         InterlockedExchange(&g_int_error, (LONG)GetLastError());
         InterlockedIncrement(&g_int_suspend_failed);
         InterlockedExchange(&t->interrupted, 0);
+        self_give(t);
         return false;
     }
     memset(&ctx, 0, sizeof(ctx));
@@ -373,6 +399,7 @@ bool hk_thread_interrupt(hk_thread *t)
     }
     if (!done) InterlockedExchange(&t->interrupted, 0);
     ResumeThread(h);
+    self_give(t);
     return done;
 }
 #else
@@ -395,17 +422,25 @@ WINBASEAPI BOOL WINAPI GetThreadContext(HANDLE hThread, LPCONTEXT lpContext);
 bool hk_thread_suspend(hk_thread *t, hk_thread_regs *out)
 {
     CONTEXT ctx;
-    HANDLE h = t ? t->self : NULL;
+    HANDLE h;
     memset(out, 0, sizeof(*out));
-    if (!h || t->id == GetCurrentThreadId()) return false;
-    if (SuspendThread(h) == (DWORD)-1) return false;
+    if (!t || t->id == GetCurrentThreadId()) return false;
+    /* Given back once it has stopped (or not): stopped, it cannot end, and its handle stays until hk_thread_resume. */
+    h = self_take(t);
+    if (!h) return false;
+    if (SuspendThread(h) == (DWORD)-1) {
+        self_give(t);
+        return false;
+    }
     /* SuspendThread only asks; GetThreadContext returns once the thread has stopped, with its registers. */
     memset(&ctx, 0, sizeof(ctx));
     ctx.ContextFlags = CONTEXT_INTEGER | CONTEXT_CONTROL;
     if (!GetThreadContext(h, &ctx)) {
         ResumeThread(h);
+        self_give(t);
         return false;
     }
+    self_give(t);
 #if defined(_M_ARM)
     out->sp = ctx.Sp;
     out->pc = ctx.Pc;
@@ -431,7 +466,10 @@ bool hk_thread_suspend(hk_thread *t, hk_thread_regs *out)
 
 void hk_thread_resume(hk_thread *t)
 {
-    if (t && t->self) ResumeThread(t->self);
+    HANDLE h = t ? self_take(t) : NULL;
+    if (!h) return;
+    ResumeThread(h);
+    self_give(t);
 }
 
 #if WINAPI_FAMILY == WINAPI_FAMILY_APP
