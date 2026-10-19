@@ -1815,7 +1815,8 @@ static i32 vm_GetEnv(void *vm, void **env, i32 version)
         *env = NULL;
         return G_JNI_EDETACHED;
     }
-    if (bad_jni_version(version)) {
+    /* JNI_VERSION_1_1 too, as ART takes it here and nowhere else (GetEnv): 2GIS's map library asks with it in JNI_OnLoad. */
+    if (bad_jni_version(version) && version != 0x00010001) {
         hk_err("jni: bad JNI version passed to GetEnv: %d", (int)version);
         return G_JNI_EVERSION;
     }

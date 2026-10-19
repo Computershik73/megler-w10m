@@ -159,6 +159,9 @@ int JNI_OnLoad(void ***vm, void *reserved)
     };
     JNIEnv *env = 0;
     (void)reserved;
+    /* GetEnv with JNI_VERSION_1_1, which ART takes here and nowhere else (2GIS's map library asks with it), then 1.6. */
+    if (F(vm, 6, int (*)(void ***, JNIEnv **, int))(vm, &env, 0x10001) != 0 || !env) return -1;
+    env = 0;
     F(vm, 6, int (*)(void ***, JNIEnv **, int))(vm, &env, 0x10006);                             /* GetEnv */
     if (!env) return -1;
     F(env, 215, int (*)(JNIEnv *, jobject, const void *, int))(env, find_class(env, "t/Guest"), methods, (int)(sizeof(methods) / sizeof(methods[0])));
