@@ -127,15 +127,41 @@ static bool arsc_open(arsc *a, const u8 *data, u32 size)
 }
 
 /*
+ * How well a configuration's language and region (ResTable_config's, at `cfg`, `size` bytes) fit the phone's
+ * (hk_locale_parts): 3 both, 2 its language with no region named, 1 its language with another region, 0 none named, -1
+ * another language. A language of three letters (packed) is taken for another.
+ */
+static int locale_fit(const u8 *cfg, u32 size)
+{
+    char language[8], region[8];
+    if (size < 12 || (!cfg[8] && !cfg[9])) return 0;
+    hk_locale_parts(language, sizeof(language), region, sizeof(region));
+    if ((cfg[8] & 0x80) || cfg[8] != (u8)language[0] || cfg[9] != (u8)language[1] || language[2]) return -1;
+    if (!cfg[10] && !cfg[11]) return 2;
+    return !(cfg[10] & 0x80) && cfg[10] == (u8)region[0] && cfg[11] == (u8)region[1] && !region[2] ? 3 : 1;
+}
+
+static bool arsc_value(const arsc *a, u32 id, bool want_file, char *out, size_t cap, u32 *best, int depth);
+
+/*
  * The value of resource `id` as text: a string resource's string, or a file
- * resource's path. Among configurations, `want_file` prefers the densest one
- * whose value ends in .png or .webp (an icon); otherwise the default
- * configuration is preferred. False when the resource is not a string, or
- * when nothing here is better than `*best_score` already is: the score of
- * what was found before, in another table of the same app (a split's), which
- * this raises to what it finds. NULL starts from nothing.
+ * resource's path, through references to others of the same table (urent's
+ * label is @string/app_name, which is @string/application_name). Among
+ * configurations, `want_file` prefers the densest one whose value ends in
+ * .png or .webp (an icon); otherwise the one of the phone's language and
+ * region, as Android chooses (values-ru-rRU, then values-ru, then a ru of
+ * another region), and failing that the default configuration. False when the
+ * resource is not a string, or when nothing here is better than
+ * `*best_score` already is: the score of what was found before, in another
+ * table of the same app (a split's), which this raises to what it finds. NULL
+ * starts from nothing.
  */
 static bool arsc_string(const arsc *a, u32 id, bool want_file, char *out, size_t cap, u32 *best)
+{
+    return arsc_value(a, id, want_file, out, cap, best, 0);
+}
+
+static bool arsc_value(const arsc *a, u32 id, bool want_file, char *out, size_t cap, u32 *best, int depth)
 {
     u32 pkg_id = id >> 24, type_id = (id >> 16) & 0xFF, entry = id & 0xFFFF;
     u32 off, best_score = best ? *best : 0;
@@ -174,15 +200,21 @@ static bool arsc_string(const arsc *a, u32 id, bool want_file, char *out, size_t
                     if (eoff != 0xFFFFFFFFu && start <= csize && eoff <= csize - start && csize - start - eoff >= 16) {
                         const u8 *e = ch + start + eoff;
                         u32 esize = hk_rd16(e), eflags = hk_rd16(e + 2);
-                        if (!(eflags & 1) && esize >= 8 && esize + 8 <= csize - start - eoff && e[esize + 3] == 0x03) {
+                        u8 vtype = !(eflags & 1) && esize >= 8 && esize + 8 <= csize - start - eoff ? e[esize + 3] : 0;
+                        if (vtype == 0x03 || vtype == 0x01) {
                             char text[200];
-                            if (pool_get(&a->strings, hk_rd32(e + esize + 4), text, sizeof(text))) {
+                            bool got;
+                            /* A reference: the value it names, chosen among that one's configurations (four deep at most). */
+                            if (vtype == 0x03) got = pool_get(&a->strings, hk_rd32(e + esize + 4), text, sizeof(text));
+                            else got = depth < 4 && arsc_value(a, hk_rd32(e + esize + 4), want_file, text, sizeof(text), NULL, depth + 1);
+                            if (got) {
                                 size_t n = strlen(text);
                                 bool png = n > 4 && !strcmp(text + n - 4, ".png"), webp = n > 5 && !strcmp(text + n - 5, ".webp");
                                 u32 score;
+                                int fit = want_file ? 0 : locale_fit(ch + 20, cfg_size < chead - 20 ? cfg_size : chead - 20);
                                 /* Any PNG before any WebP (the phone has no WebP decoder), then the densest. */
                                 if (want_file) score = png || webp ? (png ? 100000 : 1000) + (density == 0xFFFE || density == 0xFFFF ? 0 : density) : 1;
-                                else score = is_default ? 1000 : 1;
+                                else score = fit > 0 ? 1500 + 500 * (u32)fit : is_default ? 1000 : 1;
                                 if (score > best_score) {
                                     best_score = score;
                                     hk_strlcpy(out, text, cap);
