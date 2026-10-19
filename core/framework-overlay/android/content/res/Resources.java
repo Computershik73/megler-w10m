@@ -1,5 +1,5 @@
 // megler-w10m overlay of Megler/src/java-framework/src/android/content/res/Resources.java (tools/build-framework.sh).
-// It differs in three things. The class Bag (a style's items): put and indexOf find a key by hashing. And updateCfg: resources
+// It differs in these things. The class Bag (a style's items): put and indexOf find a key by hashing. And updateCfg: resources
 // are chosen for the API level of the platform's own resources (PLATFORM_RESOURCES_SDK), not for Build.VERSION.SDK_INT.
 // And a theme attribute whose value names an attribute that names another, with no end -- a style's item that names
 // itself, as Android's TextAppearance does with textColorHighlight -- is not there: obtainStyledAttributes leaves it out and
@@ -29,6 +29,14 @@
 // AssetManager2 gives a dynamic package; an id of that package is looked up there (table), its files are read out of that
 // APK (apkOf), and getIdentifier finds its names when asked for that package. The original knew two tables, the app's and
 // the platform's, and every id that was not the platform's went to the app's.
+//
+// And the platform's preloaded drawables, sPreloadedDrawables (one LongSparseArray per layout direction) and
+// sPreloadedColorDrawables, which Android 7 to 9 keep in ResourcesImpl and look in before a drawable's file is read, by the
+// key Android makes of the value: its asset cookie in the high word and its data (a string's index in the pool) in the low.
+// Nothing is preloaded here, so they start empty; but apps put arrays of their own in by reflection, taking Resources's
+// field where there is no ResourcesImpl, as here. Instagram swaps each for a LongSparseArray that answers its vector icons,
+// whose values ("I1801B8") are no file: without the field it said "Could not enable custom drawable support" and ended in
+// its main activity's layout with "File I1801B8 not found".
 package android.content.res;
 
 import android.graphics.Typeface;
@@ -59,6 +67,11 @@ public class Resources {
     private final Configuration mConfig = Configuration.meglerDevice();
     private ResTable.Config mCfg;
     private final HashMap<Integer, Drawable.ConstantState> mDrawableCache = new HashMap<>();
+    /** The platform's preloaded drawables, by layout direction (LTR, RTL), and colour drawables: empty, for apps to fill (see above). Not final: apps set them. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static android.util.LongSparseArray<Drawable.ConstantState>[] sPreloadedDrawables =
+        new android.util.LongSparseArray[] { new android.util.LongSparseArray<>(), new android.util.LongSparseArray<>() };
+    private static android.util.LongSparseArray<Drawable.ConstantState> sPreloadedColorDrawables = new android.util.LongSparseArray<>();
     private final HashMap<Integer, ColorStateList> mColorCache = new HashMap<>();
     private final HashMap<Integer, Typeface> mFontCache = new HashMap<>();
     /** The class loader for the app's classes, as Android's Resources keeps it (apps' own Resources subclasses set it by reflection). */
@@ -361,7 +374,10 @@ public class Resources {
     }
     /** A drawable value: a colour, an image file, or a drawable XML file. */
     public Drawable loadDrawable(TypedValue v, int id, Theme theme) {
-        if (v.type >= TypedValue.TYPE_FIRST_COLOR_INT && v.type <= TypedValue.TYPE_LAST_COLOR_INT) return new android.graphics.drawable.ColorDrawable(v.data);
+        if (v.type >= TypedValue.TYPE_FIRST_COLOR_INT && v.type <= TypedValue.TYPE_LAST_COLOR_INT) {
+            Drawable p = meglerPreloaded(sPreloadedColorDrawables, v.data, theme);
+            return p != null ? p : new android.graphics.drawable.ColorDrawable(v.data);
+        }
         if (v.type == TypedValue.TYPE_ATTRIBUTE && theme != null) { TypedValue r = new TypedValue(); if (theme.resolveAttribute(v.data, r, true)) return loadDrawable(r, r.resourceId, theme); }
         if (v.type != TypedValue.TYPE_STRING || v.string == null) {
             if (v.type == TypedValue.TYPE_NULL) return null;
@@ -370,6 +386,12 @@ public class Resources {
         int rid = v.resourceId != 0 ? v.resourceId : id;
         Drawable.ConstantState cs = mDrawableCache.get(rid);
         if (cs != null) return cs.newDrawable(this, theme);
+        android.util.LongSparseArray<Drawable.ConstantState>[] preloaded = sPreloadedDrawables;
+        int dir = mConfig.getLayoutDirection();
+        if (preloaded != null && dir >= 0 && dir < preloaded.length) {
+            Drawable p = meglerPreloaded(preloaded[dir], (((long) v.assetCookie) << 32) | v.data, theme);
+            if (p != null) return p;
+        }
         String file = v.string.toString();
         Drawable d;
         try {
@@ -382,6 +404,17 @@ public class Resources {
             throw n;
         }
         if (d != null && !file.endsWith(".xml")) { Drawable.ConstantState s = d.getConstantState(); if (s != null) mDrawableCache.put(rid, s); }
+        return d;
+    }
+    /** A preloaded drawable of that key, made for these resources and given the theme, as ResourcesImpl.loadDrawable does; null when there is none. */
+    private Drawable meglerPreloaded(android.util.LongSparseArray<Drawable.ConstantState> preloaded, long key, Theme theme) {
+        Object o = preloaded != null ? preloaded.get(key) : null;
+        if (!(o instanceof Drawable.ConstantState)) return null;
+        Drawable d = ((Drawable.ConstantState) o).newDrawable(this);
+        if (d != null && theme != null && d.canApplyTheme()) {
+            d = d.mutate();
+            d.applyTheme(theme);
+        }
         return d;
     }
     public Drawable meglerInflateDrawable(org.xmlpull.v1.XmlPullParser p, Theme t) throws org.xmlpull.v1.XmlPullParserException, java.io.IOException {
@@ -609,7 +642,7 @@ public class Resources {
     public void finishPreloading() {}
     public java.lang.String getLastResourceResolution() { return null; }
     public java.util.List getLoaders() { return new java.util.ArrayList(); }
-    public android.util.LongSparseArray getPreloadedDrawables() { return null; }
+    public android.util.LongSparseArray getPreloadedDrawables() { return sPreloadedDrawables != null && sPreloadedDrawables.length > 0 ? sPreloadedDrawables[0] : null; }
     public android.content.res.Configuration[] getSizeAndUiModeConfigurations() { return null; }
     public android.content.res.Configuration[] getSizeConfigurations() { return null; }
     public boolean hasOverrideDisplayAdjustments() { return false; }

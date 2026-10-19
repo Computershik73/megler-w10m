@@ -283,6 +283,7 @@ public class Main extends Activity {
         connectivity();
         dnsServers();
         systemLibs();
+        preloadedDrawables();
         location();
         timezone();
         locale();
@@ -700,6 +701,55 @@ public class Main extends Activity {
             }
             detail = "files=" + files + " loadLibrary(z)=" + loaded;
             return files && "ok".equals(loaded);
+        });
+    }
+
+    /**
+     * The platform's preloaded drawables, as Instagram fills them: the static field sPreloadedDrawables found by reflection
+     * (ResourcesImpl's, else Resources's), each array element swapped for a LongSparseArray of the app's that answers a key
+     * made as Android makes it -- the value's asset cookie in the high word, its data in the low -- and a drawable resource
+     * of that key then comes from it, not from its file; with the element put back, from its file again.
+     */
+    private void preloadedDrawables() {
+        step("preloaded-drawables", () -> {
+            Class<?> holder;
+            try {
+                holder = Class.forName("android.content.res.ResourcesImpl");
+            } catch (ClassNotFoundException e) {
+                holder = android.content.res.Resources.class;
+            }
+            java.lang.reflect.Field f = holder.getDeclaredField("sPreloadedDrawables");
+            f.setAccessible(true);
+            Object field = f.get(null);
+            if (!(field instanceof android.util.LongSparseArray[])) {
+                detail = "sPreloadedDrawables is " + field;
+                return false;
+            }
+            android.util.LongSparseArray[] arrays = (android.util.LongSparseArray[]) field;
+            final int id = android.R.drawable.ic_menu_compass;
+            android.util.TypedValue tv = new android.util.TypedValue();
+            getResources().getValue(id, tv, false);
+            final long key = (((long) tv.assetCookie) << 32) | tv.data;
+            final android.graphics.drawable.Drawable.ConstantState mine = new android.graphics.drawable.Drawable.ConstantState() {
+                @Override public android.graphics.drawable.Drawable newDrawable() { return new android.graphics.drawable.ColorDrawable(0xFF123456); }
+                @Override public int getChangingConfigurations() { return 0; }
+            };
+            android.util.LongSparseArray before = arrays[0];
+            final android.util.LongSparseArray inner = before;
+            arrays[0] = new android.util.LongSparseArray<Object>() {
+                @Override public Object get(long k) { return k == key ? mine : inner.get(k); }
+            };
+            android.graphics.drawable.Drawable answered;
+            try {
+                answered = getResources().getDrawable(id, null);
+            } finally {
+                arrays[0] = before;
+            }
+            android.graphics.drawable.Drawable fromFile = getResources().getDrawable(id, null);
+            boolean ok = answered instanceof android.graphics.drawable.ColorDrawable && ((android.graphics.drawable.ColorDrawable) answered).getColor() == 0xFF123456
+                    && fromFile != null && !(fromFile instanceof android.graphics.drawable.ColorDrawable) && arrays.length == 2;
+            detail = "in " + holder.getSimpleName() + ", key " + Long.toHexString(key) + ": " + answered + ", then " + fromFile;
+            return ok;
         });
     }
 

@@ -4005,6 +4005,21 @@ on a looper thread of its own and takes it back with `next()`.
   asks its colours, and Gecko ended on the Java exception (`MOZ_CRASH(JNI
   exception)`). The data app's step "theme-selfref" asks such a theme for its
   colours.
+- `android/content/res/Resources.java`, besides: the platform's preloaded
+  drawables, `sPreloadedDrawables` (a `LongSparseArray` for each layout
+  direction) and `sPreloadedColorDrawables`, which Android 7 to 9 keep in
+  `ResourcesImpl` and look in before a drawable's file is read. The key is
+  Android's: the value's asset cookie in the high word, its data (for a file,
+  the string's index in the pool) in the low. Nothing is preloaded, so they
+  start empty, but apps fill them by reflection, taking the field from
+  `Resources` where there is no `ResourcesImpl`, as here. Instagram 333 swaps
+  each array element for a `LongSparseArray` of its own that answers its
+  vector icons, whose values (`"I1801B8"`) name no file. Without the field it
+  logged "Could not enable custom drawable support" and its main activity's
+  layout ended the app with "File I1801B8 not found". The data app's step
+  "preloaded-drawables" does as Instagram does with a platform drawable's key,
+  gets its own drawable for it, and the file's again once the element is put
+  back.
 - `android/graphics/drawable/RippleDrawable.java` and `megler/ResInflate.java`,
   a method and a statement: a ripple inflated from XML is told that it has a
   mask. Android's commonest ripple is nothing but a mask (the background of
