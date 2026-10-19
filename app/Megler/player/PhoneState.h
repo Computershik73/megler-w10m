@@ -19,5 +19,8 @@ namespace megler::app::phoneState {
 void tell();
 /// The phone's own language and region, as Windows' settings have them, as a BCP 47 tag (ru-RU).
 std::string locale();
+/// Tells the core the language and region (Settings' or the phone's): at start-up, before the library is read, so that
+/// apps' names are in that language; tell() says it again before each app.
+void tellLocale();
 
 } // namespace megler::app::phoneState

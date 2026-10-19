@@ -13,6 +13,7 @@
 
 #include "auto/AutoRun.h"
 #include "library/Library.h"
+#include "player/PhoneState.h"
 #include "player/Session.h"
 #include "shell/Files.h"
 #include "shell/Platform.h"
@@ -102,6 +103,8 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
         // The core, before any screen asks it anything. Its answer -- can
         // Android code run here -- is in the log and on the screens.
         platform::initializeCore();
+        // (Apps' names are read in the phone's language.)
+        phoneState::tellLocale();
         Library::instance().load();
 
         using winrt::Windows::UI::ViewManagement::ApplicationView;

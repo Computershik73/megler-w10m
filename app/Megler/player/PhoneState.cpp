@@ -94,6 +94,10 @@ std::string phoneLocale() {
     return tag;
 }
 
+} // namespace
+
+std::string locale() { return phoneLocale(); }
+
 /// The language and region: as set in Settings, else the phone's. At every start: Settings may have changed it.
 void tellLocale() {
     const std::string chosen = settings::get(settings::localeTag, "");
@@ -101,10 +105,6 @@ void tellLocale() {
     megler_set_locale(tag.c_str());
     shellLog::write("phone: the language and region are " + tag + (chosen.empty() ? " (the phone's)" : " (set in Settings)"));
 }
-
-} // namespace
-
-std::string locale() { return phoneLocale(); }
 
 void tell() {
     tellLocale();
