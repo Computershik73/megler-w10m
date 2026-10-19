@@ -256,6 +256,7 @@ const GUID effectColorMatrix = {0x921f03d6, 0x641c, 0x47df, {0x85, 0x2d, 0xb4, 0
 const GUID effectComposite = {0x48fc9f51, 0xf6ac, 0x48f1, {0x8b, 0x58, 0x3b, 0x28, 0xac, 0x46, 0xf7, 0x6d}};
 const GUID effectFlood = {0x61c23c20, 0xae69, 0x4d8e, {0x94, 0xcf, 0x50, 0x07, 0x8d, 0xf6, 0x38, 0xf2}};
 const GUID effectGaussianBlur = {0x1feb6d69, 0x2fe6, 0x4ac9, {0x8c, 0x58, 0x1d, 0x7f, 0x93, 0xe7, 0xa6, 0xa5}};
+const GUID effectCrop = {0xe23f7110, 0x0e9a, 0x4324, {0xaf, 0x47, 0x6a, 0x2c, 0x0c, 0x46, 0xf3, 0x5b}};
 
 // MARK: The log
 
@@ -371,6 +372,7 @@ struct State {
 
     std::atomic<uint64_t> clipSerial{1};
     std::atomic<uint64_t> canvases{0}, sessions{0}, direct{0}, composed{0}, layers{0}, runsShaped{0}, runsReused{0}, notes{0}, partTargets{0};
+    std::atomic<uint64_t> layerBlurs{0}; // layers put onto the picture blurred (save_layer_blur)
     // Where the drawing's time goes, in performance-counter ticks, and how much it moved: a line in the log every 5 s
     // while an app draws (noteDrawing).
     std::atomic<uint64_t> targetsMade{0}, makeTicks{0}, endTicks{0}, composeTicks{0}, composedPixels{0}, sessionPixels{0};
@@ -384,7 +386,7 @@ struct State {
     std::mutex statsMutex;
     uint64_t statsAt = 0; // when the last line was written (ticks); 0: never
     struct Totals {
-        uint64_t sessions = 0, direct = 0, composed = 0, layers = 0, partTargets = 0, targetsMade = 0, makeTicks = 0, endTicks = 0, composeTicks = 0,
+        uint64_t sessions = 0, direct = 0, composed = 0, layers = 0, layerBlurs = 0, partTargets = 0, targetsMade = 0, makeTicks = 0, endTicks = 0, composeTicks = 0,
                  composedPixels = 0, sessionPixels = 0, uploads = 0, uploadPixels = 0, uploadTicks = 0, readBacks = 0, readBackPixels = 0,
                  readBackTicks = 0, byEffects = 0, throughMemory = 0, keptMade = 0, keptReused = 0, shown = 0, showTicks = 0, windowReadBacks = 0,
                  windowReadBackPixels = 0, windowReadBackTicks = 0, glFrames = 0, glWaitTicks = 0;
@@ -931,6 +933,8 @@ struct GpuContext {
         filterBlend,    // Blend: ... the three filters that are not
         opacity,        // ColorMatrix: a layer at its alpha
         shadowBlur,     // GaussianBlur: a shadow's coverage blurred
+        layerCrop,      // Crop: a blurred layer's part, nothing of the work surface beyond it
+        layerBlur,      // GaussianBlur: a layer blurred as it is put onto the picture (save_layer_blur)
         held,           // Composite DESTINATION_OUT: what is left of the picture where the coverage takes it away
         modeComposite,  // Composite: a transfer mode of Porter and Duff's
         modeArithmetic, // ArithmeticComposite: MODULATE
@@ -955,7 +959,9 @@ ID2D1Effect* GpuContext::effect(Role role) {
     case filterFlood: id = &effectFlood; break;
     case filterBlend:
     case modeBlend: id = &effectBlend; break;
-    case shadowBlur: id = &effectGaussianBlur; break;
+    case shadowBlur:
+    case layerBlur: id = &effectGaussianBlur; break;
+    case layerCrop: id = &effectCrop; break;
     case modeArithmetic: id = &effectArithmetic; break;
     default: break;
     }
@@ -1687,6 +1693,8 @@ struct Level {
     bool isLayer = false;
     std::unique_ptr<Surface> layer; // the layer's picture; null for a layer with no extent
     int alpha = 255, blend = MEGLER_GFX_BLEND_SRC_OVER;
+    float blurSigma = 0;            // save_layer_blur's: the blur's standard deviation in pixels, 0 for none ...
+    bool blurClamp = false;         // ... and whether what lies beyond the layer is its edge carried on
 };
 
 /// A render target made over one part of a canvas's memory, kept for the
@@ -2644,6 +2652,62 @@ bool gpuRestore(Canvas& cv, Surface& outer, Surface& layer, const Box& box, int 
     return gpuPut(cv, outer, box, a.get(), keepsUncovered(blend) || !c ? nullptr : c->gpu.get(), blend);
 }
 
+/// A blurred layer (save_layer_blur) put onto the picture on the graphics processor: the layer's part within `box` copied
+/// out, cut to that part (Crop: the work surface may be larger, with older pictures in the rest), blurred (GaussianBlur, what
+/// lies beyond it transparent -- the soft border -- or its edge carried on -- the hard one), at the layer's alpha, cut by the
+/// clip, laid over the picture.
+bool gpuBlurRestore(Canvas& cv, Surface& outer, Surface& layer, const Box& box, int alpha, float sigma, bool clamp) {
+    GpuContext& g = *cv.gc;
+    Surface* s = workSurface(cv, Canvas::workS, box, true);
+    if (!s) return false;
+    g.finish();
+    const D2D1_POINT_2U origin = D2D1::Point2U(0, 0);
+    const D2D1_RECT_U from = D2D1::RectU(UINT32(box.l - layer.ox), UINT32(box.t - layer.oy), UINT32(box.r - layer.ox), UINT32(box.b - layer.oy));
+    const HRESULT hr = s->gpu->CopyFromBitmap(&origin, layer.gpu.get(), &from);
+    if (FAILED(hr)) {
+        gpuFailed("ID2D1Bitmap::CopyFromBitmap", hr);
+        return false;
+    }
+    ID2D1Effect* crop = g.effect(GpuContext::layerCrop);
+    ID2D1Effect* blur = g.effect(GpuContext::layerBlur);
+    if (!crop || !blur) return false;
+    crop->SetInput(0, s->gpu.get());
+    crop->SetValue(D2D1_CROP_PROP_RECT, D2D1::Vector4F(0, 0, float(box.width()), float(box.height())));
+    blur->SetInputEffect(0, crop);
+    blur->SetValue(D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION, sigma);
+    // (A wide blur on the phone's processor: Direct2D's faster way, which works on a smaller copy, is as smooth at that width.)
+    blur->SetValue(D2D1_GAUSSIANBLUR_PROP_OPTIMIZATION, sigma > 12 ? D2D1_GAUSSIANBLUR_OPTIMIZATION_SPEED : D2D1_GAUSSIANBLUR_OPTIMIZATION_BALANCED);
+    blur->SetValue(D2D1_GAUSSIANBLUR_PROP_BORDER_MODE, clamp ? D2D1_BORDER_MODE_HARD : D2D1_BORDER_MODE_SOFT);
+    Ref<ID2D1Image> a;
+    blur->GetOutput(a.put());
+    if (!a) return false;
+    if (alpha < 255) {
+        ID2D1Effect* e = g.effect(GpuContext::opacity);
+        if (!e) return false;
+        const float k = float(alpha) / 255.0f;
+        e->SetValue(D2D1_COLORMATRIX_PROP_COLOR_MATRIX, D2D1::Matrix5x4F(k, 0, 0, 0, 0, k, 0, 0, 0, 0, k, 0, 0, 0, 0, k, 0, 0, 0, 0));
+        e->SetValue(D2D1_COLORMATRIX_PROP_ALPHA_MODE, matrixAsItStands);
+        e->SetInput(0, a.get());
+        a.reset();
+        e->GetOutput(a.put());
+    }
+    const Clip& clip = cv.clip();
+    Surface* c = nullptr;
+    if (clip.g) {
+        c = workSurface(cv, Canvas::workC, box);
+        if (!c) return false;
+        c->useClip(clip);
+        c->setMatrix(Matrix3x2F::Identity());
+        c->rt->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
+        c->brush->SetColor(D2D1::ColorF(1, 1, 1, 1));
+        c->rt->FillRectangle(D2D1::RectF(float(box.l), float(box.t), float(box.r), float(box.b)), c->brush.get());
+        a = covered(g, a.get(), c->gpu.get());
+        if (!a) return false;
+    }
+    ++G().layerBlurs;
+    return gpuPut(cv, outer, box, a.get(), nullptr, MEGLER_GFX_BLEND_SRC_OVER);
+}
+
 /// The paint's shadow under what a call draws, on the graphics processor:
 /// the ink's coverage blurred (the GaussianBlur effect, a standard deviation
 /// of 0.57735 * radius + 0.5 grown with the matrix's scale, as in memory),
@@ -2918,6 +2982,7 @@ void noteDrawing() {
     t.direct = s.direct;
     t.composed = s.composed;
     t.layers = s.layers;
+    t.layerBlurs = s.layerBlurs;
     t.partTargets = s.partTargets;
     t.targetsMade = s.targetsMade;
     t.makeTicks = s.makeTicks;
@@ -2958,12 +3023,12 @@ void noteDrawing() {
         }
         const uint64_t windowBacks = t.windowReadBacks - l.windowReadBacks;
         say("%.1f s (graphics processor): %llu drawings begun and ended (%.1f ms ending them), %llu calls drawn by Direct2D, %llu by its effects, %llu "
-            "through memory (%.1f ms), %llu layers; %llu pictures shown without the memory (%.1f ms), %llu OpenGL ES frames composed under them (%.1f "
+            "through memory (%.1f ms), %llu layers (%llu of them blurred); %llu pictures shown without the memory (%.1f ms), %llu OpenGL ES frames composed under them (%.1f "
             "ms waiting for their copies); %llu uploads of %.2f Mpx (%.1f ms); read-backs "
             "(the wait for the processor in them): %llu of other canvases, %.2f Mpx (%.1f ms), %llu of the shown window's, %.2f Mpx (%.1f ms); bitmaps: "
             "%llu uploaded, %llu drawn from those kept, %zu kept in %.1f MB",
             seconds, ull(t.sessions - l.sessions), ticksToMs(t.endTicks - l.endTicks), ull(t.direct - l.direct), ull(t.byEffects - l.byEffects),
-            ull(t.throughMemory - l.throughMemory), ticksToMs(t.composeTicks - l.composeTicks), ull(t.layers - l.layers), ull(t.shown - l.shown),
+            ull(t.throughMemory - l.throughMemory), ticksToMs(t.composeTicks - l.composeTicks), ull(t.layers - l.layers), ull(t.layerBlurs - l.layerBlurs), ull(t.shown - l.shown),
             ticksToMs(t.showTicks - l.showTicks), ull(t.glFrames - l.glFrames), ticksToMs(t.glWaitTicks - l.glWaitTicks), ull(t.uploads - l.uploads),
             double(t.uploadPixels - l.uploadPixels) / 1e6,
             ticksToMs(t.uploadTicks - l.uploadTicks), ull(t.readBacks - l.readBacks - windowBacks),
@@ -3430,16 +3495,16 @@ void save(void*, void* canvas) {
     });
 }
 
-void saveLayer(void*, void* canvas, const float* bounds, int alpha, int blend) {
-    Canvas* cv = canvasOf(canvas);
-    if (!cv) return;
-    guarded("save_layer", [&] {
+/// save_layer, and save_layer_blur's layer, which restore puts onto the picture blurred (`sigma` in pixels, 0 for none).
+void beginLayer(Canvas* cv, const float* bounds, int alpha, int blend, float sigma, bool clamp) {
         Surface* outer = cv->target();
         Level level;
         level.clip = cv->clip();
         level.isLayer = true;
         level.alpha = alpha < 0 ? 0 : alpha > 255 ? 255 : alpha;
         level.blend = knownBlend(blend);
+        level.blurSigma = sigma;
+        level.blurClamp = clamp;
         if (bounds && !sane(bounds[0], bounds[1], bounds[2], bounds[3])) bounds = nullptr;
         if (bounds) {
             double x0, y0, x1, y1;
@@ -3463,7 +3528,82 @@ void saveLayer(void*, void* canvas, const float* bounds, int alpha, int blend) {
         }
         ++G().layers;
         cv->levels.push_back(std::move(level));
+}
+
+void saveLayer(void*, void* canvas, const float* bounds, int alpha, int blend) {
+    Canvas* cv = canvasOf(canvas);
+    if (!cv) return;
+    guarded("save_layer", [&] { beginLayer(cv, bounds, alpha, blend, 0, false); });
+}
+
+/// The widest blur a layer is given: Direct2D's GaussianBlur takes no more than 250.
+constexpr float maxLayerSigma = 250.0f;
+
+/// save_layer_blur: a source-over layer blurred at its restore by Android's radii (as Skia: a standard deviation of
+/// 0.57735 * radius + 0.5), grown with the matrix's scale as a shadow's blur is; the two radii's mean, as one blur.
+void saveLayerBlur(void*, void* canvas, const float* bounds, int alpha, float radiusX, float radiusY, bool clamp) {
+    Canvas* cv = canvasOf(canvas);
+    if (!cv) return;
+    guarded("save_layer_blur", [&] {
+        const float radius = (std::max(radiusX, 0.0f) + std::max(radiusY, 0.0f)) / 2;
+        float sigma = radius > 0 && std::isfinite(radius) ? (0.57735f * radius + 0.5f) * meanScale(cv->matrix) : 0.0f;
+        if (!(sigma > 0)) sigma = 0;
+        beginLayer(cv, bounds, alpha, MEGLER_GFX_BLEND_SRC_OVER, std::min(sigma, maxLayerSigma), clamp);
     });
+}
+
+/// The widths of three box blurs that together make a Gaussian of `sigma` (each odd), as the standard approximation has them.
+void boxesForGauss(float sigma, int widths[3]) {
+    const float ideal = std::sqrt(12.0f * sigma * sigma / 3 + 1);
+    int low = std::max(1, int(std::floor(ideal)));
+    if (low % 2 == 0) low--;
+    const int high = low + 2;
+    const float lowCount = (12.0f * sigma * sigma - 3.0f * low * low - 12.0f * low - 9.0f) / (-4.0f * low - 4);
+    const long m = std::lround(lowCount);
+    for (int i = 0; i < 3; i++) widths[i] = i < m ? low : high;
+}
+
+/// One box blur of `radius` along a line of `n` pixels `step` apart, `in` to `out`, each byte of a pixel by itself: what lies
+/// beyond the line's ends is transparent, or with `clamp` the end's own pixel.
+void boxLine(const uint32_t* in, uint32_t* out, int n, size_t step, int radius, bool clamp) {
+    const int width = 2 * radius + 1;
+    int sum[4] = {0, 0, 0, 0};
+    auto pixel = [&](int i) -> uint32_t {
+        if (i < 0) return clamp ? in[0] : 0u;
+        if (i >= n) return clamp ? in[size_t(n - 1) * step] : 0u;
+        return in[size_t(i) * step];
+    };
+    auto add = [&](uint32_t v, int sign) {
+        for (int c = 0; c < 4; c++) sum[c] += sign * int((v >> (8 * c)) & 255u);
+    };
+    for (int i = -radius; i <= radius; i++) add(pixel(i), 1);
+    for (int i = 0; i < n; i++) {
+        uint32_t v = 0;
+        for (int c = 0; c < 4; c++) v |= uint32_t(std::min(255, (sum[c] + width / 2) / width)) << (8 * c);
+        out[size_t(i) * step] = v;
+        add(pixel(i + radius + 1), 1);
+        add(pixel(i - radius), -1);
+    }
+}
+
+/// A blurred layer's picture in memory, in place, for a canvas with no graphics processor: three box blurs each way, which
+/// make a Gaussian of `sigma` whatever its width costs the same, what lies beyond the layer transparent or (clamp) its edge.
+void blurPicture(Surface& s, float sigma, bool clamp) {
+    if (s.w <= 0 || s.h <= 0 || !s.px || !(sigma > 0)) return;
+    int widths[3];
+    boxesForGauss(sigma, widths);
+    const size_t w = size_t(s.w), h = size_t(s.h);
+    std::vector<uint32_t> a(w * h), b(w * h);
+    for (size_t y = 0; y < h; y++) std::memcpy(&a[y * w], s.row(s.oy + int(y)), w * 4);
+    for (int pass = 0; pass < 3; pass++) {
+        for (size_t y = 0; y < h; y++) boxLine(&a[y * w], &b[y * w], s.w, 1, (widths[pass] - 1) / 2, clamp);
+        a.swap(b);
+    }
+    for (int pass = 0; pass < 3; pass++) {
+        for (size_t x = 0; x < w; x++) boxLine(&a[x], &b[x], s.h, w, (widths[pass] - 1) / 2, clamp);
+        a.swap(b);
+    }
+    for (size_t y = 0; y < h; y++) std::memcpy(s.row(s.oy + int(y)), &a[y * w], w * 4);
 }
 
 /// The innermost save undone: its clip goes, and a layer it began is put onto what was there before.
@@ -3484,6 +3624,10 @@ void restoreLevel(Canvas& cv) {
     Box box = top.layer->bounds();
     box.intersect(cv.clip().box);
     if (box.empty()) return;
+    // A blurred layer: on the graphics processor; else its picture blurred in memory (below) and put on as any other.
+    if (top.blurSigma > 0 && top.layer->gc && outer->gc &&
+        gpuBlurRestore(cv, *outer, *top.layer, box, top.alpha, top.blurSigma, top.blurClamp))
+        return;
     if (top.layer->gc && outer->gc && top.blend == MEGLER_GFX_BLEND_SRC_OVER) {
         // On the graphics processor, laid over the picture at the layer's alpha, under the clip at the save.
         if (!outer->begin()) return;
@@ -3501,6 +3645,10 @@ void restoreLevel(Canvas& cv) {
     if (top.layer->gc && outer->gc && gpuRestore(cv, *outer, *top.layer, box, top.alpha, top.blend)) return;
     outer->end();
     if (top.layer->gc && !top.layer->pull(top.layer->bounds())) return;
+    if (top.blurSigma > 0) {
+        blurPicture(*top.layer, top.blurSigma, top.blurClamp);
+        ++G().layerBlurs;
+    }
     Source src;
     src.pixels = top.layer.get();
     src.alpha = uint32_t(top.alpha);
@@ -5873,6 +6021,7 @@ megler_gfx_host GfxHost::callbacks() {
     host.touched = &touched;
     host.save = &save;
     host.save_layer = &saveLayer;
+    host.save_layer_blur = &saveLayerBlur;
     host.restore = &restore;
     host.set_matrix = &setMatrix;
     host.clip_rect = &clipRect;

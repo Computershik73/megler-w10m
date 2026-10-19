@@ -19,6 +19,9 @@
 //    manager does: a window with a scroll container is resized.
 //  - meglerWillNotDraw, which the original does not have: setWillNotDraw's flag, set without calling it, for ViewGroup's
 //    constructor (overlaid; see there).
+//  - setRenderEffect is kept, and drawFromParent draws a view whose effect blurs into a layer that is put onto what is under
+//    it blurred (Canvas.meglerSaveLayerBlur, the shell's save_layer_blur), at the view's alpha. The original did nothing with
+//    it, and Instagram's sign-up screen, pastel patches blurred into one another, was hard-edged bands.
 //
 // Why. The original's invalidate asked the window to be drawn again whole, and the window cleared the screen and drew every
 // view, so a blinking cursor cost a whole screen. ViewRoot (overlaid) now keeps each window's dirty rectangle and draws only
@@ -191,6 +194,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     private Rect mClipBounds;
     private int mLayerType;
     private Paint mLayerPaint;
+    private android.graphics.RenderEffect mRenderEffect;
     private String mTransitionName;
     private Object mAutofillHints;
 
@@ -1102,7 +1106,12 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         }
         /* a view with a layer (software or hardware) draws into one of its own, as Android's: its blending (a DST_IN mask, a CLEAR)
            then stays inside it instead of reaching what is under it in the window */
-        if (alpha < 0.998f || mLayerType != LAYER_TYPE_NONE) {
+        /* a view with a blur RenderEffect draws into a layer that is put onto what is under it blurred (the shell's save_layer_blur) */
+        if (mRenderEffect != null && mRenderEffect.meglerBlurs()) {
+            int a = Math.round(alpha * 255);
+            if (mLayerPaint != null) a = a * mLayerPaint.getAlpha() / 255;
+            c.meglerSaveLayerBlur(0, 0, w, h, a, mRenderEffect.meglerBlurX(), mRenderEffect.meglerBlurY(), mRenderEffect.meglerClamp());
+        } else if (alpha < 0.998f || mLayerType != LAYER_TYPE_NONE) {
             int a = Math.round(alpha * 255);
             if (mLayerPaint != null) a = a * mLayerPaint.getAlpha() / 255;
             c.saveLayerAlpha(0, 0, w, h, a);
@@ -1898,7 +1907,13 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public void setOpticalInsets(android.graphics.Insets p0) { meglerFill.put("OpticalInsets", p0); }
     public void setPendingCredentialRequest(android.credentials.GetCredentialRequest p0, android.os.OutcomeReceiver p1) {}
     public void setPreferKeepClearRects(java.util.List p0) { meglerFill.put("PreferKeepClearRects", p0); }
-    public void setRenderEffect(android.graphics.RenderEffect p0) {}
+    /** The view drawn through its effect: a blur is drawn (drawFromParent), its other kinds are not (android.graphics.RenderEffect, overlaid). */
+    public void setRenderEffect(android.graphics.RenderEffect effect) {
+        if (effect == mRenderEffect) return;
+        mRenderEffect = effect;
+        invalidateParent();
+        invalidate();
+    }
     public void setRequestedFrameRate(float p0) { meglerFill.put("RequestedFrameRate", Float.valueOf(p0)); }
     public void setRevealClip(boolean p0, float p1, float p2, float p3) {}
     public void setScrollBarDefaultDelayBeforeFade(int p0) { meglerFill.put("ScrollBarDefaultDelayBeforeFade", Integer.valueOf(p0)); }

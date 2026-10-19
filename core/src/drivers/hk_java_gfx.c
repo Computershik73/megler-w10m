@@ -1321,6 +1321,8 @@ typedef struct dl_layer {
     dl_head h;
     float bounds[4];
     i32 bounded, alpha, blend;
+    float blur[3];                     /* radius x, radius y, clamp: a blurred layer's (cv_save), when blurred */
+    i32 blurred;
 } dl_layer;
 
 typedef struct dl_matrix {
@@ -1658,7 +1660,11 @@ static bool cv_draw(gcanvas *v, bool replaces)
     return true;
 }
 
-static i32 cv_save(gcanvas *v, const float *bounds, bool layer, int alpha, int blend)
+/*
+ * A save, or a layer's: `layer` with its alpha and blend, and `blur` (radius x, radius y, clamp) for a layer put onto the
+ * picture blurred (save_layer_blur, megler.h): source-over, through save_layer, sharp, where the shell has no blur.
+ */
+static i32 cv_save(gcanvas *v, const float *bounds, bool layer, int alpha, int blend, const float *blur)
 {
     gstate *s;
     if (v->depth + 1 >= v->cap) {
@@ -1677,7 +1683,8 @@ static i32 cv_save(gcanvas *v, const float *bounds, bool layer, int alpha, int b
     }
     if (v->host) {
         /* A layer the shell cannot make is still a save: the restores must go on matching. */
-        if (layer && HAS(save_layer)) GFX(G.save_layer(G.user, v->host, bounds, alpha, blend));
+        if (layer && blur && G.save_layer_blur) GFX(G.save_layer_blur(G.user, v->host, bounds, alpha, blur[0], blur[1], blur[2] != 0));
+        else if (layer && HAS(save_layer)) GFX(G.save_layer(G.user, v->host, bounds, alpha, blur ? MEGLER_GFX_BLEND_SRC_OVER : blend));
         else if (HAS(save)) GFX(G.save(G.user, v->host));
     }
     if (v->rec) {
@@ -1687,6 +1694,8 @@ static i32 cv_save(gcanvas *v, const float *bounds, bool layer, int alpha, int b
             o->bounded = bounds != NULL;
             o->alpha = alpha;
             o->blend = blend;
+            o->blurred = blur != NULL;
+            if (blur) memcpy(o->blur, blur, sizeof(o->blur));
         } else {
             dl_put(v->rec, DL_SAVE, sizeof(dl_head), 0);
         }
@@ -2126,7 +2135,7 @@ N(G_cvFree)
 N(G_cvSave)
 {
     gcanvas *v = cv_of(c->args[0].j);
-    c->ret.i = v ? cv_save(v, NULL, false, 255, MEGLER_GFX_BLEND_SRC_OVER) : 1;
+    c->ret.i = v ? cv_save(v, NULL, false, 255, MEGLER_GFX_BLEND_SRC_OVER, NULL) : 1;
 }
 
 /* (long, l, t, r, b, int alpha[, int mode]): saveLayerAlpha, and saveLayer with a Paint's alpha and transfer mode. A rectangle with no area is "no bounds". */
@@ -2147,10 +2156,37 @@ static void save_layer(hk_jcall *c, int mode)
     bounded = bounds[2] - bounds[0] > 0 && bounds[3] - bounds[1] > 0;
     if (alpha < 0) alpha = 0;
     if (alpha > 255) alpha = 255;
-    c->ret.i = cv_save(v, bounded ? bounds : NULL, true, alpha, mode);
+    c->ret.i = cv_save(v, bounded ? bounds : NULL, true, alpha, mode, NULL);
 }
 
 N(G_cvSaveLayer) { save_layer(c, MEGLER_GFX_BLEND_SRC_OVER); }
+
+/*
+ * (long, l, t, r, b, int alpha, float radiusX, float radiusY, boolean clamp): a layer put onto the picture blurred, for a view
+ * with Android's RenderEffect.createBlurEffect (android.view.View.drawFromParent, overlaid). Radii in the matrix's units.
+ */
+N(G_cvSaveLayerBlur)
+{
+    gcanvas *v = cv_of(c->args[0].j);
+    float bounds[4], blur[3];
+    i32 alpha = c->args[5].i;
+    bool bounded;
+    if (!v) {
+        c->ret.i = 1;
+        return;
+    }
+    bounds[0] = c->args[1].f;
+    bounds[1] = c->args[2].f;
+    bounds[2] = c->args[3].f;
+    bounds[3] = c->args[4].f;
+    bounded = bounds[2] - bounds[0] > 0 && bounds[3] - bounds[1] > 0;
+    blur[0] = c->args[6].f > 0 ? c->args[6].f : 0;
+    blur[1] = c->args[7].f > 0 ? c->args[7].f : 0;
+    blur[2] = c->args[8].z ? 1.0f : 0.0f;
+    if (alpha < 0) alpha = 0;
+    if (alpha > 255) alpha = 255;
+    c->ret.i = cv_save(v, bounded ? bounds : NULL, true, alpha, MEGLER_GFX_BLEND_SRC_OVER, blur[0] > 0 || blur[1] > 0 ? blur : NULL);
+}
 N(G_cvSaveLayerMode) { save_layer(c, blend_number(c->args[6].i)); }
 
 N(G_cvRestore)
@@ -2815,16 +2851,16 @@ static void list_play(gcanvas *v, gdlist *l, int depth)
         return;
     }
     dl_ref(l);
-    cv_save(v, NULL, false, 255, MEGLER_GFX_BLEND_SRC_OVER);
+    cv_save(v, NULL, false, 255, MEGLER_GFX_BLEND_SRC_OVER, NULL);
     floor_depth = v->depth;
     memcpy(base, cv_state(v)->m, sizeof(base));
     for (at = 0; at < l->n; at += ((const dl_head *)(const void *)(l->ops + at))->size) {
         const dl_head *h = (const dl_head *)(const void *)(l->ops + at);
         switch (h->kind) {
-        case DL_SAVE: cv_save(v, NULL, false, 255, MEGLER_GFX_BLEND_SRC_OVER); break;
+        case DL_SAVE: cv_save(v, NULL, false, 255, MEGLER_GFX_BLEND_SRC_OVER, NULL); break;
         case DL_SAVE_LAYER: {
             const dl_layer *o = (const dl_layer *)h;
-            cv_save(v, o->bounded ? o->bounds : NULL, true, o->alpha, o->blend);
+            cv_save(v, o->bounded ? o->bounds : NULL, true, o->alpha, o->blend, o->blurred ? o->blur : NULL);
             break;
         }
         case DL_RESTORE:
@@ -2957,7 +2993,7 @@ static void node_play(gcanvas *v, gnode *n, int depth)
     w = n->right - n->left;
     h = n->bottom - n->top;
     d0 = v->depth;
-    cv_save(v, NULL, false, 255, MEGLER_GFX_BLEND_SRC_OVER);
+    cv_save(v, NULL, false, 255, MEGLER_GFX_BLEND_SRC_OVER, NULL);
     at[2] = n->left;
     at[5] = n->top;
     if (flags & RN_IDENTITY) memcpy(through, at, sizeof(through));
@@ -2983,7 +3019,7 @@ static void node_play(gcanvas *v, gnode *n, int depth)
         }
         /* A layer with no area is no layer to cv_save: the node then draws nothing. */
         if (!(bounds[2] > bounds[0]) || !(bounds[3] > bounds[1])) cv_clip_rect(v, 0, 0, 0, 0, MEGLER_GFX_CLIP_INTERSECT);
-        else cv_save(v, bounds, true, n->layer_alpha, blend);
+        else cv_save(v, bounds, true, n->layer_alpha, blend, NULL);
     } else {
         if (flags & RN_CLIP_BOUNDS) cv_clip_rect(v, 0, 0, w, h, MEGLER_GFX_CLIP_INTERSECT);
         if (flags & RN_CLIP_RECT) cv_clip_rect(v, n->clip[0], n->clip[1], n->clip[2], n->clip[3], MEGLER_GFX_CLIP_INTERSECT);
@@ -3578,6 +3614,7 @@ static const hk_jhle k_gfx[] = {
     { "megler/Gfx", "cvFree", "(J)V", G_cvFree },
     { "megler/Gfx", "cvSave", "(J)I", G_cvSave },
     { "megler/Gfx", "cvSaveLayer", "(JFFFFI)I", G_cvSaveLayer },
+    { "megler/Gfx", "cvSaveLayerBlur", "(JFFFFIFFZ)I", G_cvSaveLayerBlur },
     { "megler/Gfx", "cvSaveLayerMode", "(JFFFFII)I", G_cvSaveLayerMode },
     { "megler/Gfx", "cvRestore", "(J)V", G_cvRestore },
     { "megler/Gfx", "cvRestoreTo", "(JI)V", G_cvRestoreTo },

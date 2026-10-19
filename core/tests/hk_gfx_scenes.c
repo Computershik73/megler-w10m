@@ -189,6 +189,16 @@ static saved save_layer(pic *p, const float *bounds, int alpha, int blend)
     return s;
 }
 
+/* A layer blurred as it is put on (save_layer_blur), by Android's radius both ways; a plain layer where the host has none. */
+static saved save_layer_blur(pic *p, const float *bounds, float radius, bool clamp)
+{
+    saved s;
+    memcpy(s.m, p->m, sizeof(s.m));
+    if (p->g->save_layer_blur) p->g->save_layer_blur(p->g->user, p->cv, bounds, 255, radius, radius, clamp);
+    else p->g->save_layer(p->g->user, p->cv, bounds, 255, MEGLER_GFX_BLEND_SRC_OVER);
+    return s;
+}
+
 static void restore(pic *p, saved s)
 {
     p->g->restore(p->g->user, p->cv);
@@ -2504,6 +2514,47 @@ static void scene_shadows_filters(pic *p)
     pic_done(&photo);
 }
 
+/*
+ * What a view with RenderEffect.createBlurEffect draws (save_layer_blur, radius 20: a standard deviation of 12 pixels). With
+ * the edge DECAL a red square inside the layer comes out soft on every side, its colour reaching a little past its edges and
+ * not far, nothing beyond the layer's bounds; a square filling the layer stays solid to the layer's edge with the edge
+ * CLAMP, and fades there with DECAL.
+ */
+static void scene_layer_blur(pic *p)
+{
+    float bounds[4] = { 20, 20, 160, 160 };
+    saved a;
+    color(p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    a = save_layer_blur(p, bounds, 20, false);
+    fill(p, 60, 60, 120, 120, 0xFFE02020u);
+    restore(p, a);
+    bounds[0] = 200;
+    bounds[2] = 300;
+    a = save_layer_blur(p, bounds, 20, true);
+    fill(p, 200, 20, 300, 160, 0xFFE02020u);
+    restore(p, a);
+    bounds[0] = 340;
+    bounds[2] = 440;
+    a = save_layer_blur(p, bounds, 20, false);
+    fill(p, 340, 20, 440, 160, 0xFFE02020u);
+    restore(p, a);
+    label(p, "blurred layers: a square (decal); filled, clamped and decal", 20, 200);
+}
+
+static void check_layer_blur(pic *p)
+{
+    const u32 centre = at(p, 90, 90), inside = at(p, 61, 90), out = at(p, 126, 90), far = at(p, 152, 90), beyond = at(p, 175, 90);
+    if (!p->g->save_layer_blur) return;
+    /* (Green rises from the red's 0x20 to the ground's 0xFF as less of the red is there.) */
+    CHECK(channel(centre, 16) >= 0xC8 && channel(centre, 8) <= 0x50);
+    CHECK(channel(inside, 8) > channel(centre, 8) + 0x30);
+    CHECK(channel(out, 8) < 0xF0 && channel(out, 16) >= 0xE0);
+    CHECK(apart(far, 0xFFFFFFFFu) < 24);
+    CHECK(beyond == 0xFFFFFFFFu);
+    /* The filled layers' left edges: solid where the edge is clamped, faded where it is not. */
+    CHECK(channel(at(p, 201, 90), 8) <= 0x50 && channel(at(p, 341, 90), 8) >= 0x60);
+}
+
 static void check_shadows(pic *p)
 {
     /* Under the cards the ground is darker than beside them, and darker close to the card than further down. */
@@ -3128,6 +3179,7 @@ int hk_gfx_scenes_run(const hk_gfx_scenes_config *config, hk_test_sink sink, voi
     alone("23-images", scene_images, NULL, 480, 360);
     check_images();
     alone("24-shadows-filters", scene_shadows_filters, check_shadows, 480, 360);
+    alone("25-layer-blur", scene_layer_blur, check_layer_blur, 480, 240);
     check_odd_values();
     check_threads();
     measure_costs();

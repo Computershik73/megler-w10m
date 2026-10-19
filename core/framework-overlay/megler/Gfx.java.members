@@ -27,3 +27,9 @@
     public static native void rnSet(long node, float[] f, int[] i, float[] outlinePath, int[] layerPaint);
     /** The bytes the node's list takes. */
     public static native long rnBytes(long node);
+    /**
+     * A layer put onto the picture blurred (megler.h, save_layer_blur): Android's radii in the matrix's units, and whether what lies
+     * outside the layer is its edge carried on (Shader.TileMode CLAMP) rather than transparent (DECAL). For a view with
+     * RenderEffect.createBlurEffect (android.view.View.drawFromParent).
+     */
+    public static native int cvSaveLayerBlur(long cv, float l, float t, float r, float b, int alpha, float radiusX, float radiusY, boolean clamp);

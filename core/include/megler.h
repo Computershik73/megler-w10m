@@ -796,6 +796,16 @@ typedef struct megler_storage_host {
  *                 the shell's own, drawn into and put onto the picture at the
  *                 restore; something that must be closed before a batch of
  *                 drawing ends, like Direct2D's PushLayer, cannot be it.
+ *   save_layer_blur  save_layer with the source-over blend whose layer is
+ *                 blurred as it is put onto the picture: a Gaussian blur of
+ *                 radius_x and radius_y (Android's radii, in the matrix's
+ *                 units at the save: a standard deviation of 0.57735 *
+ *                 radius + 0.5, as Skia's blur takes them), what lies outside
+ *                 the layer taken as transparent, or with `clamp` as the
+ *                 layer's edge carried on. What a view with Android's
+ *                 RenderEffect.createBlurEffect draws comes this way. May be
+ *                 left NULL: such a view is then drawn through save_layer,
+ *                 sharp.
  *   set_matrix    the matrix for what is drawn from now on, whole: the layer
  *                 keeps the current matrix and does Android's concatenation
  *                 itself. save and restore do not keep it; after a restore
@@ -1179,6 +1189,7 @@ typedef struct megler_gfx_host {
 
     void (*save)(void *user, void *canvas);
     void (*save_layer)(void *user, void *canvas, const float *bounds, int alpha, int blend);
+    void (*save_layer_blur)(void *user, void *canvas, const float *bounds, int alpha, float radius_x, float radius_y, bool clamp);
     void (*restore)(void *user, void *canvas);
     void (*set_matrix)(void *user, void *canvas, const float *matrix);
     void (*clip_rect)(void *user, void *canvas, float left, float top, float right, float bottom, int op);

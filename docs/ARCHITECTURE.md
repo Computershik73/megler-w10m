@@ -386,6 +386,31 @@ with no read-back, a part alone, and after a flush the memory exactly the pictur
 shown); under qemu the Java test apps' pictures come through `present` too, the
 stand-in showing its canvas's memory.
 
+**Blur.** A view with Android's `RenderEffect.createBlurEffect`
+(`View.setRenderEffect`) is drawn into a layer that is put onto the picture
+blurred: megler.h's `save_layer_blur`, from `View.drawFromParent` through
+`Canvas.meglerSaveLayerBlur` (all overlaid). The radii are Android's, and the
+blur's standard deviation is Skia's, 0.57735 * radius + 0.5, grown with the
+matrix's scale as a shadow's is. Past the layer's edge is transparent for
+`Shader.TileMode.DECAL`, or the edge carried on for the others.
+
+- On the graphics processor (`gpuBlurRestore` in `GfxHost.cpp`): the layer's
+  part is copied out and cropped to that part (the work surface may be
+  larger, with older pictures in the rest), then goes through Direct2D's
+  GaussianBlur, the soft border for DECAL and the hard one otherwise, and is
+  laid over the picture at the layer's alpha, under the clip.
+- In memory: three box blurs each way, which make the same Gaussian at the
+  same cost whatever its width.
+
+A blur of a blur, or two chained, is one blur of both, their deviations added
+as squares. Other kinds of effect are drawn as if absent. The log's `gfx:`
+line counts the layers blurred. The scene "25-layer-blur" checks both paths
+on the PC: a square inside a layer comes out soft, its colour a little past
+its edges and not far, nothing beyond the layer; a square that fills its layer
+stays solid to the edge when clamped and fades there with DECAL. Instagram's
+sign-up screen is pastel patches blurred into one another so (its Bloks and
+React Native views' "filter"); without the blur they were hard-edged bands.
+
 ### OpenGL ES from an app's Java
 
 An app whose user interface is Java draws its views in memory (megler_gfx_host, and

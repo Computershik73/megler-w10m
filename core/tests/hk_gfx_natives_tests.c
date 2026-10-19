@@ -2392,7 +2392,7 @@ int hk_gfx_natives_tests_run(hk_test_sink sink, void *user, int *checks)
     say("megler.Gfx's native methods, over the stand-in");
     /* One entry for each native method megler/Gfx.java declares. */
     for (e = hk_java_gfx_natives(); e->cls; e++) n += strcmp(e->cls, "megler/Gfx") == 0 && e->sig && e->fn;
-    CHECK_INT(n, 65);
+    CHECK_INT(n, 66);
     hk_java_gfx_set_host(hk_gfx_standin());
     hk_java_gfx_stats(&bytes0, &count0);
     test_bitmaps();

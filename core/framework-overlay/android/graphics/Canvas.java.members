@@ -10,3 +10,10 @@
     boolean meglerRecords() { return mMeglerRecording; }
     /** Megler: something was drawn through this canvas by a native call of another class's (a node, a picture). */
     void meglerDrawn() { touched(); }
+    /**
+     * Megler: a layer over l, t, r, b put onto what is under it blurred, at `alpha`, when restored (megler.Gfx.cvSaveLayerBlur): how a
+     * view with a blur RenderEffect is drawn (android.view.View.drawFromParent). Returns the count to restore to, as saveLayer.
+     */
+    public int meglerSaveLayerBlur(float l, float t, float r, float b, int alpha, float radiusX, float radiusY, boolean clamp) {
+        return mNative == 0 ? 1 : megler.Gfx.cvSaveLayerBlur(mNative, l, t, r, b, Math.max(0, Math.min(255, alpha)), radiusX, radiusY, clamp);
+    }
