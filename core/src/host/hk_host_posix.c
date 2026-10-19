@@ -1418,6 +1418,26 @@ static int prefix_of(const struct sockaddr *mask)
     return n;
 }
 
+/* The name servers of /etc/resolv.conf, in its order, each once. */
+int hk_net_dns_servers(char (*out)[48], int max)
+{
+    char line[256];
+    int n = 0, i;
+    FILE *f = fopen("/etc/resolv.conf", "r");
+    if (!f) return 0;
+    while (n < max && fgets(line, sizeof(line), f)) {
+        char addr[64];
+        unsigned char probe[16];
+        bool seen = false;
+        if (sscanf(line, " nameserver %63s", addr) != 1) continue;
+        if (inet_pton(AF_INET, addr, probe) != 1 && inet_pton(AF_INET6, addr, probe) != 1) continue;
+        for (i = 0; i < n && !seen; i++) seen = !strcmp(out[i], addr);
+        if (!seen) hk_strlcpy(out[n++], addr, sizeof(out[0]));
+    }
+    fclose(f);
+    return n;
+}
+
 int hk_net_interfaces(hk_netif *out, int max)
 {
     struct ifaddrs *list = NULL, *ifa;

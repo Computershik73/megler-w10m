@@ -248,6 +248,16 @@ static void list_one(const hk_zip_entry *e, void *user)
     l->names[l->n++][len] = 0;
 }
 
+/* megler.Native.dnsServers: the phone's name servers (hk_net_dns_servers), for LinkProperties.getDnsServers. */
+N(Native_dnsServers)
+{
+    char servers[8][48];
+    int n = hk_net_dns_servers(servers, 8), i;
+    hk_jobj *a = hk_dvm_new_array("[Ljava/lang/String;", n);
+    for (i = 0; a && i < n; i++) a->u.oarr.v[i] = hk_dvm_new_string(servers[i]);
+    c->ret.l = a;
+}
+
 N(Native_listAssets)
 {
     asset_list l;
@@ -590,6 +600,7 @@ static const hk_jhle k_native[] = {
     { "megler/Native", "setOrientation", NULL, Native_setOrientation },
     { "megler/Native", "insets", NULL, Native_insets },
     { "megler/Native", "nightMode", NULL, Native_nothing },
+    { "megler/Native", "dnsServers", NULL, Native_dnsServers },
     { "megler/Native", "vibrate", NULL, Native_nothing },
     { "megler/Native", "openUrl", NULL, Native_openUrl },
     { "megler/Native", "exit", NULL, Native_exit },

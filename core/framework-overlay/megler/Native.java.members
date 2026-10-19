@@ -27,3 +27,5 @@
     public static native int addApk(String path);
     /** The names of the entries of APK number `apk` that lie under `prefix` ("assets/x/"): a file's own name, a folder's name once. */
     public static native String[] listApkFiles(int apk, String prefix);
+    /** The phone's name servers now, as text, the network's in use first (core: hk_net_dns_servers): android.net.LinkProperties.getDnsServers. */
+    public static native String[] dnsServers();

@@ -550,6 +550,13 @@ typedef struct hk_netif {
 } hk_netif;
 /* Fills up to `max` and returns how many there are; -1 when they cannot be listed. */
 int hk_net_interfaces(hk_netif *out, int max);
+/*
+ * The name servers the phone uses now, as text ("192.168.31.1", "2001:db8::1"): those of the interfaces that are up, the
+ * ones with a default gateway first, each once. Up to `max`; how many were written. What Android's LinkProperties.
+ * getDnsServers says, which a resolver of an app's own (c-ares, inside 2GIS's map library) asks to know where to send its
+ * queries.
+ */
+int hk_net_dns_servers(char (*out)[48], int max);
 
 /* ------------------------------------------------------ host shared libraries */
 

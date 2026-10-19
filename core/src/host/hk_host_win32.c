@@ -2444,6 +2444,54 @@ int hk_net_interfaces(hk_netif *out, int max)
     return n;
 }
 
+/*
+ * Windows says fec0:0:0:ffff::1 to ::3, site-local addresses an old draft gave name servers, for an interface that has no
+ * IPv6 server of its own: nothing answers there.
+ */
+static bool dns_placeholder(const SOCKADDR *sa)
+{
+    static const u8 site[14] = { 0xfe, 0xc0, 0, 0, 0, 0, 0xff, 0xff, 0, 0, 0, 0, 0, 0 };
+    const SOCKADDR_IN6 *in6 = (const SOCKADDR_IN6 *)sa;
+    return sa->sa_family == AF_INET6 && !memcmp(in6->sin6_addr.s6_addr, site, sizeof(site)) && in6->sin6_addr.s6_addr[14] == 0
+           && in6->sin6_addr.s6_addr[15] >= 1 && in6->sin6_addr.s6_addr[15] <= 3;
+}
+
+int hk_net_dns_servers(char (*out)[48], int max)
+{
+    ULONG size = 16 * 1024, r = ERROR_BUFFER_OVERFLOW;
+    IP_ADAPTER_ADDRESSES *list = NULL, *ad;
+    int n = 0, tries, pass, i;
+    for (tries = 0; tries < 4 && r == ERROR_BUFFER_OVERFLOW; tries++) {
+        list = (IP_ADAPTER_ADDRESSES *)hk_realloc(list, size);
+        r = GetAdaptersAddresses(AF_UNSPEC, GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_FRIENDLY_NAME | GAA_FLAG_INCLUDE_GATEWAYS, NULL,
+                                 list, &size);
+    }
+    if (r != NO_ERROR) {
+        free(list);
+        return 0;
+    }
+    /* The interfaces with a way out first (Wi-Fi or the cell network as it is now), then any other that is up. */
+    for (pass = 0; pass < 2; pass++)
+        for (ad = list; ad; ad = ad->Next) {
+            IP_ADAPTER_DNS_SERVER_ADDRESS *d;
+            if (ad->OperStatus != IfOperStatusUp || ad->IfType == IF_TYPE_SOFTWARE_LOOPBACK) continue;
+            if ((ad->FirstGatewayAddress != NULL) != (pass == 0)) continue;
+            for (d = ad->FirstDnsServerAddress; d && n < max; d = d->Next) {
+                const SOCKADDR *sa = d->Address.lpSockaddr;
+                char text[48] = { 0 };
+                bool seen = false;
+                if (!sa || dns_placeholder(sa)) continue;
+                if (sa->sa_family == AF_INET) inet_ntop(AF_INET, &((const SOCKADDR_IN *)sa)->sin_addr, text, sizeof(text));
+                else if (sa->sa_family == AF_INET6) inet_ntop(AF_INET6, &((const SOCKADDR_IN6 *)sa)->sin6_addr, text, sizeof(text));
+                if (!text[0]) continue;
+                for (i = 0; i < n && !seen; i++) seen = !strcmp(out[i], text);
+                if (!seen) hk_strlcpy(out[n++], text, sizeof(out[0]));
+            }
+        }
+    free(list);
+    return n;
+}
+
 /* ------------------------------------------------------ host shared libraries */
 
 void *hk_dl_open(const char *name)

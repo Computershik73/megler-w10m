@@ -281,6 +281,7 @@ public class Main extends Activity {
         storage(run);
         battery();
         connectivity();
+        dnsServers();
         location();
         timezone();
         locale();
@@ -661,6 +662,22 @@ public class Main extends Activity {
             return gps && on && all.contains(android.location.LocationManager.NETWORK_PROVIDER) && all.contains("fused")
                     && last != null && android.location.LocationManager.NETWORK_PROVIDER.equals(last.getProvider()) && back
                     && Math.abs(d[0] - 636215f) < 1f && d[1] < -35 && d[1] > -45;
+        });
+    }
+
+    /*
+     * The name servers of the network in use, as a resolver of an app's own asks for them (c-ares, inside 2GIS's map library):
+     * ConnectivityManager's LinkProperties of the active network. The host's (/etc/resolv.conf under qemu, the phone's
+     * interfaces on Windows), each a literal address.
+     */
+    private void dnsServers() {
+        step("dns-servers", () -> {
+            android.net.ConnectivityManager cm = (android.net.ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            android.net.LinkProperties lp = cm.getLinkProperties(cm.getActiveNetwork());
+            java.util.List<java.net.InetAddress> dns = lp == null ? null : lp.getDnsServers();
+            Log.i("DataTest", "dns-servers " + dns);
+            detail = String.valueOf(dns);
+            return dns != null && !dns.isEmpty() && dns.get(0) != null && dns.get(0).getHostAddress() != null;
         });
     }
 
