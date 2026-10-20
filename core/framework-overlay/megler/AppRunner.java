@@ -119,7 +119,7 @@ public final class AppRunner {
                 cp.attachInfo(app, info);
                 ContentResolver.register(p.authorities, cp);
             } catch (Throwable t) {
-                android.util.Log.w("Megler", "content provider " + p.name + " did not start: " + t);
+                android.util.Log.w("Megler", "content provider " + p.name + " did not start", t);
             }
         }
     }
