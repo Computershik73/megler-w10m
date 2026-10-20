@@ -1878,7 +1878,7 @@ static int run_data(void)
                                             custom action, as PlaybackStateCompat makes it. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "package-installer", "wifi", "media-metadata", "playback-state", "theme-accent", "phone-apps", "install-intent", "install-session", "bitmap-bytes", "adaptive-icon",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "package-installer", "wifi", "media-metadata", "playback-state", "theme-accent", "phone-apps", "install-intent", "install-session", "bitmap-bytes", "adaptive-icon", "idle-handler",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
@@ -1942,6 +1942,8 @@ static int run_data(void)
     CHECK(wait_line("I/DataTest: media-player-done ok", 0, 30) >= 0);
     CHECK(wait_line("I/DataTest: media-player-ogg-done ok", 0, 30) >= 0);
     CHECK(wait_line("I/DataTest: sound-pool-played ok", 0, 30) >= 0);
+    /* The idle handlers of the step "idle-handler": the one that answered false ran once, the one that answered true again after it. */
+    CHECK(wait_line("I/DataTest: idle-handler-done ok", 0, 30) >= 0);
     /* The asynchronous decoder of "codec-avc-async": every picture came to its callback, in display order, on its handler's thread. */
     CHECK(wait_line("I/DataTest: codec-avc-async-done ok", 0, 30) >= 0);
     /* The window's insets, when its views are first laid out, say the frame they are relative to: the screen, which the window fills. */

@@ -344,6 +344,7 @@ public class Main extends Activity {
         installs();
         bitmapBytes();
         adaptiveIcon();
+        launcherLoading();
         sound();
         mediaCodec();
         network();
@@ -2051,6 +2052,28 @@ public class Main extends Activity {
             return alpha.getByteCount() == 4 && alpha.getRowBytes() == 2 && (a.get(0) & 255) == 0x80 && (a.get(3) & 255) == 0x80 && a.position() == 4
                     && rgb.getByteCount() == 2 && (r.get(0) & 255) == 0x00 && (r.get(1) & 255) == 0xF8
                     && full.getByteCount() == 16 && Math.abs((f.get(0) & 255) - 0x80) <= 1 && (f.get(3) & 255) == 0x80 && f.position() == 16;
+        });
+    }
+
+    /**
+     * What Launcher3 leans on while it loads its apps, which Nova Launcher stopped on. The main thread's idle handlers run
+     * when nothing is due: one that answers false runs once, one that answers true again at each idle spell (Launcher3
+     * waits that way before each step); the harness waits for "idle-handler-done".
+     */
+    private void launcherLoading() {
+        step("idle-handler", () -> {
+            final int[] once = { 0 }, kept = { 0 };
+            final android.os.MessageQueue q = android.os.Looper.myQueue();
+            final android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
+            q.addIdleHandler(() -> { once[0]++; return false; });
+            // Idle handlers run once for each message the queue gives out: this one posts one each time, so that the main
+            // thread is idle again after it, and says what it saw at its third time.
+            q.addIdleHandler(() -> {
+                if (++kept[0] < 3) { h.post(() -> {}); return true; }
+                Log.i("DataTest", "idle-handler-done " + (once[0] == 1 ? "ok" : "FAILED") + " once=" + once[0] + " kept=" + kept[0]);
+                return false;
+            });
+            return true;
         });
     }
 
