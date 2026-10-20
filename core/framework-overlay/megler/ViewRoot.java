@@ -277,7 +277,10 @@ public final class ViewRoot implements ViewParent {
     public static int imeHeight() { return sImeBottom; }
     public static int[] screenInsetsMegler() { return sInsets; }
     public static WindowInsets screenInsets() { return WindowInsets.meglerOf(sInsets[0], sInsets[1], sInsets[2], sInsets[3], sImeBottom, cutout()); }
-    public static DisplayCutout cutout() { return sInsets[1] > 0 ? new DisplayCutout(new Rect(0, sInsets[1], 0, 0), null) : null; }
+    /* The phone has no cutout: what covers the top of the screen is its status bar, an inset like any other. (The original's
+       shell, iOS's, had a notch there, which reached an app as a cutout and outlived the decor's consuming the insets: an app
+       that keeps its views off a cutout itself, as Instagram does, then kept off the status bar twice.) */
+    public static DisplayCutout cutout() { return null; }
     static int screenW() { return Native.screenWidth(); }
     static int screenH() { return Native.screenHeight(); }
 

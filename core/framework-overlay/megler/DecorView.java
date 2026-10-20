@@ -156,10 +156,15 @@ public final class DecorView extends FrameLayout {
 
     // ---- insets: the decor keeps its content off the bars unless the app lays out under them
     @Override public WindowInsets dispatchApplyWindowInsets(WindowInsets in) {
-        boolean fits = mWindow.meglerDecorFits() && !mWindow.isFloating();
-        mInsetLeft = in.getSystemWindowInsetLeft(); mInsetTop = mWindow.meglerFullscreen() ? 0 : in.getSystemWindowInsetTop();
-        mInsetRight = in.getSystemWindowInsetRight(); mInsetBottom = in.getSystemWindowInsetBottom();
-        if (fits) {
+        // Each bar by itself (Window.meglerFitsStatusBar, overlaid members): the navigation bar's side goes with it in landscape.
+        ViewRoot root = ViewRoot.of(this);
+        int sys = root != null ? root.systemUi() : 0;
+        boolean floating = mWindow.isFloating();
+        boolean top = !floating && mWindow.meglerFitsStatusBar(sys), bottom = !floating && mWindow.meglerFitsNavigationBar(sys);
+        sayFits(top, bottom, sys);
+        if (top && bottom) {
+            mInsetLeft = in.getSystemWindowInsetLeft(); mInsetTop = mWindow.meglerFullscreen() ? 0 : in.getSystemWindowInsetTop();
+            mInsetRight = in.getSystemWindowInsetRight(); mInsetBottom = in.getSystemWindowInsetBottom();
             FrameLayout.LayoutParams lp = stackParams();
             if (lp != null) {
                 lp.setMargins(mInsetLeft, mInsetTop, mInsetRight, mInsetBottom);
@@ -169,10 +174,33 @@ public final class DecorView extends FrameLayout {
             super.dispatchApplyWindowInsets(rest);
             return rest;
         }
+        if (top || bottom) {
+            // One bar kept off, the other left to the app: the content's margin for the one, the insets of the other passed on.
+            int l = in.getSystemWindowInsetLeft(), t = in.getSystemWindowInsetTop(), r = in.getSystemWindowInsetRight(), b = in.getSystemWindowInsetBottom();
+            mInsetTop = top && !mWindow.meglerFullscreen() ? t : 0;
+            mInsetLeft = bottom ? l : 0; mInsetRight = bottom ? r : 0; mInsetBottom = bottom ? b : 0;
+            FrameLayout.LayoutParams lp = stackParams();
+            if (lp != null) {
+                lp.setMargins(mInsetLeft, mInsetTop, mInsetRight, mInsetBottom);
+                mStack.setLayoutParams(lp);
+            }
+            WindowInsets rest = in.replaceSystemWindowInsets(l - mInsetLeft, top ? 0 : t, r - mInsetRight, b - mInsetBottom);
+            super.dispatchApplyWindowInsets(rest);
+            return rest;
+        }
         FrameLayout.LayoutParams lp = stackParams();
         if (lp != null) { lp.setMargins(0, 0, 0, 0); mStack.setLayoutParams(lp); }
         mInsetTop = mInsetBottom = mInsetLeft = mInsetRight = 0;
         return super.dispatchApplyWindowInsets(in);
+    }
+    /* What the decor keeps the content off, said in the log when it changes, with what decided it. */
+    private int mSaidFits = -1;
+    private void sayFits(boolean top, boolean bottom, int sys) {
+        int fits = (top ? 1 : 0) | (bottom ? 2 : 0);
+        if (fits == mSaidFits || mWindow.isFloating()) return;
+        mSaidFits = fits;
+        android.util.Log.d("Megler", "decor of " + getContext().getClass().getName() + ": keeps the content off the status bar " + top
+                + ", off the navigation bar " + bottom + " (" + mWindow.meglerFitsWhy(sys) + ")");
     }
     /* The content stack's layout parameters while it is still the decor's own child; null once an app has moved it elsewhere. */
     private FrameLayout.LayoutParams stackParams() {

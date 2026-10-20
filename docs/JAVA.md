@@ -2767,6 +2767,26 @@ screen, and the bars lie over it. The contract is in `megler.h`
   again. Until then nothing was said, and the shell kept every app in full
   screen whatever it asked.
 
+- **What the decor keeps off.** As Android decides a window's
+  `fitInsetsTypes`, each bar by itself (`Window.meglerFitsStatusBar` and
+  `meglerFitsNavigationBar`, overlaid members). The decor does not keep the
+  content off a bar the app lays out under:
+  - `setDecorFitsSystemWindows(false)` or `FLAG_LAYOUT_NO_LIMITS`, for both
+    bars;
+  - `SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN` or `FLAG_TRANSLUCENT_STATUS` for the
+    status bar;
+  - `_LAYOUT_HIDE_NAVIGATION` or `FLAG_TRANSLUCENT_NAVIGATION` for the
+    navigation bar.
+
+  A flag counts whether it is set on the decor, in the window's attributes,
+  or on any view of the window. The other bar's inset is passed on to the
+  app's views. The log says what the decor decided and why ("decor of ...:
+  keeps the content off the status bar ..."). The phone has no display
+  cutout: the original's iOS shell had a notch at the top, and the top inset
+  reached apps as a cutout that outlived the decor's consuming the insets. An
+  app that keeps off a cutout itself, as Instagram does, then kept off the
+  status bar twice.
+
 Tested in the data app (both runs). Told that the bars cover 60 pixels at the
 top and 90 at the bottom, its content moves down by 60 and shrinks by 150.
 Then it hides the status bar by its window's `WindowInsetsController` (by
