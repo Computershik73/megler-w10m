@@ -137,16 +137,31 @@ An app's page in Megler's library has a section "Separate App"
      same each time, so that a package made again is an update); and the
      app's label for the shown names (`core/src/appx/hk_appx_manifest.c`).
      Capabilities, dependencies, the entry point and the publisher cache
-     folder stay Megler's.
+     folder stay Megler's. Where the app's icon is drawn on the logos (below),
+     the tile's background is `transparent`, the phone's own colour; the
+     splash screen keeps Megler's black.
   4. `resources.pri`, below.
   5. The package, `LocalState\packages\<identity name>.appx`, holds Megler's
      installed files but `android`, `selftest`, `demo`, `codec`,
      `appx-template`, its `resources.pri` and what the packaging makes
      itself; that manifest and `resources.pri`; `MeglerApp.ini`; and
      `app\app.apk` with the library's report and icon of it (`app.apk.json`,
-     `app.apk.icon`, `reports.version`), so that the app is not read again. An
-     app of split APKs is not made a package yet. The certificate is copied
-     beside it.
+     `app.apk.icon`, `reports.version`), so that the app is not read again.
+     An app of split APKs (an `.apks` or `.xapk` unpacked) has its splits in
+     `app\app.apk.splits`, beside the base, where the library looks for them.
+     The certificate is copied beside it.
+  6. The logos: the app's icon (`megler_apk_icon`'s PNG, decoded by
+     `Windows.Graphics.Imaging`, or WebP, which the phone's WIC cannot read,
+     decoded by the core: `megler_webp_decode`) drawn in the middle of each of
+     Megler's logos, with their names and sizes, which the `resources.pri`
+     template lists: `StoreLogo` 50x50, `Square44x44Logo`, `Square150x150Logo`,
+     `Wide310x150Logo` and `SplashScreen` 620x300, the icon taking as much of
+     the shorter side as Megler's own does in them (`Assets/make-assets.ps1`),
+     transparent round it. An APK with no icon that can be drawn keeps Megler's.
+  7. The app's expansion files, which the unpacking of an `.xapk` puts in
+     Megler's storage (`LocalState\apps\<package>\sdcard\Android\obb\<package>`),
+     and an app may download there, are copied to the same place in the shared
+     folder, the separate apps' storage; a file already there as large is left.
 
 **resources.pri.** A packaged XAML app reads its `resources.pri` at its start,
 and the resource map in it is named after the package's identity name. Megler's
@@ -203,10 +218,28 @@ A package with `MeglerApp.ini` in its install folder is one app's
 Megler itself keeps its own `LocalState\sdcard` as before: its apps and the
 separate apps do not share a `/sdcard` yet.
 
+**The phone's folders** (`ui/SharedFolders.cpp`). Music, Pictures, Movies and
+DCIM come from capabilities, which every package of Megler's declares alike. The
+Documents and Downloads folders and a memory card come in only through the
+folder picker (`player/StorageHost.h`), and Windows remembers a picked folder
+for the one package it was picked in (`FutureAccessList`): no other package of
+the publisher, not even with the publisher cache folder, gets it. So each
+separate app has to be given each such folder by the user once:
+
+- Megler writes the folders added in its Settings (their names in `/sdcard` and
+  their paths) to `<shared>\folders.txt`, once its search of the phone's folders
+  is over and whenever Settings adds or takes one out;
+- a separate app, before its app starts, offers each listed folder it has not
+  got (by name or path): a dialog that says the folder, then the folder picker,
+  started in Downloads or Documents; the folder chosen is added under Megler's
+  name for it (`StorageHost::add`). "Not Now" is remembered
+  (`megler.folders.notNow` in its `settings.ini`) and not asked at start again;
+- the player's menu of a separate app has **Phone Folders**, which offers all
+  of those it has not got, the "Not Now" ones too; the app finds a folder added
+  so from its next start (the links are given to the core when an app starts).
+
 ## What follows (not done yet)
 
-- The app's icon on its tile and splash screen (the package has Megler's).
-- Apps of split APKs.
 - Megler's own `/sdcard` moved to the shared folder, so that its apps and the
   separate ones share one.
 - Old builds' Android files in `<shared>\android`: each build of Megler that
