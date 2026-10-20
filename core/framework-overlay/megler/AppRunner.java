@@ -12,6 +12,10 @@
 // pause) goes to the app's active media session first, as Android hands it to the session rather than to the window
 // (android.media.session.MediaSession.meglerMediaKey); an app with none gets it as any other key.
 //
+// And an intent to install an APK (ACTION_INSTALL_PACKAGE, or ACTION_VIEW of an APK, naming no activity) goes to Megler's
+// installer first (megler.Installs), as Android hands it to its package installer, rather than to an activity of the app's
+// that takes the content or file scheme.
+//
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -150,6 +154,15 @@ public final class AppRunner {
     }
     /** Context.startActivity: an activity of the app's own, or something the host can open (a web page, mail, the store). */
     public static void startActivity(Context from, Intent i, int request, Bundle opts) {
+        // An APK to install (a file manager's, a browser's download, an app store's): Megler's installer has it, as Android's
+        // package installer would (megler.Installs). Asked for a result, the caller hears RESULT_OK: the APK went.
+        if (megler.Installs.isInstall(i)) {
+            android.util.Log.d("Megler", "startActivity " + i + " -> Megler's installer");
+            megler.Installs.install(from, i);
+            final Activity caller = from instanceof Activity ? (Activity) from : top();
+            if (request >= 0 && caller != null) sHandler.post(() -> caller.meglerActivityResult(request, Activity.RESULT_OK, null));
+            return;
+        }
         Manifest.Component c = Manifest.resolve(i);
         android.util.Log.d("Megler", "startActivity " + i + (c != null ? " -> " + c.name : " (not an activity of this app)"));
         if (c != null) {

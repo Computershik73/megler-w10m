@@ -591,6 +591,29 @@ static void media_metadata(void *user, const char *title, const char *artist, co
     media_heard(t);
 }
 
+/* What the app asked of the phone (megler_system_host): "install=Viewed.apk;install=base.apk;". */
+static char g_system_heard[512];
+static mg_lock g_system_lock = MG_LOCK_INIT;
+
+static void system_heard(const char *what)
+{
+    size_t n;
+    mg_lock_acquire(&g_system_lock);
+    n = strlen(g_system_heard);
+    if (n + strlen(what) + 1 < sizeof(g_system_heard)) mg_strlcpy(g_system_heard + n, what, sizeof(g_system_heard) - n);
+    mg_lock_release(&g_system_lock);
+}
+
+static bool system_install(void *user, const char *host_path, const char *name)
+{
+    char t[160];
+    mg_stat st;
+    (void)user;
+    snprintf(t, sizeof(t), "install=%s%s;", name, mg_path_stat(host_path, &st, NULL) ? "" : "(no file)");
+    system_heard(t);
+    return true;
+}
+
 static bool start(const char *apk, const char *android_root)
 {
     static megler_run_config cfg;
@@ -617,6 +640,8 @@ static bool start(const char *apk, const char *android_root)
     cfg.media_session.state = media_state;
     cfg.media_session.metadata = media_metadata;
     g_media_heard[0] = 0;
+    cfg.system.install_apk = system_install;
+    g_system_heard[0] = 0;
     /* Decoders for MediaCodec that decode nothing but take samples only as a real one must have them (mg_codec_standin.c). */
     cfg.codec = *mg_codec_standin();
     if (g_camera_app) cfg.camera = *mg_camera_standin();
@@ -1756,6 +1781,27 @@ static void media_session_keys(void)
     CHECK(find_line("I/DataTest: media-session next", 0) < 0 && count_lines("media-session paused OFF THE MAIN THREAD") == 0);
 }
 
+/*
+ * What the data app asked of the phone (megler_system_host), in order: to install the APK it opened with ACTION_VIEW; to
+ * install its PackageInstaller session's one file, whose status, STATUS_SUCCESS (0), then comes back to the app.
+ */
+static void system_requests(void)
+{
+    static const char want[] = "install=Viewed.apk;install=base.apk;";
+    char heard[sizeof(g_system_heard)];
+    int tries;
+    for (tries = 0; tries < 150; tries++) {
+        mg_lock_acquire(&g_system_lock);
+        mg_strlcpy(heard, g_system_heard, sizeof(heard));
+        mg_lock_release(&g_system_lock);
+        if (!strcmp(heard, want)) break;
+        mg_sleep_ns(20000000ull);
+    }
+    say("  the app asked of the phone: %s", heard);
+    CHECK(!strcmp(heard, want));
+    CHECK(wait_line("I/DataTest: install-status 0 session=true package=com.example.store", 0, 30) >= 0);
+}
+
 static int run_data(void)
 {
     static const char *const steps[] = { "open", "kept", "insert", "query", "types", "update", "delete", "rollback", "commit", "constraint", "statement", "text",
@@ -1788,7 +1834,7 @@ static int run_data(void)
                                             custom action, as PlaybackStateCompat makes it. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "package-installer", "wifi", "media-metadata", "playback-state", "theme-accent",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "package-installer", "wifi", "media-metadata", "playback-state", "theme-accent", "install-intent", "install-session",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
@@ -1883,6 +1929,7 @@ static int run_data(void)
     battery_changes(run == 2 && want == 2);
     bars_and_insets();
     media_session_keys();
+    system_requests();
     /*
      * The second run has the flags trace-net, trace-exceptions and trace-stacks on (tools/build-tests.sh puts them in its
      * data folder): the network steps' connections are said with where to and how they ended, the names looked up with their

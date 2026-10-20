@@ -9,6 +9,8 @@
 // And getPackageInfo names the app's split APKs (splitNames, splitRevisionCodes),
 // as ApplicationInfo does: an app in several APKs that checks for its splits by
 // this way of asking found none, where the original left them empty.
+// And canRequestPackageInstalls is true: an app store may hand an APK to
+// Megler's installer (megler.Installs), which asks the user.
 package android.content.pm;
 
 import android.content.ComponentName;
@@ -248,7 +250,8 @@ public class PackageManager {
     public boolean isSafeMode() { return false; }
     public boolean isInstantApp() { return false; }
     public boolean isInstantApp(String pkg) { return false; }
-    public boolean canRequestPackageInstalls() { return false; }
+    // An app may ask to install others: Megler's installer has the APK and asks the user (megler.Installs).
+    public boolean canRequestPackageInstalls() { return true; }
     private final PackageInstaller meglerInstaller = new PackageInstaller();
     public PackageInstaller getPackageInstaller() { return meglerInstaller; }
     public android.content.pm.ModuleInfo getModuleInfo(String pkg, int flags) throws NameNotFoundException { throw new NameNotFoundException(pkg); }

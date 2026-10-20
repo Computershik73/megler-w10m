@@ -340,6 +340,7 @@ public class Main extends Activity {
         mediaMetadata();
         playbackState();
         themeAccent();
+        installs();
         sound();
         mediaCodec();
         network();
@@ -1987,6 +1988,42 @@ public class Main extends Activity {
             codec.release();
             detail = out + " frames=" + s.samples.size();
             return out.ended && out.blocks == s.samples.size() && out.pcm == s.samples.size() * 1152L * 2 * 2;
+        });
+    }
+
+    /**
+     * Installing: an APK opened with ACTION_VIEW goes to Megler's installer (megler_system_host.install_apk), and so do a
+     * PackageInstaller session's files when it is committed, which then sends its status, STATUS_SUCCESS, to the
+     * PendingIntent it was given.
+     */
+    private void installs() {
+        step("install-intent", () -> {
+            java.io.File apk = new java.io.File(getCacheDir(), "Viewed.apk");
+            try (java.io.FileOutputStream o = new java.io.FileOutputStream(apk)) { o.write(new byte[] { 'P', 'K', 3, 4 }); }
+            startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW)
+                    .setDataAndType(android.net.Uri.fromFile(apk), "application/vnd.android.package-archive"));
+            return getPackageManager().canRequestPackageInstalls();
+        });
+        step("install-session", () -> {
+            android.content.pm.PackageInstaller pi = getPackageManager().getPackageInstaller();
+            android.content.pm.PackageInstaller.SessionParams params =
+                    new android.content.pm.PackageInstaller.SessionParams(android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+            params.setAppPackageName("com.example.store");
+            int id = pi.createSession(params);
+            android.content.pm.PackageInstaller.Session s = pi.openSession(id);
+            try (java.io.OutputStream o = s.openWrite("base", 0, 4)) { o.write(new byte[] { 'P', 'K', 3, 4 }); }
+            String[] names = s.getNames();
+            registerReceiver(new android.content.BroadcastReceiver() {
+                @Override public void onReceive(android.content.Context c, android.content.Intent i) {
+                    Log.i("DataTest", "install-status " + i.getIntExtra("android.content.pm.extra.STATUS", -99) + " session=" + (i.getIntExtra("android.content.pm.extra.SESSION_ID", -1) == id)
+                            + " package=" + i.getStringExtra("android.content.pm.extra.PACKAGE_NAME"));
+                }
+            }, new android.content.IntentFilter("megler.test.INSTALL_STATUS"));
+            android.app.PendingIntent status = android.app.PendingIntent.getBroadcast(this, 0, new android.content.Intent("megler.test.INSTALL_STATUS"),
+                    0);
+            s.commit(status.getIntentSender());
+            detail = "id=" + id + " names=" + java.util.Arrays.toString(names);
+            return id > 0 && names.length == 1 && "base.apk".equals(names[0]);
         });
     }
 
