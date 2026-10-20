@@ -793,7 +793,7 @@ static void test_layout(const char *data)
     host.make_folder = counted_mkdir;
     host.remove = counted_remove;
     host.rename = counted_rename;
-    hk_run_files(data, PKG, &host);
+    hk_run_files(data, data, PKG, &host);
 
     /* Five names, one place. */
     CHECK(put("/sdcard/one.txt", "one place"));

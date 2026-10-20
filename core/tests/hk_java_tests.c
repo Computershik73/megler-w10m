@@ -615,7 +615,7 @@ static bool start(const char *apk, const char *android_root)
         static hk_apk_info info;
         say("  (megler_run: %s -- the Java driver is started directly)", megler_last_error());
         if (hk_apk_read_info(apk, &info) && !strcmp(info.engine, "java")) {
-            hk_run_files(megler_data_dir(), info.package, &cfg.storage);
+            hk_run_files(megler_data_dir(), megler_storage_dir(), info.package, &cfg.storage);
             g_direct = hk_driver_java.start(&cfg, &info);
             if (g_direct) return true;
         }

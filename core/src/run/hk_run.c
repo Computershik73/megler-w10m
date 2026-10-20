@@ -277,16 +277,16 @@ static void other_app(const char *name, bool is_dir, void *user)
 
 char *hk_run_own_storage(const char *data_dir, const char *package) { return hk_sprintf("%s/apps/%s/sdcard", data_dir, package); }
 
-void hk_run_files(const char *data_dir, const char *package, const megler_storage_host *storage)
+void hk_run_files(const char *data_dir, const char *storage_dir, const char *package, const megler_storage_host *storage)
 {
-    char *internal = hk_sprintf("%s/apps/%s/data", data_dir, package), *own = hk_run_own_storage(data_dir, package), *apps;
+    char *internal = hk_sprintf("%s/apps/%s/data", data_dir, package), *own = hk_run_own_storage(storage_dir, package), *apps;
     left_behind left;
     other_apps others;
     hk_fs_configure(package, internal, own);
-    hk_run_storage(data_dir, storage);
-    others.data_dir = data_dir;
+    hk_run_storage(storage_dir, storage);
+    others.data_dir = storage_dir;
     others.count = 0;
-    apps = hk_sprintf("%s/apps", data_dir);
+    apps = hk_sprintf("%s/apps", storage_dir);
     hk_path_list(apps, other_app, &others, NULL);
     free(apps);
     if (others.count > 1) hk_info("storage: the own parts of %d other app(s) are in /sdcard/Android/data and obb, as on Android 9", others.count - 1);
@@ -386,7 +386,7 @@ bool hk_run_start(const megler_run_config *config)
     }
 
     /* Each app gets its own Android data directories under ours, and all of them one shared storage. */
-    hk_run_files(megler_data_dir(), info.package, &g_config.storage);
+    hk_run_files(megler_data_dir(), megler_storage_dir(), info.package, &g_config.storage);
 
     hk_guest_exit_hook = on_guest_exit;
     hk_core_set_crash_hook(on_crash);

@@ -22,11 +22,13 @@ u32 hk_run_frames(void);
 
 /*
  * Where an app's files are, set before its code runs: its own folders,
- * <data_dir>/apps/<package>/data and .../sdcard (which holds its own part of
- * the shared storage), and the shared storage. hk_run_start calls this with
- * megler_data_dir().
+ * <data_dir>/apps/<package>/data, <storage_dir>/apps/<package>/sdcard (which
+ * holds its own part of the shared storage), and the shared storage, in
+ * storage_dir (megler_config.storage_dir; the same as data_dir unless the shell
+ * says otherwise). hk_run_start calls this with megler_data_dir() and
+ * megler_storage_dir().
  */
-void hk_run_files(const char *data_dir, const char *package, const megler_storage_host *storage);
+void hk_run_files(const char *data_dir, const char *storage_dir, const char *package, const megler_storage_host *storage);
 /*
  * The host folder that holds an app's own part of the shared storage (its Android/data/<package> and Android/obb/<package>
  * are under it, as under /storage/emulated/0): <data_dir>/apps/<package>/sdcard, malloc'd. Where hk_run_files mounts it,
@@ -72,6 +74,8 @@ void hk_run_ended(int status, const char *reason);
 
 const char *megler_data_dir(void);
 const char *megler_package_dir(void);
+/* megler_config.storage_dir, or the data folder when the shell gave none. */
+const char *megler_storage_dir(void);
 
 #ifdef __cplusplus
 }

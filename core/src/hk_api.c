@@ -11,7 +11,7 @@
 
 static megler_log_fn g_log;
 static void *g_log_user;
-static char g_data_dir[600], g_package_dir[600];
+static char g_data_dir[600], g_package_dir[600], g_storage_dir[600];
 
 static void log_sink(int level, const char *line, void *user)
 {
@@ -73,6 +73,7 @@ void hk_flags_each(const char *prefix, void (*fn)(const char *rest, void *user),
 }
 
 const char *megler_package_dir(void) { return g_package_dir; }
+const char *megler_storage_dir(void) { return g_storage_dir[0] ? g_storage_dir : g_data_dir; }
 
 static void copy_dir(char *out, size_t cap, const char *in)
 {
@@ -89,6 +90,10 @@ bool megler_init(const megler_config *config)
 {
     copy_dir(g_data_dir, sizeof(g_data_dir), config->data_dir);
     copy_dir(g_package_dir, sizeof(g_package_dir), config->package_dir);
+    if (config->storage_dir && config->storage_dir[0]) {
+        copy_dir(g_storage_dir, sizeof(g_storage_dir), config->storage_dir);
+        hk_path_mkdirs(g_storage_dir);
+    }
     g_log = config->log;
     g_log_user = config->log_user;
     if (g_log) hk_log_set_sink(log_sink, NULL);

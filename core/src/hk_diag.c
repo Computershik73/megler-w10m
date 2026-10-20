@@ -72,7 +72,7 @@ int megler_storage_check(const megler_storage_host *storage, megler_line_fn out,
         if (checks) (*checks)++;
         return 1;
     }
-    hk_run_storage(megler_data_dir(), storage);
+    hk_run_storage(megler_storage_dir(), storage);
     for (i = 0; storage && storage->links && i < storage->link_count && i < MEGLER_STORAGE_MAX_LINKS; i++) {
         /* (A link that is only to be read has nothing here that could be tried without leaving something behind.) */
         if (storage->links[i].writable) names[count++] = storage->links[i].name;

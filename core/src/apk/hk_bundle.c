@@ -439,7 +439,7 @@ static char *expansion_target(const ctx *c, const char *install_path)
         size_t n = strlen(parts[i]);
         const char *rest = install_path + n;
         if (strncmp(install_path, parts[i], n) || strncmp(rest, c->package, plen) || rest[plen] != '/' || !safe_rest(rest)) continue;
-        own = hk_run_own_storage(megler_data_dir(), c->package);
+        own = hk_run_own_storage(megler_storage_dir(), c->package);
         out = hk_sprintf("%s/%s", own, install_path);
         free(own);
         return out;

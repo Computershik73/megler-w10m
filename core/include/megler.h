@@ -36,6 +36,11 @@ typedef struct megler_config {
     /* What the OS allows the app to use and what it uses now (MemoryManager), in bytes; either may be NULL. */
     uint64_t (*memory_limit)(void);
     uint64_t (*memory_usage)(void);
+    /* Where the shared storage is kept: <storage_dir>/sdcard, and each app's own part of it, <storage_dir>/apps/<package>/
+       sdcard, which other apps see in /sdcard/Android/data and obb. NULL for data_dir. The package of one Android app
+       gives the publisher cache folder that every such package shares, so that what one app keeps in the shared storage
+       the others find (docs/PER-APP-PACKAGES.md); an app's private files stay under data_dir. */
+    const char *storage_dir;
 } megler_config;
 
 /*
