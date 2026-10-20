@@ -102,9 +102,11 @@ fail.
   so packages signed with a key made on the phone are of the same publisher as
   Megler itself, and share its publisher cache folder. The phone has to trust the
   certificate: the Device Portal's install takes it with the package.
-- No code integrity catalog (`AppxMetadata/CodeIntegrity.cat`) is made yet;
-  whether the phone wants one for the executables is for the first install to
-  say.
+- No code integrity catalog (`AppxMetadata/CodeIntegrity.cat`) is made, and
+  the phone does not want one: the probe packed and signed this way (MeglerProbeC,
+  `tools/appx-phone-check.py` builds it) was installed on the HP Elite x3 by
+  hand, through the Device Portal's page in the phone's own browser with its
+  certificate, and started (2026-10-20).
 
 On a PC, `tools/build-appx-tool.sh` builds `appx-tool` (the same code, x64),
 which packs a folder; `tools/appx-verify.py` checks a package independently:
@@ -113,7 +115,7 @@ signed ones, the message digest, and the RSA signature with openssl. Both a
 package of makeappx's and signtool's and one of `appx-tool`'s pass it;
 `makeappx unpack /v` unpacks `appx-tool`'s, and `signtool verify /pa` stops at
 the certificate's root not being trusted on the PC (as it should, and not at a
-digest). Installing one on the phone is still to be tried.
+digest). On the phone such a package installs and runs (above).
 
 ## What follows (not done yet)
 
