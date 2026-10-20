@@ -1991,10 +1991,6 @@ public class Main extends Activity {
     }
 
     /**
-     * The platform's PlaybackState as PlaybackStateCompat makes it: through its Builder and, for an action of the app's own,
-     * CustomAction.Builder; what was set is there, and through a Parcel it comes back by CREATOR.
-     */
-    /**
      * The phone's look as an app sees it (the test tells megler_set_theme a cobalt accent, #0063B1, and a light theme): the
      * platform's DeviceDefault theme gives it as colorAccent, Material You's system_accent1_600 (number 0x0106003f, tone 40
      * of the first accent palette, in HCT) is made of it, and the configuration is not night.
@@ -2012,6 +2008,10 @@ public class Main extends Activity {
         });
     }
 
+    /**
+     * The platform's PlaybackState as PlaybackStateCompat makes it: through its Builder and, for an action of the app's own,
+     * CustomAction.Builder; what was set is there, and through a Parcel it comes back by CREATOR.
+     */
     private void playbackState() {
         step("playback-state", () -> {
             android.media.session.PlaybackState.CustomAction like = new android.media.session.PlaybackState.CustomAction.Builder("like", "Like",
