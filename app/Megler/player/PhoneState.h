@@ -22,5 +22,11 @@ std::string locale();
 /// Tells the core the language and region (Settings' or the phone's): at start-up, before the library is read, so that
 /// apps' names are in that language; tell() says it again before each app.
 void tellLocale();
+/// The phone's accent colour (Windows' accent) and whether apps are told it is dark: Settings' choice, else Windows' theme.
+/// UI thread.
+uint32_t accent();
+bool dark();
+/// Tells the core the accent colour and the theme (megler_set_theme): tell() does it before each app.
+void tellTheme();
 
 } // namespace megler::app::phoneState

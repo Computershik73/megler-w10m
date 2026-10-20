@@ -106,8 +106,38 @@ void tellLocale() {
     shellLog::write("phone: the language and region are " + tag + (chosen.empty() ? " (the phone's)" : " (set in Settings)"));
 }
 
+uint32_t accent() {
+    try {
+        const auto c = winrt::Windows::UI::ViewManagement::UISettings().GetColorValue(winrt::Windows::UI::ViewManagement::UIColorType::Accent);
+        return (uint32_t(c.A) << 24) | (uint32_t(c.R) << 16) | (uint32_t(c.G) << 8) | uint32_t(c.B);
+    } catch (const winrt::hresult_error&) {
+        return 0xFF0063B1u; // Windows' own cobalt
+    }
+}
+
+bool dark() {
+    const std::string chosen = settings::get(settings::appTheme, "");
+    if (chosen == "dark") return true;
+    if (chosen == "light") return false;
+    try {
+        // Windows' theme: its background colour is black in the dark one, white in the light one.
+        const auto bg = winrt::Windows::UI::ViewManagement::UISettings().GetColorValue(winrt::Windows::UI::ViewManagement::UIColorType::Background);
+        return int(bg.R) + int(bg.G) + int(bg.B) < 3 * 128;
+    } catch (const winrt::hresult_error&) {
+        return true;
+    }
+}
+
+void tellTheme() {
+    const uint32_t a = accent();
+    const bool night = dark();
+    megler_set_theme(a, night);
+    shellLog::write(format("phone: the accent colour is #%06X and apps are told the theme is %s", unsigned(a & 0xFFFFFF), night ? "dark" : "light"));
+}
+
 void tell() {
     tellLocale();
+    tellTheme();
     {
         std::lock_guard<std::mutex> lock(gMutex);
         if (gTold) return;
