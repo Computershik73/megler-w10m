@@ -370,7 +370,7 @@ static mg_jobj *make_annotation(mg_dvm_dex *d, const u8 **pp);
 static mg_dvm_class *return_class(const mg_dvm_method *m)
 {
     const char *r = strchr(m->sig, ')');
-    mg_dvm_class *k = r ? mg_dvm_find_class_desc(r + 1) : NULL;
+    mg_dvm_class *k = r ? mg_dvm_find_desc_scope(r + 1, m->cls->scope) : NULL;
     if (!k) mg_dvm_clear_pending();
     return k;
 }

@@ -115,6 +115,7 @@ void mg_dvm_object_roots(void (*fn)(mg_jobj *o, void *user), void *user)
 {
     if (g_out_of_memory) fn(g_out_of_memory, user);
     if (g_dvm.app_loader) fn(g_dvm.app_loader, user);
+    mg_dvm_loader_roots(fn, user);
 }
 
 static mg_jobj *alloc_raw(mg_dvm_class *c, int kind, u64 body)

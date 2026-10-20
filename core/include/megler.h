@@ -1381,6 +1381,8 @@ typedef struct megler_location_host {
 
 typedef struct megler_run_config {
     const char *apk_path;
+    /* Optional installed microG APK. Opened as the service package; no copy in each client. */
+    const char *gms_apk_path;
     /*
      * An app in several APKs (megler_apk_report_splits): its splits, as a folder whose .apk files they are (the folder
      * megler_bundle_unpack makes), and as a list of paths; either may be left NULL. The app runs as one, as Android runs

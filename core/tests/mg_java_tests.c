@@ -568,6 +568,7 @@ static bool start(const char *apk, const char *android_root)
     g_android_root = android_root;
     memset(&cfg, 0, sizeof(cfg));
     cfg.apk_path = apk;
+    cfg.gms_apk_path = getenv("MG_JAVA_GMS_APK");
     cfg.splits_dir = g_splits_dir;
     cfg.android_root = android_root;
     /* Unless another is asked for, a small phone at Android's base density: a dp is a pixel, and the layout's numbers can be read off the picture. */
@@ -2170,6 +2171,16 @@ static int run_camera(void)
     return g_failed;
 }
 
+/* Regression: a client and GmsCore carry incompatible classes of identical names. */
+static int run_microg(void)
+{
+    CHECK(wait_line("I/MicroGTest: PASS isolated GmsCore broker", 0, 1200) >= 0);
+    CHECK(find_line("E/MicroGTest: FAILED", 0) < 0);
+    CHECK(find_line("FATAL EXCEPTION", 0) < 0);
+    say_app_lines("/MicroGTest: ");
+    return g_failed;
+}
+
 /* -------------------------------------------------------------- any app */
 
 /*
@@ -2383,7 +2394,8 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
         apk = base;
     }
     if (start(apk, android_root)) {
-        if (!strcmp(which, "demos")) run_demos();
+        if (!strcmp(which, "microg")) run_microg();
+        else if (!strcmp(which, "demos")) run_demos();
         else if (!strcmp(which, "natives")) run_natives();
         else if (!strcmp(which, "crash")) run_crash();
         else if (!strcmp(which, "data")) run_data();

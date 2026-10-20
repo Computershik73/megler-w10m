@@ -33,6 +33,9 @@ inline const char* singleAppId() { return "app.apk"; }
 
 /// The publisher cache folder "shared", which every package of Megler's publisher has; empty when Windows gives none.
 std::wstring sharedFolder();
+/// Remember an installed microG APK for clients of the same publisher; no service APK is bundled into each client.
+void registerServiceApk(const ApkEntry& entry);
+std::wstring serviceApk();
 
 /// An app's own package, before its app starts: the app's private files that Megler handed over when it made the package
 /// (the shared folder's handover\<package>, see make) copied into its LocalState in place of its own, which are kept

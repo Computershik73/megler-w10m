@@ -189,6 +189,8 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
     std::thread([window, audio, width, height, densityDpi] {
         megler_run_config config = {};
         config.apk_path = gApkPath.c_str();
+        const std::string servicePath = narrow(appPackage::serviceApk());
+        config.gms_apk_path = servicePath.empty() ? nullptr : servicePath.c_str();
         config.splits_dir = gSplitsDir.empty() ? nullptr : gSplitsDir.c_str();
         config.split_apks = nullptr;
         config.split_count = 0;

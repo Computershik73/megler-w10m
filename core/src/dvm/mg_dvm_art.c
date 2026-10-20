@@ -74,6 +74,50 @@ static mg_jvalue get(mg_jobj *o, const char *name)
     return x;
 }
 
+/* Service APK loaders are explicit: they share platform classes, never a client's libraries. */
+static mg_jobj *g_service_loaders[16];
+int mg_dvm_loader_scope(mg_jobj *loader) {
+    int i;
+    if (!loader) return 0;
+    for (i = 1; i < 16; i++) if (g_service_loaders[i] == loader) return i;
+    return 0;
+}
+mg_jobj *mg_dvm_scope_loader(int scope) { return scope > 0 && scope < 16 ? g_service_loaders[scope] : NULL; }
+void mg_dvm_loader_roots(void (*fn)(mg_jobj *, void *), void *user) {
+    int i; for (i = 1; i < 16; i++) if (g_service_loaders[i]) fn(g_service_loaders[i], user);
+}
+N(ServiceClassLoader_openApk) {
+    const char *path = mg_dvm_string_utf8(c->args[0].l);
+    char *host;
+    int scope;
+    if (!path) { npe("apk"); return; }
+    mg_dvm_lock();
+    for (scope = 1; scope < 16 && g_service_loaders[scope]; scope++);
+    if (scope < 16) g_service_loaders[scope] = c->self;
+    mg_dvm_unlock();
+    if (scope == 16) { mg_dvm_throw("java/lang/IllegalStateException", "Too many service loaders"); return; }
+    host = mg_fs_host_path(path);
+    if (!host || !mg_dvm_add_apk_scope(host, scope)) {
+        free(host);
+        mg_dvm_throw("java/io/IOException", "Cannot load service APK %s", path);
+        return;
+    }
+    free(host);
+    c->ret.i = scope;
+}
+N(ServiceClassLoader_findClassNative) {
+    const char *given = mg_dvm_string_utf8(c->args[0].l);
+    char *name, *p;
+    mg_dvm_class *k;
+    int scope = mg_dvm_loader_scope(c->self);
+    if (!given) { npe("name"); return; }
+    name = mg_strdup(given);
+    for (p = name; *p; p++) if (*p == '.') *p = '/';
+    if (!scope || !mg_dvm_class_exists_scope(name, scope)) mg_dvm_throw("java/lang/ClassNotFoundException", "%s", given);
+    else { k = mg_dvm_find_class_scope(name, scope); if (k) c->ret.l = mg_dvm_mirror(k); }
+    free(name);
+}
+
 /* ------------------------------------------------------------ Class objects */
 
 static void flatten_interfaces(mg_dvm_class *c, mg_dvm_class **out, int *n, int cap)
@@ -106,7 +150,8 @@ static void fill_mirror(mg_jobj *m, mg_dvm_class *c)
     if (c->super) set_obj(m, "superClass", mg_dvm_mirror(c->super));
     if (c->component) set_obj(m, "componentType", mg_dvm_mirror(c->component));
     /* An app's class names the app's loader as its own; the system's name none, which libcore reads as the boot class loader. */
-    if (c->dex && c->dex->app && g_dvm.app_loader) set_obj(m, "classLoader", g_dvm.app_loader);
+    if (c->scope) set_obj(m, "classLoader", mg_dvm_scope_loader(c->scope));
+    else if (c->dex && c->dex->app && g_dvm.app_loader) set_obj(m, "classLoader", g_dvm.app_loader);
     for (k = c; k; k = k->super) flatten_interfaces(k, all, &n, (int)MG_COUNT(all));
     if (n) {
         mg_jobj *table = mg_dvm_new_array("[Ljava/lang/Object;", n * 2);
@@ -570,7 +615,7 @@ N(VMStack_getStackClass2)
 }
 
 /* The class loader of a class as Java sees it: the app's for the app's classes, none (the boot class path) for all others. */
-static mg_jobj *loader_of(const mg_dvm_class *k) { return mg_dvm_class_is_app(k) ? g_dvm.app_loader : NULL; }
+static mg_jobj *loader_of(const mg_dvm_class *k) { return k->scope ? mg_dvm_scope_loader(k->scope) : mg_dvm_class_is_app(k) ? g_dvm.app_loader : NULL; }
 
 N(VMStack_getCallingClassLoader)
 {
@@ -1018,7 +1063,7 @@ N(VMRuntime_newArray)
         return;
     }
     name = e->prim ? mg_sprintf("[%c", e->prim) : e->name[0] == '[' ? mg_sprintf("[%s", e->name) : mg_sprintf("[L%s;", e->name);
-    a = mg_dvm_find_class(name);
+    a = mg_dvm_find_class_scope(name, e->scope);
     free(name);
     if (a) c->ret.l = mg_dvm_alloc_array(a, c->args[1].i);
 }
@@ -1049,25 +1094,35 @@ N(Class_getPrimitiveClass)
     else if (!mg_dvm_pending()) mg_dvm_throw("java/lang/ClassNotFoundException", "%s", name ? name : "null");
 }
 
-/* classForName(String name, boolean initialize, ClassLoader loader): there is one name space, so the loader says nothing. */
+/* classForName: service loaders have their own namespace; existing loaders retain the app path. */
 N(Class_classForName)
 {
     const char *given = mg_dvm_string_utf8(c->args[0].l);
     mg_dvm_class *k;
+    int scope = mg_dvm_loader_scope(c->args[2].l);
     char *name, *p;
     if (!given) {
         npe("name == null");
+        return;
+    }
+    if (scope) {
+        mg_jvalue out;
+        mg_dvm_method *load = mg_dvm_find_virtual(mg_dvm_class_of(c->args[2].l), "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+        if (load && mg_dvm_invoke(load, c->args[2].l, c->args, &out)) {
+            k = mg_dvm_mirror_class(out.l);
+            if (k && (!c->args[1].z || mg_dvm_ensure_init(k))) c->ret.l = out.l;
+        }
         return;
     }
     name = mg_strdup(given);
     for (p = name; *p; p++)
         if (*p == '.') *p = '/';
     /* A name with a slash in it is not a Java name, and a primitive's name is not a class to be looked up. */
-    if (strchr(given, '/') || !mg_dvm_class_exists(name) || (name[0] != '[' && !strchr(name, '/') && mg_dvm_find_class(name) && mg_dvm_find_class(name)->prim)) {
+    if (strchr(given, '/') || !mg_dvm_class_exists_scope(name, scope) || (name[0] != '[' && !strchr(name, '/') && mg_dvm_find_class_scope(name, scope) && mg_dvm_find_class_scope(name, scope)->prim)) {
         mg_dvm_clear_pending();
         mg_dvm_throw("java/lang/ClassNotFoundException", "%s", given);
     } else {
-        k = mg_dvm_find_class(name);
+        k = mg_dvm_find_class_scope(name, scope);
         if (!k) {
             /* Named and not to be had: ClassNotFoundException, with what stopped it as the cause Java code looks for. */
             mg_jvalue a[2];
@@ -1168,7 +1223,7 @@ N(Array_createObjectArray)
         return;
     }
     name = e->name[0] == '[' ? mg_sprintf("[%s", e->name) : mg_sprintf("[L%s;", e->name);
-    a = mg_dvm_find_class(name);
+    a = mg_dvm_find_class_scope(name, e->scope);
     free(name);
     if (a) c->ret.l = mg_dvm_alloc_array(a, c->args[1].i);
 }
@@ -1208,7 +1263,7 @@ N(Array_createMultiArray)
     if (e->prim) snprintf(name + k, sizeof(name) - k, "%c", e->prim);
     else if (e->name[0] == '[') snprintf(name + k, sizeof(name) - k, "%s", e->name);
     else snprintf(name + k, sizeof(name) - k, "L%s;", e->name);
-    a = mg_dvm_find_class(name);
+    a = mg_dvm_find_class_scope(name, e->scope);
     if (a) c->ret.l = multi_array(a, (const i32 *)dims->u.arr.data, (i32)dims->u.arr.len);
 }
 
@@ -1393,6 +1448,8 @@ static const mg_jhle k_art[] = {
 
     { "java/lang/Class", "getNameNative", NULL, Class_getNameNative },
     { "java/lang/Class", "getPrimitiveClass", NULL, Class_getPrimitiveClass },
+    { "megler/ServiceClassLoader", "openApk", NULL, ServiceClassLoader_openApk },
+    { "megler/ServiceClassLoader", "findClassNative", NULL, ServiceClassLoader_findClassNative },
     { "java/lang/Class", "classForName", NULL, Class_classForName },
     { "java/lang/Class", "getInterfacesInternal", NULL, Class_getInterfacesInternal },
     { "java/lang/Class", "newInstance", NULL, Class_newInstance },

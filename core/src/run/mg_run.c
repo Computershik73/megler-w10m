@@ -356,6 +356,7 @@ bool mg_run_start(const megler_run_config *config)
     g_config = *config;
     g_apk_path = mg_strdup(config->apk_path);
     g_config.apk_path = g_apk_path;
+    g_config.gms_apk_path = config->gms_apk_path ? mg_strdup(config->gms_apk_path) : NULL;
     /*
      * The drivers see the splits as one list, of those the reading took (a split of another app is no split of this one),
      * in the order of info.splits, which names them.

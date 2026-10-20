@@ -7,7 +7,7 @@ public abstract class Service extends android.content.ContextWrapper implements 
         START_FLAG_REDELIVERY = 1, START_FLAG_RETRY = 2, STOP_FOREGROUND_REMOVE = 1, STOP_FOREGROUND_DETACH = 2, STOP_FOREGROUND_LEGACY = 0;
     public Service() { super(null); }
     public final void meglerAttach(android.content.Context base) { attachBaseContext(base); }
-    public final Application getApplication() { return Application.meglerGet(); }
+    public final Application getApplication() { android.content.Context app = getApplicationContext(); return app instanceof Application ? (Application) app : Application.meglerGet(); }
     public void onCreate() {}
     @Deprecated public void onStart(Intent i, int id) {}
     public int onStartCommand(Intent i, int flags, int id) { onStart(i, id); return START_STICKY; }

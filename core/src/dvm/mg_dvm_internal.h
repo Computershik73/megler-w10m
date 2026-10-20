@@ -74,6 +74,7 @@ static inline mg_jvalue *mg_dvm_slots(mg_jobj *o) { return (mg_jvalue *)(void *)
 static inline mg_dvm_class *mg_dvm_class_of(const mg_jobj *o) { return ((const mg_dvm_obj *)o)->cls; }
 
 struct mg_dvm_dex {
+    int scope; /* 0: existing app/boot path; >0: isolated package loader. */
     const u8 *b;
     size_t size;
     u32 nstr, ntype, nproto, nfield, nmeth, ncls;
@@ -159,6 +160,7 @@ enum { DVM_CS_FAILED = -1, DVM_CS_LINKED = 0, DVM_CS_INITIALIZING = 1, DVM_CS_IN
 #define DVM_ICACHE 16
 
 struct mg_dvm_class {
+    int scope; /* Defining loader namespace; arrays inherit their component namespace. */
     const char *name;                  /* "java/lang/String", "[I", "int"; interned */
     u8 call_traced;                    /* under a flag trace-calls-<prefix> (mg_dvm_interp.c): 0 not yet looked at, 1 traced, 2 not */
     mg_dvm_dex *dex;                   /* NULL for array and primitive classes */
@@ -368,6 +370,14 @@ const char *mg_dvm_intern(const char *s);
 void mg_dvm_classes_add_dex(mg_dvm_dex *d);
 /* A class by its JNI name, loaded and linked if need be. NULL with NoClassDefFoundError (or what linking threw) pending. */
 mg_dvm_class *mg_dvm_find_class(const char *name);
+mg_dvm_class *mg_dvm_find_class_scope(const char *name, int scope);
+mg_dvm_class *mg_dvm_find_desc_scope(const char *desc, int scope);
+bool mg_dvm_class_exists_scope(const char *name, int scope);
+bool mg_dvm_add_dex_scope(const void *data, size_t size, const char *label, int scope);
+int mg_dvm_add_apk_scope(const char *path, int scope);
+int mg_dvm_loader_scope(mg_jobj *loader);
+mg_jobj *mg_dvm_scope_loader(int scope);
+void mg_dvm_loader_roots(void (*fn)(mg_jobj *, void *), void *user);
 mg_dvm_class *mg_dvm_find_class_desc(const char *descriptor);
 /* Whether any DEX file defines it (or it is an array or primitive class), without loading it. */
 bool mg_dvm_class_exists(const char *name);

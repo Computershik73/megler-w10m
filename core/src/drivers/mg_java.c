@@ -997,6 +997,8 @@ static void mount_apk(void)
     int i;
     if (name > path) dir[name - path - 1] = 0;
     mg_fs_mount(guest_dir, dir);
+    if (J.config->gms_apk_path && strcmp(J.package, "com.google.android.gms"))
+        mg_fs_mount("/system/priv-app/GmsCore/GmsCore.apk", J.config->gms_apk_path);
     snprintf(J.guest_apk, sizeof(J.guest_apk), "%s/%s", guest_dir, name);
     mg_dvm_dex_source_added(J.guest_apk);
     for (i = 0; i < J.nsplits; i++) {

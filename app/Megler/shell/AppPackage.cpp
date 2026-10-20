@@ -546,6 +546,24 @@ PortalResult installThroughPortal(const Made& made, const std::function<void(con
     }
 }
 
+void registerServiceApk(const ApkEntry& entry) {
+    if (entry.report.package != "com.google.android.gms" || !entry.report.ok || !canRead(entry.path)) return;
+    const auto shared = sharedFolder();
+    if (shared.empty()) return;
+    const auto folder = shared + L"\\services";
+    files::makeDirectories(folder);
+    const auto path = folder + L"\\gms-apk.txt";
+    if (files::write(path + L".part", narrow(entry.path))) files::move(path + L".part", path);
+}
+
+std::wstring serviceApk() {
+    const auto shared = sharedFolder();
+    std::string path;
+    if (shared.empty() || !files::read(shared + L"\\services\\gms-apk.txt", path) || path.empty()) return {};
+    const auto apk = widen(path);
+    return canRead(apk) ? apk : std::wstring();
+}
+
 bool installedApps(std::vector<InstalledApp>& out, std::string& error) {
     using namespace winrt::Windows::Data::Json;
     out.clear();
