@@ -1,7 +1,8 @@
 // One app: what megler_apk_report says about its APK -- what it is, which
 // engine drives it, its native libraries and what they need -- and what to do
-// with it: Play, make it an app of the phone's own (shell/AppPackage.h), and
-// Remove.
+// with it: install it as an app of the phone's own, update or uninstall it
+// (ui/SeparateApps.h), its own settings, and Remove. Megler runs an app itself
+// only in an auto run (auto/AutoRun.h).
 #include "pch.h"
 
 #include "library/Library.h"
@@ -11,6 +12,7 @@
 #include "shell/Strings.h"
 #include "ui/AppShell.h"
 #include "ui/Components.h"
+#include "ui/SeparateApps.h"
 
 namespace megler::app::ui {
 
@@ -45,19 +47,9 @@ UIElement libraryRow(const ApkLibrary& library) {
     return column;
 }
 
-/// Making the app's own package: what is going on, and what was made. Shared with the worker; `page` is touched on the UI
-/// thread only, and is null once the page is gone.
-struct PackState {
-    bool busy = false;
-    std::string status;
-    appPackage::Made made;
-    class AppDetailScreen* page = nullptr;
-};
-
 class AppDetailScreen final : public Page {
 public:
-    AppDetailScreen(AppShell& shell, std::string apkId) : Page(shell), id_(std::move(apkId)) { pack_->page = this; }
-    ~AppDetailScreen() override { pack_->page = nullptr; }
+    AppDetailScreen(AppShell& shell, std::string apkId) : Page(shell), id_(std::move(apkId)) {}
 
     std::string title() override {
         const auto entry = Library::instance().find(id_);
@@ -72,14 +64,14 @@ public:
         return view_;
     }
 
+    void appeared() override { separateApps::refresh(shell_); }
+
     void refresh() override {
-        // Rebuilt when the library changes (the report arriving) or Play
-        // comes or goes (it is gone once an app, or the self-test's, has run).
-        const unsigned generation = Library::instance().generation();
-        std::string blocked = session::unavailable();
-        if (generation == generation_ && blocked == blocked_) return;
+        // Rebuilt when the library changes (the report arriving) or what is known of the app on the phone does.
+        const unsigned generation = Library::instance().generation(), phone = separateApps::generation();
+        if (generation == generation_ && phone == phoneGeneration_) return;
         generation_ = generation;
-        blocked_ = std::move(blocked);
+        phoneGeneration_ = phone;
         rebuild();
     }
 
@@ -117,21 +109,7 @@ private:
 
         if (auto warnings = platformWarnings()) add(column, warnings);
 
-        // Play, or why not.
-        if (!blocked_.empty()) {
-            add(column, warningCard(blocked_));
-            auto close = primaryButton("Close Megler", glyphs::close, [] { Application::Current().Exit(); }, p.fill);
-            close.Margin(ThicknessHelper::FromLengths(0, 0, 0, 26));
-            add(column, close);
-        } else {
-            const std::string id = id_;
-            auto play = primaryButton("Play", glyphs::play, [this, id] { shell_.push(makePlayerScreen(shell_, id)); });
-            play.IsEnabled(entry.analysed && r.ready());
-            play.Margin(ThicknessHelper::FromLengths(0, 0, 0, 26));
-            add(column, play);
-        }
-
-        if (!appPackage::isSingleApp() && entry.analysed && r.valid && r.ok) add(column, packSection(entry));
+        if (!appPackage::isSingleApp() && entry.analysed && r.valid && r.ok) add(column, phoneSection(entry));
 
         if (entry.analysed && r.valid && r.ok) {
             std::vector<UIElement> facts;
@@ -182,9 +160,8 @@ private:
         // The copy of a running app is open in the core.
         remove.IsEnabled(session::snapshot().apkId != id_ || !session::spent());
         add(column, remove);
-        auto note = text(entry.splitsDir.empty() ? "Removes Megler's copy of the APK. The app's own files and saves (LocalState\\apps) stay."
-                                                 : "Removes Megler's copy of the app's APKs. The app's own files and saves, and the expansion files "
-                                                   "its bundle brought (LocalState\\apps), stay.",
+        auto note = text(std::string(entry.splitsDir.empty() ? "Removes Megler's copy of the APK." : "Removes Megler's copy of the app's APKs.") +
+                             " The app installed on the phone stays, but Megler can no longer update it; its files and saves stay too.",
                          font::footnote, weightNormal(), p.secondaryLabel);
         note.Margin(ThicknessHelper::FromLengths(16, 7, 16, 0));
         add(column, note);
@@ -192,103 +169,75 @@ private:
         host_.Content(column);
     }
 
-    /// The app as an app of the phone's own: a package of Megler and this APK (shell/AppPackage.h), made here and installed
-    /// through the phone's Device Portal or by Windows's installer.
-    UIElement packSection(const ApkEntry& entry) {
+    /// The app as an app of the phone's own (ui/SeparateApps.h): whether it is installed and from which Megler, Install or
+    /// Update, its own settings, Uninstall; and, when the portal could not install a package made, Windows's installer.
+    UIElement phoneSection(const ApkEntry& entry) {
         const auto& p = palette();
-        auto& s = *pack_;
+        const ApkReport& r = entry.report;
+        const separateApps::Status s = separateApps::status(r.package);
         std::vector<UIElement> rows;
-        auto row = [&](const std::string& title, wchar_t icon, std::function<void()> onClick, bool enabled) {
-            auto b = button(label(title, icon, font::body, weightNormal(), p.accent), std::move(onClick), ButtonKind::rounded, title);
+        auto row = [&](const std::string& title, wchar_t icon, std::function<void()> onClick, bool enabled, std::optional<Color> color = std::nullopt) {
+            auto b = button(label(title, icon, font::body, weightNormal(), color.value_or(p.accent)), std::move(onClick), ButtonKind::rounded, title);
             b.Padding(ThicknessHelper::FromLengths(16, 13, 16, 13));
             b.HorizontalAlignment(HorizontalAlignment::Stretch);
             b.HorizontalContentAlignment(HorizontalAlignment::Left);
-            b.IsEnabled(enabled && !s.busy);
+            b.IsEnabled(enabled && !s.queued);
             rows.push_back(b);
         };
-        const bool canMake = entry.report.ready();
-        row(s.made.appx.empty() ? "Make a Separate App" : "Make It Again", glyphs::box, [this] { makePackage(); }, canMake);
-        if (!s.made.appx.empty()) {
-            row("Install Through the Device Portal", glyphs::add, [this] { installPackage(); }, true);
-            row("Open the Package (Windows Installer)", glyphs::play, [this] { openFile(pack_->made.appx); }, true);
-            row("Open the Certificate", glyphs::info, [this] { openFile(pack_->made.certificate); }, true);
+        std::string state;
+        if (s.installed == separateApps::Installed::yes)
+            state = s.outdated ? "Installed, made by Megler " + s.version + ". This is Megler " + appPackage::meglerVersion() + ": Update makes it again with this one."
+                               : "Installed, made by this Megler (" + s.version + ").";
+        else if (s.installed == separateApps::Installed::no)
+            state = "Not installed.";
+        else
+            state = separateApps::portalProblem().empty() ? "Asking the Device Portal whether it is installed…"
+                                                          : "Megler can't tell whether it is installed: " + separateApps::portalProblem();
+        auto stateText = text(state, font::subheadline, weightNormal(), s.outdated ? p.orange : p.label);
+        stateText.TextWrapping(TextWrapping::Wrap);
+        stateText.Padding(ThicknessHelper::FromLengths(16, 11, 16, 11));
+        rows.push_back(stateText);
+
+        const std::string id = id_, package = r.package, title = entry.title();
+        const bool installed = s.installed == separateApps::Installed::yes;
+        row(installed ? (s.outdated ? "Update" : "Install Again") : "Install", installed ? glyphs::refresh : glyphs::add,
+            [this, id] { separateApps::install(shell_, id); }, r.ready());
+        row("App Settings", glyphs::settings, [this, package, title] { shell_.push(makeAppSettingsScreen(shell_, package, title)); }, true);
+        if (installed)
+            row("Uninstall", glyphs::trash, [this, package, title] {
+                shell_.confirm("Uninstall " + title + "?",
+                               "The app goes from the phone, with its private files. What it has in Android's storage stays in the shared folder, "
+                               "and Megler keeps the APK: Install puts it back.",
+                               "Uninstall", true, [this, package] { separateApps::uninstall(shell_, package); });
+            }, true, p.red);
+        // The package made, when the portal did not install it: Windows's own installer, as a file manager opens a package.
+        if (!s.made.appx.empty() && !installed) {
+            const std::wstring appx = s.made.appx, certificate = s.made.certificate;
+            row("Open the Package (Windows Installer)", glyphs::play, [this, appx] { openFile(appx); }, true);
+            row("Open the Certificate", glyphs::info, [this, certificate] { openFile(certificate); }, true);
         }
-        if (!s.status.empty()) {
-            auto t = text(s.status, font::subheadline, weightNormal(), p.label);
+        const std::string step = opened_.empty() ? s.step : opened_;
+        if (!step.empty()) {
+            auto t = text(step, font::subheadline, weightNormal(), p.secondaryLabel);
+            t.TextWrapping(TextWrapping::Wrap);
             t.Padding(ThicknessHelper::FromLengths(16, 11, 16, 11));
             rows.push_back(t);
         }
-        std::string footer = std::string("A package of Megler and this ") + (entry.splitsDir.empty() ? "APK" : "app's APKs") +
-                             ", with the app's name and icon: it starts straight into the app, in a process of its own with its own "
-                             "memory. Its /sdcard is shared with the other separate apps. The first time, the app's data in Megler "
-                             "goes along with it (Megler keeps its own), so it goes on where it was.";
-        if (!s.made.appx.empty())
-            footer += " The package and the certificate it is signed with are in Megler's LocalState\\packages (" + s.made.identity +
-                      ".appx, MeglerApps.cer); the phone has to trust the certificate, which the Device Portal is given with the package.";
-        return listSection("Separate App", rows, footer);
-    }
-
-    void makePackage() {
-        const auto entry = Library::instance().find(id_);
-        if (!entry || pack_->busy) return;
-        auto state = pack_;
-        AppShell& shell = shell_;
-        state->busy = true;
-        state->status = "Starting…";
-        rebuild();
-        const ApkEntry copy = *entry;
-        auto made = std::make_shared<appPackage::Made>();
-        shell.runInBackground(
-            [state, made, copy, &shell] {
-                *made = appPackage::make(copy, [state, &shell](const std::string& step) {
-                    shell.runOnUiThread([state, step] {
-                        state->status = step;
-                        if (state->page) state->page->rebuild();
-                    });
-                });
-            },
-            [state, made] {
-                state->busy = false;
-                if (made->error.empty()) {
-                    state->made = *made;
-                    state->status = "Made: " + made->identity + ". Install it through the Device Portal, or open it with Windows's installer.";
-                } else {
-                    state->status = made->error;
-                }
-                if (state->page) state->page->rebuild();
-            });
-    }
-
-    void installPackage() {
-        if (pack_->busy || pack_->made.appx.empty()) return;
-        auto state = pack_;
-        AppShell& shell = shell_;
-        state->busy = true;
-        state->status = "Installing through the Device Portal…";
-        rebuild();
-        const appPackage::Made made = state->made;
-        auto said = std::make_shared<std::string>();
-        shell.runInBackground(
-            [state, made, said, &shell] {
-                *said = appPackage::installThroughPortal(made, [state, &shell](const std::string& step) {
-                    shell.runOnUiThread([state, step] {
-                        state->status = step;
-                        if (state->page) state->page->rebuild();
-                    });
-                });
-            },
-            [state, said] {
-                state->busy = false;
-                state->status = *said;
-                if (state->page) state->page->rebuild();
-            });
+        std::string footer = r.ready() ? std::string("An app of the phone's own: Megler and this ") + (entry.splitsDir.empty() ? "APK" : "app's APKs") +
+                                             " in a package with the app's name and icon, made here and installed through the phone's Device "
+                                             "Portal. It starts straight into the app, in a process of its own with its own memory; its /sdcard is "
+                                             "shared with the other apps. The first time, the app's data in Megler goes along with it."
+                                       : "This app can't run here: " + r.status();
+        footer += " App Settings are this app's own: render size, language and region, location.";
+        return listSection("On This Phone", rows, footer);
     }
 
     void openFile(const std::wstring& path) {
-        auto state = pack_;
-        appPackage::openWithSystem(path, [state](bool ok) {
-            state->status = ok ? "Handed to Windows." : "Windows didn't open it.";
-            if (state->page) state->page->rebuild();
+        const std::weak_ptr<Page> weak = shared_from_this();
+        appPackage::openWithSystem(path, [this, weak](bool ok) {
+            if (!weak.lock()) return;
+            opened_ = ok ? "Handed to Windows." : "Windows didn't open it.";
+            rebuild();
         });
     }
 
@@ -297,7 +246,7 @@ private:
         if (!entry) return;
         const std::string id = id_;
         AppShell& shell = shell_;
-        shell.confirm("Remove " + entry->title() + "?", "Megler's copy of the APK is deleted. To play it again you would add it again.",
+        shell.confirm("Remove " + entry->title() + "?", "Megler's copy of the APK is deleted. To install or update the app again you would add it again.",
                       "Remove", true, [&shell, id] {
                           Library::instance().remove(id);
                           shell.pop();
@@ -305,11 +254,10 @@ private:
     }
 
     std::string id_;
-    std::shared_ptr<PackState> pack_ = std::make_shared<PackState>();
     UIElement view_{nullptr};
     ContentControl host_{nullptr};
-    unsigned generation_ = 0;
-    std::string blocked_;
+    unsigned generation_ = 0, phoneGeneration_ = 0;
+    std::string opened_; // what Windows did with a file handed to it
 };
 
 } // namespace

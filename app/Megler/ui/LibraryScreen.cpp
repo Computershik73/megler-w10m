@@ -1,11 +1,14 @@
 // The library: the APKs the user added, each with its icon, its name and
-// package, and in one line whether it can run here.
+// package, in one line whether it can run here, and in another whether it is
+// installed as an app of the phone's own and by which Megler (ui/SeparateApps.h);
+// above them, Update All when some were made by another Megler.
 #include "pch.h"
 
 #include "library/Library.h"
 #include "shell/Strings.h"
 #include "ui/AppShell.h"
 #include "ui/Components.h"
+#include "ui/SeparateApps.h"
 
 namespace megler::app::ui {
 
@@ -45,6 +48,26 @@ UIElement apkRow(const ApkEntry& entry) {
     status.TextWrapping(TextWrapping::NoWrap);
     status.TextTrimming(TextTrimming::CharacterEllipsis);
     add(middle, status);
+    // On the phone: installed, from which Megler, or what is being done.
+    const separateApps::Status phone = separateApps::status(entry.report.package);
+    std::string onPhone;
+    std::optional<Color> color;
+    if (phone.queued) {
+        onPhone = phone.step;
+        color = p.accentText;
+    } else if (phone.installed == separateApps::Installed::yes) {
+        onPhone = phone.outdated ? "Installed, made by Megler " + phone.version + ": to update" : std::string("Installed");
+        color = phone.outdated ? p.orange : p.green;
+    } else if (phone.installed == separateApps::Installed::no && entry.report.ready()) {
+        onPhone = "Not installed";
+        color = p.tertiaryLabel;
+    }
+    if (!onPhone.empty()) {
+        auto line = text(onPhone, font::caption, weightNormal(), color);
+        line.TextWrapping(TextWrapping::NoWrap);
+        line.TextTrimming(TextTrimming::CharacterEllipsis);
+        add(middle, line);
+    }
     Grid::SetColumn(middle, 1);
     row.Children().Append(middle);
 
@@ -99,6 +122,8 @@ public:
 
     UIElement toolbarItem() override { return addButton_; }
 
+    void appeared() override { separateApps::refresh(shell_); }
+
     void refresh() override {
         const ImportProgress& import = shell_.importProgress();
         const bool copying = import.active && !import.name.empty();
@@ -110,9 +135,10 @@ public:
         }
         addButton_.IsEnabled(!import.active);
 
-        const unsigned generation = Library::instance().generation();
-        if (generation == generation_) return;
+        const unsigned generation = Library::instance().generation(), phone = separateApps::generation();
+        if (generation == generation_ && phone == phoneGeneration_) return;
         generation_ = generation;
+        phoneGeneration_ = phone;
         rebuildList();
     }
 
@@ -121,8 +147,9 @@ private:
         const auto entries = Library::instance().entries();
         if (entries.empty()) {
             auto empty = contentUnavailable(glyphs::game, "No Apps Yet",
-                                            "Add an Android game's APK from this phone's storage, or a bundle of split APKs "
-                                            "(.apks, .xapk). Megler keeps its own copy and tells you whether it can run here.");
+                                            "Add an Android app's APK from this phone's storage, or a bundle of split APKs "
+                                            "(.apks, .xapk). Megler keeps its own copy, tells you whether it can run here, and installs "
+                                            "it as an app of the phone's own.");
             empty.Margin(ThicknessHelper::FromLengths(8, 48, 8, 0));
             auto first = primaryButton("Add APK", glyphs::add, [this] { addApk(); });
             first.HorizontalAlignment(HorizontalAlignment::Center);
@@ -148,6 +175,35 @@ private:
             listHost_.Content(empty);
             return;
         }
+        // What is being done to the apps on the phone; else those made by another Megler, to update; and whether the portal
+        // could be asked at all.
+        auto top = vstack(0);
+        const std::string working = separateApps::working();
+        const auto outdated = separateApps::outdatedIds();
+        if (!working.empty()) {
+            auto line = text(working, font::subheadline, weightNormal(), palette().label);
+            line.TextWrapping(TextWrapping::Wrap);
+            auto box = card(line, 12, 14);
+            box.Margin(ThicknessHelper::FromLengths(0, 0, 0, 14));
+            add(top, box);
+        } else if (!outdated.empty()) {
+            auto column = vstack(10);
+            auto line = text(format("%u of the apps on the phone were made by another Megler. A package carries the Megler that made it: "
+                                    "Update All makes and installs each again with this one.",
+                                    unsigned(outdated.size())),
+                             font::subheadline, weightNormal(), palette().label);
+            line.TextWrapping(TextWrapping::Wrap);
+            add(column, line);
+            add(column, primaryButton("Update All", glyphs::refresh, [this] { separateApps::updateAll(shell_); }));
+            auto box = card(column, 12, 14);
+            box.Margin(ThicknessHelper::FromLengths(0, 0, 0, 14));
+            add(top, box);
+        }
+        if (!separateApps::portalProblem().empty()) {
+            auto warning = warningCard("Megler can't tell which apps are installed: " + separateApps::portalProblem());
+            warning.Margin(ThicknessHelper::FromLengths(0, 0, 0, 14));
+            add(top, warning);
+        }
         std::vector<UIElement> rows;
         for (const auto& entry : entries) {
             const std::string id = entry.id;
@@ -160,7 +216,8 @@ private:
             rows.push_back(button(label("Add the Java Test Apps", glyphs::game, font::body, weightNormal(), palette().accentText),
                                   [this] { addJavaApps(); }, ButtonKind::plain, "Add the Java Test Apps"));
         }
-        listHost_.Content(listSection("Apps", rows));
+        add(top, listSection("Apps", rows));
+        listHost_.Content(top);
     }
 
     void addDemo() {
@@ -195,7 +252,7 @@ private:
     TextBlock importDetail_{nullptr};
     ContentControl listHost_{nullptr};
     Button addButton_{nullptr};
-    unsigned generation_ = 0;
+    unsigned generation_ = 0, phoneGeneration_ = 0;
 };
 
 } // namespace

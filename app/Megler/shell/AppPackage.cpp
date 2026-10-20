@@ -420,14 +420,21 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     return made;
 }
 
-std::string installThroughPortal(const Made& made, const std::function<void(const std::string&)>& progress) {
-    using namespace winrt::Windows::Web::Http;
-    using namespace winrt::Windows::Web::Http::Filters;
-    using namespace winrt::Windows::Web::Http::Headers;
-    using winrt::Windows::Foundation::Uri;
-    using winrt::Windows::Security::Cryptography::Certificates::ChainValidationResult;
-    const std::wstring base = L"https://127.0.0.1";
-    try {
+namespace {
+
+/// The phone's own Device Portal, https://127.0.0.1, asked once for its cookies: what every call to it starts with.
+struct Portal {
+    winrt::Windows::Web::Http::HttpClient client{nullptr};
+    std::wstring cookies, token;
+
+    static std::wstring base() { return L"https://127.0.0.1"; }
+
+    /// Empty when the portal answered, else why not, as a sentence.
+    std::string open() {
+        using namespace winrt::Windows::Web::Http;
+        using namespace winrt::Windows::Web::Http::Filters;
+        using winrt::Windows::Foundation::Uri;
+        using winrt::Windows::Security::Cryptography::Certificates::ChainValidationResult;
         // The portal's certificate is one the phone made for itself, which nothing vouches for: taken as it is, here only,
         // where the address is the phone's own.
         HttpBaseProtocolFilter filter;
@@ -440,15 +447,10 @@ std::string installThroughPortal(const Made& made, const std::function<void(cons
         // back in the Cookie header and in X-CSRF-Token. (Left to the filter's own cookies, the install was refused 403 on
         // the phone with package 353.)
         filter.CookieUsageBehavior(HttpCookieUsageBehavior::NoCookies);
-        HttpClient client(filter);
-
-        progress("Asking the Device Portal…");
-        auto info = client.GetAsync(Uri(base + L"/api/os/info")).get();
-        shellLog::write(format("app package: the Device Portal's /api/os/info: %d", int(info.StatusCode())));
-        if (info.StatusCode() == HttpStatusCode::Unauthorized)
-            return "The Device Portal asks for a user name and password, which Megler doesn't send yet.";
+        client = HttpClient(filter);
+        auto info = client.GetAsync(Uri(base() + L"/api/os/info")).get();
+        if (info.StatusCode() == HttpStatusCode::Unauthorized) return "The Device Portal asks for a user name and password, which Megler doesn't send yet.";
         if (!info.IsSuccessStatusCode()) return format("The Device Portal answered %d.", int(info.StatusCode()));
-        std::wstring cookies, token;
         for (auto const& header : info.Headers()) {
             if (_wcsicmp(header.Key().c_str(), L"Set-Cookie")) continue;
             // One or more cookies, "name=value; attributes", several joined by ", ".
@@ -466,8 +468,35 @@ std::string installThroughPortal(const Made& made, const std::function<void(cons
                 if (pair.compare(0, eq, L"CSRF-Token") == 0) token = pair.substr(eq + 1);
             }
         }
-        shellLog::write("app package: the Device Portal's cookies: " + (cookies.empty() ? std::string("none") : narrow(cookies)) +
-                        (token.empty() ? ", no CSRF token" : ", a CSRF token"));
+        return {};
+    }
+
+    /// A request with the cookies and the token.
+    winrt::Windows::Web::Http::HttpRequestMessage request(winrt::Windows::Web::Http::HttpMethod const& method, const std::wstring& path) {
+        winrt::Windows::Web::Http::HttpRequestMessage r(method, winrt::Windows::Foundation::Uri(base() + path));
+        if (!cookies.empty()) r.Headers().TryAppendWithoutValidation(L"Cookie", cookies);
+        if (!token.empty()) r.Headers().TryAppendWithoutValidation(L"X-CSRF-Token", token);
+        return r;
+    }
+};
+
+std::string unreachable(hresult_error const& e) {
+    shellLog::write(format("app package: the Device Portal: 0x%08x ", unsigned(e.code())) + narrow(e.message()));
+    return "The Device Portal could not be reached on this phone: " + narrow(e.message()) + format(" (0x%08x)", unsigned(e.code()));
+}
+
+}  // namespace
+
+PortalResult installThroughPortal(const Made& made, const std::function<void(const std::string&)>& progress) {
+    using namespace winrt::Windows::Web::Http;
+    using namespace winrt::Windows::Web::Http::Headers;
+    using winrt::Windows::Foundation::Uri;
+    try {
+        Portal portal;
+        progress("Asking the Device Portal…");
+        if (std::string why = portal.open(); !why.empty()) return {false, why};
+        shellLog::write("app package: the Device Portal's cookies: " + (portal.cookies.empty() ? std::string("none") : narrow(portal.cookies)) +
+                        (portal.token.empty() ? ", no CSRF token" : ", a CSRF token"));
 
         HttpMultipartFormDataContent form;
         for (const std::wstring& path : {made.appx, made.certificate}) {
@@ -477,41 +506,98 @@ std::string installThroughPortal(const Made& made, const std::function<void(cons
             form.Add(part, file.Name(), file.Name());
         }
         const std::wstring appxName = made.appx.substr(made.appx.find_last_of(L'\\') + 1);
-        HttpRequestMessage request(HttpMethod::Post(),
-                                   Uri(base + L"/api/app/packagemanager/package?package=" + std::wstring(Uri::EscapeComponent(appxName))));
-        if (!cookies.empty()) request.Headers().TryAppendWithoutValidation(L"Cookie", cookies);
-        if (!token.empty()) request.Headers().TryAppendWithoutValidation(L"X-CSRF-Token", token);
+        auto request = portal.request(HttpMethod::Post(), L"/api/app/packagemanager/package?package=" + std::wstring(Uri::EscapeComponent(appxName)));
         request.Content(form);
         progress("Sending the package (" + formattedByteCount(files::size(made.appx)) + ") to the Device Portal…");
-        auto sent = client.SendRequestAsync(request).get();
+        auto sent = portal.client.SendRequestAsync(request).get();
         if (!sent.IsSuccessStatusCode()) {
             const std::string body = narrow(sent.Content().ReadAsStringAsync().get());
             shellLog::write(format("app package: the Device Portal refused the package: %d ", int(sent.StatusCode())) + body);
-            return format("The Device Portal refused the package (%d): ", int(sent.StatusCode())) + body;
+            return {false, format("The Device Portal refused the package (%d): ", int(sent.StatusCode())) + body};
         }
 
         // It answers the state 204 while it is still installing.
         progress("Installing…");
         for (int i = 0; i < 300; i++) {
             Sleep(2000);
-            auto state = client.GetAsync(Uri(base + L"/api/app/packagemanager/state")).get();
+            auto state = portal.client.GetAsync(Uri(Portal::base() + L"/api/app/packagemanager/state")).get();
             if (state.StatusCode() == HttpStatusCode::NoContent) continue;
             const hstring body = state.Content().ReadAsStringAsync().get();
             winrt::Windows::Data::Json::JsonObject json{nullptr};
             if (winrt::Windows::Data::Json::JsonObject::TryParse(body, json) && json.GetNamedBoolean(L"Success", false)) {
                 shellLog::write("app package: " + made.identity + " installed through the Device Portal");
-                return "Installed.";
+                return {true, "Installed."};
             }
             const std::string said = narrow(body);
             shellLog::write("app package: the Device Portal said " + said);
-            return format("Not installed (%d): ", int(state.StatusCode())) + said;
+            return {false, format("Not installed (%d): ", int(state.StatusCode())) + said};
         }
-        return "The Device Portal was still installing after ten minutes.";
+        return {false, "The Device Portal was still installing after ten minutes."};
     } catch (hresult_error const& e) {
-        shellLog::write(format("app package: the Device Portal: 0x%08x ", unsigned(e.code())) + narrow(e.message()));
-        return "The Device Portal could not be reached on this phone: " + narrow(e.message()) + format(" (0x%08x)", unsigned(e.code()));
+        return {false, unreachable(e)};
     }
 }
+
+bool installedApps(std::vector<InstalledApp>& out, std::string& error) {
+    using namespace winrt::Windows::Data::Json;
+    out.clear();
+    try {
+        Portal portal;
+        if (std::string why = portal.open(); !why.empty()) {
+            error = why;
+            return false;
+        }
+        auto answer = portal.client.SendRequestAsync(portal.request(winrt::Windows::Web::Http::HttpMethod::Get(), L"/api/app/packagemanager/packages")).get();
+        if (!answer.IsSuccessStatusCode()) {
+            error = format("The Device Portal answered %d to the list of packages.", int(answer.StatusCode()));
+            return false;
+        }
+        JsonObject json{nullptr};
+        if (!JsonObject::TryParse(answer.Content().ReadAsStringAsync().get(), json)) {
+            error = "The Device Portal's list of packages could not be read.";
+            return false;
+        }
+        // Each package's full name is "<name>_<version>_<processor>_<resource>_<publisher id>": an app's own package's name
+        // is "MeglerApp." and more (hk_appx_manifest.c), its publisher Megler's.
+        const std::string publisherId = narrow(Package::Current().Id().PublisherId());
+        for (auto const& value : json.GetNamedArray(L"InstalledPackages", JsonArray())) {
+            if (value.ValueType() != JsonValueType::Object) continue;
+            const std::string full = narrow(std::wstring(value.GetObject().GetNamedString(L"PackageFullName", L"")));
+            const size_t first = full.find('_'), second = first == std::string::npos ? std::string::npos : full.find('_', first + 1);
+            if (second == std::string::npos || full.compare(0, 8, "MeglerApp.") != 0) continue;
+            if (full.size() < publisherId.size() || full.compare(full.size() - publisherId.size(), publisherId.size(), publisherId) != 0) continue;
+            out.push_back({full.substr(0, first), full.substr(first + 1, second - first - 1), full});
+        }
+        return true;
+    } catch (hresult_error const& e) {
+        error = unreachable(e);
+        return false;
+    }
+}
+
+PortalResult uninstallThroughPortal(const InstalledApp& app) {
+    using winrt::Windows::Foundation::Uri;
+    try {
+        Portal portal;
+        if (std::string why = portal.open(); !why.empty()) return {false, why};
+        auto answer = portal.client
+                          .SendRequestAsync(portal.request(winrt::Windows::Web::Http::HttpMethod::Delete(),
+                                                           L"/api/app/packagemanager/package?package=" + std::wstring(Uri::EscapeComponent(widen(app.fullName)))))
+                          .get();
+        if (!answer.IsSuccessStatusCode()) {
+            const std::string body = narrow(answer.Content().ReadAsStringAsync().get());
+            shellLog::write(format("app package: the Device Portal did not uninstall %s: %d ", app.fullName.c_str(), int(answer.StatusCode())) + body);
+            return {false, format("The Device Portal did not uninstall it (%d): ", int(answer.StatusCode())) + body};
+        }
+        shellLog::write("app package: " + app.fullName + " uninstalled through the Device Portal");
+        return {true, "Uninstalled."};
+    } catch (hresult_error const& e) {
+        return {false, unreachable(e)};
+    }
+}
+
+std::string meglerVersion() { return versionString(); }
+
 
 void openWithSystem(const std::wstring& path, std::function<void(bool)> done) {
     [](std::wstring path, std::function<void(bool)> done) -> winrt::fire_and_forget {

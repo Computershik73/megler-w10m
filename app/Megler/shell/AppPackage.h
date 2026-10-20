@@ -11,6 +11,7 @@
 
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace megler::app {
 struct ApkEntry;
@@ -49,9 +50,32 @@ struct Made {
 /// its private files to the shared folder's handover\<package>, for takeHandover. `progress` is told each step.
 Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& progress);
 
+/// What the Device Portal did: whether it did it, and what it said, or why it did not.
+struct PortalResult {
+    bool ok = false;
+    std::string said;
+};
+
 /// Installs `made` through the phone's own Device Portal, https://127.0.0.1 (its certificate, which the phone made for
-/// itself, taken as it is), with the certificate. What the portal said in the end, or why it did not. Off the UI thread.
-std::string installThroughPortal(const Made& made, const std::function<void(const std::string&)>& progress);
+/// itself, taken as it is), with the certificate. Off the UI thread.
+PortalResult installThroughPortal(const Made& made, const std::function<void(const std::string&)>& progress);
+
+/// An app's own package installed on the phone.
+struct InstalledApp {
+    std::string identity;  // its identity name, "MeglerApp...." (megler_appx_app_identity)
+    std::string version;   // its version, which is that of the Megler that made it: "0.1.0.358"
+    std::string fullName;  // its full name, what the Device Portal uninstalls it by
+};
+/// The apps' own packages of Megler's publisher installed on the phone, as the Device Portal lists them; false, with why,
+/// when it could not be asked. Off the UI thread.
+bool installedApps(std::vector<InstalledApp>& out, std::string& error);
+/// Uninstalls one through the Device Portal: the package goes, with the app's own LocalState; what it has in the shared
+/// folder stays. Off the UI thread.
+PortalResult uninstallThroughPortal(const InstalledApp& app);
+
+/// This Megler's version, "0.1.0.358": the version of every package it makes.
+std::string meglerVersion();
+
 
 /// Hands a file to Windows to open as it opens one in the file manager: a package to its installer, a certificate to its
 /// own. On the UI thread; `done` is told whether Windows took it.
