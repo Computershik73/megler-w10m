@@ -26,11 +26,13 @@ std::set<std::wstring>& seen() {
     return names;
 }
 
-/// The names of the flags that begin with ui-, not seen before.
+/// The names of the flags that begin with ui-, not seen before; each is removed once found, so that it is not acted on
+/// again the next time Megler starts -- by the user, after the run that set it.
 std::vector<std::wstring> newFlags() {
     std::vector<std::wstring> found;
     WIN32_FIND_DATAW data;
-    const std::wstring pattern = platform::localStateDirectory() + L"\\flags\\ui-*";
+    const std::wstring folder = platform::localStateDirectory() + L"\\flags\\";
+    const std::wstring pattern = folder + L"ui-*";
     HANDLE h = FindFirstFileExW(pattern.c_str(), FindExInfoBasic, &data, FindExSearchNameMatch, nullptr, 0);
     if (h == INVALID_HANDLE_VALUE) return found;
     do {
@@ -38,6 +40,7 @@ std::vector<std::wstring> newFlags() {
         if (seen().insert(data.cFileName).second) found.push_back(data.cFileName);
     } while (FindNextFileW(h, &data));
     FindClose(h);
+    for (const std::wstring& name : found) DeleteFileW((folder + name).c_str());
     std::sort(found.begin(), found.end());
     return found;
 }
