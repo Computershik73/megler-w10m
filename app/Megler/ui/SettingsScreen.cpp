@@ -296,6 +296,34 @@ private:
         rebuild();
     }
 
+    /// The section "Developer": who makes Megler, the profile, the channel and the donation link (as in gecko-w10m's Settings).
+    StackPanel developerSection() {
+        const auto& p = palette();
+        std::vector<UIElement> rows;
+        auto lines = [&](std::string_view title, std::string_view description) {
+            auto both = vstack(2);
+            both.Padding(ThicknessHelper::FromLengths(16, 11, 16, 11));
+            add(both, text(title, font::body, weightNormal(), p.label));
+            auto under = text(description, font::caption, weightNormal(), p.secondaryLabel);
+            under.TextWrapping(TextWrapping::Wrap);
+            add(both, under);
+            rows.push_back(both);
+        };
+        auto link = [&](std::string_view title, wchar_t icon, const wchar_t* uri) {
+            auto l = label(title, icon, font::body, weightNormal(), p.accentText);
+            l.Margin(ThicknessHelper::FromLengths(16, 11, 16, 11));
+            const std::wstring to = uri;
+            rows.push_back(button(l, [to] { winrt::Windows::System::Launcher::LaunchUriAsync(winrt::Windows::Foundation::Uri(to)); },
+                                  ButtonKind::plain, title));
+        };
+        lines("Developed by Computershik", "Development, building and debugging on the device.");
+        link("Profile on 4pda", glyphs::contact, L"https://4pda.to/forum/index.php?showuser=4458524");
+        link("Telegram channel @cmplog", glyphs::send, L"https://t.me/cmplog");
+        link("Donate (within the CIS for now)", glyphs::heart, L"https://pay.cloudtips.ru/p/83821e32");
+        lines("Outside the CIS and would like to help?", "Send a message to the Telegram channel.");
+        return listSection("Developer", rows);
+    }
+
     /// The section "Android Storage": every link with where it is, the
     /// added ones with a button to take them out again, and "Add a Folder";
     /// in an app's own package, Megler's folders it has not got.
@@ -521,6 +549,7 @@ private:
                                      labeledContent("ANGLE", angle.present ? "In the package" : "Missing")},
                                     "Android code needs the codeGeneration capability, which an interop-unlocked phone grants; "
                                     "ANGLE is what turns an app's OpenGL ES into Direct3D 11."));
+            add(column, developerSection());
 
             auto paths = vstack(4);
             paths.Padding(ThicknessHelper::FromLengths(16, 11, 16, 11));

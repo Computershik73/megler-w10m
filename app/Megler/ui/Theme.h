@@ -41,7 +41,7 @@ namespace glyphs {
 constexpr wchar_t library = 0xE8F1, settings = 0xE713, device = 0xE8EA, log = 0xE9D9, warning = 0xE7BA, checkmark = 0xE73E,
                   trash = 0xE74D, add = 0xE710, play = 0xE768, chevronRight = 0xE76C, chevronLeft = 0xE76B, box = 0xE7B8,
                   wrench = 0xE90F, bug = 0xEBE8, refresh = 0xE72C, close = 0xE711, pause = 0xE769, game = 0xE7FC,
-                  info = 0xE946, folder = 0xE8B7;
+                  info = 0xE946, folder = 0xE8B7, contact = 0xE77B, send = 0xE724, heart = 0xEB51;
 }
 
 winrt::Windows::UI::Xaml::Media::SolidColorBrush brush(Color color);
