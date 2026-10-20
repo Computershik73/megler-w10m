@@ -16,6 +16,9 @@
 #
 #   tools/android9-unpack.sh            (in WSL, or from Git Bash: it calls WSL itself)
 #   tools/android9-unpack.sh fonts      the fonts alone, into a build/android9/system that is there
+#   tools/android9-unpack.sh settings   Android's Settings app alone (AOSP's, /system/priv-app/Settings), as
+#                                       build/android9/apps/android-settings.apk, which Megler's package carries
+#                                       (tools/build-appx.sh) and its library offers
 #
 # The zip is looked for in build/android9; system.img (2.7 GB) is unpacked next
 # to it and removed again. Needs unzip and e2fsprogs' debugfs (both part of an
@@ -40,6 +43,14 @@ cd "$DIR"
 # The image is a disk with one partition, an ext4 file system a megabyte in.
 IMG="arm64-v8a/system.img?offset=1048576"
 ONLY="${1:-}"
+if [ "$ONLY" = settings ]; then
+  mkdir -p "$DIR/apps"
+  "$DEBUGFS" -R "dump /system/priv-app/Settings/Settings.apk $DIR/apps/android-settings.apk" "$IMG" 2> /dev/null
+  [ -s "$DIR/apps/android-settings.apk" ] || { echo "not in the image: /system/priv-app/Settings/Settings.apk" >&2; exit 1; }
+  rm -f arm64-v8a/system.img
+  echo "settings: $(du -k "$DIR/apps/android-settings.apk" | cut -f1) KB"
+  exit 0
+fi
 [ "$ONLY" = fonts ] || rm -rf "$OUT"
 mkdir -p "$OUT/framework" "$OUT/usr/icu" "$OUT/usr/share/zoneinfo" "$OUT/etc/security" "$OUT/lib64-for-reference" "$OUT/fonts"
 
