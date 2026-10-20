@@ -203,7 +203,10 @@ public abstract class Uri implements Comparable<Uri>, android.os.Parcelable {
             if (opaque != null) b.append(opaque);
             else {
                 if (authority != null) b.append("//").append(authority);
-                if (path != null && !path.isEmpty()) { if (authority != null && !path.startsWith("/")) b.append('/'); b.append(path); }
+                // As Android's Builder.build: a hierarchical URI with a scheme or an authority has an absolute path. MAX builds
+                // its routes as scheme "max" and the path ":chat-list", and reads them back by getPath: "max::chat-list"
+                // read as an opaque URI with no path, and the app ended on a route of "".
+                if (path != null && !path.isEmpty()) { if ((scheme != null || authority != null) && !path.startsWith("/")) b.append('/'); b.append(path); }
                 if (query != null) b.append('?').append(query);
             }
             if (fragment != null) b.append('#').append(fragment);

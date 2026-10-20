@@ -345,6 +345,7 @@ public class Main extends Activity {
         bitmapBytes();
         adaptiveIcon();
         launcherLoading();
+        uriBuilder();
         sound();
         mediaCodec();
         network();
@@ -2052,6 +2053,19 @@ public class Main extends Activity {
             return alpha.getByteCount() == 4 && alpha.getRowBytes() == 2 && (a.get(0) & 255) == 0x80 && (a.get(3) & 255) == 0x80 && a.position() == 4
                     && rgb.getByteCount() == 2 && (r.get(0) & 255) == 0x00 && (r.get(1) & 255) == 0xF8
                     && full.getByteCount() == 16 && Math.abs((f.get(0) & 255) - 0x80) <= 1 && (f.get(3) & 255) == 0x80 && f.position() == 16;
+        });
+    }
+
+    /**
+     * A URI built with a scheme and a path that is not absolute, as MAX builds its routes: Android makes the path absolute,
+     * and the URI is hierarchical, with that path.
+     */
+    private void uriBuilder() {
+        step("uri-builder", () -> {
+            android.net.Uri u = new android.net.Uri.Builder().scheme("max").encodedAuthority(null).encodedPath(":chat-list").build();
+            android.net.Uri bare = new android.net.Uri.Builder().encodedPath("a/b").build();
+            detail = u + " path=" + u.getPath() + " hierarchical=" + u.isHierarchical() + "; " + bare + " path=" + bare.getPath();
+            return "max:/:chat-list".equals(u.toString()) && "/:chat-list".equals(u.getPath()) && u.isHierarchical() && "a/b".equals(bare.getPath());
         });
     }
 
