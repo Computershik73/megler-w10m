@@ -1114,7 +1114,7 @@ public class Main extends Activity {
                 request[0] = r.readLine();
                 for (String line; (line = r.readLine()) != null && !line.isEmpty();) { }
                 java.io.OutputStream o = c.getOutputStream();
-                o.write("HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 5\r\nConnection: close\r\n\r\nmegler!".getBytes("ISO-8859-1"));
+                o.write("HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 7\r\nConnection: close\r\n\r\nmegler!".getBytes("ISO-8859-1"));
                 o.flush();
             } catch (java.io.IOException e) {
                 request[0] = "the server: " + e;
@@ -2071,7 +2071,7 @@ public class Main extends Activity {
                     request[0] = r.readLine();
                     for (String line; (line = r.readLine()) != null && !line.isEmpty();) { }
                     java.io.OutputStream o = c.getOutputStream();
-                    o.write("HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 5\r\nConnection: close\r\n\r\nmegler!".getBytes("ISO-8859-1"));
+                    o.write("HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 7\r\nConnection: close\r\n\r\nmegler!".getBytes("ISO-8859-1"));
                     o.flush();
                 } catch (java.io.IOException e) {
                     request[0] = "the server: " + e;
