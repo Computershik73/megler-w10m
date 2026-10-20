@@ -34,7 +34,7 @@ rm -rf "$OUT" && mkdir -p "$OUT/obj"
   /DWINAPI_FAMILY=WINAPI_FAMILY_APP /DUNICODE /D_UNICODE /DNOMINMAX /DWIN32_LEAN_AND_MEAN /D_CRT_SECURE_NO_WARNINGS /D_ARM_ \
   "/Fo$(w "$OUT/obj/App.obj")" "$(w "$SRC/App.cpp")"
 "$VC/bin/Hostx64/arm/link.exe" /nologo "$(w "$OUT/obj/App.obj")" "/OUT:$(w "$OUT/Probe.exe")" /OPT:REF /INCREMENTAL:NO \
-  /APPCONTAINER /SUBSYSTEM:WINDOWS /MACHINE:ARM /DYNAMICBASE /NXCOMPAT /MANIFEST:NO WindowsApp.lib OneCoreUAP.lib \
+  /APPCONTAINER /SUBSYSTEM:WINDOWS /MACHINE:ARM /DYNAMICBASE /NXCOMPAT /MANIFEST:NO WindowsApp.lib OneCoreUAP.lib ws2_32.lib \
   /NODEFAULTLIB:kernel32.lib /NODEFAULTLIB:user32.lib /NODEFAULTLIB:advapi32.lib /NODEFAULTLIB:ole32.lib \
   /NODEFAULTLIB:oleaut32.lib /NODEFAULTLIB:shell32.lib /NODEFAULTLIB:gdi32.lib /NODEFAULTLIB:uuid.lib /NODEFAULTLIB:runtimeobject.lib
 

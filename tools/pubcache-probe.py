@@ -3,7 +3,7 @@
     python tools/pubcache-probe.py [--no-install]
 
 Installs MeglerProbeA and MeglerProbeB through the phone's Device Portal, starts A, then B (which sends A to the
-background), a quarter of a minute apart, ends both, and prints what each wrote in its LocalState\\probe.log.
+background), 25 seconds apart, ends both, and prints what each wrote in its LocalState\\probe.log.
 The probes' logs are appended to, start after start; --fresh removes them first.
 """
 import argparse
@@ -86,7 +86,7 @@ def main():
                 pass
     for n in ("MeglerProbeA", "MeglerProbeB"):
         launch(pkgs[n])
-        time.sleep(15)
+        time.sleep(25)
     # A probe that runs holds its log open, and the portal answers 404 for it: both are ended first.
     for n, p in pkgs.items():
         try:

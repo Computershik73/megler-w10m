@@ -10,12 +10,20 @@
 //  - makes sdcard\Android\data\com.example.<letter> level by level and a file in it;
 //  - opens lock.dat shared and takes a byte-range lock on it without waiting (as SQLite does), and opens excl.dat with no
 //    sharing; both are held while the process lives, so the second app to start finds them taken by the first.
+//  - connects to the phone's own Device Portal on 127.0.0.1, port 80 and port 443, with Winsock as Megler does, and asks
+//    port 80 for /api/os/info: whether an app may reach it (a packaged app's network is isolated from the loopback
+//    address unless the system lets it through), which installing packages from the phone needs.
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <windows.h>
 
 #include <winrt/Windows.ApplicationModel.Activation.h>
 #include <winrt/Windows.ApplicationModel.Core.h>
 #include <winrt/Windows.ApplicationModel.h>
+#include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Networking.Connectivity.h>
+#include <winrt/Windows.Networking.h>
 #include <winrt/Windows.Storage.h>
 #include <winrt/Windows.System.h>
 #include <winrt/Windows.UI.Core.h>
@@ -117,6 +125,65 @@ void list()
     FindClose(h);
 }
 
+// Connects to address:port (IPv4, host order); with a request, sends it and says the first line of the answer and its length.
+void portal(int port, const char *request, unsigned long address = INADDR_LOOPBACK)
+{
+    SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (s == INVALID_SOCKET) {
+        say("portal %d: socket error %d", port, WSAGetLastError());
+        return;
+    }
+    DWORD timeout = 5000;
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
+    sockaddr_in a = {};
+    a.sin_family = AF_INET;
+    a.sin_port = htons((u_short)port);
+    a.sin_addr.s_addr = htonl(address);
+    if (address != INADDR_LOOPBACK)
+        say("portal at %lu.%lu.%lu.%lu:%d:", address >> 24, (address >> 16) & 255, (address >> 8) & 255, address & 255, port);
+    // Not blocking, with five seconds to connect: a connection the system drops would otherwise wait some 21 s.
+    u_long nb = 1;
+    ioctlsocket(s, FIONBIO, &nb);
+    ULONGLONG t0 = GetTickCount64();
+    if (connect(s, (sockaddr *)&a, sizeof(a)) != 0 && WSAGetLastError() != WSAEWOULDBLOCK) {
+        say("portal %d: connect error %d", port, WSAGetLastError());
+        closesocket(s);
+        return;
+    }
+    fd_set w, e;
+    FD_ZERO(&w);
+    FD_ZERO(&e);
+    FD_SET(s, &w);
+    FD_SET(s, &e);
+    timeval tv = { 5, 0 };
+    int ready = select(0, nullptr, &w, &e, &tv);
+    int err = 0, len = sizeof(err);
+    getsockopt(s, SOL_SOCKET, SO_ERROR, (char *)&err, &len);
+    if (ready <= 0 || err) {
+        say("portal %d: not connected after %llu ms (select %d, error %d)", port, GetTickCount64() - t0, ready, err);
+        closesocket(s);
+        return;
+    }
+    nb = 0;
+    ioctlsocket(s, FIONBIO, &nb);
+    if (!request) {
+        say("portal %d: connected", port);
+        closesocket(s);
+        return;
+    }
+    send(s, request, (int)strlen(request), 0);
+    std::string got;
+    char buf[2048];
+    int n;
+    while ((n = recv(s, buf, sizeof(buf), 0)) > 0) got.append(buf, n);
+    if (n < 0) say("portal %d: recv error %d after %zu bytes", port, WSAGetLastError(), got.size());
+    closesocket(s);
+    size_t eol = got.find("\r\n");
+    size_t body = got.find("\r\n\r\n");
+    say("portal %d: \"%s\", %zu bytes; body begins: %.120s", port, got.substr(0, eol == std::string::npos ? got.size() : eol).c_str(),
+        got.size(), body == std::string::npos ? "" : got.c_str() + body + 4);
+}
+
 void probe()
 {
     say("=== %c, process %lu ===", (char)g_me, GetCurrentProcessId());
@@ -176,6 +243,23 @@ void probe()
     }
     g_excl = open_file(g_dir + L"\\excl.dat", GENERIC_READ | GENERIC_WRITE, 0, OPEN_ALWAYS);
     say("open excl.dat with no sharing: %s", g_excl != INVALID_HANDLE_VALUE ? "ok (held while this process lives)" : ("error " + std::to_string(GetLastError())).c_str());
+    WSADATA wsa;
+    WSAStartup(MAKEWORD(2, 2), &wsa);
+    portal(80, "GET /api/os/info HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+    portal(443, nullptr);
+    // The phone's own addresses on its networks (Wi-Fi), where the PC finds the portal on port 80 too.
+    try {
+        for (auto const &h : Windows::Networking::Connectivity::NetworkInformation::GetHostNames()) {
+            if (h.Type() != Windows::Networking::HostNameType::Ipv4) continue;
+            unsigned a, b, c, d;
+            if (swscanf(h.CanonicalName().c_str(), L"%u.%u.%u.%u", &a, &b, &c, &d) != 4) continue;
+            unsigned long ip = (unsigned long)a << 24 | b << 16 | c << 8 | d;
+            portal(80, "GET /api/os/info HTTP/1.1\r\nHost: phone\r\nConnection: close\r\n\r\n", ip);
+            portal(443, nullptr, ip);
+        }
+    } catch (hresult_error const &e) {
+        say("host names: 0x%08x", (unsigned)e.code());
+    }
     say("done");
 }
 

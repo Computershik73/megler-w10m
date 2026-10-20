@@ -54,6 +54,15 @@ later, which sends A to the background. On the HP Elite x3 (15254.603),
   An app in the background holds its locks while it is suspended.
 - A file a running app holds open (the probe's log, opened by the C runtime) is
   answered 404 by the portal; the probe script ends both apps before reading.
+- The phone's own Device Portal, from an app (Winsock, five seconds to
+  connect): port 443 connects on 127.0.0.1 and on the phone's Wi-Fi and USB
+  addresses; port 80 connects on none of them (no answer, no refusal), though
+  the PC reaches port 80 over Wi-Fi and USB. So an app on the phone reaches the
+  portal by HTTPS only, the portal's certificate being one the phone made for
+  itself. (One cellular address answered on neither port.)
+- The portal has no install from a loose folder: `register` and `networkapp`
+  under `/api/app/packagemanager/` answer 404, as an endpoint that does not
+  exist. A package installed from the phone has to be a signed `.appx`.
 
 ## What follows (not done yet)
 
