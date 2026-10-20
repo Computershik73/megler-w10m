@@ -128,6 +128,7 @@ private:
     bool displayRequestActive_ = false;
     bool singleAppOpened_ = false;  // an app's own package: its app has been opened (shell/AppPackage.h)
     bool foldersPublished_ = false; // Megler: its added folders listed for the separate apps (ui/SharedFolders.h)
+    bool storageShared_ = false;    // Megler: the copy of its storage to the shared folder has been started (shell/AppPackage.h)
     std::shared_ptr<ImportProgress> import_;
 
     winrt::Windows::UI::Xaml::Controls::Grid root_{nullptr};

@@ -135,8 +135,10 @@ void initializeCore() {
     config.log_user = nullptr;
     config.memory_limit = &memoryLimit;
     config.memory_usage = &memoryUsage;
-    // An app's own package keeps the shared storage in the folder every such package shares (shell/AppPackage.h).
-    static const std::string storageDirectory = appPackage::isSingleApp() ? narrow(appPackage::sharedFolder()) : std::string();
+    // An app's own package keeps the shared storage in the folder every such package shares (shell/AppPackage.h); Megler too,
+    // once its storage of before has been copied there.
+    static const std::string storageDirectory =
+        appPackage::isSingleApp() || appPackage::meglersStorageShared() ? narrow(appPackage::sharedFolder()) : std::string();
     if (!storageDirectory.empty()) {
         config.storage_dir = storageDirectory.c_str();
         shellLog::write("shared storage: " + storageDirectory);

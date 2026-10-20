@@ -392,6 +392,12 @@ void AppShell::poll() {
             foldersPublished_ = true;
             sharedFolders::publish();
         }
+        // Megler's own storage of before, to the shared folder, once: from the start after, Megler's apps (an auto run's)
+        // find /sdcard where the apps' own packages do.
+        if (!appPackage::isSingleApp() && !storageShared_ && !appPackage::meglersStorageShared()) {
+            storageShared_ = true;
+            runInBackground([] { appPackage::shareMeglersStorage(); });
+        }
     } catch (const hresult_error& e) {
         shellLog::write("ui: refresh failed: " + narrow(e.message()));
     } catch (const std::exception& e) {

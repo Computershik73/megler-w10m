@@ -295,7 +295,9 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     // the shared folder's, which is the separate apps' storage; its private files (/data/data) to handover\<package> in
     // the shared folder, which the separate app takes into its own LocalState at its next start (takeHandover). What the
     // separate app had in Android/data is kept aside, not removed. Megler keeps its own. Later packages leave the separate
-    // app's data alone, but for the expansion files (an .xapk's OBB), copied each time where they are missing.
+    // app's data alone, but for the expansion files (an .xapk's OBB), copied each time where they are missing. Once Megler's
+    // own storage is the shared folder's (meglersStorageShared), its part of it is the app's already: only the private files go.
+    const bool sameStorage = meglersStorageShared();
     const std::wstring package = widen(r.package);
     const std::wstring inMegler = local + L"\\apps\\" + package, inShared = shared + L"\\apps\\" + package;
     const std::wstring handedOver = inShared + L"\\megler-data.txt", handover = shared + L"\\handover\\" + package;
@@ -305,7 +307,7 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
         if (running.apkId == entry.id && (running.state == session::State::starting || running.state == session::State::running))
             return fail("The app is running in Megler, and its data can't be copied while it writes it. Quit it first.");
         uint64_t copied = 0;
-        if (files::exists(inMegler + L"\\sdcard")) {
+        if (!sameStorage && files::exists(inMegler + L"\\sdcard")) {
             progress("Copying the app's files in Android's storage to the shared storage…");
             const std::wstring data = inShared + L"\\sdcard\\Android\\data\\" + package, aside = inShared + L"\\Android-data.before-megler";
             // (A make that failed after this has left a copy of Megler's there and the separate app's own aside: that stays.)
@@ -322,7 +324,7 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
                 return fail(format("The app's private files could not be copied to the shared folder (error %lu).", GetLastError()));
         }
         shellLog::write("app package: the app's data in Megler copied for the separate app, " + formattedByteCount(copied));
-    } else {
+    } else if (!sameStorage) {
         const std::wstring obb = L"\\sdcard\\Android\\obb\\" + package;
         if (files::exists(inMegler + obb)) {
             progress("Copying the app's expansion files to the shared storage…");
@@ -598,6 +600,30 @@ PortalResult uninstallThroughPortal(const InstalledApp& app) {
 
 std::string meglerVersion() { return versionString(); }
 
+bool meglersStorageShared() {
+    static const bool shared = !sharedFolder().empty() && files::exists(platform::localStateDirectory() + L"\\storage-in-shared.txt");
+    return shared;
+}
+
+void shareMeglersStorage() {
+    const std::wstring shared = sharedFolder(), local = platform::localStateDirectory(), marker = local + L"\\storage-in-shared.txt";
+    if (isSingleApp() || shared.empty() || files::exists(marker)) return;
+    shellLog::write("storage: Megler's storage of before being copied to the shared folder");
+    uint64_t copied = 0;
+    bool ok = !files::exists(local + L"\\sdcard") || copyTree(local + L"\\sdcard", shared + L"\\sdcard", copied, true);
+    for (const auto& name : files::listFolders(local + L"\\apps", L"*")) {
+        const std::wstring part = local + L"\\apps\\" + name + L"\\sdcard";
+        if (!files::exists(part) || files::exists(shared + L"\\apps\\" + name + L"\\megler-data.txt")) continue;
+        if (!copyTree(part, shared + L"\\apps\\" + name + L"\\sdcard", copied, true)) {
+            shellLog::write(format("storage: %s could not be copied (error %lu)", narrow(part).c_str(), GetLastError()));
+            ok = false;
+        }
+    }
+    if (ok && files::write(marker, "Megler " + versionString() + " copied its storage to " + narrow(shared) + "\r\n"))
+        shellLog::write("storage: Megler's storage copied to the shared folder, " + formattedByteCount(copied) + "; Megler uses it from its next start");
+    else
+        shellLog::write("storage: Megler's storage was not all copied; tried again at the next start");
+}
 
 void openWithSystem(const std::wstring& path, std::function<void(bool)> done) {
     [](std::wstring path, std::function<void(bool)> done) -> winrt::fire_and_forget {

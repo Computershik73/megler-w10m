@@ -76,6 +76,13 @@ PortalResult uninstallThroughPortal(const InstalledApp& app);
 /// This Megler's version, "0.1.0.358": the version of every package it makes.
 std::string meglerVersion();
 
+/// Megler's own storage (/sdcard, and each app's part of it) is the shared folder's, as the apps' own packages' is: true
+/// once shareMeglersStorage has copied Megler's of before there (LocalState\storage-in-shared.txt). From the start after.
+bool meglersStorageShared();
+/// Megler, once: its storage of before (LocalState\sdcard, LocalState\apps\<package>\sdcard) copied to the shared folder, a
+/// file already there as large left, and an app's part left out where its own package has had it handed over (that app's
+/// is the one in the shared folder). What it copied stays in LocalState. Slow: off the UI thread.
+void shareMeglersStorage();
 
 /// Hands a file to Windows to open as it opens one in the file manager: a package to its installer, a certificate to its
 /// own. On the UI thread; `done` is told whether Windows took it.
