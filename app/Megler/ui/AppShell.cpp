@@ -17,6 +17,7 @@
 #include "ui/SharedFolders.h"
 #include "ui/Theme.h"
 #include "ui/UiShots.h"
+#include "player/SystemHost.h"
 
 #include "megler.h"
 
@@ -101,6 +102,19 @@ UIElement AppShell::root() {
     // Hardware Back (the phone's only navigation button besides the camera).
     using winrt::Windows::UI::Core::SystemNavigationManager;
     SystemNavigationManager::GetForCurrentView().BackRequested([this](auto&&, auto const& e) { e.Handled(goBack()); });
+
+    // What a running app asks of the phone (player/SystemHost.h): an APK to install goes to the installer, as one picked.
+    {
+        std::weak_ptr<AppShell> weak = weak_from_this();
+        systemHost::Hooks hooks;
+        hooks.install = [weak](const std::wstring& path, const std::string& name, const std::string& from) {
+            if (auto self = weak.lock()) self->installApkPath(path, name, from);
+        };
+        hooks.cannotLaunch = [weak](const std::string& why) {
+            if (auto self = weak.lock()) self->alert("Couldn't Start the App", why);
+        };
+        systemHost::attach(std::move(hooks));
+    }
 
     timer_ = DispatcherTimer();
     timer_.Interval(std::chrono::milliseconds(250));
@@ -843,6 +857,44 @@ void AppShell::installApkPath(const std::wstring& path, const std::string& name,
                     if (auto self = weak.lock(); self && !error.empty()) self->alert("Couldn't Install This APK", error);
                 });
             });
+}
+
+void AppShell::openLink(winrt::Windows::Foundation::Uri const& uri) {
+    std::wstring what = std::wstring(uri.Path());
+    if (what.empty()) what = std::wstring(uri.Host());
+    while (!what.empty() && what.front() == L'/') what.erase(what.begin());
+    winrt::Windows::Foundation::WwwFormUrlDecoder decoder(uri.Query());
+    auto value = [&decoder](const wchar_t* key) {
+        try {
+            return narrow(std::wstring(decoder.GetFirstValueByName(key)));
+        } catch (const hresult_error&) {
+            return std::string();
+        }
+    };
+    shellLog::write("app: the link " + narrow(std::wstring(uri.RawUri())));
+    if (what == L"install") {
+        const std::string name = value(L"name");
+        if (name.empty() || name.find_first_of("\\/:") != std::string::npos || name.find("..") != std::string::npos) return;
+        installApkPath(appPackage::sharedFolder() + L"\\incoming\\" + widen(name), name, "An app of the phone's own");
+    } else if (what == L"run") {
+        // An app's own package is in front now, which is all a launcher wants of it.
+        if (appPackage::isSingleApp()) return;
+        const std::string package = value(L"package");
+        std::optional<ApkEntry> found;
+        for (const ApkEntry& e : Library::instance().entries())
+            if (e.report.package == package && e.report.ready()) found = e;
+        if (!found) {
+            alert("Couldn't Start the App", package + " is not in Megler's library.");
+            return;
+        }
+        if (session::snapshot().state != session::State::idle || session::spent()) {
+            alert("Megler Runs One App at a Time", found->title() + " can start once Megler is closed and opened again, or as an app of the phone's "
+                                                                   "own: its page in the Library, Install.");
+            return;
+        }
+        if (selectedTab_ != 0) selectTab(0);
+        push(makePlayerScreen(*this, found->id));
+    }
 }
 
 // MARK: Lifecycle

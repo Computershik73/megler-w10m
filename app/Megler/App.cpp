@@ -85,6 +85,15 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
         Window::Current().Activate();
     }
 
+    /// A megler: link (Package.appxmanifest, the protocol), by which a package of Megler's asks another: an APK an app's own
+    /// package hands over to install, an app a launcher starts.
+    void OnActivated(IActivatedEventArgs const& args) {
+        shellLog::write(format("app: activated (kind %d)", int(args.Kind())));
+        ensureContent();
+        Window::Current().Activate();
+        if (args.Kind() == ActivationKind::Protocol) shell_->openLink(args.as<ProtocolActivatedEventArgs>().Uri());
+    }
+
     /// An APK (or a bundle) opened in Megler from the phone's file manager or another app (Package.appxmanifest, the
     /// file type association): installed once the user says yes, as one picked in the Library.
     void OnFileActivated(FileActivatedEventArgs const& args) {

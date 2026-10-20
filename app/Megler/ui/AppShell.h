@@ -119,6 +119,9 @@ public:
     void installApkFile(winrt::Windows::Storage::StorageFile const& file);
     /// An APK at a path of Megler's own that an Android app (`from`, its name) asked to install: likewise, after a yes.
     void installApkPath(const std::wstring& path, const std::string& name, const std::string& from);
+    /// A megler: link Megler was opened with (App.cpp, OnActivated): megler:install?name= (an APK an app's own package
+    /// handed over in the shared folder's incoming\), megler:run?package= (an app a launcher starts).
+    void openLink(winrt::Windows::Foundation::Uri const& uri);
 
     // Lifecycle (from App)
     void suspending();

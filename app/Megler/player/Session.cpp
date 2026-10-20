@@ -4,6 +4,7 @@
 
 #include "player/BarsHost.h"
 #include "player/MediaControls.h"
+#include "player/SystemHost.h"
 #include "player/CameraHost.h"
 #include "player/CodecHost.h"
 #include "player/GfxHost.h"
@@ -182,6 +183,7 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         audio = gAudio = std::make_shared<AudioHost>();
         gBackgroundAudio = apk.report.engine == "java";
     }
+    systemHost::setRunningApp(apk.title(), apk.report.package);
     audio->setMedia(gBackgroundAudio);
     // The sound output takes a second and a half to build the first time:
     // begun now, at the rate the core's mixer runs at, it is there before the
@@ -234,6 +236,7 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         // The phone's bars a Java app wants hidden (player/BarsHost.h); what they cover goes back through setInsets.
         config.bars = BarsHost::shared().callbacks();
         config.media_session = mediaControls::callbacks();
+        config.system = systemHost::callbacks();
         config.on_exit = &onExit;
         config.user = nullptr;
         const bool started = megler_run(&config);
