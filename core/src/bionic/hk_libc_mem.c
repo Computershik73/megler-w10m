@@ -9,6 +9,7 @@
 #include "hk_bionic.h"
 #include "hk_fd.h"
 
+#include "../hk_core.h"
 #include "../ld/hk_ld.h"
 
 typedef struct ghdr {
@@ -541,8 +542,11 @@ static void *g_mremap(void *old, size_t old_size, size_t new_size, int flags)
 /*
  * Pages of the app's libraries (not mmap'd memory, so no region's) asked to be writable and executable at once: an inline
  * hook patching the app's own code. Few, and never given back: a hook stays as long as the library. Under g_region_lock.
+ *
+ * What the pages held when asked for so is kept (before) until they are made not writable again, and what the app changed
+ * in them is said then, by library, function and offset: the patch of each hook, in the log.
  */
-static struct { u8 *lo, *hi; } g_wx_code[64];
+static struct { u8 *lo, *hi, *before; } g_wx_code[64];
 static u32 g_wx_code_count;
 
 static bool wx_code_has(const u8 *page)
@@ -557,12 +561,100 @@ static bool wx_code_add(u8 *p, size_t size)
 {
     u32 i;
     for (i = 0; i < g_wx_code_count; i++)
-        if (p >= g_wx_code[i].lo && p + size <= g_wx_code[i].hi) return true;
-    if (g_wx_code_count == HK_COUNT(g_wx_code)) return false;
-    g_wx_code[g_wx_code_count].lo = p;
-    g_wx_code[g_wx_code_count].hi = p + size;
-    g_wx_code_count++;
+        if (p >= g_wx_code[i].lo && p + size <= g_wx_code[i].hi) break;
+    if (i == g_wx_code_count) {
+        if (g_wx_code_count == HK_COUNT(g_wx_code)) return false;
+        g_wx_code[i].lo = p;
+        g_wx_code[i].hi = p + size;
+        g_wx_code[i].before = NULL;
+        g_wx_code_count++;
+    }
+    if (!g_wx_code[i].before && (g_wx_code[i].before = malloc((size_t)(g_wx_code[i].hi - g_wx_code[i].lo))) != NULL)
+        memcpy(g_wx_code[i].before, g_wx_code[i].lo, (size_t)(g_wx_code[i].hi - g_wx_code[i].lo));
     return true;
+}
+
+static void hex_of(char *out, const u8 *b, size_t n)
+{
+    static const char digits[] = "0123456789abcdef";
+    size_t i;
+    for (i = 0; i < n; i++) {
+        *out++ = digits[b[i] >> 4];
+        *out++ = digits[b[i] & 15];
+        if ((i & 3) == 3 && i + 1 < n) *out++ = ' ';
+    }
+    *out = 0;
+}
+
+/* Says the spans that differ between what the page held (before) and what it holds; changes fewer than 8 bytes apart are one span. */
+static void wx_code_say(const u8 *lo, const u8 *before, size_t size)
+{
+    size_t i = 0;
+    u32 said = 0;
+    while (i < size && said < 8) {
+        size_t start, end, k;
+        char was[80], now[80];
+        const char *lib = NULL, *sym;
+        const void *sym_addr = NULL, *base = NULL;
+        if (lo[i] == before[i]) {
+            i++;
+            continue;
+        }
+        start = i;
+        end = i + 1;
+        for (k = end; k < size && k < end + 8 && k - start < 32; k++)
+            if (lo[k] != before[k]) end = k + 1;
+        hex_of(was, before + start, end - start);
+        hex_of(now, lo + start, end - start);
+        sym = hk_ld_symbol_at(lo + start, &lib, &sym_addr, &base);
+        hk_info("mprotect: the app changed %u bytes of its code at %p (%s+0x%x %s+0x%x): %s, was %s", (unsigned)(end - start),
+                (void *)(lo + start), lib ? lib : "?", (unsigned)(lo + start - (const u8 *)base), sym ? sym : "?",
+                sym ? (unsigned)(lo + start - (const u8 *)sym_addr) : 0u, now, was);
+        said++;
+        i = end;
+    }
+}
+
+/* Pages of g_wx_code made not writable: what the app changed in them is said, and what they held is let go. */
+static void wx_code_written(u8 *p, size_t size)
+{
+    u32 i;
+    for (i = 0;; i++) {
+        u8 *lo, *before;
+        size_t n;
+        hk_lock_acquire(&g_region_lock);
+        if (i >= g_wx_code_count) {
+            hk_lock_release(&g_region_lock);
+            return;
+        }
+        lo = g_wx_code[i].lo;
+        n = (size_t)(g_wx_code[i].hi - lo);
+        before = g_wx_code[i].before;
+        if (before && lo < p + size && p < lo + n) g_wx_code[i].before = NULL;
+        else before = NULL;
+        hk_lock_release(&g_region_lock);
+        if (before) {
+            wx_code_say(lo, before, n);
+            free(before);
+        }
+    }
+}
+
+/*
+ * The flag trace-hooks: the first bytes of memory the app mapped writable and executable at once, as it makes them
+ * executable only (by mprotect) -- a hook's trampoline, and a JIT's code, which is why it is a flag.
+ */
+static void wx_region_say(const u8 *p)
+{
+    static int wanted = -1;
+    static volatile i32 said;
+    char hex[3 * 128];
+    if (wanted < 0) wanted = hk_flag("trace-hooks") ? 1 : 0;
+    if (!wanted || hk_atomic_add(&said, 1) > 32) return;
+    hex_of(hex, p, 64);
+    hk_info("mprotect: code the app wrote at %p: %s", (const void *)p, hex);
+    hex_of(hex, p + 64, 64);
+    hk_info("mprotect: code the app wrote at %p: %s", (const void *)(p + 64), hex);
 }
 
 static int g_mprotect(void *addr, size_t len, int prot)
@@ -626,6 +718,16 @@ static int g_mprotect(void *addr, size_t len, int prot)
         if (!kept) hk_note_once("mprotect: writable and executable at once, more library pages than are kept (%p); it stays as it is", addr);
         else hk_mem_protect(p, size, HK_PROT_RW);
         return 0;
+    }
+    if (!(prot & G_PROT_WRITE)) {
+        region *r;
+        bool wx;
+        wx_code_written(p, size);
+        hk_lock_acquire(&g_region_lock);
+        r = region_of(p);
+        wx = r && r->wx;
+        hk_lock_release(&g_region_lock);
+        if (wx && (prot & G_PROT_EXEC)) wx_region_say(p);
     }
     if (!hk_mem_protect(p, size, host_prot(prot))) {
         hk_set_errno(GE_ACCES);

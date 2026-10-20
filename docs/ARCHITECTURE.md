@@ -262,6 +262,16 @@ own, runs it, restores it and runs it again. Code that writes to its own page
 needs a write fault told from an execute fault: Windows tells them apart, qemu
 does not, so the test keeps the writer off the patched page.
 
+**What a hook changed.** What such a page held when the app asked for it writable
+is kept until the app makes it not writable again; then the log says each span the
+app changed, by library, function and offset, with the bytes before and after:
+
+    mprotect: the app changed 2 bytes of its code at 0C72BDEC (libc++_shared.so+0x1bdec __wrap___cxa_throw+0x0): fade, was 70b5
+
+The flag `trace-hooks` also says the first 128 bytes of memory the app mapped
+writable and executable at once as it makes them executable only: a hook's
+trampoline (and a JIT's code, which is why it is a flag).
+
 ## Graphics
 
 ANGLE turns OpenGL ES into Direct3D 11, and most GLES calls are bound straight to
