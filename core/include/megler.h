@@ -1342,6 +1342,28 @@ typedef struct megler_system_bars_host {
 } megler_system_bars_host;
 
 /*
+ * What a Java app asks of the phone beyond its own window. Each call comes on the app's thread and must return at once; the
+ * shell does it on its own thread. Any call left NULL: the app runs, and the log says what it asked.
+ *   open_url     A link to open, UTF-8: what the app starts with Intent.ACTION_VIEW (or SENDTO, DIAL) when none of its own
+ *                activities takes it -- an http(s) page, mailto:, tel:, a Play Store page (market:// made https://).
+ *   share_text   Text the app shares (ACTION_SEND with EXTRA_TEXT), and its subject or NULL.
+ *   install_apk  An APK the app wants installed, a host path the shell can read (in the app's data folder or the shared
+ *                storage): what it opens with ACTION_VIEW or ACTION_INSTALL_PACKAGE (a file manager, a browser's download,
+ *                an app store's), or the files of a PackageInstaller session it commits, then a folder with the APKs of
+ *                one app (its base and its splits). `name` is the file's name, for showing. True: the shell took it, and
+ *                the app is told its install goes on; false: the app is told it cannot be installed.
+ *   launch_app   Another app the phone has, to start: an Android package and the activity's class name, or NULL for its
+ *                launcher activity (a launcher's tap, an app opening another). True: the shell starts it.
+ */
+typedef struct megler_system_host {
+    void *user;
+    void (*open_url)(void *user, const char *uri);
+    void (*share_text)(void *user, const char *text, const char *subject);
+    bool (*install_apk)(void *user, const char *host_path, const char *name);
+    bool (*launch_app)(void *user, const char *package, const char *activity);
+} megler_system_host;
+
+/*
  * A Java app's media session (android.media.session.MediaSession, which androidx's MediaSessionCompat stands on): what
  * the app says it plays and how, for the phone's own media controls (Windows' system media transport controls: the lock
  * screen's, the volume flyout's). Only the session that was made active last is told. Both calls come on the thread the
@@ -1444,6 +1466,15 @@ typedef struct megler_run_config {
     megler_system_bars_host bars;
     /* What a Java app's media session says it plays (see megler_media_session_host). May be left NULL. */
     megler_media_session_host media_session;
+    /* What a Java app asks of the phone beyond its window: links, sharing, installing, other apps (see megler_system_host). May be left NULL. */
+    megler_system_host system;
+    /*
+     * The apps the phone has, for a Java app that lists or starts them (a launcher; PackageManager.queryIntentActivities
+     * of the launcher's intent, LauncherApps): a host folder with apps.txt -- a line for each app, its fields separated by
+     * tabs: Android package, launcher activity's class, label, version name, version code -- and each app's icon as
+     * <package>.png. NULL: the app knows of none but itself.
+     */
+    const char *apps_dir;
     /* The app has ended: by its own exit (status), by a crash (reason names it), or by megler_stop. Called once, from any thread. */
     void (*on_exit)(void *user, int status, const char *reason);
     void *user;

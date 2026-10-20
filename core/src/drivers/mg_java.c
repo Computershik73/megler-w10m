@@ -598,9 +598,80 @@ N(Native_nightMode) { c->ret.z = g_theme_night != 0; }
 N(Native_accentColor) { c->ret.i = g_theme_accent; }
 N(Native_paletteTone) { c->ret.i = (i32)megler_palette_tone((uint32_t)c->args[0].i, (int)c->args[1].i, (int)c->args[2].i); }
 
-/* What the shell would have to do and cannot be asked yet: said once, and the app goes on. */
-N(Native_share) { mg_info("java: the app shares \"%s\" (nothing here to share it with)", text_of(c->args[0].l)); }
-N(Native_openUrl) { mg_info("java: the app opens %s (nothing here to open it)", text_of(c->args[0].l)); }
+/* share(text), openUrl(uri): to the shell (megler_system_host); said in the log either way. */
+N(Native_share)
+{
+    const megler_system_host *s = &J.config->system;
+    mg_info("java: the app shares \"%s\"%s", text_of(c->args[0].l), s->share_text ? "" : " (nothing here to share it with)");
+    if (s->share_text) s->share_text(s->user, text_of(c->args[0].l), NULL);
+}
+N(Native_openUrl)
+{
+    const megler_system_host *s = &J.config->system;
+    mg_info("java: the app opens %s%s", text_of(c->args[0].l), s->open_url ? "" : " (nothing here to open it)");
+    if (s->open_url) s->open_url(s->user, text_of(c->args[0].l));
+}
+
+/* installApk(path, name): an APK (or a folder of one app's APKs) the app wants installed, by its path in the app's files; true when the shell took it. */
+N(Native_installApk)
+{
+    const megler_system_host *s = &J.config->system;
+    const char *guest = text_of(c->args[0].l), *name = text_of(c->args[1].l);
+    char *host = mg_fs_host_path(guest);
+    c->ret.z = false;
+    mg_info("java: the app asks to install %s (%s)%s", name, host ? host : guest, s->install_apk ? "" : ": nothing here to install it with");
+    if (host && s->install_apk) c->ret.z = s->install_apk(s->user, host, name);
+    free(host);
+}
+
+/* launchApp(package, activity): another app the phone has, started; true when the shell started it. */
+N(Native_launchApp)
+{
+    const megler_system_host *s = &J.config->system;
+    const char *package = text_of(c->args[0].l);
+    const char *activity = c->args[1].l ? text_of(c->args[1].l) : NULL;
+    mg_info("java: the app starts %s%s%s%s", package, activity ? "/" : "", activity ? activity : "", s->launch_app ? "" : " (nothing here to start it)");
+    c->ret.z = s->launch_app ? s->launch_app(s->user, package, activity && activity[0] ? activity : NULL) : false;
+}
+
+/* appsList(): apps.txt of the apps the phone has (megler_run_config.apps_dir), or null when there is none. */
+N(Native_appsList)
+{
+    char *path, *text;
+    size_t size = 0;
+    c->ret.l = NULL;
+    if (!J.config->apps_dir) return;
+    path = mg_sprintf("%s/apps.txt", J.config->apps_dir);
+    text = (char *)mg_file_read_all(path, &size);
+    free(path);
+    if (!text) return;
+    text = (char *)realloc(text, size + 1);
+    if (!text) return;
+    text[size] = 0;
+    c->ret.l = mg_dvm_new_string(text);
+    free(text);
+}
+
+/* appIcon(package): that app's icon, a PNG, from the same folder; null when there is none. */
+N(Native_appIcon)
+{
+    const char *package = text_of(c->args[0].l);
+    char *path;
+    u8 *png;
+    size_t size = 0;
+    const char *p;
+    c->ret.l = NULL;
+    if (!J.config->apps_dir || !package[0]) return;
+    /* An Android package has letters, digits, '.' and '_' only: nothing that leaves the folder. */
+    for (p = package; *p; p++)
+        if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') || *p == '.' || *p == '_')) return;
+    path = mg_sprintf("%s/%s.png", J.config->apps_dir, package);
+    png = mg_file_read_all(path, &size);
+    free(path);
+    if (!png) return;
+    c->ret.l = bytes_of(png, size);
+    free(png);
+}
 N(Native_setOrientation) { mg_note_once("java: the app asked for orientation %d; the surface stays as the shell made it", (int)c->args[0].i); }
 
 /*
@@ -646,6 +717,10 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "showKeyboard", NULL, Native_showKeyboard },
     { "megler/Native", "systemBars", NULL, Native_systemBars },
     { "megler/Native", "mediaSessionState", NULL, Native_mediaSessionState },
+    { "megler/Native", "installApk", NULL, Native_installApk },
+    { "megler/Native", "launchApp", NULL, Native_launchApp },
+    { "megler/Native", "appsList", NULL, Native_appsList },
+    { "megler/Native", "appIcon", NULL, Native_appIcon },
     { "megler/Native", "mediaSessionMetadata", NULL, Native_mediaSessionMetadata },
     { "megler/Native", "setClipboard", NULL, Native_setClipboard },
     { "megler/Native", "getClipboard", NULL, Native_getClipboard },

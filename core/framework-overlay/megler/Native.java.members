@@ -42,6 +42,20 @@
     public static native void mediaSessionState(int state, long actions);
     /** The phone's accent colour, ARGB, or 0 when the shell told none (megler_set_theme): the platform's accent, Material You's seed. */
     public static native int accentColor();
+    /**
+     * An APK the app wants installed (or a folder of one app's APKs: a PackageInstaller session's), by its path among the app's
+     * own files: Megler's installer has it (megler_system_host.install_apk). True when the shell took it.
+     */
+    public static native boolean installApk(String path, String name);
+    /** Another app the phone has, started: its package, and its activity's class or null for its launcher activity. */
+    public static native boolean launchApp(String packageName, String activity);
+    /**
+     * The apps the phone has (megler_run_config.apps_dir), a line for each: package, launcher activity, label, version name,
+     * version code, separated by tabs; null when the shell told none. megler.PhoneApps reads it.
+     */
+    public static native String appsList();
+    /** That app's icon, a PNG; null when there is none. */
+    public static native byte[] appIcon(String packageName);
     /** A colour of Material You's palettes made from a seed (megler_palette_tone): palette 0 neutral 1 ... 5 error, tone 0 to 100. */
     public static native int paletteTone(int seed, int palette, int tone);
     /** What that session plays: title, artist, album (or null), and a picture of at most 256x256 as ARGB pixels, or null. */
