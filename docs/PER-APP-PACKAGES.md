@@ -227,7 +227,9 @@ the private files alone: its part of the storage is the app's already.
      The certificate is copied beside it.
   6. The logos: the app's icon (`megler_apk_icon`'s PNG, decoded by
      `Windows.Graphics.Imaging`, or WebP, which the phone's WIC cannot read,
-     decoded by the core: `megler_webp_decode`) drawn in the middle of each of
+     decoded by the core: `megler_webp_decode`; for an app that gives only an
+     adaptive or a vector icon, a PNG the core draws from its drawables,
+     `core/src/apk/hk_icon.c`) drawn in the middle of each of
      Megler's logos, with their names and sizes, which the `resources.pri`
      template lists: `StoreLogo` 50x50, `Square44x44Logo`, `Square150x150Logo`,
      `Wide310x150Logo` and `SplashScreen` 620x300, the icon taking as much of
