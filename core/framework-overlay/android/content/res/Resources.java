@@ -30,6 +30,14 @@
 // APK (apkOf), and getIdentifier finds its names when asked for that package. The original knew two tables, the app's and
 // the platform's, and every id that was not the platform's went to the app's.
 //
+// And Android 12's system colours (android.R.color.system_*, 0x0106001d to 0x010600d1: megler.SystemColors), which Android 9's
+// resources do not have: Material 3 asks for them by number once SDK_INT is 31 or more, and Android 9 has colours of its own
+// under most of those numbers and nothing under some. getColor and getColorStateList give Material You's colours when the
+// app's code asks (by Context.getColor, ContextCompat, Compose's colorResource); when a resource's reference is being
+// resolved (a theme's attribute, an XML of the platform's: TypedArray, megler.ResInflate), the number means what Android 9's
+// resources mean by it, as before. And getValue gives one where Android 9 has nothing under such a number at all: Aurora
+// Store's first screen ended on "Resource ID #0x1060091", which is a watch's colour in Android 9.
+//
 // And the platform's preloaded drawables, sPreloadedDrawables (one LongSparseArray per layout direction) and
 // sPreloadedColorDrawables, which Android 7 to 9 keep in ResourcesImpl and look in before a drawable's file is read, by the
 // key Android makes of the value: its asset cookie in the high word and its data (a string's index in the pool) in the low.
@@ -183,7 +191,30 @@ public class Resources {
         return false;
     }
     public void getValue(int id, TypedValue out, boolean resolveRefs) throws NotFoundException {
-        if (!meglerValue(id, out, resolveRefs)) throw new NotFoundException("Resource ID #0x" + Integer.toHexString(id));
+        if (meglerValue(id, out, resolveRefs)) return;
+        if (megler.SystemColors.has(id)) { systemColor(id, out); return; }
+        throw new NotFoundException("Resource ID #0x" + Integer.toHexString(id));
+    }
+    /** One of Android 12's system colours (megler.SystemColors), as a value. */
+    private static void systemColor(int id, TypedValue out) {
+        out.type = TypedValue.TYPE_INT_COLOR_ARGB8;
+        out.data = megler.SystemColors.color(id);
+        out.string = null;
+        out.resourceId = id;
+        out.assetCookie = 1;
+        out.changingConfigurations = 0;
+        out.density = 0;
+    }
+    /** Whether the colour is asked for by the resolution of a resource -- a theme's attribute, a reference in an XML (TypedArray,
+     *  megler.ResInflate, a colour state list) -- rather than by the app's code: then a platform number means Android 9's. */
+    private static boolean fromResources() {
+        StackTraceElement[] stack = new Throwable().getStackTrace();
+        for (int i = 1; i < stack.length && i < 8; i++) {
+            String c = stack[i].getClassName();
+            if (c.equals("android.content.res.Resources")) continue;
+            return c.equals("android.content.res.TypedArray") || c.startsWith("megler.Res") || c.equals("android.content.res.ColorStateList");
+        }
+        return false;
     }
     public void getValueForDensity(int id, int density, TypedValue out, boolean resolveRefs) { getValue(id, out, resolveRefs); }
     public void getValue(String name, TypedValue out, boolean resolveRefs) { int id = getIdentifier(name, "string", null); getValue(id, out, resolveRefs); }
@@ -331,6 +362,7 @@ public class Resources {
     public float getFraction(int id, int base, int pbase) { TypedValue v = value(id); if (v.type == TypedValue.TYPE_FRACTION) return TypedValue.complexToFraction(v.data, base, pbase); throw new NotFoundException("Resource ID #0x" + Integer.toHexString(id) + " is not a fraction"); }
     @Deprecated public int getColor(int id) { return getColor(id, null); }
     public int getColor(int id, Theme theme) {
+        if (megler.SystemColors.has(id) && !fromResources()) return megler.SystemColors.color(id);
         TypedValue v = new TypedValue();
         getValue(id, v, true);
         if (v.type >= TypedValue.TYPE_FIRST_INT && v.type <= TypedValue.TYPE_LAST_INT) return v.data;
@@ -340,6 +372,7 @@ public class Resources {
     }
     @Deprecated public ColorStateList getColorStateList(int id) { return getColorStateList(id, null); }
     public ColorStateList getColorStateList(int id, Theme theme) {
+        if (megler.SystemColors.has(id) && !fromResources()) return ColorStateList.valueOf(megler.SystemColors.color(id));
         TypedValue v = new TypedValue();
         getValue(id, v, true);
         if (v.type >= TypedValue.TYPE_FIRST_COLOR_INT && v.type <= TypedValue.TYPE_LAST_COLOR_INT) return ColorStateList.valueOf(v.data);
