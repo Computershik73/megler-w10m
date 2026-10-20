@@ -117,16 +117,72 @@ package of makeappx's and signtool's and one of `appx-tool`'s pass it;
 the certificate's root not being trusted on the PC (as it should, and not at a
 digest). On the phone such a package installs and runs (above).
 
+## A separate app, made on the phone
+
+An app's page in Megler's library has a section "Separate App"
+(`ui/AppDetailScreen.cpp`, `shell/AppPackage.cpp`):
+
+- **Make a Separate App** makes the package, on a worker thread:
+  1. Android's libcore and framework (the package's `android` folder, some
+     150 MB) are copied once for each build of Megler to
+     `<shared>\android\<Megler's version>`, a file `complete` written last; every
+     app package of that build reads them there, so a package carries none.
+  2. The signing key and certificate are made on the first use, in
+     `LocalState\signing` (`key.bin`, `MeglerApps.cer`), the certificate's
+     subject Megler's own Publisher.
+  3. The manifest is Megler's installed one with the identity name
+     `MeglerApp.<Android package>` (`_` made `-`), a phone product id made from
+     the Android package (the same each time, so that a package made again is
+     an update), and the app's label for the shown names
+     (`core/src/appx/hk_appx_manifest.c`); capabilities, dependencies, the entry
+     point and the publisher cache folder stay Megler's.
+  4. The package, `LocalState\packages\MeglerApp.<package>.appx`, holds Megler's
+     installed files but `android`, `selftest`, `demo`, `codec` and what the
+     packaging makes itself; that manifest; `MeglerApp.ini`; and `app\app.apk`
+     with the library's report and icon of it (`app.apk.json`,
+     `app.apk.icon`, `reports.version`), so that the app is not read again. An
+     app of split APKs is not made a package yet. The certificate is copied
+     beside it.
+- **Install Through the Device Portal** sends the package and the certificate
+  to `https://127.0.0.1/api/app/packagemanager/package` with Windows's own HTTP
+  client (`Windows.Web.Http`), after a GET of `/api/os/info` for the portal's
+  CSRF cookie, echoed in `X-CSRF-Token`, and asks `/api/app/packagemanager/state`
+  every two seconds until it says how it went. The portal's certificate, which
+  the phone made for itself, is taken as it is (untrusted, wrong name, expired,
+  incomplete chain), there only. A portal that asks for a user name and
+  password is said to; none is sent yet.
+- **Open the Package (Windows Installer)** and **Open the Certificate** hand the
+  file to Windows (`Launcher.LaunchFileAsync`), as a file manager would.
+  Whether Windows 10 Mobile installs a package or a certificate so is to be
+  seen.
+
+A package with `MeglerApp.ini` in its install folder is one app's
+(`shell/AppPackage.cpp`, `single()`):
+
+- the library reads the package's `app` folder instead of `LocalState\apks`,
+  and leaves it as it is;
+- the shell opens the app as soon as the library has it, into the player (or
+  its page, when it cannot run here), and Back after the app has ended leaves;
+- the core is given the shared folder as `megler_config.storage_dir`
+  (`core/include/megler.h`): `/sdcard` is `<shared>\sdcard`, and each app's own
+  part of it (`Android/data` and `obb`) `<shared>\apps\<package>\sdcard`,
+  mounted for the others as on Android 9, so a file manager in its own package
+  sees every app's; the app's private files (`/data/data/<package>`) stay in
+  its package's LocalState;
+- the Java driver is given `<shared>\android\<version>` from `MeglerApp.ini` as
+  the Android root, and the fonts from there.
+
+Megler itself keeps its own `LocalState\sdcard` as before: its apps and the
+separate apps do not share a `/sdcard` yet.
+
 ## What follows (not done yet)
 
-- A tool that makes the package for an APK: Megler with the APK, the app's name
-  and icon in the manifest, and the publisher cache folder as `/sdcard`. The
-  Android root (libcore, the framework, `framework-res.apk`, the system
-  libraries) is files Megler reads and loads itself, so it can live in the shared
-  folder once instead of in each package; ANGLE and Megler's own DLLs stay in the
-  package. The phone's Device Portal answers on 127.0.0.1 on the phone itself,
-  and its install call takes the signing certificate, so such packages could be
-  made and installed on the phone too.
+- The app's icon on its tile and splash screen (the package has Megler's).
+- Apps of split APKs.
+- Megler's own `/sdcard` moved to the shared folder, so that its apps and the
+  separate ones share one.
+- Old builds' Android files in `<shared>\android`: each build of Megler that
+  makes a package copies its own, and none is removed yet.
 - How apps reach one another (Android's intents to another app, "share", "open
   with", content providers): within one process that is calls inside Megler;
   between packages it needs a way of its own (protocol activation, app services).

@@ -3,6 +3,7 @@
 #include "shell/Platform.h"
 
 #include "player/StorageHost.h"
+#include "shell/AppPackage.h"
 #include "shell/Files.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
@@ -134,6 +135,12 @@ void initializeCore() {
     config.log_user = nullptr;
     config.memory_limit = &memoryLimit;
     config.memory_usage = &memoryUsage;
+    // An app's own package keeps the shared storage in the folder every such package shares (shell/AppPackage.h).
+    static const std::string storageDirectory = appPackage::isSingleApp() ? narrow(appPackage::sharedFolder()) : std::string();
+    if (!storageDirectory.empty()) {
+        config.storage_dir = storageDirectory.c_str();
+        shellLog::write("shared storage: " + storageDirectory);
+    }
     gCanRun = megler_init(&config);
     shellLog::write(std::string("core ") + megler_version() +
                     (gCanRun ? ": ready to run Android code"

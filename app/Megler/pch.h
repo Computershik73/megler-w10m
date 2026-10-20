@@ -26,6 +26,7 @@
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Foundation.Metadata.h>
 #include <winrt/Windows.Graphics.Display.h>
+#include <winrt/Windows.Security.Cryptography.Certificates.h>
 #include <winrt/Windows.Storage.h>
 #include <winrt/Windows.Storage.FileProperties.h>
 #include <winrt/Windows.Storage.Pickers.h>
@@ -48,6 +49,9 @@
 #include <winrt/Windows.UI.Xaml.Media.h>
 #include <winrt/Windows.UI.Xaml.Media.Imaging.h>
 #include <winrt/Windows.UI.Xaml.Shapes.h>
+#include <winrt/Windows.Web.Http.h>
+#include <winrt/Windows.Web.Http.Filters.h>
+#include <winrt/Windows.Web.Http.Headers.h>
 
 #include <atomic>
 #include <functional>

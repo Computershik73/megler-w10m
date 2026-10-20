@@ -5,6 +5,7 @@
 #include "auto/AutoRun.h"
 #include "library/Library.h"
 #include "player/Session.h"
+#include "shell/AppPackage.h"
 #include "shell/Checks.h"
 #include "shell/Files.h"
 #include "shell/Platform.h"
@@ -360,6 +361,19 @@ void AppShell::poll() {
         updateDisplayRequest();
         platform::sampleMemory();
         autorun::tick(*this);
+        // An app's own package opens its app as soon as the library has it read: straight into the player when it can
+        // run here, else its page, which says why not.
+        if (appPackage::isSingleApp() && !singleAppOpened_) {
+            const auto entry = Library::instance().find(appPackage::singleAppId());
+            if (entry && entry->analysed) {
+                singleAppOpened_ = true;
+                shellLog::write("app package: opening " + entry->report.package);
+                if (entry->report.ready())
+                    push(makePlayerScreen(*this, entry->id));
+                else
+                    push(makeAppDetailScreen(*this, entry->id));
+            }
+        }
     } catch (const hresult_error& e) {
         shellLog::write("ui: refresh failed: " + narrow(e.message()));
     } catch (const std::exception& e) {

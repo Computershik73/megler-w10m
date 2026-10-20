@@ -2,6 +2,7 @@
 
 #include "library/Library.h"
 
+#include "shell/AppPackage.h"
 #include "shell/Files.h"
 #include "shell/Platform.h"
 #include "shell/ShellLog.h"
@@ -140,44 +141,48 @@ void Library::load() {
     std::vector<std::string> toRead;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        directory_ = platform::localStateDirectory() + L"\\apks";
-        files::makeDirectory(directory_);
-        // A copy that never finished (the app was ended under the picker's stream), and a bundle's unpacking likewise.
-        for (const auto& part : files::list(directory_, L"*.part")) files::remove(directory_ + L"\\" + part);
-        for (const auto& part : files::listFolders(directory_, L"*.splits.part")) files::removeTree(directory_ + L"\\" + part);
-        // Splits whose base is gone.
-        for (const auto& name : files::listFolders(directory_, L"*.apk.splits")) {
-            const std::wstring folder = directory_ + L"\\" + name;
-            if (!files::exists(folder.substr(0, folder.size() - 7))) files::removeTree(folder);
-        }
-        // A cache whose APK is gone (removed while it was still being read).
-        for (const wchar_t* pattern : {L"*.apk.json", L"*.apk.icon"}) {
-            for (const auto& name : files::list(directory_, pattern)) {
-                const std::wstring cached = directory_ + L"\\" + name;
-                if (!files::exists(cached.substr(0, cached.size() - 5))) files::remove(cached);
+        // An app's own package has its one APK, with its report, in the install folder (shell/AppPackage.h): read as it is.
+        const bool single = appPackage::isSingleApp();
+        directory_ = single ? appPackage::single().apkFolder : platform::localStateDirectory() + L"\\apks";
+        if (!single) {
+            files::makeDirectory(directory_);
+            // A copy that never finished (the app was ended under the picker's stream), and a bundle's unpacking likewise.
+            for (const auto& part : files::list(directory_, L"*.part")) files::remove(directory_ + L"\\" + part);
+            for (const auto& part : files::listFolders(directory_, L"*.splits.part")) files::removeTree(directory_ + L"\\" + part);
+            // Splits whose base is gone.
+            for (const auto& name : files::listFolders(directory_, L"*.apk.splits")) {
+                const std::wstring folder = directory_ + L"\\" + name;
+                if (!files::exists(folder.substr(0, folder.size() - 7))) files::removeTree(folder);
             }
-        }
-        // The demo, once added, is a copy like any other, and an update of
-        // Megler may carry a newer one: the copy follows the package's.
-        {
-            const std::wstring source = platform::installDirectory() + L"\\demo\\megler-demo.apk";
-            const std::wstring copy = directory_ + L"\\megler-demo.apk";
-            std::string ours, theirs;
-            if (files::read(copy, theirs) && files::read(source, ours) && ours != theirs && files::copy(source, copy)) {
-                files::remove(copy + L".json");
-                files::remove(copy + L".icon");
-                shellLog::write("library: the demo was replaced with this build's");
+            // A cache whose APK is gone (removed while it was still being read).
+            for (const wchar_t* pattern : {L"*.apk.json", L"*.apk.icon"}) {
+                for (const auto& name : files::list(directory_, pattern)) {
+                    const std::wstring cached = directory_ + L"\\" + name;
+                    if (!files::exists(cached.substr(0, cached.size() - 5))) files::remove(cached);
+                }
             }
-        }
-        // The Java test apps likewise, where the package has them (tools/build-appx.sh --java).
-        for (const wchar_t* name : {L"hello.apk", L"demos.apk", L"gl.apk"}) {
-            const std::wstring source = platform::installDirectory() + L"\\demo\\" + name;
-            const std::wstring copy = directory_ + L"\\" + name;
-            std::string ours, theirs;
-            if (files::read(copy, theirs) && files::read(source, ours) && ours != theirs && files::copy(source, copy)) {
-                files::remove(copy + L".json");
-                files::remove(copy + L".icon");
-                shellLog::write("library: " + narrow(name) + " was replaced with this build's");
+            // The demo, once added, is a copy like any other, and an update of
+            // Megler may carry a newer one: the copy follows the package's.
+            {
+                const std::wstring source = platform::installDirectory() + L"\\demo\\megler-demo.apk";
+                const std::wstring copy = directory_ + L"\\megler-demo.apk";
+                std::string ours, theirs;
+                if (files::read(copy, theirs) && files::read(source, ours) && ours != theirs && files::copy(source, copy)) {
+                    files::remove(copy + L".json");
+                    files::remove(copy + L".icon");
+                    shellLog::write("library: the demo was replaced with this build's");
+                }
+            }
+            // The Java test apps likewise, where the package has them (tools/build-appx.sh --java).
+            for (const wchar_t* name : {L"hello.apk", L"demos.apk", L"gl.apk"}) {
+                const std::wstring source = platform::installDirectory() + L"\\demo\\" + name;
+                const std::wstring copy = directory_ + L"\\" + name;
+                std::string ours, theirs;
+                if (files::read(copy, theirs) && files::read(source, ours) && ours != theirs && files::copy(source, copy)) {
+                    files::remove(copy + L".json");
+                    files::remove(copy + L".icon");
+                    shellLog::write("library: " + narrow(name) + " was replaced with this build's");
+                }
             }
         }
 

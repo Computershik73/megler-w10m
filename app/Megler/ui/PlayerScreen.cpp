@@ -21,6 +21,7 @@
 #include "player/KeyboardHost.h"
 #include "player/Session.h"
 #include "player/WindowHost.h"
+#include "shell/AppPackage.h"
 #include "shell/Files.h"
 #include "shell/Platform.h"
 #include "shell/Settings.h"
@@ -101,7 +102,13 @@ public:
             return true;
         }
         // Nothing to go back to while the app is being started.
-        return state == session::State::starting || (state == session::State::idle && !started_);
+        if (state == session::State::starting || (state == session::State::idle && !started_)) return true;
+        // An app's own package has nothing but the app (shell/AppPackage.h): once it has ended, Back leaves.
+        if (appPackage::isSingleApp()) {
+            Application::Current().Exit();
+            return true;
+        }
+        return false;
     }
 
     UIElement view() override {

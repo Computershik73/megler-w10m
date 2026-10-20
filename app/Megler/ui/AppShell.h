@@ -126,6 +126,7 @@ private:
     bool upright_ = false;
     bool hideStatus_ = false, hideNavigation_ = false, lightStatus_ = false;
     bool displayRequestActive_ = false;
+    bool singleAppOpened_ = false;  // an app's own package: its app has been opened (shell/AppPackage.h)
     std::shared_ptr<ImportProgress> import_;
 
     winrt::Windows::UI::Xaml::Controls::Grid root_{nullptr};

@@ -2,6 +2,7 @@
 
 #include "ui/Components.h"
 
+#include "shell/AppPackage.h"
 #include "shell/Platform.h"
 #include "shell/Strings.h"
 
@@ -72,7 +73,8 @@ FrameworkElement apkIcon(const ApkEntry& entry, double size) {
                 bitmap = Imaging::BitmapImage();
                 bitmap.CreateOptions(Imaging::BitmapCreateOptions::IgnoreImageCache);
                 bitmap.DecodePixelWidth(int(size * 2));
-                bitmap.UriSource(winrt::Windows::Foundation::Uri(L"ms-appdata:///local/apks/" + name));
+                // (An app's own package has the icon in its install folder: shell/AppPackage.h.)
+                bitmap.UriSource(winrt::Windows::Foundation::Uri((appPackage::isSingleApp() ? L"ms-appx:///app/" : L"ms-appdata:///local/apks/") + name));
                 // One that could not be decoded is tried again the next time the list is built.
                 bitmap.ImageFailed([cacheKey](auto&&, auto&&) { iconCache().erase(cacheKey); });
                 if (!file.empty()) cache[cacheKey] = CachedIcon{file, bitmap};

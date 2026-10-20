@@ -105,4 +105,18 @@
          told the location is off. -->
     <DeviceCapability Name="location" />
   </Capabilities>
+
+  <!-- The folder every package of this publisher shares (ApplicationData.
+       GetPublisherCacheFolder): where Megler puts Android's libcore and framework
+       for the packages it makes of single apps, and where those keep their
+       shared storage, /sdcard (shell/AppPackage.h, docs/PER-APP-PACKAGES.md).
+       Such a package's manifest is this one with its name and ids changed, so
+       it declares the same folder. -->
+  <Extensions>
+    <Extension Category="windows.publisherCacheFolders">
+      <PublisherCacheFolders>
+        <Folder Name="shared" />
+      </PublisherCacheFolders>
+    </Extension>
+  </Extensions>
 </Package>

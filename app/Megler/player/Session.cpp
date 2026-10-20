@@ -12,6 +12,7 @@
 #include "player/PhoneState.h"
 #include "player/StorageHost.h"
 
+#include "shell/AppPackage.h"
 #include "shell/Checks.h"
 #include "shell/Files.h"
 #include "shell/Platform.h"
@@ -91,7 +92,8 @@ megler_gfx_host gfxCallbacks() {
     gfx.setLog([](const char* line, void*) { shellLog::write(line); }, nullptr);
     // Android's own fonts, where the package has them (tools/dvm-android-root.sh): an app's text is then as wide and
     // as tall as its layout was made for.
-    gfx.setFontFolder((platform::installDirectory() + L"\\android\\fonts").c_str());
+    gfx.setFontFolder(((appPackage::isSingleApp() ? appPackage::single().androidRoot : platform::installDirectory() + L"\\android") +
+                       L"\\fonts").c_str());
     if (files::exists(platform::localStateDirectory() + L"\\flags\\gfx-copy")) {
         shellLog::write("flag: gfx-copy is on");
         gfx.setCopying(true);
@@ -213,7 +215,15 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         config.gfx = gfxCallbacks();
         // The window's pictures drawn on the graphics processor are shown from there, in this window (WindowHost.h).
         GfxHost::shared().setWindow(window->gfxWindow());
-        config.android_root = nullptr;
+        // An app's own package has them in the shared folder, where Megler put them for its build (shell/AppPackage.h).
+        // (With '/', as the core joins its paths.)
+        static const std::string sharedRoot = [] {
+            std::string root = appPackage::isSingleApp() ? narrow(appPackage::single().androidRoot) : std::string();
+            for (char& c : root)
+                if (c == '\\') c = '/';
+            return root;
+        }();
+        config.android_root = sharedRoot.empty() ? nullptr : sharedRoot.c_str();
         config.keyboard = KeyboardHost::shared().callbacks();
         // The phone's bars a Java app wants hidden (player/BarsHost.h); what they cover goes back through setInsets.
         config.bars = BarsHost::shared().callbacks();
