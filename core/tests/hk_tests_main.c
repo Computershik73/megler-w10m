@@ -65,6 +65,10 @@
  *       bundles of split APKs (.apks, .xapk) unpacked as the shell unpacks them, and the APK report of what comes out
  *       (hk_bundle_tests.c): the test app `splits` in the folder of the test apps (build/guest/java), and the real bundles
  *       in the third folder where one is named
+ *   hk_tests --icon <apk> <out file> [drawable]
+ *       the APK's icon as megler_apk_icon gives it, written to the file: a picture of the APK's, or one drawn from its
+ *       drawables (core/src/apk/hk_icon.c: an adaptive icon, a vector), to look at; with a drawable's path in the APK
+ *       (res/mipmap-anydpi-v26/ic_launcher.xml), that one drawn as an icon instead
  *   hk_tests --run <apk> <data dir> [milliseconds]
  *       start the APK with a stand-in for OpenGL ES, touch it, press Back, and say what happened
  *   hk_tests --load <dir> <library>...
@@ -76,6 +80,7 @@
 #include <string.h>
 
 #include "../include/megler.h"
+#include "../src/apk/hk_apk.h"
 #include "../src/drivers/hk_java.h"
 #include "../src/dvm/hk_dvm_internal.h"
 #include "../src/host/hk_host.h"
@@ -907,6 +912,31 @@ int main(int argc, char **argv)
         }
         if (argc > 9) hk_tests_java_set_script(argc - 9, argv + 9);
         return hk_tests_java_run(argv[2], argv[3], argv[5], argc >= 7 && strcmp(argv[6], "-") ? argv[6] : NULL, argc >= 8 ? atoi(argv[7]) : 0) ? 1 : 0;
+    }
+    if (argc >= 4 && !strcmp(argv[1], "--icon")) {
+        megler_config config;
+        uint8_t *bytes = NULL;
+        size_t size = 0;
+        FILE *f;
+        memset(&config, 0, sizeof(config));
+        config.data_dir = ".";
+        config.package_dir = ".";
+        megler_init(&config);
+        if (argc >= 5) bytes = hk_apk_icon_draw(argv[2], argv[4], &size);
+        if (argc >= 5 ? !bytes : !megler_apk_icon(argv[2], &bytes, &size)) {
+            printf("%s: no icon\n", argv[2]);
+            return 1;
+        }
+        f = fopen(argv[3], "wb");
+        if (!f || fwrite(bytes, 1, size, f) != size) {
+            printf("%s could not be written\n", argv[3]);
+            if (f) fclose(f);
+            return 1;
+        }
+        fclose(f);
+        printf("%s: %u bytes\n", argv[3], (unsigned)size);
+        megler_free(bytes);
+        return 0;
     }
     if (argc >= 4 && !strcmp(argv[1], "--bundles")) {
         /* The scratch folder is the data folder too: a bundle's expansion files go into the app's storage under it. */

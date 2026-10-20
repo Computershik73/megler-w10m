@@ -16,6 +16,7 @@
 #include "../ndk/hk_egl.h"
 #include "../zip/hk_zip.h"
 #include "hk_bundle.h"
+#include "hk_icon.h"
 #include "hk_json.h"
 
 /* -------------------------------------------------------- string pools */
@@ -221,6 +222,74 @@ static bool arsc_value(const arsc *a, u32 id, bool want_file, char *out, size_t 
                                     found = true;
                                 }
                             }
+                        }
+                    }
+                }
+                at += csize;
+            }
+        }
+        off += psize;
+    }
+    if (best) *best = best_score;
+    return found;
+}
+
+/*
+ * Resource `id`'s value as it is (Res_value's type and data; a string's text), for drawing an icon (hk_icon.c): of the
+ * configurations that differ from the default in density or API level alone (not a language's, not night's), the one
+ * Android 8 would take for a drawable -- anydpi, then nodpi, then the densest, then the default. A reference comes back
+ * as one. False when none is better than `*best` (raised to what this finds), as arsc_value's is.
+ */
+static bool arsc_raw(const arsc *a, u32 id, u8 *type, u32 *data, char *text, size_t cap, u32 *best)
+{
+    u32 pkg_id = id >> 24, type_id = (id >> 16) & 0xFF, entry = id & 0xFFFF;
+    u32 off, best_score = best ? *best : 0;
+    bool found = false;
+    if (!a->data) return false;
+    off = hk_rd16(a->data + 2) + a->strings.size;
+    while (off + 8 <= a->size) {
+        const u8 *pk = a->data + off;
+        u32 psize = hk_rd32(pk + 4), phead = hk_rd16(pk + 2), at;
+        if (psize < 8 || psize > a->size - off) break;
+        if (hk_rd16(pk) == 0x0200 && phead >= 284 && hk_rd32(pk + 8) == pkg_id) {
+            for (at = phead; at + 8 <= psize;) {
+                const u8 *ch = pk + at;
+                u32 csize = hk_rd32(ch + 4), chead = hk_rd16(ch + 2);
+                if (csize < 8 || csize > psize - at) break;
+                if (hk_rd16(ch) == 0x0201 && chead >= 20 && ch[8] == type_id) {
+                    u32 count = hk_rd32(ch + 12), start = hk_rd32(ch + 16), eoff = 0xFFFFFFFFu, flags = ch[9];
+                    u32 cfg_size = chead >= 24 ? hk_rd32(ch + 20) : 0, density = cfg_size >= 16 && chead >= 36 ? hk_rd16(ch + 20 + 14) : 0;
+                    bool plain = true;
+                    u32 k, score;
+                    /* Plain: nothing set but the density (bytes 14-15) and the API level (24-27). */
+                    for (k = 4; k < cfg_size && 20 + k < chead; k++)
+                        if (ch[20 + k] && !(k == 14 || k == 15 || (k >= 24 && k <= 27))) plain = false;
+                    if (!plain) {
+                        at += csize;
+                        continue;
+                    }
+                    score = 10000 + (density == 0xFFFE ? 9000 : density == 0xFFFF ? 8000 : density);
+                    if (flags & 1) {
+                        for (k = 0; k < count && chead + k * 4 + 4 <= csize; k++)
+                            if (hk_rd16(ch + chead + k * 4) == entry) eoff = (u32)hk_rd16(ch + chead + k * 4 + 2) * 4;
+                    } else if (flags & 2) {
+                        if (entry < count && chead + entry * 2 + 2 <= csize) {
+                            u32 v = hk_rd16(ch + chead + entry * 2);
+                            eoff = v == 0xFFFF ? 0xFFFFFFFFu : v * 4;
+                        }
+                    } else if (entry < count && chead + entry * 4 + 4 <= csize) {
+                        eoff = hk_rd32(ch + chead + entry * 4);
+                    }
+                    if (score > best_score && eoff != 0xFFFFFFFFu && start <= csize && eoff <= csize - start && csize - start - eoff >= 16) {
+                        const u8 *e = ch + start + eoff;
+                        u32 esize = hk_rd16(e), eflags = hk_rd16(e + 2);
+                        if (!(eflags & 1) && esize >= 8 && esize + 8 <= csize - start - eoff) {
+                            *type = e[esize + 3];
+                            *data = hk_rd32(e + esize + 4);
+                            if (cap) text[0] = 0;
+                            if (*type == 0x03) pool_get(&a->strings, *data, text, cap);
+                            best_score = score;
+                            found = true;
                         }
                     }
                 }
@@ -1150,6 +1219,67 @@ char *megler_apk_report_splits(const char *apk_path, const char *splits_dir)
     return out;
 }
 
+/* The APK and its splits, their files and resource tables, for drawing an icon (hk_icon.h). */
+typedef struct icon_apks {
+    hk_zip zips[1 + HK_APK_MAX_SPLITS];
+    u8 *tables[1 + HK_APK_MAX_SPLITS];
+    arsc res[1 + HK_APK_MAX_SPLITS];
+    int n;
+} icon_apks;
+
+static u8 *icon_read(void *user, const char *path, size_t *size)
+{
+    icon_apks *a = (icon_apks *)user;
+    int k;
+    for (k = 0; k < a->n; k++) {
+        const hk_zip_entry *e = hk_zip_find(&a->zips[k], path);
+        if (e) return hk_zip_read(&a->zips[k], e, 16u << 20, size);
+    }
+    return NULL;
+}
+
+static bool icon_value(void *user, u32 id, u8 *type, u32 *data, char *text, size_t cap)
+{
+    icon_apks *a = (icon_apks *)user;
+    u32 best = 0;
+    bool found = false;
+    int k;
+    for (k = 0; k < a->n; k++)
+        if (arsc_raw(&a->res[k], id, type, data, text, cap, &best)) found = true;
+    return found;
+}
+
+/* The icon an XML describes (an adaptive icon, a vector, ...), drawn: a PNG, or NULL. */
+static u8 *icon_drawn(const char *apk_path, char *const *splits, int nsplits, const char *path, size_t *size)
+{
+    icon_apks *a = (icon_apks *)hk_alloc(sizeof(*a));
+    hk_icon_src src;
+    u8 *png = NULL;
+    int k;
+    for (k = -1; k < nsplits && a->n < (int)HK_COUNT(a->zips); k++) {
+        char err[160];
+        const hk_zip_entry *e;
+        size_t rsize = 0;
+        if (!hk_zip_open(&a->zips[a->n], k < 0 ? apk_path : splits[k], err, sizeof(err))) continue;
+        e = hk_zip_find(&a->zips[a->n], "resources.arsc");
+        a->tables[a->n] = e ? hk_zip_read(&a->zips[a->n], e, 64u << 20, &rsize) : NULL;
+        arsc_open(&a->res[a->n], a->tables[a->n], (u32)rsize);
+        a->n++;
+    }
+    src.read = icon_read;
+    src.value = icon_value;
+    src.user = a;
+    png = hk_icon_png(&src, path, 256, size);
+    for (k = 0; k < a->n; k++) {
+        hk_zip_close(&a->zips[k]);
+        free(a->tables[k]);
+    }
+    free(a);
+    return png;
+}
+
+u8 *hk_apk_icon_draw(const char *apk_path, const char *path, size_t *size) { return icon_drawn(apk_path, NULL, 0, path, size); }
+
 bool megler_apk_icon_splits(const char *apk_path, const char *splits_dir, uint8_t **data, size_t *size)
 {
     hk_apk_info *info = (hk_apk_info *)hk_alloc(sizeof(*info));
@@ -1159,13 +1289,19 @@ bool megler_apk_icon_splits(const char *apk_path, const char *splits_dir, uint8_
     *data = NULL;
     *size = 0;
     if (hk_apk_read_app(apk_path, (const char *const *)splits, n, NULL, info) && info->icon_path[0]) {
-        hk_zip z;
-        char err[160];
-        const hk_zip_entry *e;
-        if (hk_zip_open(&z, info->icon_apk ? splits[info->icon_apk - 1] : apk_path, err, sizeof(err))) {
-            e = hk_zip_find(&z, info->icon_path);
-            if (e) bytes = hk_zip_read(&z, e, 8u << 20, size);
-            hk_zip_close(&z);
+        size_t len = strlen(info->icon_path);
+        if (len > 4 && !strcmp(info->icon_path + len - 4, ".xml")) {
+            /* An icon that is no picture (an adaptive icon, a vector: an app for Android 8 and later may give no other): drawn. */
+            bytes = icon_drawn(apk_path, splits, n, info->icon_path, size);
+        } else {
+            hk_zip z;
+            char err[160];
+            const hk_zip_entry *e;
+            if (hk_zip_open(&z, info->icon_apk ? splits[info->icon_apk - 1] : apk_path, err, sizeof(err))) {
+                e = hk_zip_find(&z, info->icon_path);
+                if (e) bytes = hk_zip_read(&z, e, 8u << 20, size);
+                hk_zip_close(&z);
+            }
         }
     }
     /* None in the APKs: the icon the bundle came with, which megler_bundle_unpack keeps beside the splits. */

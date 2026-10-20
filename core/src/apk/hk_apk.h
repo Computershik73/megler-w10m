@@ -80,6 +80,8 @@ int hk_apk_list_splits(const char *dir, char ***paths);
 void hk_apk_free_list(char **paths, int n);
 void hk_apk_info_free(hk_apk_info *info);
 const char *hk_apk_meta_value(const hk_apk_info *info, const char *name);
+/* The drawable at `path` of the APK (an adaptive icon, a vector, ...) drawn as an icon: a PNG, malloc'd, or NULL (hk_icon.h). */
+u8 *hk_apk_icon_draw(const char *apk_path, const char *path, size_t *size);
 
 #ifdef __cplusplus
 }
