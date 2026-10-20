@@ -342,6 +342,7 @@ public class Main extends Activity {
         themeAccent();
         phoneApps();
         installs();
+        bitmapBytes();
         sound();
         mediaCodec();
         network();
@@ -2022,6 +2023,33 @@ public class Main extends Activity {
             detail = "listed=" + listed + " open=" + open + " info=" + info + " launcherApps=" + launcherApps + " defaultIcon=" + fallback
                     + (fallback != null ? " " + fallback.getIntrinsicWidth() : "");
             return listed && open != null && "com.example.other.Main".equals(open.getComponent().getClassName()) && info && launcherApps && defaultIcon;
+        });
+    }
+
+    /**
+     * A bitmap's bytes in its config's form, as Android gives them: ALPHA_8 one a pixel (Nova Launcher copies an icon drawn
+     * into one into an array of width x height bytes), RGB_565 two in the machine's order, ARGB_8888 four, premultiplied.
+     */
+    private void bitmapBytes() {
+        step("bitmap-bytes", () -> {
+            android.graphics.Bitmap alpha = android.graphics.Bitmap.createBitmap(2, 2, android.graphics.Bitmap.Config.ALPHA_8);
+            alpha.eraseColor(0x80000000);
+            java.nio.ByteBuffer a = java.nio.ByteBuffer.allocate(4);
+            alpha.copyPixelsToBuffer(a);
+            android.graphics.Bitmap rgb = android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.RGB_565);
+            rgb.eraseColor(0xFFFF0000);
+            java.nio.ByteBuffer r = java.nio.ByteBuffer.allocate(2);
+            rgb.copyPixelsToBuffer(r);
+            android.graphics.Bitmap full = android.graphics.Bitmap.createBitmap(2, 2, android.graphics.Bitmap.Config.ARGB_8888);
+            full.eraseColor(0x80FF0000);
+            java.nio.ByteBuffer f = java.nio.ByteBuffer.allocateDirect(16);
+            full.copyPixelsToBuffer(f);
+            detail = "alpha " + alpha.getByteCount() + "/" + alpha.getRowBytes() + " " + (a.get(0) & 255) + " at " + a.position()
+                    + "; 565 " + rgb.getByteCount() + " " + (r.get(0) & 255) + "," + (r.get(1) & 255) + "; 8888 " + full.getByteCount() + " " + (f.get(0) & 255)
+                    + "," + (f.get(3) & 255) + " at " + f.position();
+            return alpha.getByteCount() == 4 && alpha.getRowBytes() == 2 && (a.get(0) & 255) == 0x80 && (a.get(3) & 255) == 0x80 && a.position() == 4
+                    && rgb.getByteCount() == 2 && (r.get(0) & 255) == 0x00 && (r.get(1) & 255) == 0xF8
+                    && full.getByteCount() == 16 && Math.abs((f.get(0) & 255) - 0x80) <= 1 && (f.get(3) & 255) == 0x80 && f.position() == 16;
         });
     }
 
