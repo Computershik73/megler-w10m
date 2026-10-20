@@ -3,7 +3,7 @@ package android.service.notification;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class ConditionProviderService extends android.app.Service {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String EXTRA_RULE_ID = "android.service.notification.extra.RULE_ID";
     public static final java.lang.String META_DATA_CONFIGURATION_ACTIVITY = "android.service.zen.automatic.configurationActivity";
     public static final java.lang.String META_DATA_RULE_INSTANCE_LIMIT = "android.service.zen.automatic.ruleInstanceLimit";
@@ -11,7 +11,7 @@ public abstract class ConditionProviderService extends android.app.Service {
     public static final java.lang.String SERVICE_INTERFACE = "android.service.notification.ConditionProviderService";
     public ConditionProviderService() { super(); }
     public static void requestRebind(android.content.ComponentName p0) {}
-    public boolean isBound() { return (megletProps.get("Bound") instanceof Boolean ? (Boolean) megletProps.get("Bound") : false); }
+    public boolean isBound() { return (meglerProps.get("Bound") instanceof Boolean ? (Boolean) meglerProps.get("Bound") : false); }
     public void notifyCondition(android.service.notification.Condition p0) {}
     public void notifyConditions(android.service.notification.Condition[] p0) {}
     public android.os.IBinder onBind(android.content.Intent p0) { return null; }

@@ -3,7 +3,7 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class BluetoothAssignedNumbers {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int AAMP_OF_AMERICA = 190;
     public static final int ACCEL_SEMICONDUCTOR = 74;
     public static final int ACE_SENSOR = 188;
@@ -233,7 +233,7 @@ public class BluetoothAssignedNumbers {
     public static final int ZSCAN_SOFTWARE = 141;
     protected BluetoothAssignedNumbers() {}
     public static class OrganizationId {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int BLUETOOTH_SIG = 1;
         public static final int WIFI_ALLIANCE_NEIGHBOR_AWARENESS_NETWORKING = 2;
         public static final int WIFI_ALLIANCE_SERVICE_ADVERTISEMENT = 3;

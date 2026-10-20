@@ -1,7 +1,7 @@
-# meglet.security.NoTlsTrustManager: the trust manager of NoTlsTrustManagerFactory.smali. It trusts no certificate -- a
+# megler.security.NoTlsTrustManager: the trust manager of NoTlsTrustManagerFactory.smali. It trusts no certificate -- a
 # CertificateException, "no TLS on this phone yet" -- and accepts no issuer, which is all a trust manager can honestly say
 # where no connection can be secured.
-.class public final Lmeglet/security/NoTlsTrustManager;
+.class public final Lmegler/security/NoTlsTrustManager;
 .super Ljava/lang/Object;
 .implements Ljavax/net/ssl/X509TrustManager;
 
@@ -21,14 +21,14 @@
 
 .method public checkClientTrusted([Ljava/security/cert/X509Certificate;Ljava/lang/String;)V
     .registers 4
-    invoke-static {}, Lmeglet/security/NoTlsTrustManager;->refused()Ljava/security/cert/CertificateException;
+    invoke-static {}, Lmegler/security/NoTlsTrustManager;->refused()Ljava/security/cert/CertificateException;
     move-result-object v0
     throw v0
 .end method
 
 .method public checkServerTrusted([Ljava/security/cert/X509Certificate;Ljava/lang/String;)V
     .registers 4
-    invoke-static {}, Lmeglet/security/NoTlsTrustManager;->refused()Ljava/security/cert/CertificateException;
+    invoke-static {}, Lmegler/security/NoTlsTrustManager;->refused()Ljava/security/cert/CertificateException;
     move-result-object v0
     throw v0
 .end method

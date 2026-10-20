@@ -90,7 +90,7 @@ static void ctx_getSystemService(mg_jcall *c)
     const char *name = mg_jni_string(c->args[0].l);
     char cls[96];
     /* An object of a class named after the service: its methods are implemented, or log and return zero. */
-    snprintf(cls, sizeof(cls), "meglet/service/%s", name ? name : "unknown");
+    snprintf(cls, sizeof(cls), "megler/service/%s", name ? name : "unknown");
     c->ret.l = permanent(mg_jni_new_object(cls));
 }
 static void ctx_getClassLoader(mg_jcall *c) { c->ret.l = permanent(mg_jni_new_object("java/lang/ClassLoader")); }
@@ -447,18 +447,18 @@ static const mg_jhle g_android[] = {
     { "android/view/Window", "setFlags", NULL, ret_void },
     { "android/view/View", "setSystemUiVisibility", NULL, ret_void },
     { "android/view/View", "getSystemUiVisibility", NULL, ret_zero },
-    { "meglet/service/window", "getDefaultDisplay", NULL, wm_getDefaultDisplay },
+    { "megler/service/window", "getDefaultDisplay", NULL, wm_getDefaultDisplay },
     { "android/view/Display", "getWidth", NULL, display_getWidth },
     { "android/view/Display", "getHeight", NULL, display_getHeight },
     { "android/view/Display", "getRotation", NULL, display_getRotation },
     { "android/view/Display", "getRefreshRate", NULL, display_getRefreshRate },
     { "android/view/Display", "getMetrics", NULL, display_getMetrics },
     { "android/view/Display", "getRealMetrics", NULL, display_getMetrics },
-    { "meglet/service/input_method", "showSoftInput", NULL, ret_false },
-    { "meglet/service/input_method", "hideSoftInputFromWindow", NULL, ret_false },
-    { "meglet/service/vibrator", "vibrate", NULL, ret_void },
-    { "meglet/service/vibrator", "hasVibrator", NULL, ret_false },
-    { "meglet/service/connectivity", "getActiveNetworkInfo", NULL, ret_null },
+    { "megler/service/input_method", "showSoftInput", NULL, ret_false },
+    { "megler/service/input_method", "hideSoftInputFromWindow", NULL, ret_false },
+    { "megler/service/vibrator", "vibrate", NULL, ret_void },
+    { "megler/service/vibrator", "hasVibrator", NULL, ret_false },
+    { "megler/service/connectivity", "getActiveNetworkInfo", NULL, ret_null },
     { "java/lang/System", "currentTimeMillis", NULL, system_currentTimeMillis },
     { "java/lang/System", "nanoTime", NULL, system_nanoTime },
     { "java/lang/System", "getProperty", NULL, system_getProperty },
@@ -518,11 +518,11 @@ static void android_constants(void)
         { "android/os/Build", "TYPE", "user" },
         { "android/os/Build", "TAGS", "release-keys" },
         { "android/os/Build", "BOARD", "msm8996" },
-        { "android/os/Build", "HOST", "meglet" },
-        { "android/os/Build", "USER", "meglet" },
+        { "android/os/Build", "HOST", "megler" },
+        { "android/os/Build", "USER", "megler" },
         { "android/os/Build", "SERIAL", "unknown" },
         { "android/os/Build", "CPU_ABI2", "armeabi" },
-        { "android/os/Build", "FINGERPRINT", "meglet/meglet/meglet:9/PQ3A.190801.002/5670241:user/release-keys" },
+        { "android/os/Build", "FINGERPRINT", "megler/megler/megler:9/PQ3A.190801.002/5670241:user/release-keys" },
         { "android/os/Build$VERSION", "INCREMENTAL", "5670241" },
         { "android/os/Build$VERSION", "CODENAME", "REL" },
         { "android/media/MediaFormat", "KEY_MIME", "mime" },

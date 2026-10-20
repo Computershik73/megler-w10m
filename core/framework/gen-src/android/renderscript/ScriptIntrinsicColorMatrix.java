@@ -3,16 +3,16 @@ package android.renderscript;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ScriptIntrinsicColorMatrix extends android.renderscript.ScriptIntrinsic {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.renderscript.ScriptIntrinsicColorMatrix create(android.renderscript.RenderScript p0) { return new ScriptIntrinsicColorMatrix(); }
     public static android.renderscript.ScriptIntrinsicColorMatrix create(android.renderscript.RenderScript p0, android.renderscript.Element p1) { return new ScriptIntrinsicColorMatrix(); }
     public void forEach(android.renderscript.Allocation p0, android.renderscript.Allocation p1) {}
     public void forEach(android.renderscript.Allocation p0, android.renderscript.Allocation p1, android.renderscript.Script.LaunchOptions p2) {}
-    public android.renderscript.Script.KernelID getKernelID() { return (android.renderscript.Script.KernelID) megletProps.get("KernelID"); }
+    public android.renderscript.Script.KernelID getKernelID() { return (android.renderscript.Script.KernelID) meglerProps.get("KernelID"); }
     public void setAdd(float p0, float p1, float p2, float p3) {}
-    public void setAdd(android.renderscript.Float4 p0) { megletProps.put("Add", p0); }
-    public void setColorMatrix(android.renderscript.Matrix3f p0) { megletProps.put("ColorMatrix", p0); }
-    public void setColorMatrix(android.renderscript.Matrix4f p0) { megletProps.put("ColorMatrix", p0); }
+    public void setAdd(android.renderscript.Float4 p0) { meglerProps.put("Add", p0); }
+    public void setColorMatrix(android.renderscript.Matrix3f p0) { meglerProps.put("ColorMatrix", p0); }
+    public void setColorMatrix(android.renderscript.Matrix4f p0) { meglerProps.put("ColorMatrix", p0); }
     public void setGreyscale() {}
     public void setRGBtoYUV() {}
     public void setYUVtoRGB() {}

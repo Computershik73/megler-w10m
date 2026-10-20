@@ -9,7 +9,7 @@ import java.util.HashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** Short sounds, decoded on a loader thread as they load and played by Meglet's mixer. */
+/** Short sounds, decoded on a loader thread as they load and played by Megler's mixer. */
 public class SoundPool {
     public interface OnLoadCompleteListener { void onLoadComplete(SoundPool pool, int sampleId, int status); }
     public static class Builder {
@@ -43,59 +43,59 @@ public class SoundPool {
             int mixer;
             try { mixer = l.load(); } catch (Throwable t) { android.util.Log.w("SoundPool", "cannot load sound " + id + ": " + t); mixer = -1; }
             final int status = mixer > 0 ? 0 : 1;
-            synchronized (mLock) { if (mReleased) { if (mixer > 0) meglet.Audio.soundUnload(mixer); return; } if (mixer > 0) mSamples.put(id, mixer); }
+            synchronized (mLock) { if (mReleased) { if (mixer > 0) megler.Audio.soundUnload(mixer); return; } if (mixer > 0) mSamples.put(id, mixer); }
             final OnLoadCompleteListener lis = mListener;
             if (lis != null) mMain.post(() -> lis.onLoadComplete(this, id, status));
         });
         return id;
     }
-    public int load(String path, int priority) { return enqueue(() -> { try (java.io.FileInputStream in = new java.io.FileInputStream(path)) { return meglet.Audio.soundLoad(meglet.Audio.readAll(in)); } }); }
+    public int load(String path, int priority) { return enqueue(() -> { try (java.io.FileInputStream in = new java.io.FileInputStream(path)) { return megler.Audio.soundLoad(megler.Audio.readAll(in)); } }); }
     public int load(Context c, int resId, int priority) {
         final android.content.res.Resources r = c.getResources();
-        return enqueue(() -> { try (java.io.InputStream in = r.openRawResource(resId)) { return meglet.Audio.soundLoad(meglet.Audio.readAll(in)); } });
+        return enqueue(() -> { try (java.io.InputStream in = r.openRawResource(resId)) { return megler.Audio.soundLoad(megler.Audio.readAll(in)); } });
     }
     public int load(AssetFileDescriptor afd, int priority) {
         if (afd == null) return 0;
-        final FileDescriptor fd = afd.getFileDescriptor(); final long off = afd.getStartOffset(), len = afd.getLength(); final String asset = afd.megletAssetName();
+        final FileDescriptor fd = afd.getFileDescriptor(); final long off = afd.getStartOffset(), len = afd.getLength(); final String asset = afd.meglerAssetName();
         return enqueue(() -> {
-            int n = fd != null ? meglet.Audio.fdOf(fd) : -1;
-            if (n >= 0) return meglet.Audio.soundLoadFd(n, off, len);
-            if (asset != null) { byte[] b = meglet.Native.readAsset(asset); if (b != null) return meglet.Audio.soundLoad(b); }
+            int n = fd != null ? megler.Audio.fdOf(fd) : -1;
+            if (n >= 0) return megler.Audio.soundLoadFd(n, off, len);
+            if (asset != null) { byte[] b = megler.Native.readAsset(asset); if (b != null) return megler.Audio.soundLoad(b); }
             return -1;
         });
     }
-    public int load(FileDescriptor fd, long offset, long length, int priority) { final int n = meglet.Audio.fdOf(fd); return enqueue(() -> meglet.Audio.soundLoadFd(n, offset, length)); }
-    public boolean unload(int soundId) { Integer m; synchronized (mLock) { m = mSamples.remove(soundId); } if (m != null) meglet.Audio.soundUnload(m); return m != null; }
+    public int load(FileDescriptor fd, long offset, long length, int priority) { final int n = megler.Audio.fdOf(fd); return enqueue(() -> megler.Audio.soundLoadFd(n, offset, length)); }
+    public boolean unload(int soundId) { Integer m; synchronized (mLock) { m = mSamples.remove(soundId); } if (m != null) megler.Audio.soundUnload(m); return m != null; }
     public int play(int soundId, float leftVolume, float rightVolume, int priority, int loop, float rate) {
         Integer m;
         synchronized (mLock) { m = mSamples.get(soundId); }
         if (m == null) return 0;
-        int v = meglet.Audio.soundPlay(m, clamp(leftVolume), clamp(rightVolume), loop, Math.max(0.5f, Math.min(2f, rate)));
+        int v = megler.Audio.soundPlay(m, clamp(leftVolume), clamp(rightVolume), loop, Math.max(0.5f, Math.min(2f, rate)));
         if (v == 0) return 0;
         synchronized (mLock) {
             int id = mNextStream++;
             mStreams.put(id, v); mStreamOrder.add(id);
-            while (mStreamOrder.size() > mMaxStreams) { Integer old = mStreamOrder.remove(0); Integer ov = mStreams.remove(old); if (ov != null) meglet.Audio.voiceStop(ov); }
+            while (mStreamOrder.size() > mMaxStreams) { Integer old = mStreamOrder.remove(0); Integer ov = mStreams.remove(old); if (ov != null) megler.Audio.voiceStop(ov); }
             return id;
         }
     }
     private static float clamp(float v) { return Math.max(0, Math.min(1, v)); }
     private Integer voice(int stream) { synchronized (mLock) { return mStreams.get(stream); } }
-    public void pause(int stream) { Integer v = voice(stream); if (v != null) meglet.Audio.voicePause(v, true); }
-    public void resume(int stream) { Integer v = voice(stream); if (v != null) meglet.Audio.voicePause(v, false); }
-    public void autoPause() { synchronized (mLock) { for (Integer v : mStreams.values()) meglet.Audio.voicePause(v, true); } }
-    public void autoResume() { synchronized (mLock) { for (Integer v : mStreams.values()) meglet.Audio.voicePause(v, false); } }
-    public void stop(int stream) { Integer v; synchronized (mLock) { v = mStreams.remove(stream); mStreamOrder.remove((Integer) stream); } if (v != null) meglet.Audio.voiceStop(v); }
-    public void setVolume(int stream, float l, float r) { Integer v = voice(stream); if (v != null) meglet.Audio.voiceVolume(v, clamp(l), clamp(r)); }
+    public void pause(int stream) { Integer v = voice(stream); if (v != null) megler.Audio.voicePause(v, true); }
+    public void resume(int stream) { Integer v = voice(stream); if (v != null) megler.Audio.voicePause(v, false); }
+    public void autoPause() { synchronized (mLock) { for (Integer v : mStreams.values()) megler.Audio.voicePause(v, true); } }
+    public void autoResume() { synchronized (mLock) { for (Integer v : mStreams.values()) megler.Audio.voicePause(v, false); } }
+    public void stop(int stream) { Integer v; synchronized (mLock) { v = mStreams.remove(stream); mStreamOrder.remove((Integer) stream); } if (v != null) megler.Audio.voiceStop(v); }
+    public void setVolume(int stream, float l, float r) { Integer v = voice(stream); if (v != null) megler.Audio.voiceVolume(v, clamp(l), clamp(r)); }
     public void setVolume(int stream, float volume) { setVolume(stream, volume, volume); }
     public void setPriority(int stream, int priority) {}
-    public void setLoop(int stream, int loop) { Integer v = voice(stream); if (v != null) meglet.Audio.voiceLoop(v, loop); }
-    public void setRate(int stream, float rate) { Integer v = voice(stream); if (v != null) meglet.Audio.voiceRate(v, Math.max(0.5f, Math.min(2f, rate))); }
+    public void setLoop(int stream, int loop) { Integer v = voice(stream); if (v != null) megler.Audio.voiceLoop(v, loop); }
+    public void setRate(int stream, float rate) { Integer v = voice(stream); if (v != null) megler.Audio.voiceRate(v, Math.max(0.5f, Math.min(2f, rate))); }
     public void release() {
         synchronized (mLock) {
             mReleased = true;
-            for (Integer v : mStreams.values()) meglet.Audio.voiceStop(v);
-            for (Integer s : mSamples.values()) meglet.Audio.soundUnload(s);
+            for (Integer v : mStreams.values()) megler.Audio.voiceStop(v);
+            for (Integer s : mSamples.values()) megler.Audio.soundUnload(s);
             mStreams.clear(); mSamples.clear(); mStreamOrder.clear();
         }
     }

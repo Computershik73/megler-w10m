@@ -3,7 +3,7 @@ package android.hardware.camera2.params;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MeteringRectangle {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int METERING_WEIGHT_DONT_CARE = 0;
     public static final int METERING_WEIGHT_MAX = 1000;
     public static int METERING_WEIGHT_MIN;
@@ -11,13 +11,13 @@ public final class MeteringRectangle {
     public MeteringRectangle(android.graphics.Point p0, android.util.Size p1, int p2) {}
     public MeteringRectangle(android.graphics.Rect p0, int p1) {}
     public boolean equals(android.hardware.camera2.params.MeteringRectangle p0) { return false; }
-    public int getHeight() { return (megletProps.get("Height") instanceof Integer ? (Integer) megletProps.get("Height") : 0); }
-    public int getMeteringWeight() { return (megletProps.get("MeteringWeight") instanceof Integer ? (Integer) megletProps.get("MeteringWeight") : 0); }
-    public android.graphics.Rect getRect() { return (android.graphics.Rect) megletProps.get("Rect"); }
-    public android.util.Size getSize() { return (android.util.Size) megletProps.get("Size"); }
-    public android.graphics.Point getUpperLeftPoint() { return (android.graphics.Point) megletProps.get("UpperLeftPoint"); }
-    public int getWidth() { return (megletProps.get("Width") instanceof Integer ? (Integer) megletProps.get("Width") : 0); }
-    public int getX() { return (megletProps.get("X") instanceof Integer ? (Integer) megletProps.get("X") : 0); }
-    public int getY() { return (megletProps.get("Y") instanceof Integer ? (Integer) megletProps.get("Y") : 0); }
+    public int getHeight() { return (meglerProps.get("Height") instanceof Integer ? (Integer) meglerProps.get("Height") : 0); }
+    public int getMeteringWeight() { return (meglerProps.get("MeteringWeight") instanceof Integer ? (Integer) meglerProps.get("MeteringWeight") : 0); }
+    public android.graphics.Rect getRect() { return (android.graphics.Rect) meglerProps.get("Rect"); }
+    public android.util.Size getSize() { return (android.util.Size) meglerProps.get("Size"); }
+    public android.graphics.Point getUpperLeftPoint() { return (android.graphics.Point) meglerProps.get("UpperLeftPoint"); }
+    public int getWidth() { return (meglerProps.get("Width") instanceof Integer ? (Integer) meglerProps.get("Width") : 0); }
+    public int getX() { return (meglerProps.get("X") instanceof Integer ? (Integer) meglerProps.get("X") : 0); }
+    public int getY() { return (meglerProps.get("Y") instanceof Integer ? (Integer) meglerProps.get("Y") : 0); }
     MeteringRectangle() { this((android.graphics.Rect) null, (int) 0); }
 }

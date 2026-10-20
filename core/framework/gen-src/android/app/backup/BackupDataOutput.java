@@ -3,14 +3,14 @@ package android.app.backup;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class BackupDataOutput {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public BackupDataOutput(java.io.FileDescriptor p0) {}
     public BackupDataOutput(java.io.FileDescriptor p0, long p1) {}
     public BackupDataOutput(java.io.FileDescriptor p0, long p1, int p2) {}
     protected void finalize() {}
-    public long getQuota() { return (megletProps.get("Quota") instanceof Long ? (Long) megletProps.get("Quota") : 0L); }
-    public int getTransportFlags() { return (megletProps.get("TransportFlags") instanceof Integer ? (Integer) megletProps.get("TransportFlags") : 0); }
-    public void setKeyPrefix(java.lang.String p0) { megletProps.put("KeyPrefix", p0); }
+    public long getQuota() { return (meglerProps.get("Quota") instanceof Long ? (Long) meglerProps.get("Quota") : 0L); }
+    public int getTransportFlags() { return (meglerProps.get("TransportFlags") instanceof Integer ? (Integer) meglerProps.get("TransportFlags") : 0); }
+    public void setKeyPrefix(java.lang.String p0) { meglerProps.put("KeyPrefix", p0); }
     public int writeEntityData(byte[] p0, int p1) { return 0; }
     public int writeEntityHeader(java.lang.String p0, int p1) { return 0; }
     BackupDataOutput() { this((java.io.FileDescriptor) null); }

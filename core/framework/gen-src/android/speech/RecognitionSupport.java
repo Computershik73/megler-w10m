@@ -3,26 +3,26 @@ package android.speech;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class RecognitionSupport implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public java.util.List getInstalledOnDeviceLanguages() { return (megletProps.get("InstalledOnDeviceLanguages") != null ? (java.util.List) megletProps.get("InstalledOnDeviceLanguages") : new java.util.ArrayList()); }
-    public java.util.List getOnlineLanguages() { return (megletProps.get("OnlineLanguages") != null ? (java.util.List) megletProps.get("OnlineLanguages") : new java.util.ArrayList()); }
-    public java.util.List getPendingOnDeviceLanguages() { return (megletProps.get("PendingOnDeviceLanguages") != null ? (java.util.List) megletProps.get("PendingOnDeviceLanguages") : new java.util.ArrayList()); }
-    public java.util.List getSupportedOnDeviceLanguages() { return (megletProps.get("SupportedOnDeviceLanguages") != null ? (java.util.List) megletProps.get("SupportedOnDeviceLanguages") : new java.util.ArrayList()); }
+    public java.util.List getInstalledOnDeviceLanguages() { return (meglerProps.get("InstalledOnDeviceLanguages") != null ? (java.util.List) meglerProps.get("InstalledOnDeviceLanguages") : new java.util.ArrayList()); }
+    public java.util.List getOnlineLanguages() { return (meglerProps.get("OnlineLanguages") != null ? (java.util.List) meglerProps.get("OnlineLanguages") : new java.util.ArrayList()); }
+    public java.util.List getPendingOnDeviceLanguages() { return (meglerProps.get("PendingOnDeviceLanguages") != null ? (java.util.List) meglerProps.get("PendingOnDeviceLanguages") : new java.util.ArrayList()); }
+    public java.util.List getSupportedOnDeviceLanguages() { return (meglerProps.get("SupportedOnDeviceLanguages") != null ? (java.util.List) meglerProps.get("SupportedOnDeviceLanguages") : new java.util.ArrayList()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected RecognitionSupport() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public android.speech.RecognitionSupport.Builder addInstalledOnDeviceLanguage(java.lang.String p0) { return this; }
         public android.speech.RecognitionSupport.Builder addOnlineLanguage(java.lang.String p0) { return this; }
         public android.speech.RecognitionSupport.Builder addPendingOnDeviceLanguage(java.lang.String p0) { return this; }
         public android.speech.RecognitionSupport.Builder addSupportedOnDeviceLanguage(java.lang.String p0) { return this; }
-        public android.speech.RecognitionSupport build() { android.speech.RecognitionSupport x = new android.speech.RecognitionSupport(); x.megletProps.putAll(megletProps); return x; }
-        public android.speech.RecognitionSupport.Builder setInstalledOnDeviceLanguages(java.util.List p0) { megletProps.put("InstalledOnDeviceLanguages", p0); return this; }
-        public android.speech.RecognitionSupport.Builder setOnlineLanguages(java.util.List p0) { megletProps.put("OnlineLanguages", p0); return this; }
-        public android.speech.RecognitionSupport.Builder setPendingOnDeviceLanguages(java.util.List p0) { megletProps.put("PendingOnDeviceLanguages", p0); return this; }
-        public android.speech.RecognitionSupport.Builder setSupportedOnDeviceLanguages(java.util.List p0) { megletProps.put("SupportedOnDeviceLanguages", p0); return this; }
+        public android.speech.RecognitionSupport build() { android.speech.RecognitionSupport x = new android.speech.RecognitionSupport(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.speech.RecognitionSupport.Builder setInstalledOnDeviceLanguages(java.util.List p0) { meglerProps.put("InstalledOnDeviceLanguages", p0); return this; }
+        public android.speech.RecognitionSupport.Builder setOnlineLanguages(java.util.List p0) { meglerProps.put("OnlineLanguages", p0); return this; }
+        public android.speech.RecognitionSupport.Builder setPendingOnDeviceLanguages(java.util.List p0) { meglerProps.put("PendingOnDeviceLanguages", p0); return this; }
+        public android.speech.RecognitionSupport.Builder setSupportedOnDeviceLanguages(java.util.List p0) { meglerProps.put("SupportedOnDeviceLanguages", p0); return this; }
     }
 }

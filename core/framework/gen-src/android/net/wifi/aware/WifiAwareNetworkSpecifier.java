@@ -3,7 +3,7 @@ package android.net.wifi.aware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class WifiAwareNetworkSpecifier extends android.net.NetworkSpecifier implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int NETWORK_SPECIFIER_TYPE_IB = 0;
     public static final int NETWORK_SPECIFIER_TYPE_IB_ANY_PEER = 1;
@@ -24,23 +24,23 @@ public final class WifiAwareNetworkSpecifier extends android.net.NetworkSpecifie
     public WifiAwareNetworkSpecifier(int p0, int p1, int p2, int p3, int p4, byte[] p5, byte[] p6, java.lang.String p7, int p8, int p9) { super(); }
     public boolean canBeSatisfiedBy(android.net.NetworkSpecifier p0) { return false; }
     public int describeContents() { return 0; }
-    public int getChannelFrequencyMhz() { return (megletProps.get("ChannelFrequencyMhz") instanceof Integer ? (Integer) megletProps.get("ChannelFrequencyMhz") : 0); }
-    public android.net.wifi.aware.WifiAwareDataPathSecurityConfig getWifiAwareDataPathSecurityConfig() { return (android.net.wifi.aware.WifiAwareDataPathSecurityConfig) megletProps.get("WifiAwareDataPathSecurityConfig"); }
-    public boolean isChannelRequired() { return (megletProps.get("ChannelRequired") instanceof Boolean ? (Boolean) megletProps.get("ChannelRequired") : false); }
-    public boolean isOutOfBand() { return (megletProps.get("OutOfBand") instanceof Boolean ? (Boolean) megletProps.get("OutOfBand") : false); }
+    public int getChannelFrequencyMhz() { return (meglerProps.get("ChannelFrequencyMhz") instanceof Integer ? (Integer) meglerProps.get("ChannelFrequencyMhz") : 0); }
+    public android.net.wifi.aware.WifiAwareDataPathSecurityConfig getWifiAwareDataPathSecurityConfig() { return (android.net.wifi.aware.WifiAwareDataPathSecurityConfig) meglerProps.get("WifiAwareDataPathSecurityConfig"); }
+    public boolean isChannelRequired() { return (meglerProps.get("ChannelRequired") instanceof Boolean ? (Boolean) meglerProps.get("ChannelRequired") : false); }
+    public boolean isOutOfBand() { return (meglerProps.get("OutOfBand") instanceof Boolean ? (Boolean) meglerProps.get("OutOfBand") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     WifiAwareNetworkSpecifier() { this((int) 0, (int) 0, (int) 0, (int) 0, (int) 0, (byte[]) null, (byte[]) null, (java.lang.String) null, (int) 0, (int) 0); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.net.wifi.aware.DiscoverySession p0, android.net.wifi.aware.PeerHandle p1) {}
         public Builder(android.net.wifi.aware.PublishDiscoverySession p0) {}
-        public android.net.wifi.aware.WifiAwareNetworkSpecifier build() { android.net.wifi.aware.WifiAwareNetworkSpecifier x = new android.net.wifi.aware.WifiAwareNetworkSpecifier(); x.megletProps.putAll(megletProps); return x; }
+        public android.net.wifi.aware.WifiAwareNetworkSpecifier build() { android.net.wifi.aware.WifiAwareNetworkSpecifier x = new android.net.wifi.aware.WifiAwareNetworkSpecifier(); x.meglerProps.putAll(meglerProps); return x; }
         public android.net.wifi.aware.WifiAwareNetworkSpecifier.Builder setChannelFrequencyMhz(int p0, boolean p1) { return this; }
-        public android.net.wifi.aware.WifiAwareNetworkSpecifier.Builder setDataPathSecurityConfig(android.net.wifi.aware.WifiAwareDataPathSecurityConfig p0) { megletProps.put("DataPathSecurityConfig", p0); return this; }
-        public android.net.wifi.aware.WifiAwareNetworkSpecifier.Builder setPmk(byte[] p0) { megletProps.put("Pmk", p0); return this; }
-        public android.net.wifi.aware.WifiAwareNetworkSpecifier.Builder setPort(int p0) { megletProps.put("Port", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.aware.WifiAwareNetworkSpecifier.Builder setPskPassphrase(java.lang.String p0) { megletProps.put("PskPassphrase", p0); return this; }
-        public android.net.wifi.aware.WifiAwareNetworkSpecifier.Builder setTransportProtocol(int p0) { megletProps.put("TransportProtocol", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.aware.WifiAwareNetworkSpecifier.Builder setDataPathSecurityConfig(android.net.wifi.aware.WifiAwareDataPathSecurityConfig p0) { meglerProps.put("DataPathSecurityConfig", p0); return this; }
+        public android.net.wifi.aware.WifiAwareNetworkSpecifier.Builder setPmk(byte[] p0) { meglerProps.put("Pmk", p0); return this; }
+        public android.net.wifi.aware.WifiAwareNetworkSpecifier.Builder setPort(int p0) { meglerProps.put("Port", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.aware.WifiAwareNetworkSpecifier.Builder setPskPassphrase(java.lang.String p0) { meglerProps.put("PskPassphrase", p0); return this; }
+        public android.net.wifi.aware.WifiAwareNetworkSpecifier.Builder setTransportProtocol(int p0) { meglerProps.put("TransportProtocol", Integer.valueOf(p0)); return this; }
         Builder() { this((android.net.wifi.aware.PublishDiscoverySession) null); }
     }
 }

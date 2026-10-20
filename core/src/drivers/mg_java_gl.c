@@ -4,12 +4,12 @@
  *
  *   - what mg_java_gles.c's generated natives use: a function for a name, arrays, buffers and strings as memory;
  *   - the GLES natives that are no plain call (strings, buffers, String[]), by hand;
- *   - EGL: contexts and pbuffers on the core's one display, for meglet.EGLNative and for the GL threads;
+ *   - EGL: contexts and pbuffers on the core's one display, for megler.EGLNative and for the GL threads;
  *   - the window: the views' picture over the frames of the EGL window surfaces, composed here and handed to the shell;
  *   - a swap: the frame read back, composed, shown, paced;
- *   - meglet.EGLNative;
+ *   - megler.EGLNative;
  *   - window surfaces native code makes with EGL on a SurfaceView's window (mg_java_ndk.c), the same as those of Java;
- *   - the GL thread of a GLSurfaceView (meglet.Native.startGL).
+ *   - the GL thread of a GLSurfaceView (megler.Native.startGL).
  */
 #include "mg_java_gl.h"
 
@@ -419,7 +419,7 @@ static struct {
     u32 (*destroy_surface)(EGLDisplay, EGLSurface);
     u32 (*make_current)(EGLDisplay, EGLSurface, EGLSurface, EGLContext);
     EGLint (*get_error)(void);
-    /* A pbuffer's Direct3D texture as a DXGI shared handle, for a shell that composes the window (meglet_gfx_host.gl_frame). */
+    /* A pbuffer's Direct3D texture as a DXGI shared handle, for a shell that composes the window (megler_gfx_host.gl_frame). */
     u32 (*query_pointer)(EGLDisplay, EGLSurface, EGLint, void **);
     bool share;
     /* The context current on a thread and its version: for a swap of a window surface of native code's, in whatever context it made. */
@@ -639,7 +639,7 @@ static struct {
     mg_java_show_fn show;
     i32 width, height;
     bool used;                         /* a window surface has been made: the views' picture is kept from then on */
-    int shell;                         /* 1: the shell composes the window (meglet_gfx_host.gl_frame); -1: it is composed here */
+    int shell;                         /* 1: the shell composes the window (megler_gfx_host.gl_frame); -1: it is composed here */
     u8 *views, *out;                   /* the views' last picture and the window as composed: width x height, rows top first */
     bool have_views, shown_whole;
     layer layers[MAX_LAYERS];
@@ -664,9 +664,9 @@ static bool trace_surfaces(void)
 #define TRACE_EVERY 3000000000ull
 
 /* The shell's drawing, which composes the window where it can (mg_java_gl_set_shell). */
-static const meglet_gfx_host *g_shell;
+static const megler_gfx_host *g_shell;
 
-void mg_java_gl_set_shell(const meglet_gfx_host *gfx) { g_shell = gfx; }
+void mg_java_gl_set_shell(const megler_gfx_host *gfx) { g_shell = gfx; }
 
 static i32 max_i(i32 a, i32 b) { return a > b ? a : b; }
 static i32 min_i(i32 a, i32 b) { return a < b ? a : b; }
@@ -684,7 +684,7 @@ static void compose_here(void)
 
 /*
  * When the first window surface is made: who composes the window from now on. The shell, on its graphics processor, where
- * it can (meglet_gfx_host.gl_frame and gl_place, with present) and EGL hands out the surfaces' textures (ANGLE's share
+ * it can (megler_gfx_host.gl_frame and gl_place, with present) and EGL hands out the surfaces' textures (ANGLE's share
  * handles): the frames are then never read back, nor the views out of the memory. Else here, the views' picture kept and
  * the frames read back; an app without a window surface never pays for either.
  */
@@ -1389,9 +1389,9 @@ static bool swap(gl_surf *s, gl_ctx *x)
     return true;
 }
 
-/* ------------------------------------------------------------ meglet.EGLNative */
+/* ------------------------------------------------------------ megler.EGLNative */
 
-/* The calling thread is a GL thread of a GLSurfaceView's: there EGL answers for the thread's own context (MegletEGL). */
+/* The calling thread is a GL thread of a GLSurfaceView's: there EGL answers for the thread's own context (MeglerEGL). */
 static MG_THREAD_LOCAL bool t_render;
 
 static gl_ctx *ctx_arg(mg_jcall *c, int k) { return (gl_ctx *)(mg_addr)c->args[k].j; }
@@ -1487,9 +1487,9 @@ N(EN_forget)
 /*
  * An EGL window surface native code made on a SurfaceView's window (eglCreateWindowSurface on what ANativeWindow_fromSurface
  * gave it: mg_java_ndk.c, ndk/mg_egl.c). It is what a window surface made from Java on the view is -- a pbuffer on the view's
- * layer, swapped by swap() -- with what that one has from meglet.EGLNative instead: the configuration it is made with, and the
+ * layer, swapped by swap() -- with what that one has from megler.EGLNative instead: the configuration it is made with, and the
  * context it is drawn in, which is whatever the app made current, read at each swap for what a read-back needs of it. On a
- * SurfaceTexture's window it is on no view, and each frame is read back for the texture, as MegletEGL reads one back for it.
+ * SurfaceTexture's window it is on no view, and each frame is read back for the texture, as MeglerEGL reads one back for it.
  */
 typedef struct native_surf {
     gl_surf *s;                        /* the pbuffer now */
@@ -1508,7 +1508,7 @@ void *mg_java_gl_window_surface(mg_jobj *view, int width, int height, void *cons
     layer *l = NULL;
     mg_jvalue args[1];
     if (count <= 0 || !egl_ready()) {
-        mg_warn("java: no window surface on a view's window: %s", count <= 0 ? "no configuration of EGL's will do for it" : "the EGL of Meglet's is not to be had");
+        mg_warn("java: no window surface on a view's window: %s", count <= 0 ? "no configuration of EGL's will do for it" : "the EGL of Megler's is not to be had");
         return NULL;
     }
     if (view) {
@@ -1526,10 +1526,10 @@ void *mg_java_gl_window_surface(mg_jobj *view, int width, int height, void *cons
     n->ctx.version = 2;
     n->ctx.bgra = -1;
     if (view) {
-        /* The view keeps its area clear from now on and says where it is, as for a surface made from Java on it (MegletEGL): the frames are under it. */
+        /* The view keeps its area clear from now on and says where it is, as for a surface made from Java on it (MeglerEGL): the frames are under it. */
         memset(args, 0, sizeof(args));
         args[0].z = 1;
-        if (!mg_dvm_call_virtual(view, "megletSetGL", "(Z)V", args, NULL)) mg_dvm_clear_pending();
+        if (!mg_dvm_call_virtual(view, "meglerSetGL", "(Z)V", args, NULL)) mg_dvm_clear_pending();
     }
     return n;
 }
@@ -1557,7 +1557,7 @@ void mg_java_gl_window_swap(void *surface, int width, int height)
     if (n->s->layer) {
         swap(n->s, &n->ctx);
     } else {
-        /* On no view: the frame read back for the texture, R, G, B, A as SurfaceTexture.megletPostRgba takes it, and the swap paced. */
+        /* On no view: the frame read back for the texture, R, G, B, A as SurfaceTexture.meglerPostRgba takes it, and the swap paced. */
         n->ctx.bgra = 0;
         if (read_back(n->s, &n->ctx)) {
             u8 *spare = n->frame;
@@ -1602,8 +1602,8 @@ void mg_java_gl_window_destroy(void *surface)
 /* ------------------------------------------------------------ the GL thread */
 
 /*
- * A GLSurfaceView's GL thread (meglet.Native.startGL): one for each view whose renderer is started, a thread of the app's
- * (Java attached, its native code can run on it). What it does each turn the view decides (GLSurfaceView.megletFrame, the
+ * A GLSurfaceView's GL thread (megler.Native.startGL): one for each view whose renderer is started, a thread of the app's
+ * (Java attached, its native code can run on it). What it does each turn the view decides (GLSurfaceView.meglerFrame, the
  * overlay's): docs/ARCHITECTURE.md, "OpenGL ES from an app's Java".
  */
 #define MAX_GL_THREADS 8
@@ -1642,7 +1642,7 @@ static void gl_wait(i32 seen)
     mg_lock_release(&g_thread_lock);
 }
 
-/* MegletEGL's own answers on this thread: the thread's context and surface (0 for none), so that EGL called by the renderer finds them. */
+/* MeglerEGL's own answers on this thread: the thread's context and surface (0 for none), so that EGL called by the renderer finds them. */
 static void tell_egl(gl_view *g, gl_ctx *x, gl_surf *s)
 {
     mg_jvalue args[6];
@@ -1653,7 +1653,7 @@ static void tell_egl(gl_view *g, gl_ctx *x, gl_surf *s)
     args[3].i = s ? s->height : 0;
     args[4].i = x ? x->version : 0;
     args[5].l = g->view;
-    if (!mg_dvm_call_static("javax/microedition/khronos/egl/MegletEGL", "megletRenderThread", "(JJIIILandroid/view/SurfaceView;)V", args, NULL)) mg_dvm_clear_pending();
+    if (!mg_dvm_call_static("javax/microedition/khronos/egl/MeglerEGL", "meglerRenderThread", "(JJIIILandroid/view/SurfaceView;)V", args, NULL)) mg_dvm_clear_pending();
 }
 
 static void gl_main(void *arg)
@@ -1676,9 +1676,9 @@ static void gl_main(void *arg)
     memset(args, 0, sizeof(args));
     /* What the renderer is handed: the GL10 (the app's wrapper's, if it set one) and the configuration its chooser chose. */
     v.j = 0;
-    if (mg_dvm_call_virtual(g->view, "megletRendererGL", "()Ljavax/microedition/khronos/opengles/GL;", NULL, &v)) g->gl10 = v.l;
+    if (mg_dvm_call_virtual(g->view, "meglerRendererGL", "()Ljavax/microedition/khronos/opengles/GL;", NULL, &v)) g->gl10 = v.l;
     v.j = 0;
-    if (mg_dvm_pending() == NULL && mg_dvm_call_virtual(g->view, "megletConfig", "()Ljavax/microedition/khronos/egl/EGLConfig;", NULL, &v)) g->config = v.l;
+    if (mg_dvm_pending() == NULL && mg_dvm_call_virtual(g->view, "meglerConfig", "()Ljavax/microedition/khronos/egl/EGLConfig;", NULL, &v)) g->config = v.l;
     if (mg_dvm_pending()) goto end;
     x = ctx_new(g->version, NULL);
     if (!x) {
@@ -1692,8 +1692,8 @@ static void gl_main(void *arg)
         i32 seen = T.wakes, sw, sh;
         i64 state;
         v.j = 0;
-        /* The events queued for this thread run here, inside megletFrame. */
-        if (!mg_dvm_call_virtual(g->view, "megletFrame", "()J", NULL, &v)) break;
+        /* The events queued for this thread run here, inside meglerFrame. */
+        if (!mg_dvm_call_virtual(g->view, "meglerFrame", "()J", NULL, &v)) break;
         state = v.j;
         if (state & FRAME_EXIT) break;
         if (state & (FRAME_NO_SURFACE | FRAME_PAUSED)) {
@@ -1743,7 +1743,7 @@ static void gl_main(void *arg)
             /* The view keeps its area clear from now on: the frame is under it. */
             args[0].j = 0;
             args[0].z = 1;
-            if (!mg_dvm_call_virtual(g->view, "megletSetGL", "(Z)V", args, NULL)) break;
+            if (!mg_dvm_call_virtual(g->view, "meglerSetGL", "(Z)V", args, NULL)) break;
         }
         if (!created) {
             args[0].l = g->gl10;
@@ -1850,20 +1850,20 @@ N(Native_startGL)
 #define G(cls, name, sig, fn) { "android/opengl/" cls, name, sig, fn }
 
 static const mg_jhle k_natives[] = {
-    { "meglet/Native", "startGL", NULL, Native_startGL },
-    { "meglet/Native", "requestRender", NULL, Native_requestRender },
-    { "meglet/EGLNative", "createContext", "(IJ)J", EN_createContext },
-    { "meglet/EGLNative", "destroyContext", "(J)V", EN_destroyContext },
-    { "meglet/EGLNative", "createSurface", "(II)J", EN_createSurface },
-    { "meglet/EGLNative", "createWindowSurface", "(Ljava/lang/Object;II)J", EN_createWindowSurface },
-    { "meglet/EGLNative", "destroySurface", "(J)V", EN_destroySurface },
-    { "meglet/EGLNative", "makeCurrent", "(JJ)Z", EN_makeCurrent },
-    { "meglet/EGLNative", "swap", "(JJIIII)Z", EN_swap },
-    { "meglet/EGLNative", "isRenderThread", "()Z", EN_isRenderThread },
-    { "meglet/EGLNative", "hide", "()V", EN_hide },
-    { "meglet/EGLNative", "place", "(Ljava/lang/Object;IIII)V", EN_place },
-    { "meglet/EGLNative", "forget", "(Ljava/lang/Object;)V", EN_forget },
-    { "meglet/EGLNative", "glesVersion", "()I", EN_glesVersion },
+    { "megler/Native", "startGL", NULL, Native_startGL },
+    { "megler/Native", "requestRender", NULL, Native_requestRender },
+    { "megler/EGLNative", "createContext", "(IJ)J", EN_createContext },
+    { "megler/EGLNative", "destroyContext", "(J)V", EN_destroyContext },
+    { "megler/EGLNative", "createSurface", "(II)J", EN_createSurface },
+    { "megler/EGLNative", "createWindowSurface", "(Ljava/lang/Object;II)J", EN_createWindowSurface },
+    { "megler/EGLNative", "destroySurface", "(J)V", EN_destroySurface },
+    { "megler/EGLNative", "makeCurrent", "(JJ)Z", EN_makeCurrent },
+    { "megler/EGLNative", "swap", "(JJIIII)Z", EN_swap },
+    { "megler/EGLNative", "isRenderThread", "()Z", EN_isRenderThread },
+    { "megler/EGLNative", "hide", "()V", EN_hide },
+    { "megler/EGLNative", "place", "(Ljava/lang/Object;IIII)V", EN_place },
+    { "megler/EGLNative", "forget", "(Ljava/lang/Object;)V", EN_forget },
+    { "megler/EGLNative", "glesVersion", "()I", EN_glesVersion },
     /* The GLES natives that are no plain call. */
     G("GLES10", "_nativeClassInit", "()V", gl_nothing),
     G("GLES10Ext", "_nativeClassInit", "()V", gl_nothing),

@@ -3,10 +3,10 @@ package android.health.connect.datatypes.units;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Percentage implements java.lang.Comparable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.health.connect.datatypes.units.Percentage fromValue(double p0) { return new Percentage(); }
     public int compareTo(android.health.connect.datatypes.units.Percentage p0) { return 0; }
     public int compareTo(java.lang.Object p0) { return 0; }
-    public double getValue() { return (megletProps.get("Value") instanceof Double ? (Double) megletProps.get("Value") : 0d); }
+    public double getValue() { return (meglerProps.get("Value") instanceof Double ? (Double) meglerProps.get("Value") : 0d); }
     protected Percentage() {}
 }

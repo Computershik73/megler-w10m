@@ -20,7 +20,7 @@
  * canvas: GraphicsUtils.nativeGetDrawSWFunctionTable (Skia's canvas under an android.graphics.Canvas, which the WebView
  * draws into directly when it can), nativeGetDrawGLFunctionTable and DrawFunctor.nativeGetFunctionTable (the GL functor and
  * draw functor of a hardware-accelerated canvas), and DrawGLFunctor's functor. None of those exist here: a canvas is
- * Meglet's, drawn by the shell, and none is hardware-accelerated. So every table is null. With no software table Chromium
+ * Megler's, drawn by the shell, and none is hardware-accelerated. So every table is null. With no software table Chromium
  * draws a page into a Bitmap of its own and draws that bitmap into the view's canvas (JavaBrowserViewRendererHelper, its
  * "auxiliary bitmap"); with no GL table it never asks for a functor. The library itself is a name the linker knows as a
  * system library (bionic/mg_bionic.c), so that System.loadLibrary finds and "loads" it.

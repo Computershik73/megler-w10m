@@ -17,9 +17,9 @@
 #include "../host/mg_host.h"
 #include "../ld/mg_ld.h"
 
-static meglet_run_config g_config;
+static megler_run_config g_config;
 static char *g_apk_path;
-/* The app's splits as one list, what meglet_run_config gave in a folder and as paths (g_config.split_apks points here). */
+/* The app's splits as one list, what megler_run_config gave in a folder and as paths (g_config.split_apks points here). */
 static char **g_splits;
 static int g_nsplits;
 static char g_error[400];
@@ -37,15 +37,15 @@ void mg_run_set_error(const char *fmt, ...)
 }
 
 const char *mg_run_last_error(void) { return g_error; }
-const meglet_run_config *mg_run_config(void) { return &g_config; }
+const megler_run_config *mg_run_config(void) { return &g_config; }
 bool mg_run_active(void) { return g_active != 0; }
 u32 mg_run_frames(void) { return (u32)g_frames; }
 void mg_run_count_frame(void) { mg_atomic_add(&g_frames, 1); }
 
 /*
- * "Not running" first, then the shell is told (meglet.h says so of meglet_running). The other order would have the shell told
- * of an end while meglet_running() still answered true: the core's own app test asks exactly that after on_exit, and
- * meglet_storage_check would refuse a shell that went to it on being told. Whoever polls meglet_running instead has to wait
+ * "Not running" first, then the shell is told (megler.h says so of megler_running). The other order would have the shell told
+ * of an end while megler_running() still answered true: the core's own app test asks exactly that after on_exit, and
+ * megler_storage_check would refuse a shell that went to it on being told. Whoever polls megler_running instead has to wait
  * for on_exit before reading what on_exit stores; that is the one moment this order leaves open.
  */
 void mg_run_ended(int status, const char *reason)
@@ -100,7 +100,7 @@ static void on_crash(const char *report) { mg_run_ended(-1, report); }
 
 /* ------------------------------------------------- the app's files
  *
- * The shell's storage host (meglet.h) is the owner of the host layer's foreign
+ * The shell's storage host (megler.h) is the owner of the host layer's foreign
  * roots: link n is root n. The flags, kinds and errors of the two are the
  * same numbers, so a call passes through as it is. One thing is decided
  * here: a link the shell did not mark writable is not written to, whoever
@@ -109,21 +109,21 @@ static void on_crash(const char *report) { mg_run_ended(-1, report); }
  */
 /* (Each of the two against the number itself: one enumeration compared with another draws a warning from MSVC, cast or not.) */
 #define BOTH(a, b, n) ((a) == (n) && (b) == (n))
-_Static_assert(BOTH(MEGLET_STORAGE_READ, MG_O_READ, 1) && BOTH(MEGLET_STORAGE_WRITE, MG_O_WRITE, 2) && BOTH(MEGLET_STORAGE_CREATE, MG_O_CREATE, 4) &&
-               BOTH(MEGLET_STORAGE_TRUNCATE, MG_O_TRUNC, 8) && BOTH(MEGLET_STORAGE_APPEND, MG_O_APPEND, 16) && BOTH(MEGLET_STORAGE_EXCLUSIVE, MG_O_EXCL, 32),
-               "meglet.h's storage flags are the host layer's");
-_Static_assert(BOTH(MEGLET_STORAGE_FILE, MG_FOREIGN_FILE, 0) && BOTH(MEGLET_STORAGE_FOLDER, MG_FOREIGN_DIR, 1) && BOTH(MEGLET_STORAGE_ANY, MG_FOREIGN_ANY, 2),
-               "meglet.h's storage kinds are the host layer's");
-_Static_assert(BOTH(MEGLET_STORAGE_OK, MG_E_OK, 0) && BOTH(MEGLET_STORAGE_NOT_FOUND, MG_E_NOENT, 1) && BOTH(MEGLET_STORAGE_DENIED, MG_E_ACCESS, 2) &&
-               BOTH(MEGLET_STORAGE_EXISTS, MG_E_EXIST, 3) && BOTH(MEGLET_STORAGE_NOT_A_FOLDER, MG_E_NOTDIR, 4) && BOTH(MEGLET_STORAGE_IS_A_FOLDER, MG_E_ISDIR, 5) &&
-               BOTH(MEGLET_STORAGE_FULL, MG_E_NOSPC, 6) && BOTH(MEGLET_STORAGE_FAILED, MG_E_IO, 7) && BOTH(MEGLET_STORAGE_INVALID, MG_E_INVAL, 8) &&
-               BOTH(MEGLET_STORAGE_NOT_EMPTY, MG_E_NOTEMPTY, 9) && BOTH(MEGLET_STORAGE_BUSY, MG_E_BUSY, 10) && BOTH(MEGLET_STORAGE_OTHER_DEVICE, MG_E_XDEV, 11),
-               "meglet.h's storage errors are the host layer's");
+_Static_assert(BOTH(MEGLER_STORAGE_READ, MG_O_READ, 1) && BOTH(MEGLER_STORAGE_WRITE, MG_O_WRITE, 2) && BOTH(MEGLER_STORAGE_CREATE, MG_O_CREATE, 4) &&
+               BOTH(MEGLER_STORAGE_TRUNCATE, MG_O_TRUNC, 8) && BOTH(MEGLER_STORAGE_APPEND, MG_O_APPEND, 16) && BOTH(MEGLER_STORAGE_EXCLUSIVE, MG_O_EXCL, 32),
+               "megler.h's storage flags are the host layer's");
+_Static_assert(BOTH(MEGLER_STORAGE_FILE, MG_FOREIGN_FILE, 0) && BOTH(MEGLER_STORAGE_FOLDER, MG_FOREIGN_DIR, 1) && BOTH(MEGLER_STORAGE_ANY, MG_FOREIGN_ANY, 2),
+               "megler.h's storage kinds are the host layer's");
+_Static_assert(BOTH(MEGLER_STORAGE_OK, MG_E_OK, 0) && BOTH(MEGLER_STORAGE_NOT_FOUND, MG_E_NOENT, 1) && BOTH(MEGLER_STORAGE_DENIED, MG_E_ACCESS, 2) &&
+               BOTH(MEGLER_STORAGE_EXISTS, MG_E_EXIST, 3) && BOTH(MEGLER_STORAGE_NOT_A_FOLDER, MG_E_NOTDIR, 4) && BOTH(MEGLER_STORAGE_IS_A_FOLDER, MG_E_ISDIR, 5) &&
+               BOTH(MEGLER_STORAGE_FULL, MG_E_NOSPC, 6) && BOTH(MEGLER_STORAGE_FAILED, MG_E_IO, 7) && BOTH(MEGLER_STORAGE_INVALID, MG_E_INVAL, 8) &&
+               BOTH(MEGLER_STORAGE_NOT_EMPTY, MG_E_NOTEMPTY, 9) && BOTH(MEGLER_STORAGE_BUSY, MG_E_BUSY, 10) && BOTH(MEGLER_STORAGE_OTHER_DEVICE, MG_E_XDEV, 11),
+               "megler.h's storage errors are the host layer's");
 #undef BOTH
 
-static meglet_storage_host g_storage;
-static meglet_storage_link g_links[MEGLET_STORAGE_MAX_LINKS];
-static char *g_link_names[MEGLET_STORAGE_MAX_LINKS];
+static megler_storage_host g_storage;
+static megler_storage_link g_links[MEGLER_STORAGE_MAX_LINKS];
+static char *g_link_names[MEGLER_STORAGE_MAX_LINKS];
 
 /* A link the shell gave and this layer took (one with a name that could not be is not there, whatever its number). */
 static bool link_there(int link) { return link >= 0 && link < g_storage.link_count && g_links[link].name; }
@@ -181,14 +181,14 @@ static bool link_name_ok(const char *name)
     return !is_android;
 }
 
-void mg_run_storage(const char *data_dir, const meglet_storage_host *storage)
+void mg_run_storage(const char *data_dir, const megler_storage_host *storage)
 {
     static const mg_foreign foreign = { NULL, storage_open, storage_mkdir, storage_remove, storage_rename };
-    mg_fs_link links[MEGLET_STORAGE_MAX_LINKS];
+    mg_fs_link links[MEGLER_STORAGE_MAX_LINKS];
     char *shared = mg_sprintf("%s/sdcard", data_dir);
     int i, k, n = 0;
     mg_foreign_set(NULL);
-    for (i = 0; i < MEGLET_STORAGE_MAX_LINKS; i++) {
+    for (i = 0; i < MEGLER_STORAGE_MAX_LINKS; i++) {
         free(g_link_names[i]);
         g_link_names[i] = NULL;
     }
@@ -196,9 +196,9 @@ void mg_run_storage(const char *data_dir, const meglet_storage_host *storage)
     memset(g_links, 0, sizeof(g_links));
     if (storage && storage->links && storage->link_count > 0 && storage->open) {
         g_storage = *storage;
-        if (g_storage.link_count > MEGLET_STORAGE_MAX_LINKS) {
-            mg_warn("storage: %d links were given and %d is as many as there can be: the rest are left out", g_storage.link_count, MEGLET_STORAGE_MAX_LINKS);
-            g_storage.link_count = MEGLET_STORAGE_MAX_LINKS;
+        if (g_storage.link_count > MEGLER_STORAGE_MAX_LINKS) {
+            mg_warn("storage: %d links were given and %d is as many as there can be: the rest are left out", g_storage.link_count, MEGLER_STORAGE_MAX_LINKS);
+            g_storage.link_count = MEGLER_STORAGE_MAX_LINKS;
         }
         g_storage.links = g_links;
         for (i = 0; i < g_storage.link_count; i++) {
@@ -277,7 +277,7 @@ static void other_app(const char *name, bool is_dir, void *user)
 
 char *mg_run_own_storage(const char *data_dir, const char *package) { return mg_sprintf("%s/apps/%s/sdcard", data_dir, package); }
 
-void mg_run_files(const char *data_dir, const char *storage_dir, const char *package, const meglet_storage_host *storage)
+void mg_run_files(const char *data_dir, const char *storage_dir, const char *package, const megler_storage_host *storage)
 {
     char *internal = mg_sprintf("%s/apps/%s/data", data_dir, package), *own = mg_run_own_storage(storage_dir, package), *apps;
     left_behind left;
@@ -302,8 +302,8 @@ void mg_run_files(const char *data_dir, const char *storage_dir, const char *pac
     free(own);
 }
 
-/* The splits meglet_run_config names, in its folder (sorted by name) and then in its list, each once, into g_splits. */
-static void gather_splits(const meglet_run_config *config)
+/* The splits megler_run_config names, in its folder (sorted by name) and then in its list, each once, into g_splits. */
+static void gather_splits(const megler_run_config *config)
 {
     char **listed = NULL;
     int n = mg_apk_list_splits(config->splits_dir, &listed), i, k;
@@ -318,13 +318,13 @@ static void gather_splits(const meglet_run_config *config)
     }
 }
 
-bool mg_run_start(const meglet_run_config *config)
+bool mg_run_start(const megler_run_config *config)
 {
     static mg_apk_info info;
     int i;
     g_error[0] = 0;
     if (g_started_once) {
-        mg_run_set_error("an app has already run in this process; close Meglet and open it again to start another");
+        mg_run_set_error("an app has already run in this process; close Megler and open it again to start another");
         return false;
     }
     if (!mg_core_can_run()) {
@@ -386,7 +386,7 @@ bool mg_run_start(const meglet_run_config *config)
     }
 
     /* Each app gets its own Android data directories under ours, and all of them one shared storage. */
-    mg_run_files(meglet_data_dir(), meglet_storage_dir(), info.package, &g_config.storage);
+    mg_run_files(megler_data_dir(), megler_storage_dir(), info.package, &g_config.storage);
 
     mg_guest_exit_hook = on_guest_exit;
     mg_core_set_crash_hook(on_crash);

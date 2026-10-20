@@ -3,21 +3,21 @@ package android.location;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GnssAutomaticGainControl implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public long getCarrierFrequencyHz() { return (megletProps.get("CarrierFrequencyHz") instanceof Long ? (Long) megletProps.get("CarrierFrequencyHz") : 0L); }
-    public int getConstellationType() { return (megletProps.get("ConstellationType") instanceof Integer ? (Integer) megletProps.get("ConstellationType") : 0); }
-    public double getLevelDb() { return (megletProps.get("LevelDb") instanceof Double ? (Double) megletProps.get("LevelDb") : 0d); }
+    public long getCarrierFrequencyHz() { return (meglerProps.get("CarrierFrequencyHz") instanceof Long ? (Long) meglerProps.get("CarrierFrequencyHz") : 0L); }
+    public int getConstellationType() { return (meglerProps.get("ConstellationType") instanceof Integer ? (Integer) meglerProps.get("ConstellationType") : 0); }
+    public double getLevelDb() { return (meglerProps.get("LevelDb") instanceof Double ? (Double) meglerProps.get("LevelDb") : 0d); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected GnssAutomaticGainControl() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.location.GnssAutomaticGainControl p0) {}
-        public android.location.GnssAutomaticGainControl build() { android.location.GnssAutomaticGainControl x = new android.location.GnssAutomaticGainControl(); x.megletProps.putAll(megletProps); return x; }
-        public android.location.GnssAutomaticGainControl.Builder setCarrierFrequencyHz(long p0) { megletProps.put("CarrierFrequencyHz", Long.valueOf(p0)); return this; }
-        public android.location.GnssAutomaticGainControl.Builder setConstellationType(int p0) { megletProps.put("ConstellationType", Integer.valueOf(p0)); return this; }
-        public android.location.GnssAutomaticGainControl.Builder setLevelDb(double p0) { megletProps.put("LevelDb", Double.valueOf(p0)); return this; }
+        public android.location.GnssAutomaticGainControl build() { android.location.GnssAutomaticGainControl x = new android.location.GnssAutomaticGainControl(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.location.GnssAutomaticGainControl.Builder setCarrierFrequencyHz(long p0) { meglerProps.put("CarrierFrequencyHz", Long.valueOf(p0)); return this; }
+        public android.location.GnssAutomaticGainControl.Builder setConstellationType(int p0) { meglerProps.put("ConstellationType", Integer.valueOf(p0)); return this; }
+        public android.location.GnssAutomaticGainControl.Builder setLevelDb(double p0) { meglerProps.put("LevelDb", Double.valueOf(p0)); return this; }
     }
 }

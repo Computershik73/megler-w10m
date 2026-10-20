@@ -3,15 +3,15 @@ package android.security;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class KeyStoreParameter implements java.security.KeyStore.ProtectionParameter {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public int getFlags() { return (megletProps.get("Flags") instanceof Integer ? (Integer) megletProps.get("Flags") : 0); }
-    public boolean isEncryptionRequired() { return (megletProps.get("EncryptionRequired") instanceof Boolean ? (Boolean) megletProps.get("EncryptionRequired") : false); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public int getFlags() { return (meglerProps.get("Flags") instanceof Integer ? (Integer) meglerProps.get("Flags") : 0); }
+    public boolean isEncryptionRequired() { return (meglerProps.get("EncryptionRequired") instanceof Boolean ? (Boolean) meglerProps.get("EncryptionRequired") : false); }
     protected KeyStoreParameter() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.content.Context p0) {}
-        public android.security.KeyStoreParameter build() { android.security.KeyStoreParameter x = new android.security.KeyStoreParameter(); x.megletProps.putAll(megletProps); return x; }
-        public android.security.KeyStoreParameter.Builder setEncryptionRequired(boolean p0) { megletProps.put("EncryptionRequired", Boolean.valueOf(p0)); return this; }
+        public android.security.KeyStoreParameter build() { android.security.KeyStoreParameter x = new android.security.KeyStoreParameter(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.security.KeyStoreParameter.Builder setEncryptionRequired(boolean p0) { meglerProps.put("EncryptionRequired", Boolean.valueOf(p0)); return this; }
         Builder() { this((android.content.Context) null); }
     }
 }

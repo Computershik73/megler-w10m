@@ -3,10 +3,10 @@ package android;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Manifest {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public Manifest() {}
     public static final class permission {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String ACCEPT_HANDOVER = "android.permission.ACCEPT_HANDOVER";
         public static final java.lang.String ACCESSIBILITY_MOTION_EVENT_OBSERVING = "android.permission.ACCESSIBILITY_MOTION_EVENT_OBSERVING";
         public static final java.lang.String ACCESS_AMBIENT_CONTEXT_EVENT = "android.permission.ACCESS_AMBIENT_CONTEXT_EVENT";
@@ -1069,7 +1069,7 @@ public final class Manifest {
         public permission() {}
     }
     public static final class permission_group {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String ACTIVITY_RECOGNITION = "android.permission-group.ACTIVITY_RECOGNITION";
         public static final java.lang.String CALENDAR = "android.permission-group.CALENDAR";
         public static final java.lang.String CALL_LOG = "android.permission-group.CALL_LOG";

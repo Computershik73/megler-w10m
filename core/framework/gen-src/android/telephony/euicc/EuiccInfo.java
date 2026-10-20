@@ -3,11 +3,11 @@ package android.telephony.euicc;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class EuiccInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public EuiccInfo(java.lang.String p0) {}
     public int describeContents() { return 0; }
-    public java.lang.String getOsVersion() { return (java.lang.String) megletProps.get("OsVersion"); }
+    public java.lang.String getOsVersion() { return (java.lang.String) meglerProps.get("OsVersion"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     EuiccInfo() { this((java.lang.String) null); }
 }

@@ -3,21 +3,21 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class OvulationTestRecord extends android.health.connect.datatypes.InstantRecord {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public int getResult() { return (megletProps.get("Result") instanceof Integer ? (Integer) megletProps.get("Result") : 0); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public int getResult() { return (meglerProps.get("Result") instanceof Integer ? (Integer) meglerProps.get("Result") : 0); }
     public android.health.connect.internal.datatypes.OvulationTestRecordInternal toRecordInternal() { return null; }
     protected OvulationTestRecord() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.health.connect.datatypes.Metadata p0, java.time.Instant p1, int p2) {}
-        public android.health.connect.datatypes.OvulationTestRecord build() { android.health.connect.datatypes.OvulationTestRecord x = new android.health.connect.datatypes.OvulationTestRecord(); x.megletProps.putAll(megletProps); return x; }
+        public android.health.connect.datatypes.OvulationTestRecord build() { android.health.connect.datatypes.OvulationTestRecord x = new android.health.connect.datatypes.OvulationTestRecord(); x.meglerProps.putAll(meglerProps); return x; }
         public android.health.connect.datatypes.OvulationTestRecord buildWithoutValidation() { return null; }
         public android.health.connect.datatypes.OvulationTestRecord.Builder clearZoneOffset() { return this; }
-        public android.health.connect.datatypes.OvulationTestRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { megletProps.put("ZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.OvulationTestRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("ZoneOffset", p0); return this; }
         Builder() { this((android.health.connect.datatypes.Metadata) null, (java.time.Instant) null, (int) 0); }
     }
     public static final class OvulationTestResult {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int RESULT_HIGH = 2;
         public static final int RESULT_INCONCLUSIVE = 0;
         public static final int RESULT_NEGATIVE = 3;

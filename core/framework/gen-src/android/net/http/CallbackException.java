@@ -3,7 +3,7 @@ package android.net.http;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class CallbackException extends android.net.http.HttpException {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     protected CallbackException(java.lang.String p0, java.lang.Throwable p1) { super(p0, p1); }
     CallbackException() { this((java.lang.String) null, (java.lang.Throwable) null); }
 }

@@ -3,22 +3,22 @@ package android.accessibilityservice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GestureDescription {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static long getMaxGestureDuration() { return 0L; }
     public static int getMaxStrokeCount() { return 0; }
-    public int getDisplayId() { return (megletProps.get("DisplayId") instanceof Integer ? (Integer) megletProps.get("DisplayId") : 0); }
+    public int getDisplayId() { return (meglerProps.get("DisplayId") instanceof Integer ? (Integer) meglerProps.get("DisplayId") : 0); }
     public android.accessibilityservice.GestureDescription.StrokeDescription getStroke(int p0) { return null; }
-    public int getStrokeCount() { return (megletProps.get("StrokeCount") instanceof Integer ? (Integer) megletProps.get("StrokeCount") : 0); }
+    public int getStrokeCount() { return (meglerProps.get("StrokeCount") instanceof Integer ? (Integer) meglerProps.get("StrokeCount") : 0); }
     protected GestureDescription() {}
     public static class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public android.accessibilityservice.GestureDescription.Builder addStroke(android.accessibilityservice.GestureDescription.StrokeDescription p0) { return this; }
-        public android.accessibilityservice.GestureDescription build() { android.accessibilityservice.GestureDescription x = new android.accessibilityservice.GestureDescription(); x.megletProps.putAll(megletProps); return x; }
-        public android.accessibilityservice.GestureDescription.Builder setDisplayId(int p0) { megletProps.put("DisplayId", Integer.valueOf(p0)); return this; }
+        public android.accessibilityservice.GestureDescription build() { android.accessibilityservice.GestureDescription x = new android.accessibilityservice.GestureDescription(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.accessibilityservice.GestureDescription.Builder setDisplayId(int p0) { meglerProps.put("DisplayId", Integer.valueOf(p0)); return this; }
     }
     public static class GestureStep implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public int numTouchPoints;
         public long timeSinceGestureStart;
@@ -30,25 +30,25 @@ public final class GestureDescription {
         GestureStep() { this((android.os.Parcel) null); }
     }
     public static class MotionEventGenerator {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public MotionEventGenerator() {}
         public static java.util.List getGestureStepsFromGestureDescription(android.accessibilityservice.GestureDescription p0, int p1) { return new java.util.ArrayList(); }
     }
     public static class StrokeDescription {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public StrokeDescription(android.graphics.Path p0, long p1, long p2) {}
         public StrokeDescription(android.graphics.Path p0, long p1, long p2, boolean p3) {}
         public android.accessibilityservice.GestureDescription.StrokeDescription continueStroke(android.graphics.Path p0, long p1, long p2, boolean p3) { return this; }
-        public int getContinuedStrokeId() { return (megletProps.get("ContinuedStrokeId") instanceof Integer ? (Integer) megletProps.get("ContinuedStrokeId") : 0); }
-        public long getDuration() { return (megletProps.get("Duration") instanceof Long ? (Long) megletProps.get("Duration") : 0L); }
-        public int getId() { return (megletProps.get("Id") instanceof Integer ? (Integer) megletProps.get("Id") : 0); }
-        public android.graphics.Path getPath() { return (android.graphics.Path) megletProps.get("Path"); }
-        public long getStartTime() { return (megletProps.get("StartTime") instanceof Long ? (Long) megletProps.get("StartTime") : 0L); }
+        public int getContinuedStrokeId() { return (meglerProps.get("ContinuedStrokeId") instanceof Integer ? (Integer) meglerProps.get("ContinuedStrokeId") : 0); }
+        public long getDuration() { return (meglerProps.get("Duration") instanceof Long ? (Long) meglerProps.get("Duration") : 0L); }
+        public int getId() { return (meglerProps.get("Id") instanceof Integer ? (Integer) meglerProps.get("Id") : 0); }
+        public android.graphics.Path getPath() { return (android.graphics.Path) meglerProps.get("Path"); }
+        public long getStartTime() { return (meglerProps.get("StartTime") instanceof Long ? (Long) meglerProps.get("StartTime") : 0L); }
         public boolean willContinue() { return false; }
         StrokeDescription() { this((android.graphics.Path) null, (long) 0L, (long) 0L); }
     }
     public static class TouchPoint implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public int mContinuedStrokeId;
         public boolean mIsEndOfPath;

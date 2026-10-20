@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MediaParser {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String PARAMETER_ADTS_ENABLE_CBR_SEEKING = "android.media.mediaparser.adts.enableCbrSeeking";
     public static final java.lang.String PARAMETER_AMR_ENABLE_CBR_SEEKING = "android.media.mediaparser.amr.enableCbrSeeking";
     public static final java.lang.String PARAMETER_EAGERLY_EXPOSE_TRACKTYPE = "android.media.mediaparser.eagerlyExposeTrackType";
@@ -54,11 +54,11 @@ public final class MediaParser {
     public static android.media.MediaParser createByName(java.lang.String p0, android.media.MediaParser.OutputConsumer p1) { return new MediaParser(); }
     public static java.util.List getParserNames(android.media.MediaFormat p0) { return new java.util.ArrayList(); }
     public boolean advance(android.media.MediaParser.SeekableInputReader p0) { return false; }
-    public android.media.metrics.LogSessionId getLogSessionId() { return (android.media.metrics.LogSessionId) megletProps.get("LogSessionId"); }
-    public java.lang.String getParserName() { return (java.lang.String) megletProps.get("ParserName"); }
+    public android.media.metrics.LogSessionId getLogSessionId() { return (android.media.metrics.LogSessionId) meglerProps.get("LogSessionId"); }
+    public java.lang.String getParserName() { return (java.lang.String) meglerProps.get("ParserName"); }
     public void release() {}
     public void seek(android.media.MediaParser.SeekPoint p0) {}
-    public void setLogSessionId(android.media.metrics.LogSessionId p0) { megletProps.put("LogSessionId", p0); }
+    public void setLogSessionId(android.media.metrics.LogSessionId p0) { meglerProps.put("LogSessionId", p0); }
     public android.media.MediaParser setParameter(java.lang.String p0, java.lang.Object p1) { return this; }
     public boolean supportsParameter(java.lang.String p0) { return false; }
     protected MediaParser() {}
@@ -75,20 +75,20 @@ public final class MediaParser {
         void onTrackDataFound(int p0, android.media.MediaParser.TrackData p1);
     }
     public static final class ParsingException extends java.io.IOException {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         protected ParsingException() { super(); }
     }
     public static final class SeekMap {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.media.MediaParser.SeekMap DUMMY;
         public static final int UNKNOWN_DURATION = -2147483648;
-        public long getDurationMicros() { return (megletProps.get("DurationMicros") instanceof Long ? (Long) megletProps.get("DurationMicros") : 0L); }
+        public long getDurationMicros() { return (meglerProps.get("DurationMicros") instanceof Long ? (Long) meglerProps.get("DurationMicros") : 0L); }
         public android.util.Pair getSeekPoints(long p0) { return null; }
-        public boolean isSeekable() { return (megletProps.get("Seekable") instanceof Boolean ? (Boolean) megletProps.get("Seekable") : false); }
+        public boolean isSeekable() { return (meglerProps.get("Seekable") instanceof Boolean ? (Boolean) meglerProps.get("Seekable") : false); }
         protected SeekMap() {}
     }
     public static final class SeekPoint {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.media.MediaParser.SeekPoint START;
         public long position;
         public long timeMicros;
@@ -98,13 +98,13 @@ public final class MediaParser {
         void seekToPosition(long p0);
     }
     public static final class TrackData {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public android.media.DrmInitData drmInitData;
         public android.media.MediaFormat mediaFormat;
         protected TrackData() {}
     }
     public static final class UnrecognizedInputFormatException extends java.io.IOException {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         protected UnrecognizedInputFormatException() { super(); }
     }
 }

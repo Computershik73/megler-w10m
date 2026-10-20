@@ -3,7 +3,7 @@ package android.content.pm.verify.domain;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DomainVerificationManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int ERROR_DOMAIN_SET_ID_INVALID = 1;
     public static final int ERROR_UNABLE_TO_APPROVE = 3;
     public static final int ERROR_UNKNOWN_DOMAIN = 2;

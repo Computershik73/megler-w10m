@@ -3,12 +3,12 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AuthenticationRequiredException extends java.lang.SecurityException implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public AuthenticationRequiredException(android.os.Parcel p0) { super(); }
     public AuthenticationRequiredException(java.lang.Throwable p0, android.app.PendingIntent p1) { super(); }
     public int describeContents() { return 0; }
-    public android.app.PendingIntent getUserAction() { return (android.app.PendingIntent) megletProps.get("UserAction"); }
+    public android.app.PendingIntent getUserAction() { return (android.app.PendingIntent) meglerProps.get("UserAction"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     AuthenticationRequiredException() { this((android.os.Parcel) null); }
 }

@@ -3,7 +3,7 @@ package android.util;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class TimeUtils {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int HUNDRED_DAY_FIELD_LEN = 19;
     public static java.time.Instant MIN_USE_DATE_OF_TIMEZONE;
     public static final long NANOS_PER_MS = 1000000L;

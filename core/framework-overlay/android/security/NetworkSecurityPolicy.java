@@ -66,12 +66,12 @@ public class NetworkSecurityPolicy {
 
     /** The manifest's word on it, and the configuration it names (see the top of the file). */
     private void read() {
-        meglet.Manifest.read();
-        boolean byDefault = meglet.Manifest.targetSdk < 28;
+        megler.Manifest.read();
+        boolean byDefault = megler.Manifest.targetSdk < 28;
         Boolean uses = null;
         int config = 0;
         try {
-            byte[] d = meglet.Native.readApkFile(0, "AndroidManifest.xml");
+            byte[] d = megler.Native.readApkFile(0, "AndroidManifest.xml");
             if (d != null) {
                 XmlBlock.Parser p = new XmlBlock(d, "AndroidManifest.xml").newParser();
                 int t;

@@ -3,13 +3,13 @@ package android.drm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DrmSupportInfo {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public DrmSupportInfo() {}
     public void addFileSuffix(java.lang.String p0) {}
     public void addMimeType(java.lang.String p0) {}
-    public java.lang.String getDescriprition() { return (java.lang.String) megletProps.get("Descriprition"); }
-    public java.lang.String getDescription() { return (java.lang.String) megletProps.get("Description"); }
-    public java.util.Iterator getFileSuffixIterator() { return (java.util.Iterator) megletProps.get("FileSuffixIterator"); }
-    public java.util.Iterator getMimeTypeIterator() { return (java.util.Iterator) megletProps.get("MimeTypeIterator"); }
-    public void setDescription(java.lang.String p0) { megletProps.put("Description", p0); }
+    public java.lang.String getDescriprition() { return (java.lang.String) meglerProps.get("Descriprition"); }
+    public java.lang.String getDescription() { return (java.lang.String) meglerProps.get("Description"); }
+    public java.util.Iterator getFileSuffixIterator() { return (java.util.Iterator) meglerProps.get("FileSuffixIterator"); }
+    public java.util.Iterator getMimeTypeIterator() { return (java.util.Iterator) meglerProps.get("MimeTypeIterator"); }
+    public void setDescription(java.lang.String p0) { meglerProps.put("Description", p0); }
 }

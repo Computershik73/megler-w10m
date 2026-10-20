@@ -3,7 +3,7 @@ package android.telephony.data;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class NetworkSliceInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int MAX_SLICE_DIFFERENTIATOR = 16777214;
     public static final int MAX_SLICE_STATUS = 5;
@@ -21,21 +21,21 @@ public final class NetworkSliceInfo implements android.os.Parcelable {
     public static final int SLICE_STATUS_REJECTED_NOT_AVAILABLE_IN_REGISTERED_AREA = 4;
     public static int SLICE_STATUS_UNKNOWN;
     public int describeContents() { return 0; }
-    public int getMappedHplmnSliceDifferentiator() { return (megletProps.get("MappedHplmnSliceDifferentiator") instanceof Integer ? (Integer) megletProps.get("MappedHplmnSliceDifferentiator") : 0); }
-    public int getMappedHplmnSliceServiceType() { return (megletProps.get("MappedHplmnSliceServiceType") instanceof Integer ? (Integer) megletProps.get("MappedHplmnSliceServiceType") : 0); }
-    public int getSliceDifferentiator() { return (megletProps.get("SliceDifferentiator") instanceof Integer ? (Integer) megletProps.get("SliceDifferentiator") : 0); }
-    public int getSliceServiceType() { return (megletProps.get("SliceServiceType") instanceof Integer ? (Integer) megletProps.get("SliceServiceType") : 0); }
-    public int getStatus() { return (megletProps.get("Status") instanceof Integer ? (Integer) megletProps.get("Status") : 0); }
+    public int getMappedHplmnSliceDifferentiator() { return (meglerProps.get("MappedHplmnSliceDifferentiator") instanceof Integer ? (Integer) meglerProps.get("MappedHplmnSliceDifferentiator") : 0); }
+    public int getMappedHplmnSliceServiceType() { return (meglerProps.get("MappedHplmnSliceServiceType") instanceof Integer ? (Integer) meglerProps.get("MappedHplmnSliceServiceType") : 0); }
+    public int getSliceDifferentiator() { return (meglerProps.get("SliceDifferentiator") instanceof Integer ? (Integer) meglerProps.get("SliceDifferentiator") : 0); }
+    public int getSliceServiceType() { return (meglerProps.get("SliceServiceType") instanceof Integer ? (Integer) meglerProps.get("SliceServiceType") : 0); }
+    public int getStatus() { return (meglerProps.get("Status") instanceof Integer ? (Integer) meglerProps.get("Status") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected NetworkSliceInfo() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.telephony.data.NetworkSliceInfo build() { android.telephony.data.NetworkSliceInfo x = new android.telephony.data.NetworkSliceInfo(); x.megletProps.putAll(megletProps); return x; }
-        public android.telephony.data.NetworkSliceInfo.Builder setMappedHplmnSliceDifferentiator(int p0) { megletProps.put("MappedHplmnSliceDifferentiator", Integer.valueOf(p0)); return this; }
-        public android.telephony.data.NetworkSliceInfo.Builder setMappedHplmnSliceServiceType(int p0) { megletProps.put("MappedHplmnSliceServiceType", Integer.valueOf(p0)); return this; }
-        public android.telephony.data.NetworkSliceInfo.Builder setSliceDifferentiator(int p0) { megletProps.put("SliceDifferentiator", Integer.valueOf(p0)); return this; }
-        public android.telephony.data.NetworkSliceInfo.Builder setSliceServiceType(int p0) { megletProps.put("SliceServiceType", Integer.valueOf(p0)); return this; }
-        public android.telephony.data.NetworkSliceInfo.Builder setStatus(int p0) { megletProps.put("Status", Integer.valueOf(p0)); return this; }
+        public android.telephony.data.NetworkSliceInfo build() { android.telephony.data.NetworkSliceInfo x = new android.telephony.data.NetworkSliceInfo(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.telephony.data.NetworkSliceInfo.Builder setMappedHplmnSliceDifferentiator(int p0) { meglerProps.put("MappedHplmnSliceDifferentiator", Integer.valueOf(p0)); return this; }
+        public android.telephony.data.NetworkSliceInfo.Builder setMappedHplmnSliceServiceType(int p0) { meglerProps.put("MappedHplmnSliceServiceType", Integer.valueOf(p0)); return this; }
+        public android.telephony.data.NetworkSliceInfo.Builder setSliceDifferentiator(int p0) { meglerProps.put("SliceDifferentiator", Integer.valueOf(p0)); return this; }
+        public android.telephony.data.NetworkSliceInfo.Builder setSliceServiceType(int p0) { meglerProps.put("SliceServiceType", Integer.valueOf(p0)); return this; }
+        public android.telephony.data.NetworkSliceInfo.Builder setStatus(int p0) { meglerProps.put("Status", Integer.valueOf(p0)); return this; }
     }
 }

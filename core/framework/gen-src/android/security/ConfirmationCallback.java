@@ -3,7 +3,7 @@ package android.security;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class ConfirmationCallback {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ConfirmationCallback() {}
     public void onCanceled() {}
     public void onConfirmed(byte[] p0) {}

@@ -1,11 +1,11 @@
 /*
- * A stand-in for the shell's cameras (meglet_camera_host), for tests where there are none: portable C that makes pictures
+ * A stand-in for the shell's cameras (megler_camera_host), for tests where there are none: portable C that makes pictures
  * whose every byte is known, on a thread of its own, as a camera's driver would hand them over.
  *
  * Two cameras, as a phone has them: 0 at the back, turned 90 degrees (a sensor laid along the phone's long side), with
  * focus (once, continuously, close up) and a torch, at 1280 x 720, 640 x 480 and 320 x 240; 1 at the front, turned 270,
  * fixed focus, no light, at 640 x 480 and 320 x 240. Each streams at 15 to 30 frames a second, at the rate it was started
- * with. A camera opens once at a time: a second open is MEGLET_CAMERA_BUSY; and every open is MEGLET_CAMERA_DENIED while
+ * with. A camera opens once at a time: a second open is MEGLER_CAMERA_BUSY; and every open is MEGLER_CAMERA_DENIED while
  * mg_camera_standin_refuse says so, as Windows answers when the user has said no.
  *
  * A picture is NV12 in four quarters of one colour each, with BT.601's video-range values: the top left red, the top right
@@ -20,7 +20,7 @@
 #ifndef MG_CAMERA_STANDIN_H
 #define MG_CAMERA_STANDIN_H
 
-#include "../include/meglet.h"
+#include "../include/megler.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -31,8 +31,8 @@ extern "C" {
 #define MG_CAMERA_STANDIN_BLUE 41, 240, 110
 #define MG_CAMERA_STANDIN_WHITE 235, 128, 128
 
-const meglet_camera_host *mg_camera_standin(void);
-/* Every open refused (MEGLET_CAMERA_DENIED) from now on, or no longer. */
+const megler_camera_host *mg_camera_standin(void);
+/* Every open refused (MEGLER_CAMERA_DENIED) from now on, or no longer. */
 void mg_camera_standin_refuse(bool refuse);
 
 typedef struct mg_camera_standin_counts {

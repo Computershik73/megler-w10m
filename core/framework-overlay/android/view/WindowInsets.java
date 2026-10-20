@@ -1,8 +1,8 @@
 // Overlay of core/framework/src/android/view/WindowInsets.java (tools/build-framework.sh).
 // It differs in getFrame() (Android 16): the size of the window the insets are relative to, where the original's generated
 // stub returned null. The insets carry it (mFrame) through copies, consumeSystemWindowInsets, replaceSystemWindowInsets
-// and the Builder (setFrame, which the stub ignored), and meglet.ViewRoot (overlaid) gives it to the insets it makes, through
-// megletFrame, which the original does not have. Insets nobody gave a frame have 0 x 0.
+// and the Builder (setFrame, which the stub ignored), and megler.ViewRoot (overlaid) gives it to the insets it makes, through
+// meglerFrame, which the original does not have. Insets nobody gave a frame have 0 x 0.
 //
 // Why. Chromium (Brave 1.97) asks every WindowInsets for its frame and catches the NoSuchMethodError that Android before
 // 16 gives; here the method was there and returned null, and the NullPointerException that followed, in a listener of
@@ -45,10 +45,10 @@ public final class WindowInsets {
     public WindowInsets(Insets system, Insets ime, boolean consumed) { mSystem = system; mIme = ime; mConsumed = consumed; }
     public WindowInsets(WindowInsets o) { this(o.mSystem, o.mIme, o.mConsumed); mCutout = o.mCutout; mCutoutConsumed = o.mCutoutConsumed; mFrame = o.mFrame; }
     public WindowInsets(Rect r) { this(Insets.of(r), Insets.NONE, false); }
-    /** Meglet: the window's insets (the status bar and home indicator areas, the keyboard). */
-    public static WindowInsets megletOf(int l, int t, int r, int b, int imeBottom, DisplayCutout cutout) { WindowInsets i = new WindowInsets(Insets.of(l, t, r, b), Insets.of(0, 0, 0, imeBottom), false); i.mCutout = cutout; return i; }
-    /** Meglet: the size of the window these insets are of, which getFrame() gives; set once, by meglet.ViewRoot, on insets it has just made. */
-    public WindowInsets megletFrame(int width, int height) { mFrame = new android.util.Size(width, height); return this; }
+    /** Megler: the window's insets (the status bar and home indicator areas, the keyboard). */
+    public static WindowInsets meglerOf(int l, int t, int r, int b, int imeBottom, DisplayCutout cutout) { WindowInsets i = new WindowInsets(Insets.of(l, t, r, b), Insets.of(0, 0, 0, imeBottom), false); i.mCutout = cutout; return i; }
+    /** Megler: the size of the window these insets are of, which getFrame() gives; set once, by megler.ViewRoot, on insets it has just made. */
+    public WindowInsets meglerFrame(int width, int height) { mFrame = new android.util.Size(width, height); return this; }
     public int getSystemWindowInsetLeft() { return mConsumed ? 0 : mSystem.left; }
     public int getSystemWindowInsetTop() { return mConsumed ? 0 : mSystem.top; }
     public int getSystemWindowInsetRight() { return mConsumed ? 0 : mSystem.right; }

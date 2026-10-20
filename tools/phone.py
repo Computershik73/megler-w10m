@@ -1,30 +1,30 @@
 r"""Talk to the phone's Windows Device Portal (USB: http://127.0.0.1:10080).
 
-podium-w10m's and gecko-w10m's tools/phone.py, for Meglet. The phone must be in
+podium-w10m's and gecko-w10m's tools/phone.py, for Megler. The phone must be in
 Developer mode with the Device Portal on, connected over USB or reachable over
 Wi-Fi, and must already trust the signing certificate
-(app/Meglet/AppPackages/Meglet.cer) and be interop-unlocked (the package asks
+(app/Megler/AppPackages/Megler.cer) and be interop-unlocked (the package asks
 for rescap:codeGeneration).
 
 Usage:
-    python tools/phone.py version                # the installed Meglet package
+    python tools/phone.py version                # the installed Megler package
     python tools/phone.py install [APPX]         # install or update (newest ARM appx by default; app data kept)
-    python tools/phone.py launch                 # start Meglet
-    python tools/phone.py stop                   # stop Meglet
+    python tools/phone.py launch                 # start Megler
+    python tools/phone.py stop                   # stop Megler
     python tools/phone.py ls PATH                # list e.g. "\LocalState\apks"
     python tools/phone.py rm PATH                # delete a file under LocalAppData
     python tools/phone.py push FILE... --to PATH [--folder Documents]
                                                  # upload files (an APK to add through the app's picker)
-    python tools/phone.py logs [--dir DIR]       # meglet.log, meglet.prev.log, the checks' logs, settings.ini
+    python tools/phone.py logs [--dir DIR]       # megler.log, megler.prev.log, the checks' logs, settings.ini
     python tools/phone.py mem [--watch SEC] [--top N]
-                                                 # memory of Meglet, the phone and the GPU
+                                                 # memory of Megler, the phone and the GPU
     python tools/phone.py auto [APPX] [--timeout MIN] [--no-install]
                                                  # the unattended run of a --auto build (see below)
     python tools/phone.py summary DIR            # the summary of an auto run's pulled logs again
 
 auto: for a package built with tools/build-appx.sh arm --auto probe|selftest|probe,selftest.
 Installs it (the newest ARM appx by default), launches it, waits until
-LocalState/meglet-auto.log says AUTO DONE (or the app is gone, or --timeout
+LocalState/megler-auto.log says AUTO DONE (or the app is gone, or --timeout
 minutes pass), pulls every log into build/phone/<timestamp>/ and prints them:
 the run's own lines, the probe's answers, the self-test's failures and its
 last lines, and anything the core logged as a warning or an error.
@@ -48,9 +48,9 @@ import urllib.request
 # answered 127.0.0.1:10443 while the Elite x3 was meant), so every portal is
 # checked by its ComputerName before use, and installs go to the device whose
 # model WinAppDeployCmd reports, by GUID. Override with these variables.
-TARGET_NAME = os.environ.get("MEGLET_PHONE_NAME", "mc-0011fa4f4eb9")  # the HP Elite x3
-TARGET_MODEL = os.environ.get("MEGLET_PHONE_MODEL", "HP Elite x3")
-TARGET_IP = os.environ.get("MEGLET_PHONE_IP", "192.168.31.226")       # its Wi-Fi address
+TARGET_NAME = os.environ.get("MEGLER_PHONE_NAME", "mc-0011fa4f4eb9")  # the HP Elite x3
+TARGET_MODEL = os.environ.get("MEGLER_PHONE_MODEL", "HP Elite x3")
+TARGET_IP = os.environ.get("MEGLER_PHONE_IP", "192.168.31.226")       # its Wi-Fi address
 
 # The phone is on the local network or on USB, never behind a proxy: a VPN
 # client's HTTP(S)_PROXY on this PC once turned every portal request into a
@@ -79,12 +79,12 @@ def _find_portal(patience=None):
     is the one forwarded there, else its Wi-Fi address. Only a portal whose
     ComputerName is TARGET_NAME is ever used. A phone's Wi-Fi portal comes and
     goes as the screen sleeps, so keep asking for up to `patience` seconds
-    (MEGLET_PHONE_PATIENCE, default 300)."""
+    (MEGLER_PHONE_PATIENCE, default 300)."""
     if patience is None:
-        patience = float(os.environ.get("MEGLET_PHONE_PATIENCE", "300"))
+        patience = float(os.environ.get("MEGLER_PHONE_PATIENCE", "300"))
     candidates = []
-    if os.environ.get("MEGLET_PORTAL"):
-        candidates.append(os.environ["MEGLET_PORTAL"])
+    if os.environ.get("MEGLER_PORTAL"):
+        candidates.append(os.environ["MEGLER_PORTAL"])
     candidates += ["http://127.0.0.1:10080", "https://127.0.0.1:10443",
                    f"https://{TARGET_IP}", f"http://{TARGET_IP}"]
     deadline = time.time() + patience
@@ -112,20 +112,20 @@ def portal():
     return _portal
 
 
-PACKAGE_PREFIX = "Meglet_"
+PACKAGE_PREFIX = "Megler_"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-APPX_DIR = os.path.join(ROOT, "app", "Meglet", "AppPackages")
+APPX_DIR = os.path.join(ROOT, "app", "Megler", "AppPackages")
 # Files in the package's LocalAppData, by their folder under it.
 LOGS = [
-    ("\\LocalState", "meglet.log"),
-    ("\\LocalState", "meglet.prev.log"),
-    ("\\LocalState", "meglet.prev2.log"),
-    ("\\LocalState", "meglet-boot.txt"),
-    ("\\LocalState", "meglet-probe.log"),
-    ("\\LocalState", "meglet-probe-steps.log"),
-    ("\\LocalState", "meglet-selftest.log"),
-    ("\\LocalState", "meglet-selftest-steps.log"),
-    ("\\LocalState", "meglet-auto.log"),
+    ("\\LocalState", "megler.log"),
+    ("\\LocalState", "megler.prev.log"),
+    ("\\LocalState", "megler.prev2.log"),
+    ("\\LocalState", "megler-boot.txt"),
+    ("\\LocalState", "megler-probe.log"),
+    ("\\LocalState", "megler-probe-steps.log"),
+    ("\\LocalState", "megler-selftest.log"),
+    ("\\LocalState", "megler-selftest-steps.log"),
+    ("\\LocalState", "megler-auto.log"),
     ("\\LocalState", "settings.ini"),
 ]
 
@@ -144,7 +144,7 @@ _opener = urllib.request.build_opener(urllib.request.ProxyHandler({}),
 def _with_retries(action):
     """The Wi-Fi portal drops requests while the phone dozes: retry for a
     while before giving up."""
-    deadline = time.time() + float(os.environ.get("MEGLET_PHONE_PATIENCE", "300"))
+    deadline = time.time() + float(os.environ.get("MEGLER_PHONE_PATIENCE", "300"))
     while True:
         try:
             return action()
@@ -187,7 +187,7 @@ def package(required=True):
         if p["PackageFullName"].startswith(PACKAGE_PREFIX):
             return p
     if required:
-        sys.exit("Meglet is not installed on the phone")
+        sys.exit("Megler is not installed on the phone")
     return None
 
 
@@ -219,9 +219,9 @@ def target_guid():
 
 
 def newest_appx():
-    candidates = glob.glob(os.path.join(APPX_DIR, "Meglet_*_ARM.appx"))
+    candidates = glob.glob(os.path.join(APPX_DIR, "Megler_*_ARM.appx"))
     if not candidates:
-        sys.exit(f"no Meglet_*_ARM.appx in {APPX_DIR}; run tools/build-appx.sh first")
+        sys.exit(f"no Megler_*_ARM.appx in {APPX_DIR}; run tools/build-appx.sh first")
     return max(candidates, key=os.path.getmtime)
 
 
@@ -283,8 +283,8 @@ def install_through_portal(appx):
         break
     p = package(required=False)
     print("now on the phone:", p["PackageFullName"] if p else "(nothing)")
-    # Meglet_0.1.0.7_ARM.appx is on the phone as Meglet_0.1.0.7_arm__<publisher id>.
-    wanted = os.path.splitext(name)[0].replace("Meglet_", PACKAGE_PREFIX).rsplit("_ARM", 1)[0]
+    # Megler_0.1.0.7_ARM.appx is on the phone as Megler_0.1.0.7_arm__<publisher id>.
+    wanted = os.path.splitext(name)[0].replace("Megler_", PACKAGE_PREFIX).rsplit("_ARM", 1)[0]
     return 0 if p and p["PackageFullName"].startswith(wanted) else 1
 
 
@@ -360,7 +360,7 @@ def cmd_logs(a):
 
 def cmd_shots(a):
     """Fetches the screenshots an auto run made (flag "shots", flags "tap-S-X-Y":
-    app/Meglet/auto/AutoRun.cpp) as PNGs, and removes them from the phone
+    app/Megler/auto/AutoRun.cpp) as PNGs, and removes them from the phone
     unless --keep."""
     pfn = package()["PackageFullName"]
     out_dir = a.dir or os.path.join(ROOT, "build", "phone", "shots")
@@ -403,9 +403,9 @@ def cmd_mem(a):
         limit = perf.get("CommitLimit", 0) * page
         ours = [p for p in procs if (p.get("PackageFullName") or "").startswith(PACKAGE_PREFIX)]
         if not ours:
-            print(f"{stamp} Meglet is not running")
+            print(f"{stamp} Megler is not running")
         for p in ours:
-            print(f"{stamp} Meglet: private {mb(p.get('PrivateWorkingSet', 0)):.0f} MB, "
+            print(f"{stamp} Megler: private {mb(p.get('PrivateWorkingSet', 0)):.0f} MB, "
                   f"working set {mb(p.get('WorkingSetSize', 0)):.0f} MB, "
                   f"commit {mb(p.get('TotalCommit', 0)):.0f} MB, "
                   f"virtual {mb(p.get('VirtualSize', 0)):.0f} MB, cpu {p.get('CPUUsage', 0):.0f}%")
@@ -426,13 +426,13 @@ def cmd_mem(a):
         time.sleep(a.watch)
 
 
-# MARK: auto -- the unattended run of a --auto build (app/Meglet/auto)
+# MARK: auto -- the unattended run of a --auto build (app/Megler/auto)
 
-AUTO_LOGS = ["meglet-auto.log", "meglet-probe.log", "meglet-probe-steps.log", "meglet-selftest.log", "meglet-selftest-steps.log",
-             "meglet.log", "meglet.prev.log", "meglet.prev2.log", "meglet-boot.txt", "settings.ini"]
+AUTO_LOGS = ["megler-auto.log", "megler-probe.log", "megler-probe-steps.log", "megler-selftest.log", "megler-selftest-steps.log",
+             "megler.log", "megler.prev.log", "megler.prev2.log", "megler-boot.txt", "settings.ini"]
 # The logs an auto run starts afresh (auto/AutoRun.cpp), the core's step logs
 # included: what tells this run's from an earlier one's.
-RUN_LOGS = ("meglet-auto.log", "meglet-probe.log", "meglet-probe-steps.log", "meglet-selftest.log", "meglet-selftest-steps.log")
+RUN_LOGS = ("megler-auto.log", "megler-probe.log", "megler-probe-steps.log", "megler-selftest.log", "megler-selftest-steps.log")
 
 
 def try_get(endpoint, **params):
@@ -444,7 +444,7 @@ def try_get(endpoint, **params):
         return None
 
 
-def meglet_running():
+def megler_running():
     """True/False from the process list, None when the portal doesn't answer."""
     data = try_get("/api/resourcemanager/processes")
     if data is None:
@@ -462,7 +462,7 @@ def read_app_file(pfn, name, folder="\\LocalState"):
 
 
 def launch_and_confirm(pfn, wait=240):
-    """Launches Meglet and waits until the process list shows it. The portal
+    """Launches Megler and waits until the process list shows it. The portal
     can answer the launch with HTTP 500 although it worked, and then stops
     answering for 25-135 s, so only the process list is believed."""
     b64 = lambda s: base64.b64encode(s.encode("utf-8")).decode("ascii")
@@ -475,9 +475,9 @@ def launch_and_confirm(pfn, wait=240):
         deadline = time.time() + wait
         while time.time() < deadline:
             time.sleep(5)
-            running = meglet_running()
+            running = megler_running()
             if running:
-                print("launch: Meglet is running")
+                print("launch: Megler is running")
                 return True
             if running is None:
                 print("  (the portal isn't answering yet)")
@@ -497,16 +497,16 @@ def cmd_auto(a):
     # A run already going (the user opened the app -- the portal can't launch
     # it on a locked or busy phone) is attached to, never ended: stopping it
     # here once killed a run the user had just started by hand.
-    attach = a.no_install and meglet_running() is True
+    attach = a.no_install and megler_running() is True
     if attach:
         # An auto run goes on after its AUTO DONE (the app is left as it is):
         # attached to, it would hand its old logs over as this run's. Whose it
         # is now this can't tell, so it is left running all the same.
-        done_before = read_app_file(pfn, "meglet-auto.log") or b""
+        done_before = read_app_file(pfn, "megler-auto.log") or b""
         if b"AUTO DONE" in done_before:
-            sys.exit("Meglet is running, but its auto run already wrote AUTO DONE: that is a finished run, not a new one. "
+            sys.exit("Megler is running, but its auto run already wrote AUTO DONE: that is a finished run, not a new one. "
                      "If it is yours, end it (python tools/phone.py stop) and run this again.")
-        print("Meglet is already running: attaching to its run")
+        print("Megler is already running: attaching to its run")
     else:
         try:
             post("/api/taskmanager/app", method="DELETE", package=base64.b64encode(pfn.encode()).decode())
@@ -525,7 +525,7 @@ def cmd_auto(a):
     if attach:
         stale = {}  # the running app has already started its logs afresh
     elif not launch_and_confirm(pfn):
-        sys.exit("Meglet didn't start; nothing to collect")
+        sys.exit("Megler didn't start; nothing to collect")
     started = time.time()
     deadline = started + a.timeout * 60
     seen = 0
@@ -533,7 +533,7 @@ def cmd_auto(a):
     done = False
     while time.time() < deadline:
         time.sleep(5)
-        data = fresh("meglet-auto.log")
+        data = fresh("megler-auto.log")
         if data is not None:
             lines = data.decode("utf-8", "replace").splitlines()
             for line in lines[seen:]:
@@ -542,10 +542,10 @@ def cmd_auto(a):
             if any("AUTO DONE" in line for line in lines):
                 done = True
                 break
-        running = meglet_running()
+        running = megler_running()
         gone = gone + 1 if running is False else 0
         if gone >= 3:
-            print("Meglet is no longer running and never wrote AUTO DONE: it crashed or was ended")
+            print("Megler is no longer running and never wrote AUTO DONE: it crashed or was ended")
             break
     else:
         print(f"timed out after {a.timeout:g} minutes")
@@ -587,7 +587,7 @@ def summarize(out_dir):
         print(line)
         summary.append(line)
 
-    auto = read_lines(os.path.join(out_dir, "meglet-auto.log")) or []
+    auto = read_lines(os.path.join(out_dir, "megler-auto.log")) or []
     emit("== auto run ==")
     for line in auto:
         emit("  " + strip_time(line))
@@ -605,7 +605,7 @@ def summarize(out_dir):
             for line in lines[-12:]:
                 emit("    " + line)
 
-    probe = read_lines(os.path.join(out_dir, "meglet-probe.log"))
+    probe = read_lines(os.path.join(out_dir, "megler-probe.log"))
     if probe:
         # Every line is an answer ("name: value"; docs/ARCHITECTURE.md says
         # what each means): all of them.
@@ -613,9 +613,9 @@ def summarize(out_dir):
         for line in probe:
             emit("  " + strip_time(line))
         if not any(strip_time(line).startswith("DONE probe") for line in probe):
-            steps("meglet-probe-steps.log", "probe")
+            steps("megler-probe-steps.log", "probe")
 
-    selftest = read_lines(os.path.join(out_dir, "meglet-selftest.log"))
+    selftest = read_lines(os.path.join(out_dir, "megler-selftest.log"))
     if selftest:
         emit("\n== selftest ==")
         body = [strip_time(line) for line in selftest]
@@ -632,13 +632,13 @@ def summarize(out_dir):
             for line in body[-25:]:
                 emit("    " + line)
         if not any(line.startswith("DONE selftest") for line in body):
-            steps("meglet-selftest-steps.log", "self-test")
+            steps("megler-selftest-steps.log", "self-test")
 
-    core = read_lines(os.path.join(out_dir, "meglet.log"))
+    core = read_lines(os.path.join(out_dir, "megler.log"))
     if core:
-        # meglet.log's lines are "HH:MM:SS.mmm L message", L one of D I W E.
+        # megler.log's lines are "HH:MM:SS.mmm L message", L one of D I W E.
         loud = [line for line in core if re.match(r"^\d\d:\d\d:\d\d\.\d+ [WE] ", line) or "FATAL" in line]
-        emit(f"\n== meglet.log: {len(core)} lines, {len(loud)} warnings and errors ==")
+        emit(f"\n== megler.log: {len(core)} lines, {len(loud)} warnings and errors ==")
         for line in loud[:60]:
             emit("  " + line)
     with open(os.path.join(out_dir, "summary.txt"), "w", encoding="utf-8") as f:

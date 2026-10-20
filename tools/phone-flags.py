@@ -1,4 +1,4 @@
-r"""Set, list or clear Meglet's flag files on the phone (LocalState\flags).
+r"""Set, list or clear Megler's flag files on the phone (LocalState\flags).
 
     python tools/phone-flags.py list
     python tools/phone-flags.py set shots play-170 tap-100-640-424
@@ -9,8 +9,8 @@ r"""Set, list or clear Meglet's flag files on the phone (LocalState\flags).
 
 A flag is a file whose name is all that matters (core: mg_flag; shell:
 auto/AutoRun.cpp for shots, tap-S-X-Y, key-S-C, play-N). Each package reads
-its own LocalState\flags: with --app, the package Meglet made of that Android
-app (docs/PER-APP-PACKAGES.md), found by its identity name, "MegletApp." and
+its own LocalState\flags: with --app, the package Megler made of that Android
+app (docs/PER-APP-PACKAGES.md), found by its identity name, "MeglerApp." and
 the Android package. This goes through Python end to end: a shell that eats
 backslashes cannot mangle the paths.
 """
@@ -25,13 +25,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import phone  # noqa: E402
 
 FOLDER = "\\LocalState\\flags"
-PFN = None  # the package whose flags these are: Meglet's, or an app's own
+PFN = None  # the package whose flags these are: Megler's, or an app's own
 
 
 def app_package(android_package):
-    """The full name of the package Meglet made of `android_package`. Its identity name is "MegletApp." and the package,
+    """The full name of the package Megler made of `android_package`. Its identity name is "MeglerApp." and the package,
     '_' made '-', filled or cut to 50 characters (core/src/appx/mg_appx_manifest.c): the first 41 are the package's."""
-    prefix = ("MegletApp." + android_package.replace("_", "-"))[:41]
+    prefix = ("MeglerApp." + android_package.replace("_", "-"))[:41]
     pkgs = json.loads(phone.get("/api/app/packagemanager/packages"))["InstalledPackages"]
     found = [p["PackageFullName"] for p in pkgs if p["PackageFullName"].split("_")[0].startswith(prefix)]
     if len(found) != 1:

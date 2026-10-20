@@ -31,11 +31,11 @@ public class BitmapFactory {
         int[] wh = new int[2];
         int sample = o != null && o.inSampleSize > 1 ? Integer.highestOneBit(o.inSampleSize) : 1;
         if (o != null && o.inJustDecodeBounds) {
-            meglet.Gfx.bmDecode(data, offset, length, sample, wh, true);
+            megler.Gfx.bmDecode(data, offset, length, sample, wh, true);
             o.outWidth = wh[0]; o.outHeight = wh[1]; o.outMimeType = mime(data, offset); o.outConfig = Bitmap.Config.ARGB_8888;
             return null;
         }
-        long n = meglet.Gfx.bmDecode(data, offset, length, sample, wh, false);
+        long n = megler.Gfx.bmDecode(data, offset, length, sample, wh, false);
         if (n == 0) { if (o != null) { o.outWidth = -1; o.outHeight = -1; } return null; }
         Bitmap b = new Bitmap(n, wh[0], wh[1], Bitmap.Config.ARGB_8888, o != null && o.inMutable);
         if (o != null) {
@@ -74,7 +74,7 @@ public class BitmapFactory {
     public static Bitmap decodeResource(android.content.res.Resources res, int id, Options o) {
         try (InputStream in = res.openRawResource(id)) {
             if (o == null) o = new Options();
-            if (o.inDensity == 0) o.inDensity = res.megletDrawableDensity(id);
+            if (o.inDensity == 0) o.inDensity = res.meglerDrawableDensity(id);
             if (o.inTargetDensity == 0) o.inTargetDensity = res.getDisplayMetrics().densityDpi;
             return decodeStream(in, null, o);
         } catch (Exception e) { return null; }

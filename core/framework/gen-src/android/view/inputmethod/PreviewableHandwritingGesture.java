@@ -3,6 +3,6 @@ package android.view.inputmethod;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class PreviewableHandwritingGesture extends android.view.inputmethod.HandwritingGesture {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     protected PreviewableHandwritingGesture() { super(); }
 }

@@ -3,9 +3,9 @@ package android.media.effect;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class EffectContext {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.media.effect.EffectContext createWithCurrentGlContext() { return new EffectContext(); }
-    public android.media.effect.EffectFactory getFactory() { return (android.media.effect.EffectFactory) megletProps.get("Factory"); }
+    public android.media.effect.EffectFactory getFactory() { return (android.media.effect.EffectFactory) meglerProps.get("Factory"); }
     public void release() {}
     protected EffectContext() {}
 }

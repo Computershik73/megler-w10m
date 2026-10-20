@@ -3,14 +3,14 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CommandResponse extends android.media.tv.BroadcastInfoResponse implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String RESPONSE_TYPE_JSON = "json";
     public static final java.lang.String RESPONSE_TYPE_XML = "xml";
     public CommandResponse(int p0, int p1, int p2, java.lang.String p3, java.lang.String p4) { super(); }
     public int describeContents() { return 0; }
-    public java.lang.String getResponse() { return (java.lang.String) megletProps.get("Response"); }
-    public java.lang.String getResponseType() { return (java.lang.String) megletProps.get("ResponseType"); }
+    public java.lang.String getResponse() { return (java.lang.String) meglerProps.get("Response"); }
+    public java.lang.String getResponseType() { return (java.lang.String) meglerProps.get("ResponseType"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     CommandResponse() { this((int) 0, (int) 0, (int) 0, (java.lang.String) null, (java.lang.String) null); }
 }

@@ -27,7 +27,7 @@
 #include "../src/drivers/mg_java.h"
 #include "../src/mg_core.h"
 #include "../src/host/mg_host.h"
-#include "../include/meglet.h"
+#include "../include/megler.h"
 #include "../src/jni/mg_jni.h"
 #include "../src/jni/mg_jni_loop.h"
 #include "../src/ld/mg_ld.h"
@@ -726,7 +726,7 @@ static void test_textures(void)
 static int g_fake_video, g_fake_audio;
 static u64 g_fake_size;
 
-static void *fake_open(void *user, const char *path, meglet_media_info *info)
+static void *fake_open(void *user, const char *path, megler_media_info *info)
 {
     mg_stat st;
     (void)user;
@@ -771,7 +771,7 @@ static void fake_close(void *user, void *media) { (void)user; (void)media; }
 static void test_media(const char *scratch)
 {
     typedef struct { i32 offset, size; i64 time_us; u32 flags; } buffer_info;
-    static const meglet_media_host fake = { NULL, fake_open, fake_video, fake_audio, fake_seek, fake_close };
+    static const megler_media_host fake = { NULL, fake_open, fake_video, fake_audio, fake_seek, fake_close };
     void *(*ex_new)(void) = (void *(*)(void))mg_bionic_find("AMediaExtractor_new");
     int (*ex_fd)(void *, int, i64, i64) = (int (*)(void *, int, i64, i64))mg_bionic_find("AMediaExtractor_setDataSourceFd");
     u32 (*ex_count)(void *) = (u32 (*)(void *))mg_bionic_find("AMediaExtractor_getTrackCount");
@@ -1110,57 +1110,57 @@ static void test_chromium_oom_report(void)
     CHECK(mg_chromium_oom_global(f + 18) == 0);
 }
 
-/* The manifest of an Android app's own package, made from one shaped as Meglet's (core/src/appx/mg_appx_manifest.c). */
+/* The manifest of an Android app's own package, made from one shaped as Megler's (core/src/appx/mg_appx_manifest.c). */
 static void test_appx_manifest(void)
 {
-    static const char meglet[] =
-        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n<!-- Meglet -->\r\n<Package xmlns=\"x\">\r\n"
-        "  <Identity\r\n      Name=\"Meglet\"\r\n      Publisher=\"CN=Computershik\"\r\n      Version=\"0.1.0.351\" />\r\n"
+    static const char megler[] =
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n<!-- Megler -->\r\n<Package xmlns=\"x\">\r\n"
+        "  <Identity\r\n      Name=\"Megler\"\r\n      Publisher=\"CN=Computershik\"\r\n      Version=\"0.1.0.351\" />\r\n"
         "  <mp:PhoneIdentity\r\n      PhoneProductId=\"af179803-d7e7-4d18-ae09-61b18f61d561\"\r\n      PhonePublisherId=\"0\" />\r\n"
-        "  <Properties>\r\n    <DisplayName>Meglet</DisplayName>\r\n  </Properties>\r\n"
-        "  <Applications><Application Id=\"App\" Executable=\"Meglet.exe\" EntryPoint=\"Meglet.App\">\r\n"
-        "      <uap:VisualElements\r\n          DisplayName=\"Meglet\"\r\n          Description=\"Android games\"\r\n"
+        "  <Properties>\r\n    <DisplayName>Megler</DisplayName>\r\n  </Properties>\r\n"
+        "  <Applications><Application Id=\"App\" Executable=\"Megler.exe\" EntryPoint=\"Megler.App\">\r\n"
+        "      <uap:VisualElements\r\n          DisplayName=\"Megler\"\r\n          Description=\"Android games\"\r\n"
         "          BackgroundColor=\"#000000\">\r\n"
-        "        <uap:DefaultTile Wide310x150Logo=\"w.png\" ShortName=\"Meglet\"/>\r\n"
+        "        <uap:DefaultTile Wide310x150Logo=\"w.png\" ShortName=\"Megler\"/>\r\n"
         "        <uap:SplashScreen Image=\"s.png\" BackgroundColor=\"#000000\" />\r\n"
         "      </uap:VisualElements></Application></Applications></Package>\r\n";
     char err[200], name[64], name2[64];
     char *m, *m2;
-    say("an app's own package: its manifest from Meglet's");
+    say("an app's own package: its manifest from Megler's");
     /* Every name 50 characters long: the package's, a dot and a hash to fill it. */
-    CHECK(mg_appx_app_identity("com.instagram.android", name, sizeof(name)) && !strncmp(name, "MegletApp.com.instagram.android.", 32) &&
+    CHECK(mg_appx_app_identity("com.instagram.android", name, sizeof(name)) && !strncmp(name, "MeglerApp.com.instagram.android.", 32) &&
           strlen(name) == 50);
     CHECK(mg_appx_app_identity("com.instagram.android", name2, sizeof(name2)) && !strcmp(name, name2));
-    CHECK(mg_appx_app_identity("com.example.my_app", name, sizeof(name)) && !strncmp(name, "MegletApp.com.example.my-app.", 29) &&
+    CHECK(mg_appx_app_identity("com.example.my_app", name, sizeof(name)) && !strncmp(name, "MeglerApp.com.example.my-app.", 29) &&
           strlen(name) == 50);
     /* One of 49 gets one hash digit, no dot (10 + 39 = 49). */
     CHECK(mg_appx_app_identity("com.example.abcdefghijklmnopqrstuvwx.ab", name, sizeof(name)) && strlen(name) == 50 &&
-          !strncmp(name, "MegletApp.com.example.abcdefghijklmnopqrstuvwx.ab", 49) && name[49] != '.');
+          !strncmp(name, "MeglerApp.com.example.abcdefghijklmnopqrstuvwx.ab", 49) && name[49] != '.');
     CHECK(mg_appx_app_identity("com.example.a.very.long.package.name.of.some.app.that.goes.on", name, sizeof(name)) && strlen(name) == 50);
     CHECK(mg_appx_app_identity("com.example.a.very.long.package.name.of.some.app.that.goes.on", name2, sizeof(name2)) && !strcmp(name, name2));
     CHECK(!mg_appx_app_identity("com.example/../x", name, sizeof(name)));
-    m = mg_appx_app_manifest(meglet, "com.instagram.android", "Insta & <gram> \"x\"", NULL, NULL, err, sizeof(err));
+    m = mg_appx_app_manifest(megler, "com.instagram.android", "Insta & <gram> \"x\"", NULL, NULL, err, sizeof(err));
     CHECK(m != NULL);
     if (!m) return;
-    CHECK(strstr(m, "Name=\"MegletApp.com.instagram.android.") != NULL);
+    CHECK(strstr(m, "Name=\"MeglerApp.com.instagram.android.") != NULL);
     CHECK(strstr(m, "Publisher=\"CN=Computershik\"") != NULL && strstr(m, "Version=\"0.1.0.351\"") != NULL);
     CHECK(strstr(m, "af179803") == NULL && strstr(m, "PhoneProductId=\"") != NULL);
     CHECK(strstr(m, "<DisplayName>Insta &amp; &lt;gram&gt; &quot;x&quot;</DisplayName>") != NULL);
     CHECK(strstr(m, "DisplayName=\"Insta &amp; &lt;gram&gt; &quot;x&quot;\"") != NULL);
     CHECK(strstr(m, "ShortName=\"Insta &amp; &lt;gram&gt; &quot;x&quot;\"") != NULL);
-    CHECK(strstr(m, "EntryPoint=\"Meglet.App\"") != NULL && strstr(m, "Description=\"Android games\"") != NULL);
+    CHECK(strstr(m, "EntryPoint=\"Megler.App\"") != NULL && strstr(m, "Description=\"Android games\"") != NULL);
     /* The same package again: the same product id; another: another. */
-    m2 = mg_appx_app_manifest(meglet, "com.instagram.android", "Instagram", "transparent", "#102030", err, sizeof(err));
+    m2 = mg_appx_app_manifest(megler, "com.instagram.android", "Instagram", "transparent", "#102030", err, sizeof(err));
     CHECK(m2 && !strncmp(strstr(m, "PhoneProductId=\""), strstr(m2, "PhoneProductId=\""), 54));
-    /* The colours given, the tile's and the splash screen's; none given, Meglet's. */
+    /* The colours given, the tile's and the splash screen's; none given, Megler's. */
     CHECK(m2 && strstr(m2, "BackgroundColor=\"transparent\">") != NULL && strstr(m2, "Image=\"s.png\" BackgroundColor=\"#102030\"") != NULL);
     CHECK(strstr(m, "BackgroundColor=\"#000000\">") != NULL && strstr(m, "Image=\"s.png\" BackgroundColor=\"#000000\"") != NULL);
     free(m2);
-    m2 = mg_appx_app_manifest(meglet, "com.whatsapp", "WhatsApp", NULL, NULL, err, sizeof(err));
+    m2 = mg_appx_app_manifest(megler, "com.whatsapp", "WhatsApp", NULL, NULL, err, sizeof(err));
     CHECK(m2 && strncmp(strstr(m, "PhoneProductId=\""), strstr(m2, "PhoneProductId=\""), 54));
     free(m2);
     /* A short name of forty characters at most, a sequence of UTF-8 never cut. */
-    m2 = mg_appx_app_manifest(meglet, "ru.example", "\xD0\x9E\xD1\x87\xD0\xB5\xD0\xBD\xD1\x8C \xD0\xB4\xD0\xBB\xD0\xB8\xD0\xBD\xD0\xBD\xD0\xBE\xD0\xB5 "
+    m2 = mg_appx_app_manifest(megler, "ru.example", "\xD0\x9E\xD1\x87\xD0\xB5\xD0\xBD\xD1\x8C \xD0\xB4\xD0\xBB\xD0\xB8\xD0\xBD\xD0\xBD\xD0\xBE\xD0\xB5 "
                                                   "\xD0\xBD\xD0\xB0\xD0\xB7\xD0\xB2\xD0\xB0\xD0\xBD\xD0\xB8\xD0\xB5 \xD0\xBF\xD1\x80\xD0\xB8\xD0\xBB\xD0\xBE\xD0\xB6\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F "
                                                   "\xD0\xB4\xD0\xBB\xD1\x8F \xD0\xBF\xD1\x80\xD0\xBE\xD0\xB2\xD0\xB5\xD1\x80\xD0\xBA\xD0\xB8 \xF0\x9F\x98\x80\xF0\x9F\x98\x80",
                               NULL, NULL, err, sizeof(err));
@@ -1191,8 +1191,8 @@ static void put_utf16(u8 *out, const char *s, bool lower_case)
 
 static void test_appx_pri(void)
 {
-    static const char placeholder[] = "MegletApp.00000000000000000000000000000000000000Xy";
-    static const char name[] = "MegletApp.com.ghisler.android.TotalCommander.1a2b3";
+    static const char placeholder[] = "MeglerApp.00000000000000000000000000000000000000Xy";
+    static const char name[] = "MeglerApp.com.ghisler.android.TotalCommander.1a2b3";
     static const char rest1[] = "between the two", rest2[] = "and all the schema's names after the second, a few hundred bytes of them";
     u8 file[600], out[600], data[400];
     size_t n = strlen(placeholder), dn;
@@ -1232,7 +1232,7 @@ static void test_appx_pri(void)
         put_utf16(n16, name, false);
         CHECK(!memcmp(out + 100, n16, 2 * n) && !memcmp(out + 300, n16, 2 * n));
     }
-    CHECK(!mg_appx_pri_rename(file, sizeof(file), placeholder, 1, 2, "MegletApp.short", out, err, sizeof(err)));
+    CHECK(!mg_appx_pri_rename(file, sizeof(file), placeholder, 1, 2, "MeglerApp.short", out, err, sizeof(err)));
 }
 
 static void test_libc_odds(void)
@@ -1266,7 +1266,7 @@ static int drain_frames(mg_mcodec *c, int *times, int max, bool *grey)
     i64 info[3];
     mg_mframe *f;
     while ((f = mg_mcodec_next_frame(c, info)) != NULL) {
-        const meglet_codec_picture *p = mg_mcodec_frame_picture(f);
+        const megler_codec_picture *p = mg_mcodec_frame_picture(f);
         u8 bgra[64 * 4];
         int want = (298 * (mg_codec_standin_luma(info[0]) - 16) + 128) >> 8;
         if (want > 255) want = 255;
@@ -1387,7 +1387,7 @@ static void test_codec_pictures(void)
          * of place (1, after 3) goes on as it is, and from then on four are held back, so that the rest come in order; after a
          * flush the same units come out in order from the first.
          */
-        static meglet_codec_host liar;
+        static megler_codec_host liar;
         mg_mcodec *c;
         u8 sps[16], pps[16], unit[64];
         size_t ns = 0, np = 0, nu, size[3] = { 0, 0, 0 };
@@ -1535,28 +1535,28 @@ static void test_codec_sound(void)
 static void test_codec_colours(void)
 {
     u8 y[2], uv[2], rgba[4] = { 10, 20, 30, 40 }, out[8];
-    meglet_codec_picture p;
+    megler_codec_picture p;
     memset(&p, 0, sizeof(p));
-    p.format = MEGLET_CODEC_NV12;
+    p.format = MEGLER_CODEC_NV12;
     p.width = 2;
     p.height = 1;
     p.data = y;
     p.chroma = uv;
     p.stride = p.chroma_stride = 2;
     y[0] = y[1] = 81, uv[0] = 90, uv[1] = 240;
-    p.matrix = MEGLET_CODEC_BT601;
+    p.matrix = MEGLER_CODEC_BT601;
     CHECK(mg_mcodec_render(&p, out, 2, 1, 8) && out[2] >= 253 && out[1] <= 2 && out[0] <= 2 && out[3] == 255 && out[6] == out[2]);
     y[0] = y[1] = 63, uv[0] = 102, uv[1] = 240;
-    p.matrix = MEGLET_CODEC_BT709;
+    p.matrix = MEGLER_CODEC_BT709;
     CHECK(mg_mcodec_render(&p, out, 2, 1, 8) && out[2] >= 253 && out[1] <= 2 && out[0] <= 2);
     /* Not said, a small picture: BT.601, under which BT.709's red is a darker one. */
     p.matrix = 0;
     CHECK(mg_mcodec_render(&p, out, 2, 1, 8) && out[2] >= 225 && out[2] <= 240);
     y[0] = y[1] = 76, uv[0] = 85, uv[1] = 255;
-    p.matrix = MEGLET_CODEC_BT601;
+    p.matrix = MEGLER_CODEC_BT601;
     p.full_range = true;
     CHECK(mg_mcodec_render(&p, out, 2, 1, 8) && out[2] >= 253 && out[1] <= 2 && out[0] <= 2);
-    p.format = MEGLET_CODEC_RGBA;
+    p.format = MEGLER_CODEC_RGBA;
     p.width = 1;
     p.data = rgba;
     p.stride = 4;
@@ -1632,7 +1632,7 @@ static void test_camera(void)
     /* The quarters' colours (top left, top right, bottom left, bottom right) after each turn, without and with the mirror. */
     static const int turned[4][4] = { { CAM_R, CAM_G, CAM_B, CAM_W }, { CAM_B, CAM_R, CAM_W, CAM_G }, { CAM_W, CAM_B, CAM_G, CAM_R }, { CAM_G, CAM_W, CAM_R, CAM_B } };
     static const int mirrored[4][4] = { { CAM_G, CAM_R, CAM_W, CAM_B }, { CAM_W, CAM_G, CAM_B, CAM_R }, { CAM_B, CAM_W, CAM_R, CAM_G }, { CAM_R, CAM_B, CAM_G, CAM_W } };
-    meglet_camera_info info;
+    megler_camera_info info;
     mg_camera_standin_counts k0, k1;
     mg_jcamera *c, *front;
     u8 *nv21, *yv12, *bgra;
@@ -1644,21 +1644,21 @@ static void test_camera(void)
     CHECK(mg_jcamera_count() == 0 && mg_jcamera_features() == 0 && !mg_jcamera_open(0, &err));
     mg_java_camera_set_host(mg_camera_standin());
     CHECK_INT(mg_jcamera_count(), 2);
-    CHECK(mg_jcamera_info(0, &info) && info.facing == MEGLET_CAMERA_BACK && info.orientation == 90 && info.focus == 1 && info.light == 1);
-    CHECK(mg_jcamera_info(1, &info) && info.facing == MEGLET_CAMERA_FRONT && info.orientation == 270 && info.focus == 0 && info.light == 0);
+    CHECK(mg_jcamera_info(0, &info) && info.facing == MEGLER_CAMERA_BACK && info.orientation == 90 && info.focus == 1 && info.light == 1);
+    CHECK(mg_jcamera_info(1, &info) && info.facing == MEGLER_CAMERA_FRONT && info.orientation == 270 && info.focus == 0 && info.light == 0);
     CHECK(!mg_jcamera_info(2, &info) && !mg_jcamera_info(-1, &info));
     CHECK_INT(mg_jcamera_features(), MG_JCAMERA_ANY | MG_JCAMERA_HAS_BACK | MG_JCAMERA_HAS_FRONT | MG_JCAMERA_HAS_AUTOFOCUS | MG_JCAMERA_HAS_FLASH);
     mg_camera_standin_counts_get(&k0);
     c = mg_jcamera_open(0, &err);
-    CHECK(c && err == MEGLET_CAMERA_OK);
+    CHECK(c && err == MEGLER_CAMERA_OK);
     if (!c) return;
     CHECK(mg_jcamera_caps(c)->size_count == 3 && mg_jcamera_caps(c)->sizes[0].width == 1280 && mg_jcamera_caps(c)->sizes[2].height == 240 &&
           mg_jcamera_caps(c)->sizes[2].max_fps == 30 && mg_jcamera_caps(c)->focus && mg_jcamera_caps(c)->torch);
     /* The same camera again is busy; a camera there is not is no camera. */
-    CHECK(!mg_jcamera_open(0, &err) && err == MEGLET_CAMERA_BUSY);
-    CHECK(!mg_jcamera_open(7, &err) && err == MEGLET_CAMERA_FAILED);
+    CHECK(!mg_jcamera_open(0, &err) && err == MEGLER_CAMERA_BUSY);
+    CHECK(!mg_jcamera_open(7, &err) && err == MEGLER_CAMERA_FAILED);
     /* Nothing comes and nothing is held before it streams; focusing is refused. */
-    CHECK(mg_jcamera_wait(c, 50) == 0 && mg_jcamera_size(c) == 0 && !mg_jcamera_focus(c, MEGLET_CAMERA_FOCUS_ONCE));
+    CHECK(mg_jcamera_wait(c, 50) == 0 && mg_jcamera_size(c) == 0 && !mg_jcamera_focus(c, MEGLER_CAMERA_FOCUS_ONCE));
     CHECK(mg_jcamera_start(c, 320, 240, 30));
     news = camera_news(c, MG_JCAMERA_FRAME, 5000);
     CHECK((news & MG_JCAMERA_FRAME) && mg_jcamera_size(c) == (320 << 16 | 240));
@@ -1693,11 +1693,11 @@ static void test_camera(void)
     news = camera_news(c, MG_JCAMERA_FRAME, 5000);
     CHECK((news & MG_JCAMERA_FRAME) && mg_jcamera_copy(c, nv21, 115200, 17) == 115200 && (second = camera_number(nv21)) > first && camera_nv21_right(nv21, 320, 240));
     /* Focusing once: in focus. Asked and cancelled: no answer after the cancel. */
-    CHECK(mg_jcamera_focus(c, MEGLET_CAMERA_FOCUS_ONCE));
+    CHECK(mg_jcamera_focus(c, MEGLER_CAMERA_FOCUS_ONCE));
     CHECK(camera_news(c, MG_JCAMERA_FOCUSED, 5000) & MG_JCAMERA_FOCUSED);
-    CHECK(mg_jcamera_focus(c, MEGLET_CAMERA_FOCUS_MACRO) && mg_jcamera_focus(c, MEGLET_CAMERA_FOCUS_NONE));
+    CHECK(mg_jcamera_focus(c, MEGLER_CAMERA_FOCUS_MACRO) && mg_jcamera_focus(c, MEGLER_CAMERA_FOCUS_NONE));
     CHECK(!(camera_news(c, MG_JCAMERA_FOCUSED, 300) & (MG_JCAMERA_FOCUSED | MG_JCAMERA_NOT_FOCUSED)));
-    CHECK(mg_jcamera_focus(c, MEGLET_CAMERA_FOCUS_CONTINUOUS) && (camera_news(c, MG_JCAMERA_FOCUSED, 5000) & MG_JCAMERA_FOCUSED));
+    CHECK(mg_jcamera_focus(c, MEGLER_CAMERA_FOCUS_CONTINUOUS) && (camera_news(c, MG_JCAMERA_FOCUSED, 5000) & MG_JCAMERA_FOCUSED));
     /* The torch, on and off; and off when the camera stops. */
     mg_jcamera_torch(c, true);
     mg_camera_standin_counts_get(&k1);
@@ -1720,7 +1720,7 @@ static void test_camera(void)
         free(bgra);
         bgra = (u8 *)mg_alloc(640 * 480 * 4);
         CHECK(mg_jcamera_render(front, bgra, 480, 640, 480 * 4, 90, true) && camera_quarters(bgra, 480, 640, mirrored[1]));
-        CHECK(!mg_jcamera_focus(front, MEGLET_CAMERA_FOCUS_ONCE));
+        CHECK(!mg_jcamera_focus(front, MEGLER_CAMERA_FOCUS_ONCE));
         mg_jcamera_close(front);
     }
     mg_jcamera_close(c);
@@ -1744,7 +1744,7 @@ static void test_camera(void)
     }
     /* Refused, it does not open, and says so. */
     mg_camera_standin_refuse(true);
-    CHECK(!mg_jcamera_open(0, &err) && err == MEGLET_CAMERA_DENIED);
+    CHECK(!mg_jcamera_open(0, &err) && err == MEGLER_CAMERA_DENIED);
     mg_camera_standin_refuse(false);
     /* What the app leaves open is closed when it ends. */
     mg_camera_standin_counts_get(&k0);
@@ -1784,42 +1784,42 @@ static void test_battery(void)
     CHECK(b.level == 100 && b.plugged == 1 && !strcmp(b.technology, "Li-ion"));
     {
         /*
-         * The shell's battery (meglet.h): what a phone with Windows says, and the rest filled in. And the count of changes an app is
+         * The shell's battery (megler.h): what a phone with Windows says, and the rest filled in. And the count of changes an app is
          * told of: one for each time the level, the status or the plug became another, none for the same again or for the
          * voltage alone.
          */
-        meglet_battery phone;
+        megler_battery phone;
         u32 changes = mg_battery_changes();
         memset(&phone, 0, sizeof(phone));
         phone.level = 50;
         phone.status = 3;
         phone.temperature = INT_MIN;
         phone.present = true;
-        meglet_set_battery(&phone);
+        megler_set_battery(&phone);
         mg_battery_read(&b);
         CHECK(b.level == 50 && b.scale == 100 && b.status == 3 && b.plugged == 0 && b.health == 2 && b.voltage_mv == 3800 && b.temperature == 250 && b.present
               && !strcmp(b.technology, "Li-ion"));
         CHECK(mg_battery_changes() == changes + 1);
-        meglet_set_battery(&phone);
+        megler_set_battery(&phone);
         CHECK(mg_battery_changes() == changes + 1);
         phone.voltage_mv = 3777;
         phone.temperature = -15;
-        meglet_set_battery(&phone);
+        megler_set_battery(&phone);
         mg_battery_read(&b);
         CHECK(b.voltage_mv == 3777 && b.temperature == -15 && mg_battery_changes() == changes + 1);
         phone.plugged = 2;
         phone.status = 2;
-        meglet_set_battery(&phone);
+        megler_set_battery(&phone);
         CHECK(mg_battery_changes() == changes + 2);
         /* What cannot be is brought to what can. */
         phone.level = 140;
         phone.status = 9;
         phone.plugged = -1;
         phone.present = false;
-        meglet_set_battery(&phone);
+        megler_set_battery(&phone);
         mg_battery_read(&b);
         CHECK(b.level == 100 && b.status == 1 && b.plugged == 0 && b.health == 1 && !b.present);
-        meglet_set_battery(NULL);
+        megler_set_battery(NULL);
         mg_battery_read(&b);
         CHECK(b.level == 100 && b.status == 5 && b.plugged == 1 && b.voltage_mv == 4200);
     }
@@ -2649,7 +2649,7 @@ static void test_dvm(const char *libdir, const char *scratch, bool guest_code)
     }
     g_failed += mg_dvm_tests_run(&config, g_sink, g_sink_user, &checks);
     g_checks += checks;
-    /* meglet.Gfx's native methods make their arrays and strings with the runtime, which is running from here on. */
+    /* megler.Gfx's native methods make their arrays and strings with the runtime, which is running from here on. */
     checks = 0;
     g_failed += mg_gfx_natives_tests_run(g_sink, g_sink_user, &checks);
     g_checks += checks;
@@ -2686,7 +2686,7 @@ static void test_sqlite(const char *scratch)
     mg_stat fs;
     say("SQLite %s, compiled into the core, on the host layer's files", sqlite3_libversion());
     CHECK(mg_sqlite_available() && mg_sqlite_start() && mg_sqlite_start());
-    CHECK(sqlite3_vfs_find(NULL) && !strcmp(sqlite3_vfs_find(NULL)->zName, "meglet") && sqlite3_threadsafe() == 1);
+    CHECK(sqlite3_vfs_find(NULL) && !strcmp(sqlite3_vfs_find(NULL)->zName, "megler") && sqlite3_threadsafe() == 1);
     mg_path_remove(path, NULL);
     mg_path_remove(journal, NULL);
     /* A database that is not there is not made unless asked. */

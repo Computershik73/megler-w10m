@@ -1,10 +1,10 @@
-r"""Builds Meglet's own ANGLE: gecko-w10m's, with Meglet's changes to it (angle/*.patch).
+r"""Builds Megler's own ANGLE: gecko-w10m's, with Megler's changes to it (angle/*.patch).
 
     python tools/build-angle.py [--check]
 
 gecko-w10m builds ANGLE as part of Firefox (its object directory, C:\rw-obj by
-default). Meglet's package uses that ANGLE as it is unless build/angle/dist has
-one of Meglet's own, which this makes without touching gecko-w10m's sources or
+default). Megler's package uses that ANGLE as it is unless build/angle/dist has
+one of Megler's own, which this makes without touching gecko-w10m's sources or
 its object directory:
 
   1. Each patch in angle/ is applied to copies of the files it changes
@@ -22,8 +22,8 @@ its object directory:
 --check: no patch applied; the objects are compiled and linked all the same,
 to show that the way of building gives an ANGLE that works.
 
-Environment: MEGLET_GECKO (gecko-w10m's checkout, ../gecko-w10m by default),
-MEGLET_ANGLE_OBJ (its object directory, C:\rw-obj by default).
+Environment: MEGLER_GECKO (gecko-w10m's checkout, ../gecko-w10m by default),
+MEGLER_ANGLE_OBJ (its object directory, C:\rw-obj by default).
 """
 import os
 import re
@@ -33,8 +33,8 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GECKO = os.environ.get("MEGLET_GECKO") or os.path.join(os.path.dirname(ROOT), "gecko-w10m")
-OBJ = os.environ.get("MEGLET_ANGLE_OBJ") or "C:\\rw-obj"
+GECKO = os.environ.get("MEGLER_GECKO") or os.path.join(os.path.dirname(ROOT), "gecko-w10m")
+OBJ = os.environ.get("MEGLER_ANGLE_OBJ") or "C:\\rw-obj"
 ANGLE_SRC = os.path.join(GECKO, "engine", "firefox", "third_party", "angle")
 ANGLE_OBJ = os.path.join(OBJ, "third_party", "angle")
 GLES_OBJ = os.path.join(ANGLE_OBJ, "libGLESv2_gn")
@@ -192,7 +192,7 @@ def link(autoconf, rebuilt):
 
 def main():
     check = "--check" in sys.argv[1:]
-    for path, what in ((ANGLE_SRC, "ANGLE's sources (MEGLET_GECKO)"), (GLES_OBJ, "gecko-w10m's ANGLE objects (MEGLET_ANGLE_OBJ)")):
+    for path, what in ((ANGLE_SRC, "ANGLE's sources (MEGLER_GECKO)"), (GLES_OBJ, "gecko-w10m's ANGLE objects (MEGLER_ANGLE_OBJ)")):
         if not os.path.isdir(path):
             die("no %s at %s" % (what, path))
     autoconf = make_vars(os.path.join(OBJ, "config", "autoconf.mk"))

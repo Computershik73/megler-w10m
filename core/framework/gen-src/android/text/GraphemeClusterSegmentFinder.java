@@ -3,7 +3,7 @@ package android.text;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class GraphemeClusterSegmentFinder extends android.text.SegmentFinder {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public GraphemeClusterSegmentFinder(java.lang.CharSequence p0, android.text.TextPaint p1) { super(); }
     public int nextEndBoundary(int p0) { return 0; }
     public int nextStartBoundary(int p0) { return 0; }

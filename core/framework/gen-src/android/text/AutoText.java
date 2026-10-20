@@ -3,7 +3,7 @@ package android.text;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AutoText {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static java.lang.String get(java.lang.CharSequence p0, int p1, int p2, android.view.View p3) { return null; }
     public static int getSize(android.view.View p0) { return 0; }
     protected AutoText() {}

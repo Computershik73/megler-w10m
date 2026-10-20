@@ -3,7 +3,7 @@ package android.telecom;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CallAudioState implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int ROUTE_ALL = 31;
     public static final int ROUTE_BLUETOOTH = 2;
@@ -18,12 +18,12 @@ public final class CallAudioState implements android.os.Parcelable {
     public CallAudioState(boolean p0, int p1, int p2, android.bluetooth.BluetoothDevice p3, java.util.Collection p4) {}
     public static java.lang.String audioRouteToString(int p0) { return null; }
     public int describeContents() { return 0; }
-    public android.bluetooth.BluetoothDevice getActiveBluetoothDevice() { return (android.bluetooth.BluetoothDevice) megletProps.get("ActiveBluetoothDevice"); }
-    public int getRawSupportedRouteMask() { return (megletProps.get("RawSupportedRouteMask") instanceof Integer ? (Integer) megletProps.get("RawSupportedRouteMask") : 0); }
-    public int getRoute() { return (megletProps.get("Route") instanceof Integer ? (Integer) megletProps.get("Route") : 0); }
-    public java.util.Collection getSupportedBluetoothDevices() { return (megletProps.get("SupportedBluetoothDevices") != null ? (java.util.Collection) megletProps.get("SupportedBluetoothDevices") : new java.util.ArrayList()); }
-    public int getSupportedRouteMask() { return (megletProps.get("SupportedRouteMask") instanceof Integer ? (Integer) megletProps.get("SupportedRouteMask") : 0); }
-    public boolean isMuted() { return (megletProps.get("Muted") instanceof Boolean ? (Boolean) megletProps.get("Muted") : false); }
+    public android.bluetooth.BluetoothDevice getActiveBluetoothDevice() { return (android.bluetooth.BluetoothDevice) meglerProps.get("ActiveBluetoothDevice"); }
+    public int getRawSupportedRouteMask() { return (meglerProps.get("RawSupportedRouteMask") instanceof Integer ? (Integer) meglerProps.get("RawSupportedRouteMask") : 0); }
+    public int getRoute() { return (meglerProps.get("Route") instanceof Integer ? (Integer) meglerProps.get("Route") : 0); }
+    public java.util.Collection getSupportedBluetoothDevices() { return (meglerProps.get("SupportedBluetoothDevices") != null ? (java.util.Collection) meglerProps.get("SupportedBluetoothDevices") : new java.util.ArrayList()); }
+    public int getSupportedRouteMask() { return (meglerProps.get("SupportedRouteMask") instanceof Integer ? (Integer) meglerProps.get("SupportedRouteMask") : 0); }
+    public boolean isMuted() { return (meglerProps.get("Muted") instanceof Boolean ? (Boolean) meglerProps.get("Muted") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     CallAudioState() { this((android.telecom.AudioState) null); }
 }

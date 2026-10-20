@@ -3,7 +3,7 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DnsResolver {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int CLASS_IN = 1;
     public static final int ERROR_PARSE = 0;
     public static final int ERROR_SYSTEM = 1;
@@ -28,13 +28,13 @@ public final class DnsResolver {
         void onError(android.net.DnsResolver.DnsException p0);
     }
     public static class DnsException extends java.lang.Exception {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public int code;
         public DnsException(int p0, java.lang.Throwable p1) { super(); }
         DnsException() { this((int) 0, (java.lang.Throwable) null); }
     }
     public static final class DnsResponse {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public byte[] answerbuf;
         public int rcode;
         public DnsResponse(byte[] p0, int p1) {}

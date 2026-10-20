@@ -3,8 +3,8 @@ package android.security.identity;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AuthenticationKeyMetadata {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public java.time.Instant getExpirationDate() { return (java.time.Instant) megletProps.get("ExpirationDate"); }
-    public int getUsageCount() { return (megletProps.get("UsageCount") instanceof Integer ? (Integer) megletProps.get("UsageCount") : 0); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public java.time.Instant getExpirationDate() { return (java.time.Instant) meglerProps.get("ExpirationDate"); }
+    public int getUsageCount() { return (meglerProps.get("UsageCount") instanceof Integer ? (Integer) meglerProps.get("UsageCount") : 0); }
     protected AuthenticationKeyMetadata() {}
 }

@@ -38,9 +38,9 @@ public class ListPopupWindow {
     public ListPopupWindow(Context c, AttributeSet a, int s) { this(c, a, s, 0); }
     public ListPopupWindow(Context c, AttributeSet attrs, int s, int r) {
         mContext = c;
-        TypedArray a = c.obtainStyledAttributes(attrs, meglet.S.ListPopupWindow, s, r);
-        mDropDownHorizontalOffset = a.getDimensionPixelOffset(meglet.S.ListPopupWindow_dropDownHorizontalOffset, 0);
-        mDropDownVerticalOffset = a.getDimensionPixelOffset(meglet.S.ListPopupWindow_dropDownVerticalOffset, 0);
+        TypedArray a = c.obtainStyledAttributes(attrs, megler.S.ListPopupWindow, s, r);
+        mDropDownHorizontalOffset = a.getDimensionPixelOffset(megler.S.ListPopupWindow_dropDownHorizontalOffset, 0);
+        mDropDownVerticalOffset = a.getDimensionPixelOffset(megler.S.ListPopupWindow_dropDownVerticalOffset, 0);
         a.recycle();
         mPopup = new PopupWindow(c, attrs, s, r);
         mPopup.setInputMethodMode(PopupWindow.INPUT_METHOD_NEEDED);
@@ -118,7 +118,7 @@ public class ListPopupWindow {
         int width = mDropDownWidth;
         if (width == WRAP_CONTENT && mDropDownAnchorView != null) width = Math.max(measureContentWidth(), mDropDownAnchorView.getWidth());
         else if (width == MATCH_PARENT && mDropDownAnchorView != null) width = mDropDownAnchorView.getWidth();
-        int maxH = mDropDownAnchorView != null ? mPopup.getMaxAvailableHeight(mDropDownAnchorView, mDropDownVerticalOffset) : meglet.Native.screenHeight() / 2;
+        int maxH = mDropDownAnchorView != null ? mPopup.getMaxAvailableHeight(mDropDownAnchorView, mDropDownVerticalOffset) : megler.Native.screenHeight() / 2;
         int height = mDropDownHeight;
         if (height == WRAP_CONTENT) {
             Rect around = new Rect();

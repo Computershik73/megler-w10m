@@ -3,10 +3,10 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class IntervalRecord extends android.health.connect.datatypes.Record {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public java.time.Instant getEndTime() { return (java.time.Instant) megletProps.get("EndTime"); }
-    public java.time.ZoneOffset getEndZoneOffset() { return (java.time.ZoneOffset) megletProps.get("EndZoneOffset"); }
-    public java.time.Instant getStartTime() { return (java.time.Instant) megletProps.get("StartTime"); }
-    public java.time.ZoneOffset getStartZoneOffset() { return (java.time.ZoneOffset) megletProps.get("StartZoneOffset"); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public java.time.Instant getEndTime() { return (java.time.Instant) meglerProps.get("EndTime"); }
+    public java.time.ZoneOffset getEndZoneOffset() { return (java.time.ZoneOffset) meglerProps.get("EndZoneOffset"); }
+    public java.time.Instant getStartTime() { return (java.time.Instant) meglerProps.get("StartTime"); }
+    public java.time.ZoneOffset getStartZoneOffset() { return (java.time.ZoneOffset) meglerProps.get("StartZoneOffset"); }
     protected IntervalRecord() { super(); }
 }

@@ -3,7 +3,7 @@ package android.os;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class PatternMatcher implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int PATTERN_ADVANCED_GLOB = 3;
     public static final int PATTERN_LITERAL = 0;
@@ -15,8 +15,8 @@ public class PatternMatcher implements android.os.Parcelable {
     public boolean check() { return false; }
     public int describeContents() { return 0; }
     public void dumpDebug(android.util.proto.ProtoOutputStream p0, long p1) {}
-    public java.lang.String getPath() { return (java.lang.String) megletProps.get("Path"); }
-    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
+    public java.lang.String getPath() { return (java.lang.String) meglerProps.get("Path"); }
+    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
     public boolean match(java.lang.String p0) { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     PatternMatcher() { this((android.os.Parcel) null); }

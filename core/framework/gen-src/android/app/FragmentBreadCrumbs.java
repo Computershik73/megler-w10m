@@ -3,16 +3,16 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class FragmentBreadCrumbs extends android.view.ViewGroup implements android.app.FragmentManager.OnBackStackChangedListener {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public FragmentBreadCrumbs(android.content.Context p0) { super(p0); }
     public FragmentBreadCrumbs(android.content.Context p0, android.util.AttributeSet p1) { super(p0, p1); }
     public FragmentBreadCrumbs(android.content.Context p0, android.util.AttributeSet p1, int p2) { super(p0, p1, p2); }
     public FragmentBreadCrumbs(android.content.Context p0, android.util.AttributeSet p1, int p2, int p3) { super(p0, p1, p2, p3); }
     public void onBackStackChanged() {}
     public void onLayout(boolean p0, int p1, int p2, int p3, int p4) {}
-    public void setActivity(android.app.Activity p0) { megletProps.put("Activity", p0); }
-    public void setMaxVisible(int p0) { megletProps.put("MaxVisible", Integer.valueOf(p0)); }
-    public void setOnBreadCrumbClickListener(android.app.FragmentBreadCrumbs.OnBreadCrumbClickListener p0) { megletProps.put("OnBreadCrumbClickListener", p0); }
+    public void setActivity(android.app.Activity p0) { meglerProps.put("Activity", p0); }
+    public void setMaxVisible(int p0) { meglerProps.put("MaxVisible", Integer.valueOf(p0)); }
+    public void setOnBreadCrumbClickListener(android.app.FragmentBreadCrumbs.OnBreadCrumbClickListener p0) { meglerProps.put("OnBreadCrumbClickListener", p0); }
     public void setParentTitle(java.lang.CharSequence p0, java.lang.CharSequence p1, android.view.View.OnClickListener p2) {}
     public void setTitle(java.lang.CharSequence p0, java.lang.CharSequence p1) {}
     FragmentBreadCrumbs() { this((android.content.Context) null); }

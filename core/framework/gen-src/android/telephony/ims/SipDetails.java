@@ -3,28 +3,28 @@ package android.telephony.ims;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SipDetails implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int METHOD_PUBLISH = 2;
     public static final int METHOD_REGISTER = 1;
     public static final int METHOD_SUBSCRIBE = 3;
     public static int METHOD_UNKNOWN;
     public int describeContents() { return 0; }
-    public int getCSeq() { return (megletProps.get("CSeq") instanceof Integer ? (Integer) megletProps.get("CSeq") : 0); }
-    public java.lang.String getCallId() { return (java.lang.String) megletProps.get("CallId"); }
-    public int getMethod() { return (megletProps.get("Method") instanceof Integer ? (Integer) megletProps.get("Method") : 0); }
-    public int getReasonHeaderCause() { return (megletProps.get("ReasonHeaderCause") instanceof Integer ? (Integer) megletProps.get("ReasonHeaderCause") : 0); }
-    public java.lang.String getReasonHeaderText() { return (java.lang.String) megletProps.get("ReasonHeaderText"); }
-    public int getResponseCode() { return (megletProps.get("ResponseCode") instanceof Integer ? (Integer) megletProps.get("ResponseCode") : 0); }
-    public java.lang.String getResponsePhrase() { return (java.lang.String) megletProps.get("ResponsePhrase"); }
+    public int getCSeq() { return (meglerProps.get("CSeq") instanceof Integer ? (Integer) meglerProps.get("CSeq") : 0); }
+    public java.lang.String getCallId() { return (java.lang.String) meglerProps.get("CallId"); }
+    public int getMethod() { return (meglerProps.get("Method") instanceof Integer ? (Integer) meglerProps.get("Method") : 0); }
+    public int getReasonHeaderCause() { return (meglerProps.get("ReasonHeaderCause") instanceof Integer ? (Integer) meglerProps.get("ReasonHeaderCause") : 0); }
+    public java.lang.String getReasonHeaderText() { return (java.lang.String) meglerProps.get("ReasonHeaderText"); }
+    public int getResponseCode() { return (meglerProps.get("ResponseCode") instanceof Integer ? (Integer) meglerProps.get("ResponseCode") : 0); }
+    public java.lang.String getResponsePhrase() { return (java.lang.String) meglerProps.get("ResponsePhrase"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected SipDetails() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(int p0) {}
-        public android.telephony.ims.SipDetails build() { android.telephony.ims.SipDetails x = new android.telephony.ims.SipDetails(); x.megletProps.putAll(megletProps); return x; }
-        public android.telephony.ims.SipDetails.Builder setCSeq(int p0) { megletProps.put("CSeq", Integer.valueOf(p0)); return this; }
-        public android.telephony.ims.SipDetails.Builder setCallId(java.lang.String p0) { megletProps.put("CallId", p0); return this; }
+        public android.telephony.ims.SipDetails build() { android.telephony.ims.SipDetails x = new android.telephony.ims.SipDetails(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.telephony.ims.SipDetails.Builder setCSeq(int p0) { meglerProps.put("CSeq", Integer.valueOf(p0)); return this; }
+        public android.telephony.ims.SipDetails.Builder setCallId(java.lang.String p0) { meglerProps.put("CallId", p0); return this; }
         public android.telephony.ims.SipDetails.Builder setSipResponseCode(int p0, java.lang.String p1) { return this; }
         public android.telephony.ims.SipDetails.Builder setSipResponseReasonHeader(int p0, java.lang.String p1) { return this; }
         Builder() { this((int) 0); }

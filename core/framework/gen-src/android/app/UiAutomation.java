@@ -3,7 +3,7 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class UiAutomation {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static java.util.Set ALL_PERMISSIONS;
     public static final int FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES = 1;
     public static final int FLAG_DONT_USE_ACCESSIBILITY = 2;
@@ -35,36 +35,36 @@ public final class UiAutomation {
     public android.os.ParcelFileDescriptor[] executeShellCommandRw(java.lang.String p0) { return null; }
     public android.os.ParcelFileDescriptor[] executeShellCommandRwe(java.lang.String p0) { return null; }
     public android.view.accessibility.AccessibilityNodeInfo findFocus(int p0) { return null; }
-    public java.util.Set getAdoptedShellPermissions() { return (megletProps.get("AdoptedShellPermissions") != null ? (java.util.Set) megletProps.get("AdoptedShellPermissions") : new java.util.HashSet()); }
-    public android.view.accessibility.AccessibilityCache getCache() { return (android.view.accessibility.AccessibilityCache) megletProps.get("Cache"); }
-    public int getConnectionId() { return (megletProps.get("ConnectionId") instanceof Integer ? (Integer) megletProps.get("ConnectionId") : 0); }
-    public int getDisplayId() { return (megletProps.get("DisplayId") instanceof Integer ? (Integer) megletProps.get("DisplayId") : 0); }
-    public int getFlags() { return (megletProps.get("Flags") instanceof Integer ? (Integer) megletProps.get("Flags") : 0); }
-    public android.view.accessibility.AccessibilityNodeInfo getRootInActiveWindow() { return (android.view.accessibility.AccessibilityNodeInfo) megletProps.get("RootInActiveWindow"); }
+    public java.util.Set getAdoptedShellPermissions() { return (meglerProps.get("AdoptedShellPermissions") != null ? (java.util.Set) meglerProps.get("AdoptedShellPermissions") : new java.util.HashSet()); }
+    public android.view.accessibility.AccessibilityCache getCache() { return (android.view.accessibility.AccessibilityCache) meglerProps.get("Cache"); }
+    public int getConnectionId() { return (meglerProps.get("ConnectionId") instanceof Integer ? (Integer) meglerProps.get("ConnectionId") : 0); }
+    public int getDisplayId() { return (meglerProps.get("DisplayId") instanceof Integer ? (Integer) meglerProps.get("DisplayId") : 0); }
+    public int getFlags() { return (meglerProps.get("Flags") instanceof Integer ? (Integer) meglerProps.get("Flags") : 0); }
+    public android.view.accessibility.AccessibilityNodeInfo getRootInActiveWindow() { return (android.view.accessibility.AccessibilityNodeInfo) meglerProps.get("RootInActiveWindow"); }
     public android.view.accessibility.AccessibilityNodeInfo getRootInActiveWindow(int p0) { return null; }
-    public android.accessibilityservice.AccessibilityServiceInfo getServiceInfo() { return (android.accessibilityservice.AccessibilityServiceInfo) megletProps.get("ServiceInfo"); }
-    public android.view.WindowAnimationFrameStats getWindowAnimationFrameStats() { return (android.view.WindowAnimationFrameStats) megletProps.get("WindowAnimationFrameStats"); }
+    public android.accessibilityservice.AccessibilityServiceInfo getServiceInfo() { return (android.accessibilityservice.AccessibilityServiceInfo) meglerProps.get("ServiceInfo"); }
+    public android.view.WindowAnimationFrameStats getWindowAnimationFrameStats() { return (android.view.WindowAnimationFrameStats) meglerProps.get("WindowAnimationFrameStats"); }
     public android.view.WindowContentFrameStats getWindowContentFrameStats(int p0) { return null; }
-    public java.util.List getWindows() { return (megletProps.get("Windows") != null ? (java.util.List) megletProps.get("Windows") : new java.util.ArrayList()); }
-    public android.util.SparseArray getWindowsOnAllDisplays() { return (android.util.SparseArray) megletProps.get("WindowsOnAllDisplays"); }
+    public java.util.List getWindows() { return (meglerProps.get("Windows") != null ? (java.util.List) meglerProps.get("Windows") : new java.util.ArrayList()); }
+    public android.util.SparseArray getWindowsOnAllDisplays() { return (android.util.SparseArray) meglerProps.get("WindowsOnAllDisplays"); }
     public void grantRuntimePermission(java.lang.String p0, java.lang.String p1) {}
     public boolean grantRuntimePermission(java.lang.String p0, java.lang.String p1, android.os.UserHandle p2) { return false; }
     public void grantRuntimePermissionAsUser(java.lang.String p0, java.lang.String p1, android.os.UserHandle p2) {}
     public boolean injectInputEvent(android.view.InputEvent p0, boolean p1) { return false; }
     public boolean injectInputEvent(android.view.InputEvent p0, boolean p1, boolean p2) { return false; }
     public void injectInputEventToInputFilter(android.view.InputEvent p0) {}
-    public boolean isDestroyed() { return (megletProps.get("Destroyed") instanceof Boolean ? (Boolean) megletProps.get("Destroyed") : false); }
+    public boolean isDestroyed() { return (meglerProps.get("Destroyed") instanceof Boolean ? (Boolean) meglerProps.get("Destroyed") : false); }
     public boolean isNodeInCache(android.view.accessibility.AccessibilityNodeInfo p0) { return false; }
     public boolean performGlobalAction(int p0) { return false; }
     public void removeOverridePermissionState(int p0, java.lang.String p1) {}
     public void revokeRuntimePermission(java.lang.String p0, java.lang.String p1) {}
     public boolean revokeRuntimePermission(java.lang.String p0, java.lang.String p1, android.os.UserHandle p2) { return false; }
     public void revokeRuntimePermissionAsUser(java.lang.String p0, java.lang.String p1, android.os.UserHandle p2) {}
-    public void setAnimationScale(float p0) { megletProps.put("AnimationScale", Float.valueOf(p0)); }
-    public void setOnAccessibilityEventListener(android.app.UiAutomation.OnAccessibilityEventListener p0) { megletProps.put("OnAccessibilityEventListener", p0); }
+    public void setAnimationScale(float p0) { meglerProps.put("AnimationScale", Float.valueOf(p0)); }
+    public void setOnAccessibilityEventListener(android.app.UiAutomation.OnAccessibilityEventListener p0) { meglerProps.put("OnAccessibilityEventListener", p0); }
     public boolean setRotation(int p0) { return false; }
-    public void setRunAsMonkey(boolean p0) { megletProps.put("RunAsMonkey", Boolean.valueOf(p0)); }
-    public void setServiceInfo(android.accessibilityservice.AccessibilityServiceInfo p0) { megletProps.put("ServiceInfo", p0); }
+    public void setRunAsMonkey(boolean p0) { meglerProps.put("RunAsMonkey", Boolean.valueOf(p0)); }
+    public void setServiceInfo(android.accessibilityservice.AccessibilityServiceInfo p0) { meglerProps.put("ServiceInfo", p0); }
     public void syncInputTransactions() {}
     public void syncInputTransactions(boolean p0) {}
     public android.graphics.Bitmap takeScreenshot() { return null; }

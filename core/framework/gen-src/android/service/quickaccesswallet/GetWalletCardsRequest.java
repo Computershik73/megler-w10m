@@ -3,14 +3,14 @@ package android.service.quickaccesswallet;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GetWalletCardsRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public GetWalletCardsRequest(int p0, int p1, int p2, int p3) {}
     public int describeContents() { return 0; }
-    public int getCardHeightPx() { return (megletProps.get("CardHeightPx") instanceof Integer ? (Integer) megletProps.get("CardHeightPx") : 0); }
-    public int getCardWidthPx() { return (megletProps.get("CardWidthPx") instanceof Integer ? (Integer) megletProps.get("CardWidthPx") : 0); }
-    public int getIconSizePx() { return (megletProps.get("IconSizePx") instanceof Integer ? (Integer) megletProps.get("IconSizePx") : 0); }
-    public int getMaxCards() { return (megletProps.get("MaxCards") instanceof Integer ? (Integer) megletProps.get("MaxCards") : 0); }
+    public int getCardHeightPx() { return (meglerProps.get("CardHeightPx") instanceof Integer ? (Integer) meglerProps.get("CardHeightPx") : 0); }
+    public int getCardWidthPx() { return (meglerProps.get("CardWidthPx") instanceof Integer ? (Integer) meglerProps.get("CardWidthPx") : 0); }
+    public int getIconSizePx() { return (meglerProps.get("IconSizePx") instanceof Integer ? (Integer) meglerProps.get("IconSizePx") : 0); }
+    public int getMaxCards() { return (meglerProps.get("MaxCards") instanceof Integer ? (Integer) meglerProps.get("MaxCards") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     GetWalletCardsRequest() { this((int) 0, (int) 0, (int) 0, (int) 0); }
 }

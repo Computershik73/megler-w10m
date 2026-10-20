@@ -3,14 +3,14 @@ package android.text;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Annotation implements android.text.ParcelableSpan {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public Annotation(android.os.Parcel p0) {}
     public Annotation(java.lang.String p0, java.lang.String p1) {}
     public int describeContents() { return 0; }
-    public java.lang.String getKey() { return (java.lang.String) megletProps.get("Key"); }
-    public int getSpanTypeId() { return (megletProps.get("SpanTypeId") instanceof Integer ? (Integer) megletProps.get("SpanTypeId") : 0); }
-    public int getSpanTypeIdInternal() { return (megletProps.get("SpanTypeIdInternal") instanceof Integer ? (Integer) megletProps.get("SpanTypeIdInternal") : 0); }
-    public java.lang.String getValue() { return (java.lang.String) megletProps.get("Value"); }
+    public java.lang.String getKey() { return (java.lang.String) meglerProps.get("Key"); }
+    public int getSpanTypeId() { return (meglerProps.get("SpanTypeId") instanceof Integer ? (Integer) meglerProps.get("SpanTypeId") : 0); }
+    public int getSpanTypeIdInternal() { return (meglerProps.get("SpanTypeIdInternal") instanceof Integer ? (Integer) meglerProps.get("SpanTypeIdInternal") : 0); }
+    public java.lang.String getValue() { return (java.lang.String) meglerProps.get("Value"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public void writeToParcelInternal(android.os.Parcel p0, int p1) {}
     Annotation() { this((android.os.Parcel) null); }

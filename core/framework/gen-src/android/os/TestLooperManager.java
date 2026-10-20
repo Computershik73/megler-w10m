@@ -3,14 +3,14 @@ package android.os;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class TestLooperManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public TestLooperManager(android.os.Looper p0) {}
     public void execute(android.os.Message p0) {}
-    public android.os.MessageQueue getMessageQueue() { return (android.os.MessageQueue) megletProps.get("MessageQueue"); }
-    public android.os.MessageQueue getQueue() { return (android.os.MessageQueue) megletProps.get("Queue"); }
+    public android.os.MessageQueue getMessageQueue() { return (android.os.MessageQueue) meglerProps.get("MessageQueue"); }
+    public android.os.MessageQueue getQueue() { return (android.os.MessageQueue) meglerProps.get("Queue"); }
     public boolean hasMessages(android.os.Handler p0, java.lang.Object p1, int p2) { return false; }
     public boolean hasMessages(android.os.Handler p0, java.lang.Object p1, java.lang.Runnable p2) { return false; }
-    public boolean isBlockedOnSyncBarrier() { return (megletProps.get("BlockedOnSyncBarrier") instanceof Boolean ? (Boolean) megletProps.get("BlockedOnSyncBarrier") : false); }
+    public boolean isBlockedOnSyncBarrier() { return (meglerProps.get("BlockedOnSyncBarrier") instanceof Boolean ? (Boolean) meglerProps.get("BlockedOnSyncBarrier") : false); }
     public android.os.Message next() { return null; }
     public java.lang.Long peekWhen() { return null; }
     public android.os.Message poll() { return null; }

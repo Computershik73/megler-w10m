@@ -3,7 +3,7 @@ package android.os.strictmode;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CredentialProtectedWhileLockedViolation extends android.os.strictmode.Violation {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public CredentialProtectedWhileLockedViolation(java.lang.String p0) { super(); }
     CredentialProtectedWhileLockedViolation() { this((java.lang.String) null); }
 }

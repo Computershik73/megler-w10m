@@ -3,12 +3,12 @@ package android.app.admin;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ConnectEvent extends android.app.admin.NetworkEvent implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public ConnectEvent(java.lang.String p0, int p1, java.lang.String p2, long p3) { super(); }
     public int describeContents() { return 0; }
-    public java.net.InetAddress getInetAddress() { return (java.net.InetAddress) megletProps.get("InetAddress"); }
-    public int getPort() { return (megletProps.get("Port") instanceof Integer ? (Integer) megletProps.get("Port") : 0); }
+    public java.net.InetAddress getInetAddress() { return (java.net.InetAddress) meglerProps.get("InetAddress"); }
+    public int getPort() { return (meglerProps.get("Port") instanceof Integer ? (Integer) meglerProps.get("Port") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     ConnectEvent() { this((java.lang.String) null, (int) 0, (java.lang.String) null, (long) 0L); }
 }

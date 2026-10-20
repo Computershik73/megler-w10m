@@ -3,12 +3,12 @@ package android.credentials;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ClearCredentialStateException extends java.lang.Exception {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String TYPE_UNKNOWN = "android.credentials.ClearCredentialStateException.TYPE_UNKNOWN";
     public ClearCredentialStateException(java.lang.String p0) { super(); }
     public ClearCredentialStateException(java.lang.String p0, java.lang.String p1) { super(); }
     public ClearCredentialStateException(java.lang.String p0, java.lang.String p1, java.lang.Throwable p2) { super(); }
     public ClearCredentialStateException(java.lang.String p0, java.lang.Throwable p1) { super(); }
-    public java.lang.String getType() { return (java.lang.String) megletProps.get("Type"); }
+    public java.lang.String getType() { return (java.lang.String) meglerProps.get("Type"); }
     ClearCredentialStateException() { this((java.lang.String) null); }
 }

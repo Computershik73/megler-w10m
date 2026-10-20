@@ -3,29 +3,29 @@ package android.view.translation;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TranslationContext implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int FLAG_DEFINITIONS = 4;
     public static final int FLAG_LOW_LATENCY = 1;
     public static final int FLAG_TRANSLITERATION = 2;
     public static java.lang.String translationFlagToString(int p0) { return null; }
     public int describeContents() { return 0; }
-    public android.app.assist.ActivityId getActivityId() { return (android.app.assist.ActivityId) megletProps.get("ActivityId"); }
-    public android.view.translation.TranslationSpec getSourceSpec() { return (android.view.translation.TranslationSpec) megletProps.get("SourceSpec"); }
-    public android.view.translation.TranslationSpec getTargetSpec() { return (android.view.translation.TranslationSpec) megletProps.get("TargetSpec"); }
-    public int getTranslationFlags() { return (megletProps.get("TranslationFlags") instanceof Integer ? (Integer) megletProps.get("TranslationFlags") : 0); }
+    public android.app.assist.ActivityId getActivityId() { return (android.app.assist.ActivityId) meglerProps.get("ActivityId"); }
+    public android.view.translation.TranslationSpec getSourceSpec() { return (android.view.translation.TranslationSpec) meglerProps.get("SourceSpec"); }
+    public android.view.translation.TranslationSpec getTargetSpec() { return (android.view.translation.TranslationSpec) meglerProps.get("TargetSpec"); }
+    public int getTranslationFlags() { return (meglerProps.get("TranslationFlags") instanceof Integer ? (Integer) meglerProps.get("TranslationFlags") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected TranslationContext() {}
     public static abstract class BaseBuilder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         protected BaseBuilder() {}
     }
     public static final class Builder extends android.view.translation.TranslationContext.BaseBuilder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.view.translation.TranslationSpec p0, android.view.translation.TranslationSpec p1) { super(); }
-        public android.view.translation.TranslationContext build() { android.view.translation.TranslationContext x = new android.view.translation.TranslationContext(); x.megletProps.putAll(megletProps); return x; }
-        public android.view.translation.TranslationContext.Builder setActivityId(android.app.assist.ActivityId p0) { megletProps.put("ActivityId", p0); return this; }
-        public android.view.translation.TranslationContext.Builder setTranslationFlags(int p0) { megletProps.put("TranslationFlags", Integer.valueOf(p0)); return this; }
+        public android.view.translation.TranslationContext build() { android.view.translation.TranslationContext x = new android.view.translation.TranslationContext(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.view.translation.TranslationContext.Builder setActivityId(android.app.assist.ActivityId p0) { meglerProps.put("ActivityId", p0); return this; }
+        public android.view.translation.TranslationContext.Builder setTranslationFlags(int p0) { meglerProps.put("TranslationFlags", Integer.valueOf(p0)); return this; }
         Builder() { this((android.view.translation.TranslationSpec) null, (android.view.translation.TranslationSpec) null); }
     }
 }

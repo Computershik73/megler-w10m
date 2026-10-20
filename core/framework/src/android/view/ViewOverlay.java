@@ -32,18 +32,18 @@ public class ViewOverlay {
         mHost.invalidate();
     }
     boolean isEmpty() { return mDrawables.isEmpty() && mGroup.getChildCount() == 0; }
-    boolean megletHas(Drawable d) { return mDrawables.contains(d); }
+    boolean meglerHas(Drawable d) { return mDrawables.contains(d); }
 
-    /** Meglet: drawn by the host once it has drawn itself. */
-    void megletDraw(Canvas c) {
+    /** Megler: drawn by the host once it has drawn itself. */
+    void meglerDraw(Canvas c) {
         for (Drawable d : new ArrayList<>(mDrawables)) d.draw(c);
         if (mGroup.getChildCount() > 0) {
             if (mGroup.getWidth() != mHost.getWidth() || mGroup.getHeight() != mHost.getHeight()) mGroup.layout(0, 0, mHost.getWidth(), mHost.getHeight());
             for (int i = 0; i < mGroup.getChildCount(); i++) mGroup.getChildAt(i).drawFromParent(c, mGroup);
         }
     }
-    void megletAttached(meglet.ViewRoot root) { if (root != null) mGroup.dispatchAttachedToWindow(root, View.VISIBLE); }
-    void megletDetached() { mGroup.dispatchDetachedFromWindow(); }
+    void meglerAttached(megler.ViewRoot root) { if (root != null) mGroup.dispatchAttachedToWindow(root, View.VISIBLE); }
+    void meglerDetached() { mGroup.dispatchDetachedFromWindow(); }
 
     /** The overlay's views: laid out where they were put, drawn by the host, invalidating it. */
     static class OverlayViewGroup extends ViewGroup {

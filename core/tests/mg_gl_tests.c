@@ -6,7 +6,7 @@
  *
  * What is checked is the Java side's own work: that every native the framework declares is bound, values and floats
  * reaching the function, arrays and their offsets, java.nio buffers of each kind and their positions, strings both ways,
- * Android's exceptions; contexts and surfaces of meglet.EGLNative; and the window composed of the views' picture and a
+ * Android's exceptions; contexts and surfaces of megler.EGLNative; and the window composed of the views' picture and a
  * surface's frame under them -- a hole, a half-transparent row, the frame upside down as OpenGL has it, read back as
  * B, G, R, A and as R, G, B, A, scaled, moved, gone -- with whatever pack buffer and framebuffer the app left bound. And
  * what a swap costs at a phone's size, on this machine, with the stand-in's read-back (a copy of memory, which ANGLE's is
@@ -128,7 +128,7 @@ static mg_jvalue call(const char *cls, const char *name, const char *sig, int co
     va_start(ap, count);
     for (i = 0; i < count && i < 16; i++) args[i] = va_arg(ap, mg_jvalue);
     va_end(ap);
-    snprintf(full, sizeof(full), "%s/%s", !strcmp(cls, "EGLNative") ? "meglet" : "android/opengl", cls);
+    snprintf(full, sizeof(full), "%s/%s", !strcmp(cls, "EGLNative") ? "megler" : "android/opengl", cls);
     e = find_native(full, name, sig);
     if (!e) {
         t_failed++;
@@ -554,7 +554,7 @@ static void test_calls(void)
     CHECK(x && surf);
     CHECK(EGL("makeCurrent", "(JJ)Z", 2, J(surf), J(x)).z);
     /* Strings out. */
-    CHECK(!strcmp(text_of(GL20("glGetString", "(I)Ljava/lang/String;", 1, I(0x1F00)).l), "Meglet"));
+    CHECK(!strcmp(text_of(GL20("glGetString", "(I)Ljava/lang/String;", 1, I(0x1F00)).l), "Megler"));
     CHECK(!strcmp(text_of(GL20("glGetString", "(I)Ljava/lang/String;", 1, I(0x1F02)).l), "OpenGL ES 2.0 (stand-in)"));
     CHECK(!strcmp(text_of(call("GLES10", "glGetString", "(I)Ljava/lang/String;", 1, I(0x1F01)).l), "stand-in for OpenGL ES"));
     /* Floats in as floats, through the function itself (no adapter): what the stand-in received is read back as a pixel. */

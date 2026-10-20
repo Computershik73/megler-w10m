@@ -158,7 +158,7 @@ static const char *default_zone(i32 *offset_ms)
 }
 
 /*
- * The default time zone is the phone's, which the shell names (meglet_set_timezone; mg_timezone_set underneath): with none
+ * The default time zone is the phone's, which the shell names (megler_set_timezone; mg_timezone_set underneath): with none
  * named it is GMT, as libcore says by itself; with a zone of tzdata's, that zone; with a name tzdata does not have, GMT
  * again and nothing thrown. The property persist.sys.timezone says the name, "UTC" while there is none.
  */
@@ -182,7 +182,7 @@ static void test_timezone(void)
 }
 
 /*
- * The phone's language and region (meglet_set_locale; mg_locale_set underneath): "en-US" until set; a tag kept as given, an
+ * The phone's language and region (megler_set_locale; mg_locale_set underneath): "en-US" until set; a tag kept as given, an
  * underscore taken for a hyphen; its language and region apart, past a script and to a region of three digits; one that does
  * not begin with a language "en-US" again. The properties persist.sys.locale and ro.product.locale say it.
  */

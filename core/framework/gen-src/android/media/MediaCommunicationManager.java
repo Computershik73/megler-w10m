@@ -3,11 +3,11 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MediaCommunicationManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public MediaCommunicationManager(android.content.Context p0) {}
     public void dispatchMediaKeyEvent(android.view.KeyEvent p0, boolean p1) {}
-    public java.util.List getSession2Tokens() { return (megletProps.get("Session2Tokens") != null ? (java.util.List) megletProps.get("Session2Tokens") : new java.util.ArrayList()); }
-    public int getVersion() { return (megletProps.get("Version") instanceof Integer ? (Integer) megletProps.get("Version") : 0); }
+    public java.util.List getSession2Tokens() { return (meglerProps.get("Session2Tokens") != null ? (java.util.List) meglerProps.get("Session2Tokens") : new java.util.ArrayList()); }
+    public int getVersion() { return (meglerProps.get("Version") instanceof Integer ? (Integer) meglerProps.get("Version") : 0); }
     public boolean isTrustedForMediaControl(android.media.session.MediaSessionManager.RemoteUserInfo p0) { return false; }
     public void notifySession2Created(android.media.Session2Token p0) {}
     public void registerSessionCallback(java.util.concurrent.Executor p0, android.media.MediaCommunicationManager.SessionCallback p1) {}

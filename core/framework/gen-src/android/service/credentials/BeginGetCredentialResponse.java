@@ -3,25 +3,25 @@ package android.service.credentials;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BeginGetCredentialResponse implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public BeginGetCredentialResponse() {}
     public int describeContents() { return 0; }
-    public java.util.List getActions() { return (megletProps.get("Actions") != null ? (java.util.List) megletProps.get("Actions") : new java.util.ArrayList()); }
-    public java.util.List getAuthenticationActions() { return (megletProps.get("AuthenticationActions") != null ? (java.util.List) megletProps.get("AuthenticationActions") : new java.util.ArrayList()); }
-    public java.util.List getCredentialEntries() { return (megletProps.get("CredentialEntries") != null ? (java.util.List) megletProps.get("CredentialEntries") : new java.util.ArrayList()); }
-    public android.service.credentials.RemoteEntry getRemoteCredentialEntry() { return (android.service.credentials.RemoteEntry) megletProps.get("RemoteCredentialEntry"); }
+    public java.util.List getActions() { return (meglerProps.get("Actions") != null ? (java.util.List) meglerProps.get("Actions") : new java.util.ArrayList()); }
+    public java.util.List getAuthenticationActions() { return (meglerProps.get("AuthenticationActions") != null ? (java.util.List) meglerProps.get("AuthenticationActions") : new java.util.ArrayList()); }
+    public java.util.List getCredentialEntries() { return (meglerProps.get("CredentialEntries") != null ? (java.util.List) meglerProps.get("CredentialEntries") : new java.util.ArrayList()); }
+    public android.service.credentials.RemoteEntry getRemoteCredentialEntry() { return (android.service.credentials.RemoteEntry) meglerProps.get("RemoteCredentialEntry"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public android.service.credentials.BeginGetCredentialResponse.Builder addAction(android.service.credentials.Action p0) { return this; }
         public android.service.credentials.BeginGetCredentialResponse.Builder addAuthenticationAction(android.service.credentials.Action p0) { return this; }
         public android.service.credentials.BeginGetCredentialResponse.Builder addCredentialEntry(android.service.credentials.CredentialEntry p0) { return this; }
-        public android.service.credentials.BeginGetCredentialResponse build() { android.service.credentials.BeginGetCredentialResponse x = new android.service.credentials.BeginGetCredentialResponse(); x.megletProps.putAll(megletProps); return x; }
-        public android.service.credentials.BeginGetCredentialResponse.Builder setActions(java.util.List p0) { megletProps.put("Actions", p0); return this; }
-        public android.service.credentials.BeginGetCredentialResponse.Builder setAuthenticationActions(java.util.List p0) { megletProps.put("AuthenticationActions", p0); return this; }
-        public android.service.credentials.BeginGetCredentialResponse.Builder setCredentialEntries(java.util.List p0) { megletProps.put("CredentialEntries", p0); return this; }
-        public android.service.credentials.BeginGetCredentialResponse.Builder setRemoteCredentialEntry(android.service.credentials.RemoteEntry p0) { megletProps.put("RemoteCredentialEntry", p0); return this; }
+        public android.service.credentials.BeginGetCredentialResponse build() { android.service.credentials.BeginGetCredentialResponse x = new android.service.credentials.BeginGetCredentialResponse(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.service.credentials.BeginGetCredentialResponse.Builder setActions(java.util.List p0) { meglerProps.put("Actions", p0); return this; }
+        public android.service.credentials.BeginGetCredentialResponse.Builder setAuthenticationActions(java.util.List p0) { meglerProps.put("AuthenticationActions", p0); return this; }
+        public android.service.credentials.BeginGetCredentialResponse.Builder setCredentialEntries(java.util.List p0) { meglerProps.put("CredentialEntries", p0); return this; }
+        public android.service.credentials.BeginGetCredentialResponse.Builder setRemoteCredentialEntry(android.service.credentials.RemoteEntry p0) { meglerProps.put("RemoteCredentialEntry", p0); return this; }
     }
 }

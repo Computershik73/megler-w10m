@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DataFailCause {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int ACCESS_ATTEMPT_ALREADY_IN_PROGRESS = 2219;
     public static final int ACCESS_BLOCK = 2087;
     public static final int ACCESS_BLOCK_ALL = 2088;

@@ -3,7 +3,7 @@ package android.net.wifi.aware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DiscoverySession implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     protected int mClientId;
     protected java.lang.ref.WeakReference mMgr;
     protected int mSessionId;
@@ -16,8 +16,8 @@ public class DiscoverySession implements java.lang.AutoCloseable {
     public android.net.NetworkSpecifier createNetworkSpecifierPassphrase(android.net.wifi.aware.PeerHandle p0, java.lang.String p1) { return null; }
     public android.net.NetworkSpecifier createNetworkSpecifierPmk(android.net.wifi.aware.PeerHandle p0, byte[] p1) { return null; }
     protected void finalize() {}
-    public int getClientId() { return (megletProps.get("ClientId") instanceof Integer ? (Integer) megletProps.get("ClientId") : 0); }
-    public int getSessionId() { return (megletProps.get("SessionId") instanceof Integer ? (Integer) megletProps.get("SessionId") : 0); }
+    public int getClientId() { return (meglerProps.get("ClientId") instanceof Integer ? (Integer) meglerProps.get("ClientId") : 0); }
+    public int getSessionId() { return (meglerProps.get("SessionId") instanceof Integer ? (Integer) meglerProps.get("SessionId") : 0); }
     public void initiateBootstrappingRequest(android.net.wifi.aware.PeerHandle p0, int p1) {}
     public void initiatePairingRequest(android.net.wifi.aware.PeerHandle p0, java.lang.String p1, int p2, java.lang.String p3) {}
     public void rejectPairingRequest(int p0, android.net.wifi.aware.PeerHandle p1) {}

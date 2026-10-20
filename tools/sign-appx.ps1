@@ -1,4 +1,4 @@
-# Signs an appx package (podium-w10m's and gecko-w10m's tools/sign-appx.ps1, for Meglet).
+# Signs an appx package (podium-w10m's and gecko-w10m's tools/sign-appx.ps1, for Megler).
 #
 # Signing lives in PowerShell rather than in build-appx.sh because msys2's bash
 # hands its children an environment with TEMP and TMP empty; signtool unpacks
@@ -9,7 +9,7 @@
 # The signer's subject must be exactly the manifest's Publisher (CN=Computershik)
 # or the package won't install, so a certificate with another subject is
 # refused here rather than on the phone. -Certificate is used when it exists
-# (tools/build-appx.sh picks one the user's phones already trust: Meglet's own,
+# (tools/build-appx.sh picks one the user's phones already trust: Megler's own,
 # else Podium's, else Gecko's); only when it does not exist is a self-signed
 # certificate made for that Publisher and exported there.
 #
@@ -19,7 +19,7 @@ param(
     [Parameter(Mandatory = $true)][string]$Package,
     [Parameter(Mandatory = $true)][string]$Certificate,
     [string]$Subject = '',
-    [string]$Password = $(if ($env:MEGLET_PFX_PASSWORD) { $env:MEGLET_PFX_PASSWORD } else { 'meglet' }),
+    [string]$Password = $(if ($env:MEGLER_PFX_PASSWORD) { $env:MEGLER_PFX_PASSWORD } else { 'megler' }),
     [string]$CerOut = '',
     [string]$SdkBin = 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64'
 )
@@ -54,7 +54,7 @@ if (-not (Test-Path $Certificate)) {
     if (-not $Subject) { throw "no certificate at $Certificate, and no -Subject to make one for" }
     Write-Output "    creating a self-signed certificate ($Subject)"
     $cert = New-SelfSignedCertificate -Type Custom -Subject $Subject `
-        -KeyUsage DigitalSignature -FriendlyName 'Meglet W10M' `
+        -KeyUsage DigitalSignature -FriendlyName 'Megler W10M' `
         -CertStoreLocation 'Cert:\CurrentUser\My' `
         -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3', '2.5.29.19={text}')
     $secure = ConvertTo-SecureString -String $Password -Force -AsPlainText
@@ -71,8 +71,8 @@ Write-Output "    signer $($signer.Subject), thumbprint $($signer.Thumbprint), v
 
 # Start-Process with explicit redirection: from a nested msys2 bash the call
 # operator's stdout can vanish, taking signtool's diagnostics with it.
-$outFile = Join-Path $env:TEMP 'meglet-signtool-out.txt'
-$errFile = Join-Path $env:TEMP 'meglet-signtool-err.txt'
+$outFile = Join-Path $env:TEMP 'megler-signtool-out.txt'
+$errFile = Join-Path $env:TEMP 'megler-signtool-err.txt'
 $proc = Start-Process -FilePath $signtool -Wait -NoNewWindow -PassThru `
     -ArgumentList @('sign', '/fd', 'SHA256', '/f', "`"$Certificate`"", '/p', $Password, "`"$Package`"") `
     -RedirectStandardOutput $outFile -RedirectStandardError $errFile

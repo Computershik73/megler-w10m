@@ -3,7 +3,7 @@ package android.view.textclassifier;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SelectionEvent implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int ACTION_ABANDON = 107;
     public static final int ACTION_COPY = 101;
     public static final int ACTION_CUT = 103;
@@ -32,32 +32,32 @@ public final class SelectionEvent implements android.os.Parcelable {
     public static android.view.textclassifier.SelectionEvent createSelectionStartedEvent(int p0, int p1) { return new SelectionEvent(); }
     public static boolean isTerminal(int p0) { return false; }
     public int describeContents() { return 0; }
-    public long getDurationSincePreviousEvent() { return (megletProps.get("DurationSincePreviousEvent") instanceof Long ? (Long) megletProps.get("DurationSincePreviousEvent") : 0L); }
-    public long getDurationSinceSessionStart() { return (megletProps.get("DurationSinceSessionStart") instanceof Long ? (Long) megletProps.get("DurationSinceSessionStart") : 0L); }
-    public int getEnd() { return (megletProps.get("End") instanceof Integer ? (Integer) megletProps.get("End") : 0); }
-    public java.lang.String getEntityType() { return (java.lang.String) megletProps.get("EntityType"); }
-    public int getEventIndex() { return (megletProps.get("EventIndex") instanceof Integer ? (Integer) megletProps.get("EventIndex") : 0); }
-    public long getEventTime() { return (megletProps.get("EventTime") instanceof Long ? (Long) megletProps.get("EventTime") : 0L); }
-    public int getEventType() { return (megletProps.get("EventType") instanceof Integer ? (Integer) megletProps.get("EventType") : 0); }
-    public int getInvocationMethod() { return (megletProps.get("InvocationMethod") instanceof Integer ? (Integer) megletProps.get("InvocationMethod") : 0); }
-    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
-    public java.lang.String getResultId() { return (java.lang.String) megletProps.get("ResultId"); }
-    public android.view.textclassifier.TextClassificationSessionId getSessionId() { return (android.view.textclassifier.TextClassificationSessionId) megletProps.get("SessionId"); }
-    public int getSmartEnd() { return (megletProps.get("SmartEnd") instanceof Integer ? (Integer) megletProps.get("SmartEnd") : 0); }
-    public int getSmartStart() { return (megletProps.get("SmartStart") instanceof Integer ? (Integer) megletProps.get("SmartStart") : 0); }
-    public int getStart() { return (megletProps.get("Start") instanceof Integer ? (Integer) megletProps.get("Start") : 0); }
-    public android.view.textclassifier.SystemTextClassifierMetadata getSystemTextClassifierMetadata() { return (android.view.textclassifier.SystemTextClassifierMetadata) megletProps.get("SystemTextClassifierMetadata"); }
-    public java.lang.String getWidgetType() { return (java.lang.String) megletProps.get("WidgetType"); }
-    public java.lang.String getWidgetVersion() { return (java.lang.String) megletProps.get("WidgetVersion"); }
-    public android.view.textclassifier.SelectionEvent setEnd(int p0) { megletProps.put("End", Integer.valueOf(p0)); return this; }
-    public android.view.textclassifier.SelectionEvent setEventIndex(int p0) { megletProps.put("EventIndex", Integer.valueOf(p0)); return this; }
-    public void setEventType(int p0) { megletProps.put("EventType", Integer.valueOf(p0)); }
-    public void setInvocationMethod(int p0) { megletProps.put("InvocationMethod", Integer.valueOf(p0)); }
-    public android.view.textclassifier.SelectionEvent setSessionId(android.view.textclassifier.TextClassificationSessionId p0) { megletProps.put("SessionId", p0); return this; }
-    public android.view.textclassifier.SelectionEvent setSmartEnd(int p0) { megletProps.put("SmartEnd", Integer.valueOf(p0)); return this; }
-    public android.view.textclassifier.SelectionEvent setSmartStart(int p0) { megletProps.put("SmartStart", Integer.valueOf(p0)); return this; }
-    public android.view.textclassifier.SelectionEvent setStart(int p0) { megletProps.put("Start", Integer.valueOf(p0)); return this; }
-    public void setTextClassificationSessionContext(android.view.textclassifier.TextClassificationContext p0) { megletProps.put("TextClassificationSessionContext", p0); }
+    public long getDurationSincePreviousEvent() { return (meglerProps.get("DurationSincePreviousEvent") instanceof Long ? (Long) meglerProps.get("DurationSincePreviousEvent") : 0L); }
+    public long getDurationSinceSessionStart() { return (meglerProps.get("DurationSinceSessionStart") instanceof Long ? (Long) meglerProps.get("DurationSinceSessionStart") : 0L); }
+    public int getEnd() { return (meglerProps.get("End") instanceof Integer ? (Integer) meglerProps.get("End") : 0); }
+    public java.lang.String getEntityType() { return (java.lang.String) meglerProps.get("EntityType"); }
+    public int getEventIndex() { return (meglerProps.get("EventIndex") instanceof Integer ? (Integer) meglerProps.get("EventIndex") : 0); }
+    public long getEventTime() { return (meglerProps.get("EventTime") instanceof Long ? (Long) meglerProps.get("EventTime") : 0L); }
+    public int getEventType() { return (meglerProps.get("EventType") instanceof Integer ? (Integer) meglerProps.get("EventType") : 0); }
+    public int getInvocationMethod() { return (meglerProps.get("InvocationMethod") instanceof Integer ? (Integer) meglerProps.get("InvocationMethod") : 0); }
+    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
+    public java.lang.String getResultId() { return (java.lang.String) meglerProps.get("ResultId"); }
+    public android.view.textclassifier.TextClassificationSessionId getSessionId() { return (android.view.textclassifier.TextClassificationSessionId) meglerProps.get("SessionId"); }
+    public int getSmartEnd() { return (meglerProps.get("SmartEnd") instanceof Integer ? (Integer) meglerProps.get("SmartEnd") : 0); }
+    public int getSmartStart() { return (meglerProps.get("SmartStart") instanceof Integer ? (Integer) meglerProps.get("SmartStart") : 0); }
+    public int getStart() { return (meglerProps.get("Start") instanceof Integer ? (Integer) meglerProps.get("Start") : 0); }
+    public android.view.textclassifier.SystemTextClassifierMetadata getSystemTextClassifierMetadata() { return (android.view.textclassifier.SystemTextClassifierMetadata) meglerProps.get("SystemTextClassifierMetadata"); }
+    public java.lang.String getWidgetType() { return (java.lang.String) meglerProps.get("WidgetType"); }
+    public java.lang.String getWidgetVersion() { return (java.lang.String) meglerProps.get("WidgetVersion"); }
+    public android.view.textclassifier.SelectionEvent setEnd(int p0) { meglerProps.put("End", Integer.valueOf(p0)); return this; }
+    public android.view.textclassifier.SelectionEvent setEventIndex(int p0) { meglerProps.put("EventIndex", Integer.valueOf(p0)); return this; }
+    public void setEventType(int p0) { meglerProps.put("EventType", Integer.valueOf(p0)); }
+    public void setInvocationMethod(int p0) { meglerProps.put("InvocationMethod", Integer.valueOf(p0)); }
+    public android.view.textclassifier.SelectionEvent setSessionId(android.view.textclassifier.TextClassificationSessionId p0) { meglerProps.put("SessionId", p0); return this; }
+    public android.view.textclassifier.SelectionEvent setSmartEnd(int p0) { meglerProps.put("SmartEnd", Integer.valueOf(p0)); return this; }
+    public android.view.textclassifier.SelectionEvent setSmartStart(int p0) { meglerProps.put("SmartStart", Integer.valueOf(p0)); return this; }
+    public android.view.textclassifier.SelectionEvent setStart(int p0) { meglerProps.put("Start", Integer.valueOf(p0)); return this; }
+    public void setTextClassificationSessionContext(android.view.textclassifier.TextClassificationContext p0) { meglerProps.put("TextClassificationSessionContext", p0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected SelectionEvent() {}
 }

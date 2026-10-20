@@ -3,7 +3,7 @@ package android.telephony.ims;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ImsReasonInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int CODE_ACCESS_CLASS_BLOCKED = 1512;
     public static final int CODE_ANSWERED_ELSEWHERE = 1014;
     public static final int CODE_BLACKLISTED_CALL_ID = 506;
@@ -193,8 +193,8 @@ public final class ImsReasonInfo implements android.os.Parcelable {
     public ImsReasonInfo(int p0, int p1) {}
     public ImsReasonInfo(int p0, int p1, java.lang.String p2) {}
     public int describeContents() { return 0; }
-    public int getCode() { return (megletProps.get("Code") instanceof Integer ? (Integer) megletProps.get("Code") : 0); }
-    public int getExtraCode() { return (megletProps.get("ExtraCode") instanceof Integer ? (Integer) megletProps.get("ExtraCode") : 0); }
-    public java.lang.String getExtraMessage() { return (java.lang.String) megletProps.get("ExtraMessage"); }
+    public int getCode() { return (meglerProps.get("Code") instanceof Integer ? (Integer) meglerProps.get("Code") : 0); }
+    public int getExtraCode() { return (meglerProps.get("ExtraCode") instanceof Integer ? (Integer) meglerProps.get("ExtraCode") : 0); }
+    public java.lang.String getExtraMessage() { return (java.lang.String) meglerProps.get("ExtraMessage"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
 }

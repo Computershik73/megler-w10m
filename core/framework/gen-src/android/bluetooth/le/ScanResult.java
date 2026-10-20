@@ -3,7 +3,7 @@ package android.bluetooth.le;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ScanResult implements android.os.Parcelable, android.bluetooth.Attributable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int DATA_COMPLETE = 0;
     public static final int DATA_TRUNCATED = 2;
@@ -14,19 +14,19 @@ public final class ScanResult implements android.os.Parcelable, android.bluetoot
     public ScanResult(android.bluetooth.BluetoothDevice p0, int p1, int p2, int p3, int p4, int p5, int p6, int p7, android.bluetooth.le.ScanRecord p8, long p9) {}
     public ScanResult(android.bluetooth.BluetoothDevice p0, android.bluetooth.le.ScanRecord p1, int p2, long p3) {}
     public int describeContents() { return 0; }
-    public int getAdvertisingSid() { return (megletProps.get("AdvertisingSid") instanceof Integer ? (Integer) megletProps.get("AdvertisingSid") : 0); }
-    public int getDataStatus() { return (megletProps.get("DataStatus") instanceof Integer ? (Integer) megletProps.get("DataStatus") : 0); }
-    public android.bluetooth.BluetoothDevice getDevice() { return (android.bluetooth.BluetoothDevice) megletProps.get("Device"); }
-    public int getPeriodicAdvertisingInterval() { return (megletProps.get("PeriodicAdvertisingInterval") instanceof Integer ? (Integer) megletProps.get("PeriodicAdvertisingInterval") : 0); }
-    public int getPrimaryPhy() { return (megletProps.get("PrimaryPhy") instanceof Integer ? (Integer) megletProps.get("PrimaryPhy") : 0); }
-    public int getRssi() { return (megletProps.get("Rssi") instanceof Integer ? (Integer) megletProps.get("Rssi") : 0); }
-    public android.bluetooth.le.ScanRecord getScanRecord() { return (android.bluetooth.le.ScanRecord) megletProps.get("ScanRecord"); }
-    public int getSecondaryPhy() { return (megletProps.get("SecondaryPhy") instanceof Integer ? (Integer) megletProps.get("SecondaryPhy") : 0); }
-    public long getTimestampNanos() { return (megletProps.get("TimestampNanos") instanceof Long ? (Long) megletProps.get("TimestampNanos") : 0L); }
-    public int getTxPower() { return (megletProps.get("TxPower") instanceof Integer ? (Integer) megletProps.get("TxPower") : 0); }
-    public boolean isConnectable() { return (megletProps.get("Connectable") instanceof Boolean ? (Boolean) megletProps.get("Connectable") : false); }
-    public boolean isLegacy() { return (megletProps.get("Legacy") instanceof Boolean ? (Boolean) megletProps.get("Legacy") : false); }
-    public void setAttributionSource(android.content.AttributionSource p0) { megletProps.put("AttributionSource", p0); }
+    public int getAdvertisingSid() { return (meglerProps.get("AdvertisingSid") instanceof Integer ? (Integer) meglerProps.get("AdvertisingSid") : 0); }
+    public int getDataStatus() { return (meglerProps.get("DataStatus") instanceof Integer ? (Integer) meglerProps.get("DataStatus") : 0); }
+    public android.bluetooth.BluetoothDevice getDevice() { return (android.bluetooth.BluetoothDevice) meglerProps.get("Device"); }
+    public int getPeriodicAdvertisingInterval() { return (meglerProps.get("PeriodicAdvertisingInterval") instanceof Integer ? (Integer) meglerProps.get("PeriodicAdvertisingInterval") : 0); }
+    public int getPrimaryPhy() { return (meglerProps.get("PrimaryPhy") instanceof Integer ? (Integer) meglerProps.get("PrimaryPhy") : 0); }
+    public int getRssi() { return (meglerProps.get("Rssi") instanceof Integer ? (Integer) meglerProps.get("Rssi") : 0); }
+    public android.bluetooth.le.ScanRecord getScanRecord() { return (android.bluetooth.le.ScanRecord) meglerProps.get("ScanRecord"); }
+    public int getSecondaryPhy() { return (meglerProps.get("SecondaryPhy") instanceof Integer ? (Integer) meglerProps.get("SecondaryPhy") : 0); }
+    public long getTimestampNanos() { return (meglerProps.get("TimestampNanos") instanceof Long ? (Long) meglerProps.get("TimestampNanos") : 0L); }
+    public int getTxPower() { return (meglerProps.get("TxPower") instanceof Integer ? (Integer) meglerProps.get("TxPower") : 0); }
+    public boolean isConnectable() { return (meglerProps.get("Connectable") instanceof Boolean ? (Boolean) meglerProps.get("Connectable") : false); }
+    public boolean isLegacy() { return (meglerProps.get("Legacy") instanceof Boolean ? (Boolean) meglerProps.get("Legacy") : false); }
+    public void setAttributionSource(android.content.AttributionSource p0) { meglerProps.put("AttributionSource", p0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     ScanResult() { this((android.bluetooth.BluetoothDevice) null, (android.bluetooth.le.ScanRecord) null, (int) 0, (long) 0L); }
 }

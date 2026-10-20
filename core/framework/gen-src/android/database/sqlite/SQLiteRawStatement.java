@@ -3,7 +3,7 @@ package android.database.sqlite;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SQLiteRawStatement implements java.io.Closeable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int SQLITE_DATA_TYPE_BLOB = 4;
     public static final int SQLITE_DATA_TYPE_FLOAT = 2;
     public static final int SQLITE_DATA_TYPE_INTEGER = 1;
@@ -26,11 +26,11 @@ public final class SQLiteRawStatement implements java.io.Closeable {
     public java.lang.String getColumnName(int p0) { return null; }
     public java.lang.String getColumnText(int p0) { return null; }
     public int getColumnType(int p0) { return 0; }
-    public int getParameterCount() { return (megletProps.get("ParameterCount") instanceof Integer ? (Integer) megletProps.get("ParameterCount") : 0); }
+    public int getParameterCount() { return (meglerProps.get("ParameterCount") instanceof Integer ? (Integer) meglerProps.get("ParameterCount") : 0); }
     public int getParameterIndex(java.lang.String p0) { return 0; }
     public java.lang.String getParameterName(int p0) { return null; }
-    public int getResultColumnCount() { return (megletProps.get("ResultColumnCount") instanceof Integer ? (Integer) megletProps.get("ResultColumnCount") : 0); }
-    public boolean isOpen() { return (megletProps.get("Open") instanceof Boolean ? (Boolean) megletProps.get("Open") : false); }
+    public int getResultColumnCount() { return (meglerProps.get("ResultColumnCount") instanceof Integer ? (Integer) meglerProps.get("ResultColumnCount") : 0); }
+    public boolean isOpen() { return (meglerProps.get("Open") instanceof Boolean ? (Boolean) meglerProps.get("Open") : false); }
     public int readColumnBlob(int p0, byte[] p1, int p2, int p3, int p4) { return 0; }
     public void reset() {}
     public boolean step() { return false; }

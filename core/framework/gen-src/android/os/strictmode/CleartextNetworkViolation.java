@@ -3,7 +3,7 @@ package android.os.strictmode;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CleartextNetworkViolation extends android.os.strictmode.Violation {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public CleartextNetworkViolation(java.lang.String p0) { super(); }
     CleartextNetworkViolation() { this((java.lang.String) null); }
 }

@@ -3,7 +3,7 @@ package android.util;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Base64DataException extends java.io.IOException {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public Base64DataException(java.lang.String p0) { super(); }
     Base64DataException() { this((java.lang.String) null); }
 }

@@ -3,8 +3,8 @@ package android.adservices.adselection;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class RemoveAdSelectionOverrideRequest {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public RemoveAdSelectionOverrideRequest(android.adservices.adselection.AdSelectionConfig p0) {}
-    public android.adservices.adselection.AdSelectionConfig getAdSelectionConfig() { return (android.adservices.adselection.AdSelectionConfig) megletProps.get("AdSelectionConfig"); }
+    public android.adservices.adselection.AdSelectionConfig getAdSelectionConfig() { return (android.adservices.adselection.AdSelectionConfig) meglerProps.get("AdSelectionConfig"); }
     RemoveAdSelectionOverrideRequest() { this((android.adservices.adselection.AdSelectionConfig) null); }
 }

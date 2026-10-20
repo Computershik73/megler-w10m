@@ -3,11 +3,11 @@ package android.service.carrier;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MessagePdu implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public MessagePdu(java.util.List p0) {}
     public int describeContents() { return 0; }
-    public java.util.List getPdus() { return (megletProps.get("Pdus") != null ? (java.util.List) megletProps.get("Pdus") : new java.util.ArrayList()); }
+    public java.util.List getPdus() { return (meglerProps.get("Pdus") != null ? (java.util.List) meglerProps.get("Pdus") : new java.util.ArrayList()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     MessagePdu() { this((java.util.List) null); }
 }

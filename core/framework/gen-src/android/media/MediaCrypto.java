@@ -3,12 +3,12 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MediaCrypto {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public MediaCrypto(java.util.UUID p0, byte[] p1) {}
     public static boolean isCryptoSchemeSupported(java.util.UUID p0) { return false; }
     protected void finalize() {}
     public void release() {}
     public boolean requiresSecureDecoderComponent(java.lang.String p0) { return false; }
-    public void setMediaDrmSession(byte[] p0) { megletProps.put("MediaDrmSession", p0); }
+    public void setMediaDrmSession(byte[] p0) { meglerProps.put("MediaDrmSession", p0); }
     MediaCrypto() { this((java.util.UUID) null, (byte[]) null); }
 }

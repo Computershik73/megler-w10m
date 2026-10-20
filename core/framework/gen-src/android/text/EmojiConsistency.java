@@ -3,7 +3,7 @@ package android.text;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class EmojiConsistency {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static java.util.Set getEmojiConsistencySet() { return new java.util.HashSet(); }
     protected EmojiConsistency() {}
 }

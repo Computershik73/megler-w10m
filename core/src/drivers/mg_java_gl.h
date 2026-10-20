@@ -1,12 +1,12 @@
 /*
  * OpenGL ES and EGL for an app's Java (docs/ARCHITECTURE.md, "OpenGL ES from an app's Java"): the GLES classes' native
- * methods (mg_java_gles.c, generated, and mg_java_gl.c, by hand), meglet.EGLNative, the GL thread of a GLSurfaceView
- * (meglet.Native.startGL), and the window composed of the views' picture over the frames of GL surfaces.
+ * methods (mg_java_gles.c, generated, and mg_java_gl.c, by hand), megler.EGLNative, the GL thread of a GLSurfaceView
+ * (megler.Native.startGL), and the window composed of the views' picture over the frames of GL surfaces.
  */
 #ifndef MG_JAVA_GL_H
 #define MG_JAVA_GL_H
 
-#include "../../include/meglet.h"
+#include "../../include/megler.h"
 #include "../mg_base.h"
 #include "../jni/mg_jni.h"
 
@@ -34,14 +34,14 @@ bool mg_java_gl_views(const void *pixels, int width, int height, int stride, con
  * its views' picture is then needed in memory.
  */
 bool mg_java_gl_composing(void);
-/* The shell's drawing, which composes the window itself where it can (meglet_gfx_host.gl_frame); before the app runs. */
-void mg_java_gl_set_shell(const meglet_gfx_host *gfx);
+/* The shell's drawing, which composes the window itself where it can (megler_gfx_host.gl_frame); before the app runs. */
+void mg_java_gl_set_shell(const megler_gfx_host *gfx);
 /*
- * The views' picture is about to be shown by the shell from its own (meglet_gfx_host.present; the app's main thread): where the
+ * The views' picture is about to be shown by the shell from its own (megler_gfx_host.present; the app's main thread): where the
  * shell composes the window, the places the views said for their surfaces are told it first.
  */
 void mg_java_gl_views_shown(void);
-/* meglet.EGLNative, meglet.Native's startGL and requestRender, and the GLES natives written by hand. */
+/* megler.EGLNative, megler.Native's startGL and requestRender, and the GLES natives written by hand. */
 const mg_jhle *mg_java_gl_natives(void);
 
 /* ------------------------------------------------- for the NDK's windows */
@@ -67,7 +67,7 @@ void mg_java_gl_window_swap(void *surface, int width, int height);
 const void *mg_java_gl_window_pixels(void *surface, int *width, int *height);
 void mg_java_gl_window_destroy(void *surface);
 /*
- * The flag trace-surfaces, where the shell shows the views from its own picture (meglet_gfx_host.present): whether the views'
+ * The flag trace-surfaces, where the shell shows the views from its own picture (megler_gfx_host.present): whether the views'
  * picture is due to be looked at over the OpenGL layers (every three seconds), and then the picture, brought up to date in
  * memory for it (mg_java_gfx.c's present).
  */

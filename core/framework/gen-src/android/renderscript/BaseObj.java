@@ -3,10 +3,10 @@ package android.renderscript;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class BaseObj {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public void destroy() {}
     protected void finalize() {}
-    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
-    public void setName(java.lang.String p0) { megletProps.put("Name", p0); }
+    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
+    public void setName(java.lang.String p0) { meglerProps.put("Name", p0); }
     protected BaseObj() {}
 }

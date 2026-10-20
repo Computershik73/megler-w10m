@@ -3,7 +3,7 @@ package android.app.admin;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DeviceAdminReceiver extends android.content.BroadcastReceiver {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_AFFILIATED_PROFILE_TRANSFER_OWNERSHIP_COMPLETE = "android.app.action.AFFILIATED_PROFILE_TRANSFER_OWNERSHIP_COMPLETE";
     public static final java.lang.String ACTION_BUGREPORT_FAILED = "android.app.action.BUGREPORT_FAILED";
     public static final java.lang.String ACTION_BUGREPORT_SHARE = "android.app.action.BUGREPORT_SHARE";

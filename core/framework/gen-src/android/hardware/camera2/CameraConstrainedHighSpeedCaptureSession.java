@@ -3,7 +3,7 @@ package android.hardware.camera2;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class CameraConstrainedHighSpeedCaptureSession extends android.hardware.camera2.CameraCaptureSession {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public CameraConstrainedHighSpeedCaptureSession() { super(); }
     public abstract java.util.List createHighSpeedRequestList(android.hardware.camera2.CaptureRequest p0);
 }

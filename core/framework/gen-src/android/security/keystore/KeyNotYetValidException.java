@@ -3,7 +3,7 @@ package android.security.keystore;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class KeyNotYetValidException extends java.security.InvalidKeyException {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public KeyNotYetValidException() { super(); }
     public KeyNotYetValidException(java.lang.String p0) { super(); }
     public KeyNotYetValidException(java.lang.String p0, java.lang.Throwable p1) { super(); }

@@ -1,0 +1,4 @@
+    // Megler: members added to the original's megler.AppRunner (tools/build-framework.sh, "X.java.members").
+    // The activity at the bottom of the stack, the first started of those still there: the root of the app's one task, which
+    // ActivityManager.RecentTaskInfo (overlaid) gives as baseActivity and baseIntent. The original had only the top.
+    public static Activity meglerBase() { return sStack.isEmpty() ? null : sStack.get(0); }

@@ -13,7 +13,7 @@ package android.appwidget;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AppWidgetHostView extends android.widget.FrameLayout implements android.appwidget.AppWidgetHost.AppWidgetHostListener {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public AppWidgetHostView(android.content.Context p0) { super(p0); }
     public AppWidgetHostView(android.content.Context p0, int p1, int p2) { super(p0); }
     public AppWidgetHostView(android.content.Context p0, android.widget.RemoteViews.InteractionHandler p1) { super(p0); }
@@ -21,10 +21,10 @@ public class AppWidgetHostView extends android.widget.FrameLayout implements and
     public static android.graphics.Rect getDefaultPaddingForWidget(android.content.Context p0, android.content.ComponentName p1, android.graphics.Rect p2) {
         android.graphics.Rect padding = p2 != null ? p2 : new android.graphics.Rect();
         android.content.res.Resources r = p0 != null ? p0.getResources() : android.content.res.Resources.getSystem();
-        padding.set(megletDimen(r, "left"), megletDimen(r, "top"), megletDimen(r, "right"), megletDimen(r, "bottom"));
+        padding.set(meglerDimen(r, "left"), meglerDimen(r, "top"), meglerDimen(r, "right"), meglerDimen(r, "bottom"));
         return padding;
     }
-    private static int megletDimen(android.content.res.Resources r, String side) {
+    private static int meglerDimen(android.content.res.Resources r, String side) {
         int id = r.getIdentifier("default_app_widget_padding_" + side, "dimen", "android");
         return id != 0 ? r.getDimensionPixelSize(id) : 0;
     }
@@ -35,12 +35,12 @@ public class AppWidgetHostView extends android.widget.FrameLayout implements and
     public void dispatchRestoreInstanceState(android.util.SparseArray p0) {}
     public void dispatchSaveInstanceState(android.util.SparseArray p0) {}
     public android.widget.FrameLayout.LayoutParams generateLayoutParams(android.content.Context p0, android.util.AttributeSet p1) { return new android.widget.FrameLayout.LayoutParams(p0, p1); }
-    public int getAppWidgetId() { return (megletProps.get("AppWidgetId") instanceof Integer ? (Integer) megletProps.get("AppWidgetId") : 0); }
-    public android.appwidget.AppWidgetProviderInfo getAppWidgetInfo() { return (android.appwidget.AppWidgetProviderInfo) megletProps.get("AppWidgetInfo"); }
-    protected android.view.View getDefaultView() { return (android.view.View) megletProps.get("DefaultView"); }
-    protected android.view.View getErrorView() { return (android.view.View) megletProps.get("ErrorView"); }
-    public android.appwidget.AppWidgetHostView.InteractionLogger getInteractionLogger() { return (android.appwidget.AppWidgetHostView.InteractionLogger) megletProps.get("InteractionLogger"); }
-    protected boolean isVisibilityTrackingPermitted() { return (megletProps.get("VisibilityTrackingPermitted") instanceof Boolean ? (Boolean) megletProps.get("VisibilityTrackingPermitted") : false); }
+    public int getAppWidgetId() { return (meglerProps.get("AppWidgetId") instanceof Integer ? (Integer) meglerProps.get("AppWidgetId") : 0); }
+    public android.appwidget.AppWidgetProviderInfo getAppWidgetInfo() { return (android.appwidget.AppWidgetProviderInfo) meglerProps.get("AppWidgetInfo"); }
+    protected android.view.View getDefaultView() { return (android.view.View) meglerProps.get("DefaultView"); }
+    protected android.view.View getErrorView() { return (android.view.View) meglerProps.get("ErrorView"); }
+    public android.appwidget.AppWidgetHostView.InteractionLogger getInteractionLogger() { return (android.appwidget.AppWidgetHostView.InteractionLogger) meglerProps.get("InteractionLogger"); }
+    protected boolean isVisibilityTrackingPermitted() { return (meglerProps.get("VisibilityTrackingPermitted") instanceof Boolean ? (Boolean) meglerProps.get("VisibilityTrackingPermitted") : false); }
     protected void onDefaultViewClicked(android.view.View p0) {}
     public void onInitializeAccessibilityNodeInfoInternal(android.view.accessibility.AccessibilityNodeInfo p0) {}
     public void onUpdateProviderInfo(android.appwidget.AppWidgetProviderInfo p0) {}
@@ -50,12 +50,12 @@ public class AppWidgetHostView extends android.widget.FrameLayout implements and
     protected void prepareView(android.view.View p0) {}
     public void resetColorResources() {}
     public void setAppWidget(int p0, android.appwidget.AppWidgetProviderInfo p1) {}
-    public void setColorResources(android.util.SparseIntArray p0) { megletProps.put("ColorResources", p0); }
-    public void setColorResources(android.widget.RemoteViews.ColorResources p0) { megletProps.put("ColorResources", p0); }
-    public void setColorResourcesNoReapply(android.widget.RemoteViews.ColorResources p0) { megletProps.put("ColorResourcesNoReapply", p0); }
-    public void setExecutor(java.util.concurrent.Executor p0) { megletProps.put("Executor", p0); }
-    public void setInteractionHandler(android.widget.RemoteViews.InteractionHandler p0) { megletProps.put("InteractionHandler", p0); }
-    public void setOnLightBackground(boolean p0) { megletProps.put("OnLightBackground", Boolean.valueOf(p0)); }
+    public void setColorResources(android.util.SparseIntArray p0) { meglerProps.put("ColorResources", p0); }
+    public void setColorResources(android.widget.RemoteViews.ColorResources p0) { meglerProps.put("ColorResources", p0); }
+    public void setColorResourcesNoReapply(android.widget.RemoteViews.ColorResources p0) { meglerProps.put("ColorResourcesNoReapply", p0); }
+    public void setExecutor(java.util.concurrent.Executor p0) { meglerProps.put("Executor", p0); }
+    public void setInteractionHandler(android.widget.RemoteViews.InteractionHandler p0) { meglerProps.put("InteractionHandler", p0); }
+    public void setOnLightBackground(boolean p0) { meglerProps.put("OnLightBackground", Boolean.valueOf(p0)); }
     public void startVisibilityTracking() {}
     public void stopVisibilityTracking() {}
     public void updateAppWidget(android.widget.RemoteViews p0) {}
@@ -65,14 +65,14 @@ public class AppWidgetHostView extends android.widget.FrameLayout implements and
     public void updateAppWidgetSize(android.os.Bundle p0, java.util.List p1) {}
     AppWidgetHostView() { this((android.content.Context) null); }
     public static class AdapterChildHostView extends android.appwidget.AppWidgetHostView {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public AdapterChildHostView(android.content.Context p0) { super(p0); }
-        public boolean isVisibilityTrackingPermitted() { return (megletProps.get("VisibilityTrackingPermitted") instanceof Boolean ? (Boolean) megletProps.get("VisibilityTrackingPermitted") : false); }
+        public boolean isVisibilityTrackingPermitted() { return (meglerProps.get("VisibilityTrackingPermitted") instanceof Boolean ? (Boolean) meglerProps.get("VisibilityTrackingPermitted") : false); }
         AdapterChildHostView() { this((android.content.Context) null); }
     }
     public static class InteractionLogger implements android.widget.RemoteViews.InteractionHandler {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public android.appwidget.AppWidgetEvent getEvent() { return (android.appwidget.AppWidgetEvent) megletProps.get("Event"); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public android.appwidget.AppWidgetEvent getEvent() { return (android.appwidget.AppWidgetEvent) meglerProps.get("Event"); }
         public boolean onInteraction(android.view.View p0, android.app.PendingIntent p1, android.widget.RemoteViews.RemoteResponse p2) { return false; }
         public void onScroll(android.widget.AbsListView p0) {}
         protected InteractionLogger() {}

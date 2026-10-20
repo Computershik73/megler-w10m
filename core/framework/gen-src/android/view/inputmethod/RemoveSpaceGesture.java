@@ -3,18 +3,18 @@ package android.view.inputmethod;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class RemoveSpaceGesture extends android.view.inputmethod.HandwritingGesture implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public android.graphics.PointF getEndPoint() { return (android.graphics.PointF) megletProps.get("EndPoint"); }
-    public android.graphics.PointF getStartPoint() { return (android.graphics.PointF) megletProps.get("StartPoint"); }
+    public android.graphics.PointF getEndPoint() { return (android.graphics.PointF) meglerProps.get("EndPoint"); }
+    public android.graphics.PointF getStartPoint() { return (android.graphics.PointF) meglerProps.get("StartPoint"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected RemoveSpaceGesture() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.view.inputmethod.RemoveSpaceGesture build() { android.view.inputmethod.RemoveSpaceGesture x = new android.view.inputmethod.RemoveSpaceGesture(); x.megletProps.putAll(megletProps); return x; }
-        public android.view.inputmethod.RemoveSpaceGesture.Builder setFallbackText(java.lang.String p0) { megletProps.put("FallbackText", p0); return this; }
+        public android.view.inputmethod.RemoveSpaceGesture build() { android.view.inputmethod.RemoveSpaceGesture x = new android.view.inputmethod.RemoveSpaceGesture(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.view.inputmethod.RemoveSpaceGesture.Builder setFallbackText(java.lang.String p0) { meglerProps.put("FallbackText", p0); return this; }
         public android.view.inputmethod.RemoveSpaceGesture.Builder setPoints(android.graphics.PointF p0, android.graphics.PointF p1) { return this; }
     }
 }

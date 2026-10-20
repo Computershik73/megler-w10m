@@ -6,7 +6,7 @@
  * a voice: a queue of the app's own buffers in the app's own format. One
  * thread here mixes the voices that are playing into 16-bit stereo, ten
  * milliseconds at a time, and hands that to the shell's audio output
- * (meglet.h). With no output the thread still consumes the queues in real time,
+ * (megler.h). With no output the thread still consumes the queues in real time,
  * so an app that paces itself by its audio callbacks keeps running, silently.
  */
 #ifndef MG_AUDIO_H

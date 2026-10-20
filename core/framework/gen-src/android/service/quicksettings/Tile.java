@@ -3,7 +3,7 @@ package android.service.quicksettings;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Tile implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int STATE_ACTIVE = 2;
     public static final int STATE_INACTIVE = 1;
@@ -11,23 +11,23 @@ public final class Tile implements android.os.Parcelable {
     public Tile() {}
     public Tile(android.os.Parcel p0) {}
     public int describeContents() { return 0; }
-    public android.app.PendingIntent getActivityLaunchForClick() { return (android.app.PendingIntent) megletProps.get("ActivityLaunchForClick"); }
-    public java.lang.CharSequence getContentDescription() { return (java.lang.CharSequence) megletProps.get("ContentDescription"); }
-    public java.lang.CharSequence getCustomLabel() { return (java.lang.CharSequence) megletProps.get("CustomLabel"); }
-    public android.graphics.drawable.Icon getIcon() { return (android.graphics.drawable.Icon) megletProps.get("Icon"); }
-    public java.lang.CharSequence getLabel() { return (java.lang.CharSequence) megletProps.get("Label"); }
-    public int getState() { return (megletProps.get("State") instanceof Integer ? (Integer) megletProps.get("State") : 0); }
-    public java.lang.CharSequence getStateDescription() { return (java.lang.CharSequence) megletProps.get("StateDescription"); }
-    public java.lang.CharSequence getSubtitle() { return (java.lang.CharSequence) megletProps.get("Subtitle"); }
-    public void setActivityLaunchForClick(android.app.PendingIntent p0) { megletProps.put("ActivityLaunchForClick", p0); }
-    public void setContentDescription(java.lang.CharSequence p0) { megletProps.put("ContentDescription", p0); }
-    public void setDefaultLabel(java.lang.CharSequence p0) { megletProps.put("DefaultLabel", p0); }
-    public void setIcon(android.graphics.drawable.Icon p0) { megletProps.put("Icon", p0); }
-    public void setLabel(java.lang.CharSequence p0) { megletProps.put("Label", p0); }
+    public android.app.PendingIntent getActivityLaunchForClick() { return (android.app.PendingIntent) meglerProps.get("ActivityLaunchForClick"); }
+    public java.lang.CharSequence getContentDescription() { return (java.lang.CharSequence) meglerProps.get("ContentDescription"); }
+    public java.lang.CharSequence getCustomLabel() { return (java.lang.CharSequence) meglerProps.get("CustomLabel"); }
+    public android.graphics.drawable.Icon getIcon() { return (android.graphics.drawable.Icon) meglerProps.get("Icon"); }
+    public java.lang.CharSequence getLabel() { return (java.lang.CharSequence) meglerProps.get("Label"); }
+    public int getState() { return (meglerProps.get("State") instanceof Integer ? (Integer) meglerProps.get("State") : 0); }
+    public java.lang.CharSequence getStateDescription() { return (java.lang.CharSequence) meglerProps.get("StateDescription"); }
+    public java.lang.CharSequence getSubtitle() { return (java.lang.CharSequence) meglerProps.get("Subtitle"); }
+    public void setActivityLaunchForClick(android.app.PendingIntent p0) { meglerProps.put("ActivityLaunchForClick", p0); }
+    public void setContentDescription(java.lang.CharSequence p0) { meglerProps.put("ContentDescription", p0); }
+    public void setDefaultLabel(java.lang.CharSequence p0) { meglerProps.put("DefaultLabel", p0); }
+    public void setIcon(android.graphics.drawable.Icon p0) { meglerProps.put("Icon", p0); }
+    public void setLabel(java.lang.CharSequence p0) { meglerProps.put("Label", p0); }
     public void setService(android.service.quicksettings.IQSService p0, android.os.IBinder p1) {}
-    public void setState(int p0) { megletProps.put("State", Integer.valueOf(p0)); }
-    public void setStateDescription(java.lang.CharSequence p0) { megletProps.put("StateDescription", p0); }
-    public void setSubtitle(java.lang.CharSequence p0) { megletProps.put("Subtitle", p0); }
+    public void setState(int p0) { meglerProps.put("State", Integer.valueOf(p0)); }
+    public void setStateDescription(java.lang.CharSequence p0) { meglerProps.put("StateDescription", p0); }
+    public void setSubtitle(java.lang.CharSequence p0) { meglerProps.put("Subtitle", p0); }
     public void updateTile() {}
     public void writeToParcel(android.os.Parcel p0, int p1) {}
 }

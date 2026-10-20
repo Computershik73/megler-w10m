@@ -3,7 +3,7 @@ package android.view.contentcapture;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ContentCaptureContext implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int FLAG_DISABLED_BY_APP = 1;
     public static final int FLAG_DISABLED_BY_FLAG_SECURE = 2;
@@ -14,23 +14,23 @@ public final class ContentCaptureContext implements android.os.Parcelable {
     public static android.view.contentcapture.ContentCaptureContext forLocusId(java.lang.String p0) { return new ContentCaptureContext(); }
     public int describeContents() { return 0; }
     public void dump(java.io.PrintWriter p0) {}
-    public android.content.ComponentName getActivityComponent() { return (android.content.ComponentName) megletProps.get("ActivityComponent"); }
-    public android.app.assist.ActivityId getActivityId() { return (android.app.assist.ActivityId) megletProps.get("ActivityId"); }
-    public int getDisplayId() { return (megletProps.get("DisplayId") instanceof Integer ? (Integer) megletProps.get("DisplayId") : 0); }
-    public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
-    public int getFlags() { return (megletProps.get("Flags") instanceof Integer ? (Integer) megletProps.get("Flags") : 0); }
-    public android.content.LocusId getLocusId() { return (android.content.LocusId) megletProps.get("LocusId"); }
-    public android.view.contentcapture.ContentCaptureSessionId getParentSessionId() { return (android.view.contentcapture.ContentCaptureSessionId) megletProps.get("ParentSessionId"); }
-    public int getTaskId() { return (megletProps.get("TaskId") instanceof Integer ? (Integer) megletProps.get("TaskId") : 0); }
-    public android.os.IBinder getWindowToken() { return (android.os.IBinder) megletProps.get("WindowToken"); }
-    public void setParentSessionId(int p0) { megletProps.put("ParentSessionId", Integer.valueOf(p0)); }
+    public android.content.ComponentName getActivityComponent() { return (android.content.ComponentName) meglerProps.get("ActivityComponent"); }
+    public android.app.assist.ActivityId getActivityId() { return (android.app.assist.ActivityId) meglerProps.get("ActivityId"); }
+    public int getDisplayId() { return (meglerProps.get("DisplayId") instanceof Integer ? (Integer) meglerProps.get("DisplayId") : 0); }
+    public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
+    public int getFlags() { return (meglerProps.get("Flags") instanceof Integer ? (Integer) meglerProps.get("Flags") : 0); }
+    public android.content.LocusId getLocusId() { return (android.content.LocusId) meglerProps.get("LocusId"); }
+    public android.view.contentcapture.ContentCaptureSessionId getParentSessionId() { return (android.view.contentcapture.ContentCaptureSessionId) meglerProps.get("ParentSessionId"); }
+    public int getTaskId() { return (meglerProps.get("TaskId") instanceof Integer ? (Integer) meglerProps.get("TaskId") : 0); }
+    public android.os.IBinder getWindowToken() { return (android.os.IBinder) meglerProps.get("WindowToken"); }
+    public void setParentSessionId(int p0) { meglerProps.put("ParentSessionId", Integer.valueOf(p0)); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     ContentCaptureContext() { this((android.view.contentcapture.ContentCaptureContext) null, (int) 0); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.content.LocusId p0) {}
-        public android.view.contentcapture.ContentCaptureContext build() { android.view.contentcapture.ContentCaptureContext x = new android.view.contentcapture.ContentCaptureContext(); x.megletProps.putAll(megletProps); return x; }
-        public android.view.contentcapture.ContentCaptureContext.Builder setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); return this; }
+        public android.view.contentcapture.ContentCaptureContext build() { android.view.contentcapture.ContentCaptureContext x = new android.view.contentcapture.ContentCaptureContext(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.view.contentcapture.ContentCaptureContext.Builder setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); return this; }
         Builder() { this((android.content.LocusId) null); }
     }
 }

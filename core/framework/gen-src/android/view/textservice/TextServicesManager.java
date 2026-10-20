@@ -3,16 +3,16 @@ package android.view.textservice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TextServicesManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.view.textservice.TextServicesManager createInstance(android.content.Context p0) { return new TextServicesManager(); }
     public static android.view.textservice.TextServicesManager getInstance() { return new TextServicesManager(); }
-    public android.view.textservice.SpellCheckerInfo getCurrentSpellChecker() { return (android.view.textservice.SpellCheckerInfo) megletProps.get("CurrentSpellChecker"); }
-    public android.view.textservice.SpellCheckerInfo getCurrentSpellCheckerInfo() { return (android.view.textservice.SpellCheckerInfo) megletProps.get("CurrentSpellCheckerInfo"); }
+    public android.view.textservice.SpellCheckerInfo getCurrentSpellChecker() { return (android.view.textservice.SpellCheckerInfo) meglerProps.get("CurrentSpellChecker"); }
+    public android.view.textservice.SpellCheckerInfo getCurrentSpellCheckerInfo() { return (android.view.textservice.SpellCheckerInfo) meglerProps.get("CurrentSpellCheckerInfo"); }
     public android.view.textservice.SpellCheckerSubtype getCurrentSpellCheckerSubtype(boolean p0) { return null; }
-    public java.util.List getEnabledSpellCheckerInfos() { return (megletProps.get("EnabledSpellCheckerInfos") != null ? (java.util.List) megletProps.get("EnabledSpellCheckerInfos") : new java.util.ArrayList()); }
-    public android.view.textservice.SpellCheckerInfo[] getEnabledSpellCheckers() { return (android.view.textservice.SpellCheckerInfo[]) megletProps.get("EnabledSpellCheckers"); }
-    public android.view.inputmethod.InputMethodManager getInputMethodManager() { return (android.view.inputmethod.InputMethodManager) megletProps.get("InputMethodManager"); }
-    public boolean isSpellCheckerEnabled() { return (megletProps.get("SpellCheckerEnabled") instanceof Boolean ? (Boolean) megletProps.get("SpellCheckerEnabled") : false); }
+    public java.util.List getEnabledSpellCheckerInfos() { return (meglerProps.get("EnabledSpellCheckerInfos") != null ? (java.util.List) meglerProps.get("EnabledSpellCheckerInfos") : new java.util.ArrayList()); }
+    public android.view.textservice.SpellCheckerInfo[] getEnabledSpellCheckers() { return (android.view.textservice.SpellCheckerInfo[]) meglerProps.get("EnabledSpellCheckers"); }
+    public android.view.inputmethod.InputMethodManager getInputMethodManager() { return (android.view.inputmethod.InputMethodManager) meglerProps.get("InputMethodManager"); }
+    public boolean isSpellCheckerEnabled() { return (meglerProps.get("SpellCheckerEnabled") instanceof Boolean ? (Boolean) meglerProps.get("SpellCheckerEnabled") : false); }
     public android.view.textservice.SpellCheckerSession newSpellCheckerSession(android.os.Bundle p0, java.util.Locale p1, android.view.textservice.SpellCheckerSession.SpellCheckerSessionListener p2, boolean p3) { return null; }
     public android.view.textservice.SpellCheckerSession newSpellCheckerSession(android.view.textservice.SpellCheckerSession.SpellCheckerSessionParams p0, java.util.concurrent.Executor p1, android.view.textservice.SpellCheckerSession.SpellCheckerSessionListener p2) { return null; }
     protected TextServicesManager() {}

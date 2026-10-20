@@ -3,7 +3,7 @@ package android.service.carrier;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class CarrierMessagingService extends android.app.Service {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int DOWNLOAD_STATUS_ERROR = 2;
     public static final int DOWNLOAD_STATUS_MMS_ERROR_CONFIGURATION_ERROR = 606;
     public static final int DOWNLOAD_STATUS_MMS_ERROR_DATA_DISABLED = 610;
@@ -74,24 +74,24 @@ public abstract class CarrierMessagingService extends android.app.Service {
         void onReceiveResult(java.lang.Object p0);
     }
     public static final class SendMmsResult {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public SendMmsResult(int p0, byte[] p1) {}
-        public byte[] getSendConfPdu() { return (byte[]) megletProps.get("SendConfPdu"); }
-        public int getSendStatus() { return (megletProps.get("SendStatus") instanceof Integer ? (Integer) megletProps.get("SendStatus") : 0); }
+        public byte[] getSendConfPdu() { return (byte[]) meglerProps.get("SendConfPdu"); }
+        public int getSendStatus() { return (meglerProps.get("SendStatus") instanceof Integer ? (Integer) meglerProps.get("SendStatus") : 0); }
         SendMmsResult() { this((int) 0, (byte[]) null); }
     }
     public static final class SendMultipartSmsResult {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public SendMultipartSmsResult(int p0, int[] p1) {}
-        public int[] getMessageRefs() { return (int[]) megletProps.get("MessageRefs"); }
-        public int getSendStatus() { return (megletProps.get("SendStatus") instanceof Integer ? (Integer) megletProps.get("SendStatus") : 0); }
+        public int[] getMessageRefs() { return (int[]) meglerProps.get("MessageRefs"); }
+        public int getSendStatus() { return (meglerProps.get("SendStatus") instanceof Integer ? (Integer) meglerProps.get("SendStatus") : 0); }
         SendMultipartSmsResult() { this((int) 0, (int[]) null); }
     }
     public static final class SendSmsResult {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public SendSmsResult(int p0, int p1) {}
-        public int getMessageRef() { return (megletProps.get("MessageRef") instanceof Integer ? (Integer) megletProps.get("MessageRef") : 0); }
-        public int getSendStatus() { return (megletProps.get("SendStatus") instanceof Integer ? (Integer) megletProps.get("SendStatus") : 0); }
+        public int getMessageRef() { return (meglerProps.get("MessageRef") instanceof Integer ? (Integer) meglerProps.get("MessageRef") : 0); }
+        public int getSendStatus() { return (meglerProps.get("SendStatus") instanceof Integer ? (Integer) meglerProps.get("SendStatus") : 0); }
         SendSmsResult() { this((int) 0, (int) 0); }
     }
 }

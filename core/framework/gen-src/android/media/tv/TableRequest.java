@@ -3,7 +3,7 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TableRequest extends android.media.tv.BroadcastInfoRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int TABLE_NAME_BAT = 4;
     public static final int TABLE_NAME_CAT = 2;
@@ -17,9 +17,9 @@ public final class TableRequest extends android.media.tv.BroadcastInfoRequest im
     public static final int TABLE_NAME_TOT = 8;
     public TableRequest(int p0, int p1, int p2, int p3, int p4) { super(); }
     public int describeContents() { return 0; }
-    public int getTableId() { return (megletProps.get("TableId") instanceof Integer ? (Integer) megletProps.get("TableId") : 0); }
-    public int getTableName() { return (megletProps.get("TableName") instanceof Integer ? (Integer) megletProps.get("TableName") : 0); }
-    public int getVersion() { return (megletProps.get("Version") instanceof Integer ? (Integer) megletProps.get("Version") : 0); }
+    public int getTableId() { return (meglerProps.get("TableId") instanceof Integer ? (Integer) meglerProps.get("TableId") : 0); }
+    public int getTableName() { return (meglerProps.get("TableName") instanceof Integer ? (Integer) meglerProps.get("TableName") : 0); }
+    public int getVersion() { return (meglerProps.get("Version") instanceof Integer ? (Integer) meglerProps.get("Version") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     TableRequest() { this((int) 0, (int) 0, (int) 0, (int) 0, (int) 0); }
 }

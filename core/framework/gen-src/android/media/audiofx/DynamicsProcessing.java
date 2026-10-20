@@ -3,15 +3,15 @@ package android.media.audiofx;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DynamicsProcessing extends android.media.audiofx.AudioEffect {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int VARIANT_FAVOR_FREQUENCY_RESOLUTION = 0;
     public static final int VARIANT_FAVOR_TIME_RESOLUTION = 1;
     public DynamicsProcessing(int p0) { super((java.util.UUID) null, (android.media.AudioDeviceAttributes) null); }
     public DynamicsProcessing(int p0, int p1) { super((java.util.UUID) null, (android.media.AudioDeviceAttributes) null); }
     public DynamicsProcessing(int p0, int p1, android.media.audiofx.DynamicsProcessing.Config p2) { super((java.util.UUID) null, (android.media.AudioDeviceAttributes) null); }
     public android.media.audiofx.DynamicsProcessing.Channel getChannelByChannelIndex(int p0) { return null; }
-    public int getChannelCount() { return (megletProps.get("ChannelCount") instanceof Integer ? (Integer) megletProps.get("ChannelCount") : 0); }
-    public android.media.audiofx.DynamicsProcessing.Config getConfig() { return (android.media.audiofx.DynamicsProcessing.Config) megletProps.get("Config"); }
+    public int getChannelCount() { return (meglerProps.get("ChannelCount") instanceof Integer ? (Integer) meglerProps.get("ChannelCount") : 0); }
+    public android.media.audiofx.DynamicsProcessing.Config getConfig() { return (android.media.audiofx.DynamicsProcessing.Config) meglerProps.get("Config"); }
     public float getInputGainByChannelIndex(int p0) { return 0f; }
     public android.media.audiofx.DynamicsProcessing.Limiter getLimiterByChannelIndex(int p0) { return null; }
     public android.media.audiofx.DynamicsProcessing.MbcBand getMbcBandByChannelIndex(int p0, int p1) { return null; }
@@ -20,66 +20,66 @@ public final class DynamicsProcessing extends android.media.audiofx.AudioEffect 
     public android.media.audiofx.DynamicsProcessing.Eq getPostEqByChannelIndex(int p0) { return null; }
     public android.media.audiofx.DynamicsProcessing.EqBand getPreEqBandByChannelIndex(int p0, int p1) { return null; }
     public android.media.audiofx.DynamicsProcessing.Eq getPreEqByChannelIndex(int p0) { return null; }
-    public android.media.audiofx.DynamicsProcessing.Settings getProperties() { return (android.media.audiofx.DynamicsProcessing.Settings) megletProps.get("Properties"); }
-    public void setAllChannelsTo(android.media.audiofx.DynamicsProcessing.Channel p0) { megletProps.put("AllChannelsTo", p0); }
+    public android.media.audiofx.DynamicsProcessing.Settings getProperties() { return (android.media.audiofx.DynamicsProcessing.Settings) meglerProps.get("Properties"); }
+    public void setAllChannelsTo(android.media.audiofx.DynamicsProcessing.Channel p0) { meglerProps.put("AllChannelsTo", p0); }
     public void setChannelTo(int p0, android.media.audiofx.DynamicsProcessing.Channel p1) {}
-    public void setInputGainAllChannelsTo(float p0) { megletProps.put("InputGainAllChannelsTo", Float.valueOf(p0)); }
+    public void setInputGainAllChannelsTo(float p0) { meglerProps.put("InputGainAllChannelsTo", Float.valueOf(p0)); }
     public void setInputGainbyChannel(int p0, float p1) {}
-    public void setLimiterAllChannelsTo(android.media.audiofx.DynamicsProcessing.Limiter p0) { megletProps.put("LimiterAllChannelsTo", p0); }
+    public void setLimiterAllChannelsTo(android.media.audiofx.DynamicsProcessing.Limiter p0) { meglerProps.put("LimiterAllChannelsTo", p0); }
     public void setLimiterByChannelIndex(int p0, android.media.audiofx.DynamicsProcessing.Limiter p1) {}
-    public void setMbcAllChannelsTo(android.media.audiofx.DynamicsProcessing.Mbc p0) { megletProps.put("MbcAllChannelsTo", p0); }
+    public void setMbcAllChannelsTo(android.media.audiofx.DynamicsProcessing.Mbc p0) { meglerProps.put("MbcAllChannelsTo", p0); }
     public void setMbcBandAllChannelsTo(int p0, android.media.audiofx.DynamicsProcessing.MbcBand p1) {}
     public void setMbcBandByChannelIndex(int p0, int p1, android.media.audiofx.DynamicsProcessing.MbcBand p2) {}
     public void setMbcByChannelIndex(int p0, android.media.audiofx.DynamicsProcessing.Mbc p1) {}
-    public void setPostEqAllChannelsTo(android.media.audiofx.DynamicsProcessing.Eq p0) { megletProps.put("PostEqAllChannelsTo", p0); }
+    public void setPostEqAllChannelsTo(android.media.audiofx.DynamicsProcessing.Eq p0) { meglerProps.put("PostEqAllChannelsTo", p0); }
     public void setPostEqBandAllChannelsTo(int p0, android.media.audiofx.DynamicsProcessing.EqBand p1) {}
     public void setPostEqBandByChannelIndex(int p0, int p1, android.media.audiofx.DynamicsProcessing.EqBand p2) {}
     public void setPostEqByChannelIndex(int p0, android.media.audiofx.DynamicsProcessing.Eq p1) {}
-    public void setPreEqAllChannelsTo(android.media.audiofx.DynamicsProcessing.Eq p0) { megletProps.put("PreEqAllChannelsTo", p0); }
+    public void setPreEqAllChannelsTo(android.media.audiofx.DynamicsProcessing.Eq p0) { meglerProps.put("PreEqAllChannelsTo", p0); }
     public void setPreEqBandAllChannelsTo(int p0, android.media.audiofx.DynamicsProcessing.EqBand p1) {}
     public void setPreEqBandByChannelIndex(int p0, int p1, android.media.audiofx.DynamicsProcessing.EqBand p2) {}
     public void setPreEqByChannelIndex(int p0, android.media.audiofx.DynamicsProcessing.Eq p1) {}
-    public void setProperties(android.media.audiofx.DynamicsProcessing.Settings p0) { megletProps.put("Properties", p0); }
+    public void setProperties(android.media.audiofx.DynamicsProcessing.Settings p0) { meglerProps.put("Properties", p0); }
     DynamicsProcessing() { this((int) 0); }
     public static class BandBase {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public BandBase(boolean p0, float p1) {}
-        public float getCutoffFrequency() { return (megletProps.get("CutoffFrequency") instanceof Float ? (Float) megletProps.get("CutoffFrequency") : 0f); }
-        public boolean isEnabled() { return (megletProps.get("Enabled") instanceof Boolean ? (Boolean) megletProps.get("Enabled") : false); }
-        public void setCutoffFrequency(float p0) { megletProps.put("CutoffFrequency", Float.valueOf(p0)); }
-        public void setEnabled(boolean p0) { megletProps.put("Enabled", Boolean.valueOf(p0)); }
+        public float getCutoffFrequency() { return (meglerProps.get("CutoffFrequency") instanceof Float ? (Float) meglerProps.get("CutoffFrequency") : 0f); }
+        public boolean isEnabled() { return (meglerProps.get("Enabled") instanceof Boolean ? (Boolean) meglerProps.get("Enabled") : false); }
+        public void setCutoffFrequency(float p0) { meglerProps.put("CutoffFrequency", Float.valueOf(p0)); }
+        public void setEnabled(boolean p0) { meglerProps.put("Enabled", Boolean.valueOf(p0)); }
         BandBase() { this((boolean) false, (float) 0f); }
     }
     public static class BandStage extends android.media.audiofx.DynamicsProcessing.Stage {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public BandStage(boolean p0, boolean p1, int p2) { super((boolean) false, (boolean) false); }
-        public int getBandCount() { return (megletProps.get("BandCount") instanceof Integer ? (Integer) megletProps.get("BandCount") : 0); }
+        public int getBandCount() { return (meglerProps.get("BandCount") instanceof Integer ? (Integer) meglerProps.get("BandCount") : 0); }
         BandStage() { this((boolean) false, (boolean) false, (int) 0); }
     }
     public static final class Channel {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Channel(float p0, boolean p1, int p2, boolean p3, int p4, boolean p5, int p6, boolean p7) {}
         public Channel(android.media.audiofx.DynamicsProcessing.Channel p0) {}
-        public float getInputGain() { return (megletProps.get("InputGain") instanceof Float ? (Float) megletProps.get("InputGain") : 0f); }
-        public android.media.audiofx.DynamicsProcessing.Limiter getLimiter() { return (android.media.audiofx.DynamicsProcessing.Limiter) megletProps.get("Limiter"); }
-        public android.media.audiofx.DynamicsProcessing.Mbc getMbc() { return (android.media.audiofx.DynamicsProcessing.Mbc) megletProps.get("Mbc"); }
+        public float getInputGain() { return (meglerProps.get("InputGain") instanceof Float ? (Float) meglerProps.get("InputGain") : 0f); }
+        public android.media.audiofx.DynamicsProcessing.Limiter getLimiter() { return (android.media.audiofx.DynamicsProcessing.Limiter) meglerProps.get("Limiter"); }
+        public android.media.audiofx.DynamicsProcessing.Mbc getMbc() { return (android.media.audiofx.DynamicsProcessing.Mbc) meglerProps.get("Mbc"); }
         public android.media.audiofx.DynamicsProcessing.MbcBand getMbcBand(int p0) { return null; }
-        public android.media.audiofx.DynamicsProcessing.Eq getPostEq() { return (android.media.audiofx.DynamicsProcessing.Eq) megletProps.get("PostEq"); }
+        public android.media.audiofx.DynamicsProcessing.Eq getPostEq() { return (android.media.audiofx.DynamicsProcessing.Eq) meglerProps.get("PostEq"); }
         public android.media.audiofx.DynamicsProcessing.EqBand getPostEqBand(int p0) { return null; }
-        public android.media.audiofx.DynamicsProcessing.Eq getPreEq() { return (android.media.audiofx.DynamicsProcessing.Eq) megletProps.get("PreEq"); }
+        public android.media.audiofx.DynamicsProcessing.Eq getPreEq() { return (android.media.audiofx.DynamicsProcessing.Eq) meglerProps.get("PreEq"); }
         public android.media.audiofx.DynamicsProcessing.EqBand getPreEqBand(int p0) { return null; }
-        public void setInputGain(float p0) { megletProps.put("InputGain", Float.valueOf(p0)); }
-        public void setLimiter(android.media.audiofx.DynamicsProcessing.Limiter p0) { megletProps.put("Limiter", p0); }
-        public void setMbc(android.media.audiofx.DynamicsProcessing.Mbc p0) { megletProps.put("Mbc", p0); }
+        public void setInputGain(float p0) { meglerProps.put("InputGain", Float.valueOf(p0)); }
+        public void setLimiter(android.media.audiofx.DynamicsProcessing.Limiter p0) { meglerProps.put("Limiter", p0); }
+        public void setMbc(android.media.audiofx.DynamicsProcessing.Mbc p0) { meglerProps.put("Mbc", p0); }
         public void setMbcBand(int p0, android.media.audiofx.DynamicsProcessing.MbcBand p1) {}
-        public void setPostEq(android.media.audiofx.DynamicsProcessing.Eq p0) { megletProps.put("PostEq", p0); }
+        public void setPostEq(android.media.audiofx.DynamicsProcessing.Eq p0) { meglerProps.put("PostEq", p0); }
         public void setPostEqBand(int p0, android.media.audiofx.DynamicsProcessing.EqBand p1) {}
-        public void setPreEq(android.media.audiofx.DynamicsProcessing.Eq p0) { megletProps.put("PreEq", p0); }
+        public void setPreEq(android.media.audiofx.DynamicsProcessing.Eq p0) { meglerProps.put("PreEq", p0); }
         public void setPreEqBand(int p0, android.media.audiofx.DynamicsProcessing.EqBand p1) {}
         Channel() { this((android.media.audiofx.DynamicsProcessing.Channel) null); }
     }
     public static final class Config {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Config(int p0, float p1, int p2, boolean p3, int p4, boolean p5, int p6, boolean p7, int p8, boolean p9, android.media.audiofx.DynamicsProcessing.Channel[] p10) {}
         public Config(int p0, android.media.audiofx.DynamicsProcessing.Config p1) {}
         public Config(android.media.audiofx.DynamicsProcessing.Config p0) {}
@@ -87,61 +87,61 @@ public final class DynamicsProcessing extends android.media.audiofx.AudioEffect 
         public float getInputGainByChannelIndex(int p0) { return 0f; }
         public android.media.audiofx.DynamicsProcessing.Limiter getLimiterByChannelIndex(int p0) { return null; }
         public android.media.audiofx.DynamicsProcessing.MbcBand getMbcBandByChannelIndex(int p0, int p1) { return null; }
-        public int getMbcBandCount() { return (megletProps.get("MbcBandCount") instanceof Integer ? (Integer) megletProps.get("MbcBandCount") : 0); }
+        public int getMbcBandCount() { return (meglerProps.get("MbcBandCount") instanceof Integer ? (Integer) meglerProps.get("MbcBandCount") : 0); }
         public android.media.audiofx.DynamicsProcessing.Mbc getMbcByChannelIndex(int p0) { return null; }
         public android.media.audiofx.DynamicsProcessing.EqBand getPostEqBandByChannelIndex(int p0, int p1) { return null; }
-        public int getPostEqBandCount() { return (megletProps.get("PostEqBandCount") instanceof Integer ? (Integer) megletProps.get("PostEqBandCount") : 0); }
+        public int getPostEqBandCount() { return (meglerProps.get("PostEqBandCount") instanceof Integer ? (Integer) meglerProps.get("PostEqBandCount") : 0); }
         public android.media.audiofx.DynamicsProcessing.Eq getPostEqByChannelIndex(int p0) { return null; }
         public android.media.audiofx.DynamicsProcessing.EqBand getPreEqBandByChannelIndex(int p0, int p1) { return null; }
-        public int getPreEqBandCount() { return (megletProps.get("PreEqBandCount") instanceof Integer ? (Integer) megletProps.get("PreEqBandCount") : 0); }
+        public int getPreEqBandCount() { return (meglerProps.get("PreEqBandCount") instanceof Integer ? (Integer) meglerProps.get("PreEqBandCount") : 0); }
         public android.media.audiofx.DynamicsProcessing.Eq getPreEqByChannelIndex(int p0) { return null; }
-        public float getPreferredFrameDuration() { return (megletProps.get("PreferredFrameDuration") instanceof Float ? (Float) megletProps.get("PreferredFrameDuration") : 0f); }
-        public int getVariant() { return (megletProps.get("Variant") instanceof Integer ? (Integer) megletProps.get("Variant") : 0); }
-        public boolean isLimiterInUse() { return (megletProps.get("LimiterInUse") instanceof Boolean ? (Boolean) megletProps.get("LimiterInUse") : false); }
-        public boolean isMbcInUse() { return (megletProps.get("MbcInUse") instanceof Boolean ? (Boolean) megletProps.get("MbcInUse") : false); }
-        public boolean isPostEqInUse() { return (megletProps.get("PostEqInUse") instanceof Boolean ? (Boolean) megletProps.get("PostEqInUse") : false); }
-        public boolean isPreEqInUse() { return (megletProps.get("PreEqInUse") instanceof Boolean ? (Boolean) megletProps.get("PreEqInUse") : false); }
-        public void setAllChannelsTo(android.media.audiofx.DynamicsProcessing.Channel p0) { megletProps.put("AllChannelsTo", p0); }
+        public float getPreferredFrameDuration() { return (meglerProps.get("PreferredFrameDuration") instanceof Float ? (Float) meglerProps.get("PreferredFrameDuration") : 0f); }
+        public int getVariant() { return (meglerProps.get("Variant") instanceof Integer ? (Integer) meglerProps.get("Variant") : 0); }
+        public boolean isLimiterInUse() { return (meglerProps.get("LimiterInUse") instanceof Boolean ? (Boolean) meglerProps.get("LimiterInUse") : false); }
+        public boolean isMbcInUse() { return (meglerProps.get("MbcInUse") instanceof Boolean ? (Boolean) meglerProps.get("MbcInUse") : false); }
+        public boolean isPostEqInUse() { return (meglerProps.get("PostEqInUse") instanceof Boolean ? (Boolean) meglerProps.get("PostEqInUse") : false); }
+        public boolean isPreEqInUse() { return (meglerProps.get("PreEqInUse") instanceof Boolean ? (Boolean) meglerProps.get("PreEqInUse") : false); }
+        public void setAllChannelsTo(android.media.audiofx.DynamicsProcessing.Channel p0) { meglerProps.put("AllChannelsTo", p0); }
         public void setChannelTo(int p0, android.media.audiofx.DynamicsProcessing.Channel p1) {}
-        public void setInputGainAllChannelsTo(float p0) { megletProps.put("InputGainAllChannelsTo", Float.valueOf(p0)); }
+        public void setInputGainAllChannelsTo(float p0) { meglerProps.put("InputGainAllChannelsTo", Float.valueOf(p0)); }
         public void setInputGainByChannelIndex(int p0, float p1) {}
-        public void setLimiterAllChannelsTo(android.media.audiofx.DynamicsProcessing.Limiter p0) { megletProps.put("LimiterAllChannelsTo", p0); }
+        public void setLimiterAllChannelsTo(android.media.audiofx.DynamicsProcessing.Limiter p0) { meglerProps.put("LimiterAllChannelsTo", p0); }
         public void setLimiterByChannelIndex(int p0, android.media.audiofx.DynamicsProcessing.Limiter p1) {}
-        public void setMbcAllChannelsTo(android.media.audiofx.DynamicsProcessing.Mbc p0) { megletProps.put("MbcAllChannelsTo", p0); }
+        public void setMbcAllChannelsTo(android.media.audiofx.DynamicsProcessing.Mbc p0) { meglerProps.put("MbcAllChannelsTo", p0); }
         public void setMbcBandAllChannelsTo(int p0, android.media.audiofx.DynamicsProcessing.MbcBand p1) {}
         public void setMbcBandByChannelIndex(int p0, int p1, android.media.audiofx.DynamicsProcessing.MbcBand p2) {}
         public void setMbcByChannelIndex(int p0, android.media.audiofx.DynamicsProcessing.Mbc p1) {}
-        public void setPostEqAllChannelsTo(android.media.audiofx.DynamicsProcessing.Eq p0) { megletProps.put("PostEqAllChannelsTo", p0); }
+        public void setPostEqAllChannelsTo(android.media.audiofx.DynamicsProcessing.Eq p0) { meglerProps.put("PostEqAllChannelsTo", p0); }
         public void setPostEqBandAllChannelsTo(int p0, android.media.audiofx.DynamicsProcessing.EqBand p1) {}
         public void setPostEqBandByChannelIndex(int p0, int p1, android.media.audiofx.DynamicsProcessing.EqBand p2) {}
         public void setPostEqByChannelIndex(int p0, android.media.audiofx.DynamicsProcessing.Eq p1) {}
-        public void setPreEqAllChannelsTo(android.media.audiofx.DynamicsProcessing.Eq p0) { megletProps.put("PreEqAllChannelsTo", p0); }
+        public void setPreEqAllChannelsTo(android.media.audiofx.DynamicsProcessing.Eq p0) { meglerProps.put("PreEqAllChannelsTo", p0); }
         public void setPreEqBandAllChannelsTo(int p0, android.media.audiofx.DynamicsProcessing.EqBand p1) {}
         public void setPreEqBandByChannelIndex(int p0, int p1, android.media.audiofx.DynamicsProcessing.EqBand p2) {}
         public void setPreEqByChannelIndex(int p0, android.media.audiofx.DynamicsProcessing.Eq p1) {}
         Config() { this((android.media.audiofx.DynamicsProcessing.Config) null); }
         public static final class Builder {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public Builder(int p0, int p1, boolean p2, int p3, boolean p4, int p5, boolean p6, int p7, boolean p8) {}
-            public android.media.audiofx.DynamicsProcessing.Config build() { android.media.audiofx.DynamicsProcessing.Config x = new android.media.audiofx.DynamicsProcessing.Config(); x.megletProps.putAll(megletProps); return x; }
-            public android.media.audiofx.DynamicsProcessing.Config.Builder setAllChannelsTo(android.media.audiofx.DynamicsProcessing.Channel p0) { megletProps.put("AllChannelsTo", p0); return this; }
+            public android.media.audiofx.DynamicsProcessing.Config build() { android.media.audiofx.DynamicsProcessing.Config x = new android.media.audiofx.DynamicsProcessing.Config(); x.meglerProps.putAll(meglerProps); return x; }
+            public android.media.audiofx.DynamicsProcessing.Config.Builder setAllChannelsTo(android.media.audiofx.DynamicsProcessing.Channel p0) { meglerProps.put("AllChannelsTo", p0); return this; }
             public android.media.audiofx.DynamicsProcessing.Config.Builder setChannelTo(int p0, android.media.audiofx.DynamicsProcessing.Channel p1) { return this; }
-            public android.media.audiofx.DynamicsProcessing.Config.Builder setInputGainAllChannelsTo(float p0) { megletProps.put("InputGainAllChannelsTo", Float.valueOf(p0)); return this; }
+            public android.media.audiofx.DynamicsProcessing.Config.Builder setInputGainAllChannelsTo(float p0) { meglerProps.put("InputGainAllChannelsTo", Float.valueOf(p0)); return this; }
             public android.media.audiofx.DynamicsProcessing.Config.Builder setInputGainByChannelIndex(int p0, float p1) { return this; }
-            public android.media.audiofx.DynamicsProcessing.Config.Builder setLimiterAllChannelsTo(android.media.audiofx.DynamicsProcessing.Limiter p0) { megletProps.put("LimiterAllChannelsTo", p0); return this; }
+            public android.media.audiofx.DynamicsProcessing.Config.Builder setLimiterAllChannelsTo(android.media.audiofx.DynamicsProcessing.Limiter p0) { meglerProps.put("LimiterAllChannelsTo", p0); return this; }
             public android.media.audiofx.DynamicsProcessing.Config.Builder setLimiterByChannelIndex(int p0, android.media.audiofx.DynamicsProcessing.Limiter p1) { return this; }
-            public android.media.audiofx.DynamicsProcessing.Config.Builder setMbcAllChannelsTo(android.media.audiofx.DynamicsProcessing.Mbc p0) { megletProps.put("MbcAllChannelsTo", p0); return this; }
+            public android.media.audiofx.DynamicsProcessing.Config.Builder setMbcAllChannelsTo(android.media.audiofx.DynamicsProcessing.Mbc p0) { meglerProps.put("MbcAllChannelsTo", p0); return this; }
             public android.media.audiofx.DynamicsProcessing.Config.Builder setMbcByChannelIndex(int p0, android.media.audiofx.DynamicsProcessing.Mbc p1) { return this; }
-            public android.media.audiofx.DynamicsProcessing.Config.Builder setPostEqAllChannelsTo(android.media.audiofx.DynamicsProcessing.Eq p0) { megletProps.put("PostEqAllChannelsTo", p0); return this; }
+            public android.media.audiofx.DynamicsProcessing.Config.Builder setPostEqAllChannelsTo(android.media.audiofx.DynamicsProcessing.Eq p0) { meglerProps.put("PostEqAllChannelsTo", p0); return this; }
             public android.media.audiofx.DynamicsProcessing.Config.Builder setPostEqByChannelIndex(int p0, android.media.audiofx.DynamicsProcessing.Eq p1) { return this; }
-            public android.media.audiofx.DynamicsProcessing.Config.Builder setPreEqAllChannelsTo(android.media.audiofx.DynamicsProcessing.Eq p0) { megletProps.put("PreEqAllChannelsTo", p0); return this; }
+            public android.media.audiofx.DynamicsProcessing.Config.Builder setPreEqAllChannelsTo(android.media.audiofx.DynamicsProcessing.Eq p0) { meglerProps.put("PreEqAllChannelsTo", p0); return this; }
             public android.media.audiofx.DynamicsProcessing.Config.Builder setPreEqByChannelIndex(int p0, android.media.audiofx.DynamicsProcessing.Eq p1) { return this; }
-            public android.media.audiofx.DynamicsProcessing.Config.Builder setPreferredFrameDuration(float p0) { megletProps.put("PreferredFrameDuration", Float.valueOf(p0)); return this; }
+            public android.media.audiofx.DynamicsProcessing.Config.Builder setPreferredFrameDuration(float p0) { meglerProps.put("PreferredFrameDuration", Float.valueOf(p0)); return this; }
             Builder() { this((int) 0, (int) 0, (boolean) false, (int) 0, (boolean) false, (int) 0, (boolean) false, (int) 0, (boolean) false); }
         }
     }
     public static final class Eq extends android.media.audiofx.DynamicsProcessing.BandStage {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Eq(android.media.audiofx.DynamicsProcessing.Eq p0) { super((boolean) false, (boolean) false, (int) 0); }
         public Eq(boolean p0, boolean p1, int p2) { super(p0, p1, p2); }
         public android.media.audiofx.DynamicsProcessing.EqBand getBand(int p0) { return null; }
@@ -149,33 +149,33 @@ public final class DynamicsProcessing extends android.media.audiofx.AudioEffect 
         Eq() { this((android.media.audiofx.DynamicsProcessing.Eq) null); }
     }
     public static final class EqBand extends android.media.audiofx.DynamicsProcessing.BandBase {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public EqBand(android.media.audiofx.DynamicsProcessing.EqBand p0) { super((boolean) false, (float) 0f); }
         public EqBand(boolean p0, float p1, float p2) { super((boolean) false, (float) 0f); }
-        public float getGain() { return (megletProps.get("Gain") instanceof Float ? (Float) megletProps.get("Gain") : 0f); }
-        public void setGain(float p0) { megletProps.put("Gain", Float.valueOf(p0)); }
+        public float getGain() { return (meglerProps.get("Gain") instanceof Float ? (Float) meglerProps.get("Gain") : 0f); }
+        public void setGain(float p0) { meglerProps.put("Gain", Float.valueOf(p0)); }
         EqBand() { this((android.media.audiofx.DynamicsProcessing.EqBand) null); }
     }
     public static final class Limiter extends android.media.audiofx.DynamicsProcessing.Stage {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Limiter(android.media.audiofx.DynamicsProcessing.Limiter p0) { super((boolean) false, (boolean) false); }
         public Limiter(boolean p0, boolean p1, int p2, float p3, float p4, float p5, float p6, float p7) { super((boolean) false, (boolean) false); }
-        public float getAttackTime() { return (megletProps.get("AttackTime") instanceof Float ? (Float) megletProps.get("AttackTime") : 0f); }
-        public int getLinkGroup() { return (megletProps.get("LinkGroup") instanceof Integer ? (Integer) megletProps.get("LinkGroup") : 0); }
-        public float getPostGain() { return (megletProps.get("PostGain") instanceof Float ? (Float) megletProps.get("PostGain") : 0f); }
-        public float getRatio() { return (megletProps.get("Ratio") instanceof Float ? (Float) megletProps.get("Ratio") : 0f); }
-        public float getReleaseTime() { return (megletProps.get("ReleaseTime") instanceof Float ? (Float) megletProps.get("ReleaseTime") : 0f); }
-        public float getThreshold() { return (megletProps.get("Threshold") instanceof Float ? (Float) megletProps.get("Threshold") : 0f); }
-        public void setAttackTime(float p0) { megletProps.put("AttackTime", Float.valueOf(p0)); }
-        public void setLinkGroup(int p0) { megletProps.put("LinkGroup", Integer.valueOf(p0)); }
-        public void setPostGain(float p0) { megletProps.put("PostGain", Float.valueOf(p0)); }
-        public void setRatio(float p0) { megletProps.put("Ratio", Float.valueOf(p0)); }
-        public void setReleaseTime(float p0) { megletProps.put("ReleaseTime", Float.valueOf(p0)); }
-        public void setThreshold(float p0) { megletProps.put("Threshold", Float.valueOf(p0)); }
+        public float getAttackTime() { return (meglerProps.get("AttackTime") instanceof Float ? (Float) meglerProps.get("AttackTime") : 0f); }
+        public int getLinkGroup() { return (meglerProps.get("LinkGroup") instanceof Integer ? (Integer) meglerProps.get("LinkGroup") : 0); }
+        public float getPostGain() { return (meglerProps.get("PostGain") instanceof Float ? (Float) meglerProps.get("PostGain") : 0f); }
+        public float getRatio() { return (meglerProps.get("Ratio") instanceof Float ? (Float) meglerProps.get("Ratio") : 0f); }
+        public float getReleaseTime() { return (meglerProps.get("ReleaseTime") instanceof Float ? (Float) meglerProps.get("ReleaseTime") : 0f); }
+        public float getThreshold() { return (meglerProps.get("Threshold") instanceof Float ? (Float) meglerProps.get("Threshold") : 0f); }
+        public void setAttackTime(float p0) { meglerProps.put("AttackTime", Float.valueOf(p0)); }
+        public void setLinkGroup(int p0) { meglerProps.put("LinkGroup", Integer.valueOf(p0)); }
+        public void setPostGain(float p0) { meglerProps.put("PostGain", Float.valueOf(p0)); }
+        public void setRatio(float p0) { meglerProps.put("Ratio", Float.valueOf(p0)); }
+        public void setReleaseTime(float p0) { meglerProps.put("ReleaseTime", Float.valueOf(p0)); }
+        public void setThreshold(float p0) { meglerProps.put("Threshold", Float.valueOf(p0)); }
         Limiter() { this((android.media.audiofx.DynamicsProcessing.Limiter) null); }
     }
     public static final class Mbc extends android.media.audiofx.DynamicsProcessing.BandStage {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Mbc(android.media.audiofx.DynamicsProcessing.Mbc p0) { super((boolean) false, (boolean) false, (int) 0); }
         public Mbc(boolean p0, boolean p1, int p2) { super(p0, p1, p2); }
         public android.media.audiofx.DynamicsProcessing.MbcBand getBand(int p0) { return null; }
@@ -183,45 +183,45 @@ public final class DynamicsProcessing extends android.media.audiofx.AudioEffect 
         Mbc() { this((android.media.audiofx.DynamicsProcessing.Mbc) null); }
     }
     public static final class MbcBand extends android.media.audiofx.DynamicsProcessing.BandBase {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public MbcBand(android.media.audiofx.DynamicsProcessing.MbcBand p0) { super((boolean) false, (float) 0f); }
         public MbcBand(boolean p0, float p1, float p2, float p3, float p4, float p5, float p6, float p7, float p8, float p9, float p10) { super((boolean) false, (float) 0f); }
-        public float getAttackTime() { return (megletProps.get("AttackTime") instanceof Float ? (Float) megletProps.get("AttackTime") : 0f); }
-        public float getExpanderRatio() { return (megletProps.get("ExpanderRatio") instanceof Float ? (Float) megletProps.get("ExpanderRatio") : 0f); }
-        public float getKneeWidth() { return (megletProps.get("KneeWidth") instanceof Float ? (Float) megletProps.get("KneeWidth") : 0f); }
-        public float getNoiseGateThreshold() { return (megletProps.get("NoiseGateThreshold") instanceof Float ? (Float) megletProps.get("NoiseGateThreshold") : 0f); }
-        public float getPostGain() { return (megletProps.get("PostGain") instanceof Float ? (Float) megletProps.get("PostGain") : 0f); }
-        public float getPreGain() { return (megletProps.get("PreGain") instanceof Float ? (Float) megletProps.get("PreGain") : 0f); }
-        public float getRatio() { return (megletProps.get("Ratio") instanceof Float ? (Float) megletProps.get("Ratio") : 0f); }
-        public float getReleaseTime() { return (megletProps.get("ReleaseTime") instanceof Float ? (Float) megletProps.get("ReleaseTime") : 0f); }
-        public float getThreshold() { return (megletProps.get("Threshold") instanceof Float ? (Float) megletProps.get("Threshold") : 0f); }
-        public void setAttackTime(float p0) { megletProps.put("AttackTime", Float.valueOf(p0)); }
-        public void setExpanderRatio(float p0) { megletProps.put("ExpanderRatio", Float.valueOf(p0)); }
-        public void setKneeWidth(float p0) { megletProps.put("KneeWidth", Float.valueOf(p0)); }
-        public void setNoiseGateThreshold(float p0) { megletProps.put("NoiseGateThreshold", Float.valueOf(p0)); }
-        public void setPostGain(float p0) { megletProps.put("PostGain", Float.valueOf(p0)); }
-        public void setPreGain(float p0) { megletProps.put("PreGain", Float.valueOf(p0)); }
-        public void setRatio(float p0) { megletProps.put("Ratio", Float.valueOf(p0)); }
-        public void setReleaseTime(float p0) { megletProps.put("ReleaseTime", Float.valueOf(p0)); }
-        public void setThreshold(float p0) { megletProps.put("Threshold", Float.valueOf(p0)); }
+        public float getAttackTime() { return (meglerProps.get("AttackTime") instanceof Float ? (Float) meglerProps.get("AttackTime") : 0f); }
+        public float getExpanderRatio() { return (meglerProps.get("ExpanderRatio") instanceof Float ? (Float) meglerProps.get("ExpanderRatio") : 0f); }
+        public float getKneeWidth() { return (meglerProps.get("KneeWidth") instanceof Float ? (Float) meglerProps.get("KneeWidth") : 0f); }
+        public float getNoiseGateThreshold() { return (meglerProps.get("NoiseGateThreshold") instanceof Float ? (Float) meglerProps.get("NoiseGateThreshold") : 0f); }
+        public float getPostGain() { return (meglerProps.get("PostGain") instanceof Float ? (Float) meglerProps.get("PostGain") : 0f); }
+        public float getPreGain() { return (meglerProps.get("PreGain") instanceof Float ? (Float) meglerProps.get("PreGain") : 0f); }
+        public float getRatio() { return (meglerProps.get("Ratio") instanceof Float ? (Float) meglerProps.get("Ratio") : 0f); }
+        public float getReleaseTime() { return (meglerProps.get("ReleaseTime") instanceof Float ? (Float) meglerProps.get("ReleaseTime") : 0f); }
+        public float getThreshold() { return (meglerProps.get("Threshold") instanceof Float ? (Float) meglerProps.get("Threshold") : 0f); }
+        public void setAttackTime(float p0) { meglerProps.put("AttackTime", Float.valueOf(p0)); }
+        public void setExpanderRatio(float p0) { meglerProps.put("ExpanderRatio", Float.valueOf(p0)); }
+        public void setKneeWidth(float p0) { meglerProps.put("KneeWidth", Float.valueOf(p0)); }
+        public void setNoiseGateThreshold(float p0) { meglerProps.put("NoiseGateThreshold", Float.valueOf(p0)); }
+        public void setPostGain(float p0) { meglerProps.put("PostGain", Float.valueOf(p0)); }
+        public void setPreGain(float p0) { meglerProps.put("PreGain", Float.valueOf(p0)); }
+        public void setRatio(float p0) { meglerProps.put("Ratio", Float.valueOf(p0)); }
+        public void setReleaseTime(float p0) { meglerProps.put("ReleaseTime", Float.valueOf(p0)); }
+        public void setThreshold(float p0) { meglerProps.put("Threshold", Float.valueOf(p0)); }
         MbcBand() { this((android.media.audiofx.DynamicsProcessing.MbcBand) null); }
     }
     public interface OnParameterChangeListener {
         void onParameterChange(android.media.audiofx.DynamicsProcessing p0, int p1, int p2);
     }
     public static class Settings {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public int channelCount;
         public float[] inputGain;
         public Settings() {}
         public Settings(java.lang.String p0) {}
     }
     public static class Stage {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Stage(boolean p0, boolean p1) {}
-        public boolean isEnabled() { return (megletProps.get("Enabled") instanceof Boolean ? (Boolean) megletProps.get("Enabled") : false); }
-        public boolean isInUse() { return (megletProps.get("InUse") instanceof Boolean ? (Boolean) megletProps.get("InUse") : false); }
-        public void setEnabled(boolean p0) { megletProps.put("Enabled", Boolean.valueOf(p0)); }
+        public boolean isEnabled() { return (meglerProps.get("Enabled") instanceof Boolean ? (Boolean) meglerProps.get("Enabled") : false); }
+        public boolean isInUse() { return (meglerProps.get("InUse") instanceof Boolean ? (Boolean) meglerProps.get("InUse") : false); }
+        public void setEnabled(boolean p0) { meglerProps.put("Enabled", Boolean.valueOf(p0)); }
         Stage() { this((boolean) false, (boolean) false); }
     }
 }

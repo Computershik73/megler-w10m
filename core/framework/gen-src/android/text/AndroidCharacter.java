@@ -3,7 +3,7 @@ package android.text;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AndroidCharacter {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int EAST_ASIAN_WIDTH_AMBIGUOUS = 1;
     public static final int EAST_ASIAN_WIDTH_FULL_WIDTH = 3;
     public static final int EAST_ASIAN_WIDTH_HALF_WIDTH = 2;

@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class PhoneNumberUtils {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int BCD_EXTENDED_TYPE_CALLED_PARTY = 2;
     public static final int BCD_EXTENDED_TYPE_EF_ADN = 1;
     public static final int FORMAT_JAPAN = 2;

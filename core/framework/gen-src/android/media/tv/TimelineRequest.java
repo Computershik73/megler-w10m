@@ -3,13 +3,13 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TimelineRequest extends android.media.tv.BroadcastInfoRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public TimelineRequest(int p0, int p1, int p2) { super(); }
     public TimelineRequest(int p0, int p1, int p2, java.lang.String p3) { super(); }
     public int describeContents() { return 0; }
-    public int getIntervalMillis() { return (megletProps.get("IntervalMillis") instanceof Integer ? (Integer) megletProps.get("IntervalMillis") : 0); }
-    public java.lang.String getSelector() { return (java.lang.String) megletProps.get("Selector"); }
+    public int getIntervalMillis() { return (meglerProps.get("IntervalMillis") instanceof Integer ? (Integer) meglerProps.get("IntervalMillis") : 0); }
+    public java.lang.String getSelector() { return (java.lang.String) meglerProps.get("Selector"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     TimelineRequest() { this((int) 0, (int) 0, (int) 0); }
 }

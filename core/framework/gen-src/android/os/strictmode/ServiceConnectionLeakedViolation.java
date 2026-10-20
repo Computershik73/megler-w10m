@@ -3,7 +3,7 @@ package android.os.strictmode;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ServiceConnectionLeakedViolation extends android.os.strictmode.Violation {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ServiceConnectionLeakedViolation(java.lang.Throwable p0) { super(); }
     ServiceConnectionLeakedViolation() { this((java.lang.Throwable) null); }
 }

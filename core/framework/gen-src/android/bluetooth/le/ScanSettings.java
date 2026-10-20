@@ -3,7 +3,7 @@ package android.bluetooth.le;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ScanSettings implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final long AUTO_BATCH_MIN_REPORT_DELAY_MILLIS = 600000L;
     public static final int CALLBACK_TYPE_ALL_MATCHES = 1;
     public static final int CALLBACK_TYPE_ALL_MATCHES_AUTO_BATCH = 8;
@@ -30,31 +30,31 @@ public final class ScanSettings implements android.os.Parcelable {
     public static int SCAN_TYPE_UNKNOWN;
     public static java.lang.String getScanModeString(int p0) { return null; }
     public int describeContents() { return 0; }
-    public int getCallbackType() { return (megletProps.get("CallbackType") instanceof Integer ? (Integer) megletProps.get("CallbackType") : 0); }
-    public boolean getLegacy() { return (megletProps.get("Legacy") instanceof Boolean ? (Boolean) megletProps.get("Legacy") : false); }
-    public int getMatchMode() { return (megletProps.get("MatchMode") instanceof Integer ? (Integer) megletProps.get("MatchMode") : 0); }
-    public int getNumOfMatches() { return (megletProps.get("NumOfMatches") instanceof Integer ? (Integer) megletProps.get("NumOfMatches") : 0); }
-    public int getPhy() { return (megletProps.get("Phy") instanceof Integer ? (Integer) megletProps.get("Phy") : 0); }
-    public long getReportDelayMillis() { return (megletProps.get("ReportDelayMillis") instanceof Long ? (Long) megletProps.get("ReportDelayMillis") : 0L); }
-    public int getRssiThreshold() { return (megletProps.get("RssiThreshold") instanceof Integer ? (Integer) megletProps.get("RssiThreshold") : 0); }
-    public int getScanMode() { return (megletProps.get("ScanMode") instanceof Integer ? (Integer) megletProps.get("ScanMode") : 0); }
-    public int getScanResultType() { return (megletProps.get("ScanResultType") instanceof Integer ? (Integer) megletProps.get("ScanResultType") : 0); }
-    public int getScanType() { return (megletProps.get("ScanType") instanceof Integer ? (Integer) megletProps.get("ScanType") : 0); }
+    public int getCallbackType() { return (meglerProps.get("CallbackType") instanceof Integer ? (Integer) meglerProps.get("CallbackType") : 0); }
+    public boolean getLegacy() { return (meglerProps.get("Legacy") instanceof Boolean ? (Boolean) meglerProps.get("Legacy") : false); }
+    public int getMatchMode() { return (meglerProps.get("MatchMode") instanceof Integer ? (Integer) meglerProps.get("MatchMode") : 0); }
+    public int getNumOfMatches() { return (meglerProps.get("NumOfMatches") instanceof Integer ? (Integer) meglerProps.get("NumOfMatches") : 0); }
+    public int getPhy() { return (meglerProps.get("Phy") instanceof Integer ? (Integer) meglerProps.get("Phy") : 0); }
+    public long getReportDelayMillis() { return (meglerProps.get("ReportDelayMillis") instanceof Long ? (Long) meglerProps.get("ReportDelayMillis") : 0L); }
+    public int getRssiThreshold() { return (meglerProps.get("RssiThreshold") instanceof Integer ? (Integer) meglerProps.get("RssiThreshold") : 0); }
+    public int getScanMode() { return (meglerProps.get("ScanMode") instanceof Integer ? (Integer) meglerProps.get("ScanMode") : 0); }
+    public int getScanResultType() { return (meglerProps.get("ScanResultType") instanceof Integer ? (Integer) meglerProps.get("ScanResultType") : 0); }
+    public int getScanType() { return (meglerProps.get("ScanType") instanceof Integer ? (Integer) meglerProps.get("ScanType") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected ScanSettings() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.bluetooth.le.ScanSettings build() { android.bluetooth.le.ScanSettings x = new android.bluetooth.le.ScanSettings(); x.megletProps.putAll(megletProps); return x; }
-        public android.bluetooth.le.ScanSettings.Builder setCallbackType(int p0) { megletProps.put("CallbackType", Integer.valueOf(p0)); return this; }
-        public android.bluetooth.le.ScanSettings.Builder setLegacy(boolean p0) { megletProps.put("Legacy", Boolean.valueOf(p0)); return this; }
-        public android.bluetooth.le.ScanSettings.Builder setMatchMode(int p0) { megletProps.put("MatchMode", Integer.valueOf(p0)); return this; }
-        public android.bluetooth.le.ScanSettings.Builder setNumOfMatches(int p0) { megletProps.put("NumOfMatches", Integer.valueOf(p0)); return this; }
-        public android.bluetooth.le.ScanSettings.Builder setPhy(int p0) { megletProps.put("Phy", Integer.valueOf(p0)); return this; }
-        public android.bluetooth.le.ScanSettings.Builder setReportDelay(long p0) { megletProps.put("ReportDelay", Long.valueOf(p0)); return this; }
-        public android.bluetooth.le.ScanSettings.Builder setRssiThreshold(int p0) { megletProps.put("RssiThreshold", Integer.valueOf(p0)); return this; }
-        public android.bluetooth.le.ScanSettings.Builder setScanMode(int p0) { megletProps.put("ScanMode", Integer.valueOf(p0)); return this; }
-        public android.bluetooth.le.ScanSettings.Builder setScanResultType(int p0) { megletProps.put("ScanResultType", Integer.valueOf(p0)); return this; }
-        public android.bluetooth.le.ScanSettings.Builder setScanType(int p0) { megletProps.put("ScanType", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.le.ScanSettings build() { android.bluetooth.le.ScanSettings x = new android.bluetooth.le.ScanSettings(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.bluetooth.le.ScanSettings.Builder setCallbackType(int p0) { meglerProps.put("CallbackType", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.le.ScanSettings.Builder setLegacy(boolean p0) { meglerProps.put("Legacy", Boolean.valueOf(p0)); return this; }
+        public android.bluetooth.le.ScanSettings.Builder setMatchMode(int p0) { meglerProps.put("MatchMode", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.le.ScanSettings.Builder setNumOfMatches(int p0) { meglerProps.put("NumOfMatches", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.le.ScanSettings.Builder setPhy(int p0) { meglerProps.put("Phy", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.le.ScanSettings.Builder setReportDelay(long p0) { meglerProps.put("ReportDelay", Long.valueOf(p0)); return this; }
+        public android.bluetooth.le.ScanSettings.Builder setRssiThreshold(int p0) { meglerProps.put("RssiThreshold", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.le.ScanSettings.Builder setScanMode(int p0) { meglerProps.put("ScanMode", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.le.ScanSettings.Builder setScanResultType(int p0) { meglerProps.put("ScanResultType", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.le.ScanSettings.Builder setScanType(int p0) { meglerProps.put("ScanType", Integer.valueOf(p0)); return this; }
     }
 }

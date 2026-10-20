@@ -3,13 +3,13 @@ package android.net.ipsec.ike;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class IkeIpv4AddrIdentification extends android.net.ipsec.ike.IkeIdentification {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public java.net.Inet4Address ipv4Address;
     public IkeIpv4AddrIdentification(java.net.Inet4Address p0) { super((int) 0); }
     public IkeIpv4AddrIdentification(byte[] p0) { super((int) 0); }
     public static android.net.ipsec.ike.IkeIpv4AddrIdentification fromPersistableBundle(android.os.PersistableBundle p0) { return new IkeIpv4AddrIdentification(); }
-    public byte[] getEncodedIdData() { return (byte[]) megletProps.get("EncodedIdData"); }
-    public java.lang.String getIdTypeString() { return (java.lang.String) megletProps.get("IdTypeString"); }
+    public byte[] getEncodedIdData() { return (byte[]) meglerProps.get("EncodedIdData"); }
+    public java.lang.String getIdTypeString() { return (java.lang.String) meglerProps.get("IdTypeString"); }
     public android.os.PersistableBundle toPersistableBundle() { return null; }
     public void validateEndCertIdOrThrow(java.security.cert.X509Certificate p0) {}
     IkeIpv4AddrIdentification() { this((java.net.Inet4Address) null); }

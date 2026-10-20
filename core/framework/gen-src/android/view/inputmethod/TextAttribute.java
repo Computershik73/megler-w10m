@@ -3,18 +3,18 @@ package android.view.inputmethod;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TextAttribute implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public android.os.PersistableBundle getExtras() { return (android.os.PersistableBundle) megletProps.get("Extras"); }
-    public java.util.List getTextConversionSuggestions() { return (megletProps.get("TextConversionSuggestions") != null ? (java.util.List) megletProps.get("TextConversionSuggestions") : new java.util.ArrayList()); }
+    public android.os.PersistableBundle getExtras() { return (android.os.PersistableBundle) meglerProps.get("Extras"); }
+    public java.util.List getTextConversionSuggestions() { return (meglerProps.get("TextConversionSuggestions") != null ? (java.util.List) meglerProps.get("TextConversionSuggestions") : new java.util.ArrayList()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected TextAttribute() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.view.inputmethod.TextAttribute build() { android.view.inputmethod.TextAttribute x = new android.view.inputmethod.TextAttribute(); x.megletProps.putAll(megletProps); return x; }
-        public android.view.inputmethod.TextAttribute.Builder setExtras(android.os.PersistableBundle p0) { megletProps.put("Extras", p0); return this; }
-        public android.view.inputmethod.TextAttribute.Builder setTextConversionSuggestions(java.util.List p0) { megletProps.put("TextConversionSuggestions", p0); return this; }
+        public android.view.inputmethod.TextAttribute build() { android.view.inputmethod.TextAttribute x = new android.view.inputmethod.TextAttribute(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.view.inputmethod.TextAttribute.Builder setExtras(android.os.PersistableBundle p0) { meglerProps.put("Extras", p0); return this; }
+        public android.view.inputmethod.TextAttribute.Builder setTextConversionSuggestions(java.util.List p0) { meglerProps.put("TextConversionSuggestions", p0); return this; }
     }
 }

@@ -3,17 +3,17 @@ package android.graphics.text;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MeasuredText {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public void getBounds(int p0, int p1, android.graphics.Rect p2) {}
     public float getCharWidthAt(int p0) { return 0f; }
-    public char[] getChars() { return (char[]) megletProps.get("Chars"); }
+    public char[] getChars() { return (char[]) meglerProps.get("Chars"); }
     public void getFontMetricsInt(int p0, int p1, android.graphics.Paint.FontMetricsInt p2) {}
-    public int getMemoryUsage() { return (megletProps.get("MemoryUsage") instanceof Integer ? (Integer) megletProps.get("MemoryUsage") : 0); }
-    public long getNativePtr() { return (megletProps.get("NativePtr") instanceof Long ? (Long) megletProps.get("NativePtr") : 0L); }
+    public int getMemoryUsage() { return (meglerProps.get("MemoryUsage") instanceof Integer ? (Integer) meglerProps.get("MemoryUsage") : 0); }
+    public long getNativePtr() { return (meglerProps.get("NativePtr") instanceof Long ? (Long) meglerProps.get("NativePtr") : 0L); }
     public float getWidth(int p0, int p1) { return 0f; }
     protected MeasuredText() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int HYPHENATION_MODE_FAST = 2;
         public static final int HYPHENATION_MODE_NONE = 0;
         public static final int HYPHENATION_MODE_NORMAL = 1;
@@ -22,11 +22,11 @@ public class MeasuredText {
         public android.graphics.text.MeasuredText.Builder appendReplacementRun(android.graphics.Paint p0, int p1, float p2) { return this; }
         public android.graphics.text.MeasuredText.Builder appendStyleRun(android.graphics.Paint p0, int p1, boolean p2) { return this; }
         public android.graphics.text.MeasuredText.Builder appendStyleRun(android.graphics.Paint p0, android.graphics.text.LineBreakConfig p1, int p2, boolean p3) { return this; }
-        public android.graphics.text.MeasuredText build() { android.graphics.text.MeasuredText x = new android.graphics.text.MeasuredText(); x.megletProps.putAll(megletProps); return x; }
-        public android.graphics.text.MeasuredText.Builder setComputeBounds(boolean p0) { megletProps.put("ComputeBounds", Boolean.valueOf(p0)); return this; }
-        public android.graphics.text.MeasuredText.Builder setComputeHyphenation(int p0) { megletProps.put("ComputeHyphenation", Integer.valueOf(p0)); return this; }
-        public android.graphics.text.MeasuredText.Builder setComputeHyphenation(boolean p0) { megletProps.put("ComputeHyphenation", Boolean.valueOf(p0)); return this; }
-        public android.graphics.text.MeasuredText.Builder setComputeLayout(boolean p0) { megletProps.put("ComputeLayout", Boolean.valueOf(p0)); return this; }
+        public android.graphics.text.MeasuredText build() { android.graphics.text.MeasuredText x = new android.graphics.text.MeasuredText(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.graphics.text.MeasuredText.Builder setComputeBounds(boolean p0) { meglerProps.put("ComputeBounds", Boolean.valueOf(p0)); return this; }
+        public android.graphics.text.MeasuredText.Builder setComputeHyphenation(int p0) { meglerProps.put("ComputeHyphenation", Integer.valueOf(p0)); return this; }
+        public android.graphics.text.MeasuredText.Builder setComputeHyphenation(boolean p0) { meglerProps.put("ComputeHyphenation", Boolean.valueOf(p0)); return this; }
+        public android.graphics.text.MeasuredText.Builder setComputeLayout(boolean p0) { meglerProps.put("ComputeLayout", Boolean.valueOf(p0)); return this; }
         Builder() { this((android.graphics.text.MeasuredText) null); }
     }
 }

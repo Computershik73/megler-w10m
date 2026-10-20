@@ -3,7 +3,7 @@ package android.app.admin;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DevicePolicyManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACCOUNT_FEATURE_DEVICE_OR_PROFILE_OWNER_ALLOWED = "android.account.DEVICE_OR_PROFILE_OWNER_ALLOWED";
     public static final java.lang.String ACCOUNT_FEATURE_DEVICE_OR_PROFILE_OWNER_DISALLOWED = "android.account.DEVICE_OR_PROFILE_OWNER_DISALLOWED";
     public static final java.lang.String ACTION_ADD_DEVICE_ADMIN = "android.app.action.ADD_DEVICE_ADMIN";
@@ -416,28 +416,28 @@ public class DevicePolicyManager {
     public void forceSetMaxPolicyStorageLimit(int p0) {}
     public void forceUpdateUserSetupComplete(int p0) {}
     public android.security.AttestedKeyPair generateKeyPair(android.content.ComponentName p0, java.lang.String p1, android.security.keystore.KeyGenParameterSpec p2, int p3) { return null; }
-    public java.lang.String[] getAccountTypesWithManagementDisabled() { return (java.lang.String[]) megletProps.get("AccountTypesWithManagementDisabled"); }
+    public java.lang.String[] getAccountTypesWithManagementDisabled() { return (java.lang.String[]) meglerProps.get("AccountTypesWithManagementDisabled"); }
     public java.lang.String[] getAccountTypesWithManagementDisabledAsUser(int p0) { return null; }
     public java.lang.String[] getAccountTypesWithManagementDisabledAsUser(int p0, boolean p1) { return null; }
-    public java.util.List getActiveAdmins() { return (megletProps.get("ActiveAdmins") != null ? (java.util.List) megletProps.get("ActiveAdmins") : new java.util.ArrayList()); }
+    public java.util.List getActiveAdmins() { return (meglerProps.get("ActiveAdmins") != null ? (java.util.List) meglerProps.get("ActiveAdmins") : new java.util.ArrayList()); }
     public java.util.List getActiveAdminsAsUser(int p0) { return new java.util.ArrayList(); }
     public java.util.Set getAffiliationIds(android.content.ComponentName p0) { return new java.util.HashSet(); }
     public int getAggregatedPasswordComplexityForUser(int p0) { return 0; }
     public int getAggregatedPasswordComplexityForUser(int p0, boolean p1) { return 0; }
-    public java.util.Set getAllCrossProfilePackages() { return (megletProps.get("AllCrossProfilePackages") != null ? (java.util.Set) megletProps.get("AllCrossProfilePackages") : new java.util.HashSet()); }
+    public java.util.Set getAllCrossProfilePackages() { return (meglerProps.get("AllCrossProfilePackages") != null ? (java.util.Set) meglerProps.get("AllCrossProfilePackages") : new java.util.HashSet()); }
     public java.util.Set getAlwaysOnVpnLockdownWhitelist(android.content.ComponentName p0) { return new java.util.HashSet(); }
-    public java.lang.String getAlwaysOnVpnPackage() { return (java.lang.String) megletProps.get("AlwaysOnVpnPackage"); }
+    public java.lang.String getAlwaysOnVpnPackage() { return (java.lang.String) meglerProps.get("AlwaysOnVpnPackage"); }
     public java.lang.String getAlwaysOnVpnPackage(android.content.ComponentName p0) { return null; }
-    public int getAppFunctionsPolicy() { return (megletProps.get("AppFunctionsPolicy") instanceof Integer ? (Integer) megletProps.get("AppFunctionsPolicy") : 0); }
+    public int getAppFunctionsPolicy() { return (meglerProps.get("AppFunctionsPolicy") instanceof Integer ? (Integer) meglerProps.get("AppFunctionsPolicy") : 0); }
     public java.util.Set getApplicationExemptions(java.lang.String p0) { return new java.util.HashSet(); }
     public android.os.Bundle getApplicationRestrictions(android.content.ComponentName p0, java.lang.String p1) { return null; }
     public android.os.Bundle getApplicationRestrictionsBySystem(java.lang.String p0, java.lang.String p1) { return null; }
     public java.lang.String getApplicationRestrictionsManagingPackage(android.content.ComponentName p0) { return null; }
     public boolean getAutoTimeEnabled(android.content.ComponentName p0) { return false; }
-    public int getAutoTimePolicy() { return (megletProps.get("AutoTimePolicy") instanceof Integer ? (Integer) megletProps.get("AutoTimePolicy") : 0); }
-    public boolean getAutoTimeRequired() { return (megletProps.get("AutoTimeRequired") instanceof Boolean ? (Boolean) megletProps.get("AutoTimeRequired") : false); }
+    public int getAutoTimePolicy() { return (meglerProps.get("AutoTimePolicy") instanceof Integer ? (Integer) meglerProps.get("AutoTimePolicy") : 0); }
+    public boolean getAutoTimeRequired() { return (meglerProps.get("AutoTimeRequired") instanceof Boolean ? (Boolean) meglerProps.get("AutoTimeRequired") : false); }
     public boolean getAutoTimeZoneEnabled(android.content.ComponentName p0) { return false; }
-    public int getAutoTimeZonePolicy() { return (megletProps.get("AutoTimeZonePolicy") instanceof Integer ? (Integer) megletProps.get("AutoTimeZonePolicy") : 0); }
+    public int getAutoTimeZonePolicy() { return (meglerProps.get("AutoTimeZonePolicy") instanceof Integer ? (Integer) meglerProps.get("AutoTimeZonePolicy") : 0); }
     public java.util.List getBindDeviceAdminTargetUsers(android.content.ComponentName p0) { return new java.util.ArrayList(); }
     public boolean getBluetoothContactSharingDisabled(android.content.ComponentName p0) { return false; }
     public boolean getBluetoothContactSharingDisabled(android.os.UserHandle p0) { return false; }
@@ -445,8 +445,8 @@ public class DevicePolicyManager {
     public boolean getCameraDisabled(android.content.ComponentName p0, int p1) { return false; }
     public java.lang.String getCertInstallerPackage(android.content.ComponentName p0) { return null; }
     public int getContentProtectionPolicy(android.content.ComponentName p0) { return 0; }
-    public android.app.admin.PackagePolicy getCredentialManagerPolicy() { return (android.app.admin.PackagePolicy) megletProps.get("CredentialManagerPolicy"); }
-    public java.util.Set getCrossProfileCalendarPackages() { return (megletProps.get("CrossProfileCalendarPackages") != null ? (java.util.Set) megletProps.get("CrossProfileCalendarPackages") : new java.util.HashSet()); }
+    public android.app.admin.PackagePolicy getCredentialManagerPolicy() { return (android.app.admin.PackagePolicy) meglerProps.get("CredentialManagerPolicy"); }
+    public java.util.Set getCrossProfileCalendarPackages() { return (meglerProps.get("CrossProfileCalendarPackages") != null ? (java.util.Set) meglerProps.get("CrossProfileCalendarPackages") : new java.util.HashSet()); }
     public java.util.Set getCrossProfileCalendarPackages(android.content.ComponentName p0) { return new java.util.HashSet(); }
     public boolean getCrossProfileCallerIdDisabled(android.content.ComponentName p0) { return false; }
     public boolean getCrossProfileCallerIdDisabled(android.os.UserHandle p0) { return false; }
@@ -454,65 +454,65 @@ public class DevicePolicyManager {
     public boolean getCrossProfileContactsSearchDisabled(android.os.UserHandle p0) { return false; }
     public java.util.Set getCrossProfilePackages(android.content.ComponentName p0) { return new java.util.HashSet(); }
     public java.util.List getCrossProfileWidgetProviders(android.content.ComponentName p0) { return new java.util.ArrayList(); }
-    public int getCurrentFailedPasswordAttempts() { return (megletProps.get("CurrentFailedPasswordAttempts") instanceof Integer ? (Integer) megletProps.get("CurrentFailedPasswordAttempts") : 0); }
+    public int getCurrentFailedPasswordAttempts() { return (meglerProps.get("CurrentFailedPasswordAttempts") instanceof Integer ? (Integer) meglerProps.get("CurrentFailedPasswordAttempts") : 0); }
     public int getCurrentFailedPasswordAttempts(int p0) { return 0; }
-    public java.util.Set getDefaultCrossProfilePackages() { return (megletProps.get("DefaultCrossProfilePackages") != null ? (java.util.Set) megletProps.get("DefaultCrossProfilePackages") : new java.util.HashSet()); }
+    public java.util.Set getDefaultCrossProfilePackages() { return (meglerProps.get("DefaultCrossProfilePackages") != null ? (java.util.Set) meglerProps.get("DefaultCrossProfilePackages") : new java.util.HashSet()); }
     public java.util.List getDelegatePackages(android.content.ComponentName p0, java.lang.String p1) { return new java.util.ArrayList(); }
     public java.util.List getDelegatedScopes(android.content.ComponentName p0, java.lang.String p1) { return new java.util.ArrayList(); }
-    public java.lang.String getDeviceOwner() { return (java.lang.String) megletProps.get("DeviceOwner"); }
-    public android.content.ComponentName getDeviceOwnerComponentOnAnyUser() { return (android.content.ComponentName) megletProps.get("DeviceOwnerComponentOnAnyUser"); }
-    public android.content.ComponentName getDeviceOwnerComponentOnCallingUser() { return (android.content.ComponentName) megletProps.get("DeviceOwnerComponentOnCallingUser"); }
-    public java.lang.CharSequence getDeviceOwnerLockScreenInfo() { return (java.lang.CharSequence) megletProps.get("DeviceOwnerLockScreenInfo"); }
-    public java.lang.String getDeviceOwnerNameOnAnyUser() { return (java.lang.String) megletProps.get("DeviceOwnerNameOnAnyUser"); }
-    public java.lang.CharSequence getDeviceOwnerOrganizationName() { return (java.lang.CharSequence) megletProps.get("DeviceOwnerOrganizationName"); }
+    public java.lang.String getDeviceOwner() { return (java.lang.String) meglerProps.get("DeviceOwner"); }
+    public android.content.ComponentName getDeviceOwnerComponentOnAnyUser() { return (android.content.ComponentName) meglerProps.get("DeviceOwnerComponentOnAnyUser"); }
+    public android.content.ComponentName getDeviceOwnerComponentOnCallingUser() { return (android.content.ComponentName) meglerProps.get("DeviceOwnerComponentOnCallingUser"); }
+    public java.lang.CharSequence getDeviceOwnerLockScreenInfo() { return (java.lang.CharSequence) meglerProps.get("DeviceOwnerLockScreenInfo"); }
+    public java.lang.String getDeviceOwnerNameOnAnyUser() { return (java.lang.String) meglerProps.get("DeviceOwnerNameOnAnyUser"); }
+    public java.lang.CharSequence getDeviceOwnerOrganizationName() { return (java.lang.CharSequence) meglerProps.get("DeviceOwnerOrganizationName"); }
     public int getDeviceOwnerType(android.content.ComponentName p0) { return 0; }
-    public android.os.UserHandle getDeviceOwnerUser() { return (android.os.UserHandle) megletProps.get("DeviceOwnerUser"); }
-    public int getDeviceOwnerUserId() { return (megletProps.get("DeviceOwnerUserId") instanceof Integer ? (Integer) megletProps.get("DeviceOwnerUserId") : 0); }
-    public java.lang.String getDevicePolicyManagementRoleHolderPackage() { return (java.lang.String) megletProps.get("DevicePolicyManagementRoleHolderPackage"); }
-    public java.lang.String getDevicePolicyManagementRoleHolderUpdaterPackage() { return (java.lang.String) megletProps.get("DevicePolicyManagementRoleHolderUpdaterPackage"); }
-    public android.app.admin.DevicePolicyState getDevicePolicyState() { return (android.app.admin.DevicePolicyState) megletProps.get("DevicePolicyState"); }
+    public android.os.UserHandle getDeviceOwnerUser() { return (android.os.UserHandle) meglerProps.get("DeviceOwnerUser"); }
+    public int getDeviceOwnerUserId() { return (meglerProps.get("DeviceOwnerUserId") instanceof Integer ? (Integer) meglerProps.get("DeviceOwnerUserId") : 0); }
+    public java.lang.String getDevicePolicyManagementRoleHolderPackage() { return (java.lang.String) meglerProps.get("DevicePolicyManagementRoleHolderPackage"); }
+    public java.lang.String getDevicePolicyManagementRoleHolderUpdaterPackage() { return (java.lang.String) meglerProps.get("DevicePolicyManagementRoleHolderUpdaterPackage"); }
+    public android.app.admin.DevicePolicyState getDevicePolicyState() { return (android.app.admin.DevicePolicyState) meglerProps.get("DevicePolicyState"); }
     public java.util.Set getDisallowedSystemApps(android.content.ComponentName p0, int p1, java.lang.String p2) { return new java.util.HashSet(); }
-    public boolean getDoNotAskCredentialsOnBoot() { return (megletProps.get("DoNotAskCredentialsOnBoot") instanceof Boolean ? (Boolean) megletProps.get("DoNotAskCredentialsOnBoot") : false); }
+    public boolean getDoNotAskCredentialsOnBoot() { return (meglerProps.get("DoNotAskCredentialsOnBoot") instanceof Boolean ? (Boolean) meglerProps.get("DoNotAskCredentialsOnBoot") : false); }
     public java.lang.CharSequence getEndUserSessionMessage(android.content.ComponentName p0) { return null; }
     public android.app.admin.EnforcingAdmin getEnforcingAdmin(int p0, java.lang.String p1) { return null; }
     public android.os.Bundle getEnforcingAdminAndUserDetails(int p0, java.lang.String p1) { return null; }
     public android.app.admin.PolicyEnforcementInfo getEnforcingAdminsForPolicy(java.lang.String p0, int p1) { return null; }
-    public java.lang.String getEnrollmentSpecificId() { return (java.lang.String) megletProps.get("EnrollmentSpecificId"); }
+    public java.lang.String getEnrollmentSpecificId() { return (java.lang.String) meglerProps.get("EnrollmentSpecificId"); }
     public android.app.admin.FactoryResetProtectionPolicy getFactoryResetProtectionPolicy(android.content.ComponentName p0) { return null; }
-    public java.lang.String getFinancedDeviceKioskRoleHolder() { return (java.lang.String) megletProps.get("FinancedDeviceKioskRoleHolder"); }
+    public java.lang.String getFinancedDeviceKioskRoleHolder() { return (java.lang.String) meglerProps.get("FinancedDeviceKioskRoleHolder"); }
     public boolean getForceEphemeralUsers(android.content.ComponentName p0) { return false; }
     public java.lang.String getGlobalPrivateDnsHost(android.content.ComponentName p0) { return null; }
     public int getGlobalPrivateDnsMode(android.content.ComponentName p0) { return 0; }
-    public android.content.ComponentName getGlobalProxyAdmin() { return (android.content.ComponentName) megletProps.get("GlobalProxyAdmin"); }
-    public int getHeadlessDeviceOwnerMode() { return (megletProps.get("HeadlessDeviceOwnerMode") instanceof Integer ? (Integer) megletProps.get("HeadlessDeviceOwnerMode") : 0); }
+    public android.content.ComponentName getGlobalProxyAdmin() { return (android.content.ComponentName) meglerProps.get("GlobalProxyAdmin"); }
+    public int getHeadlessDeviceOwnerMode() { return (meglerProps.get("HeadlessDeviceOwnerMode") instanceof Integer ? (Integer) meglerProps.get("HeadlessDeviceOwnerMode") : 0); }
     public java.util.List getInstalledCaCerts(android.content.ComponentName p0) { return new java.util.ArrayList(); }
     public java.util.List getKeepUninstalledPackages(android.content.ComponentName p0) { return new java.util.ArrayList(); }
     public java.util.Map getKeyPairGrants(java.lang.String p0) { return new java.util.HashMap(); }
     public int getKeyguardDisabledFeatures(android.content.ComponentName p0) { return 0; }
     public int getKeyguardDisabledFeatures(android.content.ComponentName p0, int p1) { return 0; }
-    public long getLastBugReportRequestTime() { return (megletProps.get("LastBugReportRequestTime") instanceof Long ? (Long) megletProps.get("LastBugReportRequestTime") : 0L); }
-    public long getLastNetworkLogRetrievalTime() { return (megletProps.get("LastNetworkLogRetrievalTime") instanceof Long ? (Long) megletProps.get("LastNetworkLogRetrievalTime") : 0L); }
-    public long getLastSecurityLogRetrievalTime() { return (megletProps.get("LastSecurityLogRetrievalTime") instanceof Long ? (Long) megletProps.get("LastSecurityLogRetrievalTime") : 0L); }
+    public long getLastBugReportRequestTime() { return (meglerProps.get("LastBugReportRequestTime") instanceof Long ? (Long) meglerProps.get("LastBugReportRequestTime") : 0L); }
+    public long getLastNetworkLogRetrievalTime() { return (meglerProps.get("LastNetworkLogRetrievalTime") instanceof Long ? (Long) meglerProps.get("LastNetworkLogRetrievalTime") : 0L); }
+    public long getLastSecurityLogRetrievalTime() { return (meglerProps.get("LastSecurityLogRetrievalTime") instanceof Long ? (Long) meglerProps.get("LastSecurityLogRetrievalTime") : 0L); }
     public int getLockTaskFeatures(android.content.ComponentName p0) { return 0; }
     public java.lang.String[] getLockTaskPackages(android.content.ComponentName p0) { return null; }
-    public android.os.UserHandle getLogoutUser() { return (android.os.UserHandle) megletProps.get("LogoutUser"); }
+    public android.os.UserHandle getLogoutUser() { return (android.os.UserHandle) meglerProps.get("LogoutUser"); }
     public java.lang.CharSequence getLongSupportMessage(android.content.ComponentName p0) { return null; }
     public java.lang.CharSequence getLongSupportMessageForUser(android.content.ComponentName p0, int p1) { return null; }
-    public android.app.admin.PackagePolicy getManagedProfileCallerIdAccessPolicy() { return (android.app.admin.PackagePolicy) megletProps.get("ManagedProfileCallerIdAccessPolicy"); }
-    public android.app.admin.PackagePolicy getManagedProfileContactsAccessPolicy() { return (android.app.admin.PackagePolicy) megletProps.get("ManagedProfileContactsAccessPolicy"); }
+    public android.app.admin.PackagePolicy getManagedProfileCallerIdAccessPolicy() { return (android.app.admin.PackagePolicy) meglerProps.get("ManagedProfileCallerIdAccessPolicy"); }
+    public android.app.admin.PackagePolicy getManagedProfileContactsAccessPolicy() { return (android.app.admin.PackagePolicy) meglerProps.get("ManagedProfileContactsAccessPolicy"); }
     public long getManagedProfileMaximumTimeOff(android.content.ComponentName p0) { return 0L; }
-    public android.app.admin.ManagedSubscriptionsPolicy getManagedSubscriptionsPolicy() { return (android.app.admin.ManagedSubscriptionsPolicy) megletProps.get("ManagedSubscriptionsPolicy"); }
-    public int getMaxPolicyStorageLimit() { return (megletProps.get("MaxPolicyStorageLimit") instanceof Integer ? (Integer) megletProps.get("MaxPolicyStorageLimit") : 0); }
+    public android.app.admin.ManagedSubscriptionsPolicy getManagedSubscriptionsPolicy() { return (android.app.admin.ManagedSubscriptionsPolicy) meglerProps.get("ManagedSubscriptionsPolicy"); }
+    public int getMaxPolicyStorageLimit() { return (meglerProps.get("MaxPolicyStorageLimit") instanceof Integer ? (Integer) meglerProps.get("MaxPolicyStorageLimit") : 0); }
     public int getMaximumFailedPasswordsForWipe(android.content.ComponentName p0) { return 0; }
     public int getMaximumFailedPasswordsForWipe(android.content.ComponentName p0, int p1) { return 0; }
     public long getMaximumTimeToLock(android.content.ComponentName p0) { return 0L; }
     public long getMaximumTimeToLock(android.content.ComponentName p0, int p1) { return 0L; }
     public java.util.List getMeteredDataDisabledPackages(android.content.ComponentName p0) { return new java.util.ArrayList(); }
-    public int getMinimumRequiredWifiSecurityLevel() { return (megletProps.get("MinimumRequiredWifiSecurityLevel") instanceof Integer ? (Integer) megletProps.get("MinimumRequiredWifiSecurityLevel") : 0); }
-    public int getMtePolicy() { return (megletProps.get("MtePolicy") instanceof Integer ? (Integer) megletProps.get("MtePolicy") : 0); }
-    public int getNearbyAppStreamingPolicy() { return (megletProps.get("NearbyAppStreamingPolicy") instanceof Integer ? (Integer) megletProps.get("NearbyAppStreamingPolicy") : 0); }
+    public int getMinimumRequiredWifiSecurityLevel() { return (meglerProps.get("MinimumRequiredWifiSecurityLevel") instanceof Integer ? (Integer) meglerProps.get("MinimumRequiredWifiSecurityLevel") : 0); }
+    public int getMtePolicy() { return (meglerProps.get("MtePolicy") instanceof Integer ? (Integer) meglerProps.get("MtePolicy") : 0); }
+    public int getNearbyAppStreamingPolicy() { return (meglerProps.get("NearbyAppStreamingPolicy") instanceof Integer ? (Integer) meglerProps.get("NearbyAppStreamingPolicy") : 0); }
     public int getNearbyAppStreamingPolicy(int p0) { return 0; }
-    public int getNearbyNotificationStreamingPolicy() { return (megletProps.get("NearbyNotificationStreamingPolicy") instanceof Integer ? (Integer) megletProps.get("NearbyNotificationStreamingPolicy") : 0); }
+    public int getNearbyNotificationStreamingPolicy() { return (meglerProps.get("NearbyNotificationStreamingPolicy") instanceof Integer ? (Integer) meglerProps.get("NearbyNotificationStreamingPolicy") : 0); }
     public int getNearbyNotificationStreamingPolicy(int p0) { return 0; }
     public int getOrganizationColor(android.content.ComponentName p0) { return 0; }
     public int getOrganizationColorForUser(int p0) { return 0; }
@@ -522,7 +522,7 @@ public class DevicePolicyManager {
     public java.util.List getOwnerInstalledCaCerts(android.os.UserHandle p0) { return new java.util.ArrayList(); }
     public android.app.admin.DevicePolicyManager getParentProfileInstance(android.content.ComponentName p0) { return this; }
     public android.app.admin.DevicePolicyManager getParentProfileInstance(android.content.pm.UserInfo p0) { return this; }
-    public int getPasswordComplexity() { return (megletProps.get("PasswordComplexity") instanceof Integer ? (Integer) megletProps.get("PasswordComplexity") : 0); }
+    public int getPasswordComplexity() { return (meglerProps.get("PasswordComplexity") instanceof Integer ? (Integer) meglerProps.get("PasswordComplexity") : 0); }
     public long getPasswordExpiration(android.content.ComponentName p0) { return 0L; }
     public long getPasswordExpirationTimeout(android.content.ComponentName p0) { return 0L; }
     public int getPasswordHistoryLength(android.content.ComponentName p0) { return 0; }
@@ -552,27 +552,27 @@ public class DevicePolicyManager {
     public java.util.List getPermittedAccessibilityServices(int p0) { return new java.util.ArrayList(); }
     public java.util.List getPermittedAccessibilityServices(android.content.ComponentName p0) { return new java.util.ArrayList(); }
     public java.util.List getPermittedCrossProfileNotificationListeners(android.content.ComponentName p0) { return new java.util.ArrayList(); }
-    public java.util.List getPermittedInputMethods() { return (megletProps.get("PermittedInputMethods") != null ? (java.util.List) megletProps.get("PermittedInputMethods") : new java.util.ArrayList()); }
+    public java.util.List getPermittedInputMethods() { return (meglerProps.get("PermittedInputMethods") != null ? (java.util.List) meglerProps.get("PermittedInputMethods") : new java.util.ArrayList()); }
     public java.util.List getPermittedInputMethods(android.content.ComponentName p0) { return new java.util.ArrayList(); }
-    public java.util.List getPermittedInputMethodsForCurrentUser() { return (megletProps.get("PermittedInputMethodsForCurrentUser") != null ? (java.util.List) megletProps.get("PermittedInputMethodsForCurrentUser") : new java.util.ArrayList()); }
+    public java.util.List getPermittedInputMethodsForCurrentUser() { return (meglerProps.get("PermittedInputMethodsForCurrentUser") != null ? (java.util.List) meglerProps.get("PermittedInputMethodsForCurrentUser") : new java.util.ArrayList()); }
     public int getPersonalAppsSuspendedReasons(android.content.ComponentName p0) { return 0; }
-    public java.util.Set getPolicyExemptApps() { return (megletProps.get("PolicyExemptApps") != null ? (java.util.Set) megletProps.get("PolicyExemptApps") : new java.util.HashSet()); }
+    public java.util.Set getPolicyExemptApps() { return (meglerProps.get("PolicyExemptApps") != null ? (java.util.Set) meglerProps.get("PolicyExemptApps") : new java.util.HashSet()); }
     public java.util.List getPolicyManagedProfiles(android.os.UserHandle p0) { return new java.util.ArrayList(); }
     public int getPolicySizeForAdmin(android.app.admin.EnforcingAdmin p0) { return 0; }
-    public java.util.List getPreferentialNetworkServiceConfigs() { return (megletProps.get("PreferentialNetworkServiceConfigs") != null ? (java.util.List) megletProps.get("PreferentialNetworkServiceConfigs") : new java.util.ArrayList()); }
-    public android.content.ComponentName getProfileOwner() { return (android.content.ComponentName) megletProps.get("ProfileOwner"); }
+    public java.util.List getPreferentialNetworkServiceConfigs() { return (meglerProps.get("PreferentialNetworkServiceConfigs") != null ? (java.util.List) meglerProps.get("PreferentialNetworkServiceConfigs") : new java.util.ArrayList()); }
+    public android.content.ComponentName getProfileOwner() { return (android.content.ComponentName) meglerProps.get("ProfileOwner"); }
     public android.content.ComponentName getProfileOwnerAsUser(int p0) { return null; }
     public android.content.ComponentName getProfileOwnerAsUser(android.os.UserHandle p0) { return null; }
-    public java.lang.String getProfileOwnerName() { return (java.lang.String) megletProps.get("ProfileOwnerName"); }
+    public java.lang.String getProfileOwnerName() { return (java.lang.String) meglerProps.get("ProfileOwnerName"); }
     public java.lang.String getProfileOwnerNameAsUser(int p0) { return null; }
     public android.content.ComponentName getProfileOwnerOrDeviceOwnerSupervisionComponent(android.os.UserHandle p0) { return null; }
     public int getProfileWithMinimumFailedPasswordsForWipe(int p0) { return 0; }
     public android.util.Pair getProxyParameters(java.net.Proxy p0, java.util.List p1) { return null; }
     public void getRemoveWarning(android.content.ComponentName p0, android.os.RemoteCallback p1) {}
-    public int getRequiredPasswordComplexity() { return (megletProps.get("RequiredPasswordComplexity") instanceof Integer ? (Integer) megletProps.get("RequiredPasswordComplexity") : 0); }
+    public int getRequiredPasswordComplexity() { return (meglerProps.get("RequiredPasswordComplexity") instanceof Integer ? (Integer) meglerProps.get("RequiredPasswordComplexity") : 0); }
     public long getRequiredStrongAuthTimeout(android.content.ComponentName p0) { return 0L; }
     public long getRequiredStrongAuthTimeout(android.content.ComponentName p0, int p1) { return 0L; }
-    public android.app.admin.DevicePolicyResourcesManager getResources() { return (android.app.admin.DevicePolicyResourcesManager) megletProps.get("Resources"); }
+    public android.app.admin.DevicePolicyResourcesManager getResources() { return (android.app.admin.DevicePolicyResourcesManager) meglerProps.get("Resources"); }
     public boolean getScreenCaptureDisabled(android.content.ComponentName p0) { return false; }
     public boolean getScreenCaptureDisabled(android.content.ComponentName p0, int p1) { return false; }
     public java.util.List getSecondaryUsers(android.content.ComponentName p0) { return new java.util.ArrayList(); }
@@ -580,19 +580,19 @@ public class DevicePolicyManager {
     public java.lang.CharSequence getShortSupportMessageForUser(android.content.ComponentName p0, int p1) { return null; }
     public java.lang.CharSequence getStartUserSessionMessage(android.content.ComponentName p0) { return null; }
     public boolean getStorageEncryption(android.content.ComponentName p0) { return false; }
-    public int getStorageEncryptionStatus() { return (megletProps.get("StorageEncryptionStatus") instanceof Integer ? (Integer) megletProps.get("StorageEncryptionStatus") : 0); }
+    public int getStorageEncryptionStatus() { return (meglerProps.get("StorageEncryptionStatus") instanceof Integer ? (Integer) meglerProps.get("StorageEncryptionStatus") : 0); }
     public int getStorageEncryptionStatus(int p0) { return 0; }
-    public java.util.Set getSubscriptionIds() { return (megletProps.get("SubscriptionIds") != null ? (java.util.Set) megletProps.get("SubscriptionIds") : new java.util.HashSet()); }
-    public android.app.admin.SystemUpdatePolicy getSystemUpdatePolicy() { return (android.app.admin.SystemUpdatePolicy) megletProps.get("SystemUpdatePolicy"); }
-    public android.os.PersistableBundle getTransferOwnershipBundle() { return (android.os.PersistableBundle) megletProps.get("TransferOwnershipBundle"); }
+    public java.util.Set getSubscriptionIds() { return (meglerProps.get("SubscriptionIds") != null ? (java.util.Set) meglerProps.get("SubscriptionIds") : new java.util.HashSet()); }
+    public android.app.admin.SystemUpdatePolicy getSystemUpdatePolicy() { return (android.app.admin.SystemUpdatePolicy) meglerProps.get("SystemUpdatePolicy"); }
+    public android.os.PersistableBundle getTransferOwnershipBundle() { return (android.os.PersistableBundle) meglerProps.get("TransferOwnershipBundle"); }
     public java.util.List getTrustAgentConfiguration(android.content.ComponentName p0, android.content.ComponentName p1) { return new java.util.ArrayList(); }
     public java.util.List getTrustAgentConfiguration(android.content.ComponentName p0, android.content.ComponentName p1, int p2) { return new java.util.ArrayList(); }
     public java.util.List getUserControlDisabledPackages(android.content.ComponentName p0) { return new java.util.ArrayList(); }
-    public int getUserProvisioningState() { return (megletProps.get("UserProvisioningState") instanceof Integer ? (Integer) megletProps.get("UserProvisioningState") : 0); }
+    public int getUserProvisioningState() { return (meglerProps.get("UserProvisioningState") instanceof Integer ? (Integer) meglerProps.get("UserProvisioningState") : 0); }
     public android.os.Bundle getUserRestrictions(android.content.ComponentName p0) { return null; }
-    public android.os.Bundle getUserRestrictionsGlobally() { return (android.os.Bundle) megletProps.get("UserRestrictionsGlobally"); }
+    public android.os.Bundle getUserRestrictionsGlobally() { return (android.os.Bundle) meglerProps.get("UserRestrictionsGlobally"); }
     public java.lang.String getWifiMacAddress(android.content.ComponentName p0) { return null; }
-    public android.app.admin.WifiSsidPolicy getWifiSsidPolicy() { return (android.app.admin.WifiSsidPolicy) megletProps.get("WifiSsidPolicy"); }
+    public android.app.admin.WifiSsidPolicy getWifiSsidPolicy() { return (android.app.admin.WifiSsidPolicy) meglerProps.get("WifiSsidPolicy"); }
     public boolean grantKeyPairToApp(android.content.ComponentName p0, java.lang.String p1, java.lang.String p2) { return false; }
     public boolean grantKeyPairToWifiAuth(java.lang.String p0) { return false; }
     public boolean hasCaCertInstalled(android.content.ComponentName p0, byte[] p1) { return false; }
@@ -610,54 +610,54 @@ public class DevicePolicyManager {
     public boolean installKeyPair(android.content.ComponentName p0, java.security.PrivateKey p1, java.security.cert.Certificate[] p2, java.lang.String p3, boolean p4) { return false; }
     public void installSystemUpdate(android.content.ComponentName p0, android.net.Uri p1, java.util.concurrent.Executor p2, android.app.admin.DevicePolicyManager.InstallSystemUpdateCallback p3) {}
     public boolean isAccessibilityServicePermittedByAdmin(android.content.ComponentName p0, java.lang.String p1, int p2) { return false; }
-    public boolean isActivePasswordSufficient() { return (megletProps.get("ActivePasswordSufficient") instanceof Boolean ? (Boolean) megletProps.get("ActivePasswordSufficient") : false); }
-    public boolean isActivePasswordSufficientForDeviceRequirement() { return (megletProps.get("ActivePasswordSufficientForDeviceRequirement") instanceof Boolean ? (Boolean) megletProps.get("ActivePasswordSufficientForDeviceRequirement") : false); }
+    public boolean isActivePasswordSufficient() { return (meglerProps.get("ActivePasswordSufficient") instanceof Boolean ? (Boolean) meglerProps.get("ActivePasswordSufficient") : false); }
+    public boolean isActivePasswordSufficientForDeviceRequirement() { return (meglerProps.get("ActivePasswordSufficientForDeviceRequirement") instanceof Boolean ? (Boolean) meglerProps.get("ActivePasswordSufficientForDeviceRequirement") : false); }
     public boolean isAdminActive(android.content.ComponentName p0) { return false; }
     public boolean isAdminActiveAsUser(android.content.ComponentName p0, int p1) { return false; }
-    public boolean isAffiliatedUser() { return (megletProps.get("AffiliatedUser") instanceof Boolean ? (Boolean) megletProps.get("AffiliatedUser") : false); }
+    public boolean isAffiliatedUser() { return (meglerProps.get("AffiliatedUser") instanceof Boolean ? (Boolean) meglerProps.get("AffiliatedUser") : false); }
     public boolean isAffiliatedUser(int p0) { return false; }
-    public boolean isAlwaysOnVpnLockdownEnabled() { return (megletProps.get("AlwaysOnVpnLockdownEnabled") instanceof Boolean ? (Boolean) megletProps.get("AlwaysOnVpnLockdownEnabled") : false); }
+    public boolean isAlwaysOnVpnLockdownEnabled() { return (meglerProps.get("AlwaysOnVpnLockdownEnabled") instanceof Boolean ? (Boolean) meglerProps.get("AlwaysOnVpnLockdownEnabled") : false); }
     public boolean isAlwaysOnVpnLockdownEnabled(android.content.ComponentName p0) { return false; }
     public boolean isApplicationHidden(android.content.ComponentName p0, java.lang.String p1) { return false; }
-    public boolean isAuditLogEnabled() { return (megletProps.get("AuditLogEnabled") instanceof Boolean ? (Boolean) megletProps.get("AuditLogEnabled") : false); }
+    public boolean isAuditLogEnabled() { return (meglerProps.get("AuditLogEnabled") instanceof Boolean ? (Boolean) meglerProps.get("AuditLogEnabled") : false); }
     public boolean isBackupServiceEnabled(android.content.ComponentName p0) { return false; }
     public boolean isCaCertApproved(java.lang.String p0, int p1) { return false; }
-    public boolean isCallerApplicationRestrictionsManagingPackage() { return (megletProps.get("CallerApplicationRestrictionsManagingPackage") instanceof Boolean ? (Boolean) megletProps.get("CallerApplicationRestrictionsManagingPackage") : false); }
+    public boolean isCallerApplicationRestrictionsManagingPackage() { return (meglerProps.get("CallerApplicationRestrictionsManagingPackage") instanceof Boolean ? (Boolean) meglerProps.get("CallerApplicationRestrictionsManagingPackage") : false); }
     public boolean isCommonCriteriaModeEnabled(android.content.ComponentName p0) { return false; }
-    public boolean isComplianceAcknowledgementRequired() { return (megletProps.get("ComplianceAcknowledgementRequired") instanceof Boolean ? (Boolean) megletProps.get("ComplianceAcknowledgementRequired") : false); }
-    public boolean isCurrentInputMethodSetByOwner() { return (megletProps.get("CurrentInputMethodSetByOwner") instanceof Boolean ? (Boolean) megletProps.get("CurrentInputMethodSetByOwner") : false); }
-    public boolean isDeviceFinanced() { return (megletProps.get("DeviceFinanced") instanceof Boolean ? (Boolean) megletProps.get("DeviceFinanced") : false); }
-    public boolean isDeviceIdAttestationSupported() { return (megletProps.get("DeviceIdAttestationSupported") instanceof Boolean ? (Boolean) megletProps.get("DeviceIdAttestationSupported") : false); }
-    public boolean isDeviceManaged() { return (megletProps.get("DeviceManaged") instanceof Boolean ? (Boolean) megletProps.get("DeviceManaged") : false); }
+    public boolean isComplianceAcknowledgementRequired() { return (meglerProps.get("ComplianceAcknowledgementRequired") instanceof Boolean ? (Boolean) meglerProps.get("ComplianceAcknowledgementRequired") : false); }
+    public boolean isCurrentInputMethodSetByOwner() { return (meglerProps.get("CurrentInputMethodSetByOwner") instanceof Boolean ? (Boolean) meglerProps.get("CurrentInputMethodSetByOwner") : false); }
+    public boolean isDeviceFinanced() { return (meglerProps.get("DeviceFinanced") instanceof Boolean ? (Boolean) meglerProps.get("DeviceFinanced") : false); }
+    public boolean isDeviceIdAttestationSupported() { return (meglerProps.get("DeviceIdAttestationSupported") instanceof Boolean ? (Boolean) meglerProps.get("DeviceIdAttestationSupported") : false); }
+    public boolean isDeviceManaged() { return (meglerProps.get("DeviceManaged") instanceof Boolean ? (Boolean) meglerProps.get("DeviceManaged") : false); }
     public boolean isDeviceOwnerApp(java.lang.String p0) { return false; }
     public boolean isDeviceOwnerAppOnAnyUser(java.lang.String p0) { return false; }
     public boolean isDeviceOwnerAppOnCallingUser(java.lang.String p0) { return false; }
-    public boolean isDevicePotentiallyStolen() { return (megletProps.get("DevicePotentiallyStolen") instanceof Boolean ? (Boolean) megletProps.get("DevicePotentiallyStolen") : false); }
-    public boolean isDeviceProvisioned() { return (megletProps.get("DeviceProvisioned") instanceof Boolean ? (Boolean) megletProps.get("DeviceProvisioned") : false); }
-    public boolean isDeviceProvisioningConfigApplied() { return (megletProps.get("DeviceProvisioningConfigApplied") instanceof Boolean ? (Boolean) megletProps.get("DeviceProvisioningConfigApplied") : false); }
-    public boolean isDpcDownloaded() { return (megletProps.get("DpcDownloaded") instanceof Boolean ? (Boolean) megletProps.get("DpcDownloaded") : false); }
+    public boolean isDevicePotentiallyStolen() { return (meglerProps.get("DevicePotentiallyStolen") instanceof Boolean ? (Boolean) meglerProps.get("DevicePotentiallyStolen") : false); }
+    public boolean isDeviceProvisioned() { return (meglerProps.get("DeviceProvisioned") instanceof Boolean ? (Boolean) meglerProps.get("DeviceProvisioned") : false); }
+    public boolean isDeviceProvisioningConfigApplied() { return (meglerProps.get("DeviceProvisioningConfigApplied") instanceof Boolean ? (Boolean) meglerProps.get("DeviceProvisioningConfigApplied") : false); }
+    public boolean isDpcDownloaded() { return (meglerProps.get("DpcDownloaded") instanceof Boolean ? (Boolean) meglerProps.get("DpcDownloaded") : false); }
     public boolean isEphemeralUser(android.content.ComponentName p0) { return false; }
-    public boolean isFactoryResetProtectionPolicySupported() { return (megletProps.get("FactoryResetProtectionPolicySupported") instanceof Boolean ? (Boolean) megletProps.get("FactoryResetProtectionPolicySupported") : false); }
-    public boolean isFinancedDevice() { return (megletProps.get("FinancedDevice") instanceof Boolean ? (Boolean) megletProps.get("FinancedDevice") : false); }
+    public boolean isFactoryResetProtectionPolicySupported() { return (meglerProps.get("FactoryResetProtectionPolicySupported") instanceof Boolean ? (Boolean) meglerProps.get("FactoryResetProtectionPolicySupported") : false); }
+    public boolean isFinancedDevice() { return (meglerProps.get("FinancedDevice") instanceof Boolean ? (Boolean) meglerProps.get("FinancedDevice") : false); }
     public boolean isInputMethodPermittedByAdmin(android.content.ComponentName p0, java.lang.String p1, int p2) { return false; }
     public boolean isKeyPairGrantedToWifiAuth(java.lang.String p0) { return false; }
     public boolean isLockTaskPermitted(java.lang.String p0) { return false; }
-    public boolean isLogoutEnabled() { return (megletProps.get("LogoutEnabled") instanceof Boolean ? (Boolean) megletProps.get("LogoutEnabled") : false); }
-    public boolean isManagedKiosk() { return (megletProps.get("ManagedKiosk") instanceof Boolean ? (Boolean) megletProps.get("ManagedKiosk") : false); }
+    public boolean isLogoutEnabled() { return (meglerProps.get("LogoutEnabled") instanceof Boolean ? (Boolean) meglerProps.get("LogoutEnabled") : false); }
+    public boolean isManagedKiosk() { return (meglerProps.get("ManagedKiosk") instanceof Boolean ? (Boolean) meglerProps.get("ManagedKiosk") : false); }
     public boolean isManagedProfile(android.content.ComponentName p0) { return false; }
     public boolean isMasterVolumeMuted(android.content.ComponentName p0) { return false; }
     public boolean isMeteredDataDisabledPackageForUser(android.content.ComponentName p0, java.lang.String p1, int p2) { return false; }
     public boolean isNetworkLoggingEnabled(android.content.ComponentName p0) { return false; }
-    public boolean isNewUserDisclaimerAcknowledged() { return (megletProps.get("NewUserDisclaimerAcknowledged") instanceof Boolean ? (Boolean) megletProps.get("NewUserDisclaimerAcknowledged") : false); }
+    public boolean isNewUserDisclaimerAcknowledged() { return (meglerProps.get("NewUserDisclaimerAcknowledged") instanceof Boolean ? (Boolean) meglerProps.get("NewUserDisclaimerAcknowledged") : false); }
     public boolean isNotificationListenerServicePermitted(java.lang.String p0, int p1) { return false; }
-    public boolean isOnboardingBugreportV2FlagEnabled() { return (megletProps.get("OnboardingBugreportV2FlagEnabled") instanceof Boolean ? (Boolean) megletProps.get("OnboardingBugreportV2FlagEnabled") : false); }
-    public boolean isOnboardingConsentlessBugreportFlagEnabled() { return (megletProps.get("OnboardingConsentlessBugreportFlagEnabled") instanceof Boolean ? (Boolean) megletProps.get("OnboardingConsentlessBugreportFlagEnabled") : false); }
-    public boolean isOrganizationOwnedDeviceWithManagedProfile() { return (megletProps.get("OrganizationOwnedDeviceWithManagedProfile") instanceof Boolean ? (Boolean) megletProps.get("OrganizationOwnedDeviceWithManagedProfile") : false); }
+    public boolean isOnboardingBugreportV2FlagEnabled() { return (meglerProps.get("OnboardingBugreportV2FlagEnabled") instanceof Boolean ? (Boolean) meglerProps.get("OnboardingBugreportV2FlagEnabled") : false); }
+    public boolean isOnboardingConsentlessBugreportFlagEnabled() { return (meglerProps.get("OnboardingConsentlessBugreportFlagEnabled") instanceof Boolean ? (Boolean) meglerProps.get("OnboardingConsentlessBugreportFlagEnabled") : false); }
+    public boolean isOrganizationOwnedDeviceWithManagedProfile() { return (meglerProps.get("OrganizationOwnedDeviceWithManagedProfile") instanceof Boolean ? (Boolean) meglerProps.get("OrganizationOwnedDeviceWithManagedProfile") : false); }
     public boolean isOverrideApnEnabled(android.content.ComponentName p0) { return false; }
     public boolean isPackageAllowedToAccessCalendar(java.lang.String p0) { return false; }
     public boolean isPackageSuspended(android.content.ComponentName p0, java.lang.String p1) { return false; }
     public boolean isPasswordSufficientAfterProfileUnification(int p0, int p1) { return false; }
-    public boolean isPreferentialNetworkServiceEnabled() { return (megletProps.get("PreferentialNetworkServiceEnabled") instanceof Boolean ? (Boolean) megletProps.get("PreferentialNetworkServiceEnabled") : false); }
+    public boolean isPreferentialNetworkServiceEnabled() { return (meglerProps.get("PreferentialNetworkServiceEnabled") instanceof Boolean ? (Boolean) meglerProps.get("PreferentialNetworkServiceEnabled") : false); }
     public boolean isProfileOwnerApp(java.lang.String p0) { return false; }
     public boolean isProvisioningAllowed(java.lang.String p0) { return false; }
     public boolean isRemovingAdmin(android.content.ComponentName p0, int p1) { return false; }
@@ -665,14 +665,14 @@ public class DevicePolicyManager {
     public boolean isSafeOperation(int p0) { return false; }
     public boolean isSecondaryLockscreenEnabled(android.os.UserHandle p0) { return false; }
     public boolean isSecurityLoggingEnabled(android.content.ComponentName p0) { return false; }
-    public boolean isStatusBarDisabled() { return (megletProps.get("StatusBarDisabled") instanceof Boolean ? (Boolean) megletProps.get("StatusBarDisabled") : false); }
+    public boolean isStatusBarDisabled() { return (meglerProps.get("StatusBarDisabled") instanceof Boolean ? (Boolean) meglerProps.get("StatusBarDisabled") : false); }
     public boolean isSubscriptionEnterpriseManaged(android.telephony.SubscriptionInfo p0, java.lang.String p1) { return false; }
     public boolean isSupervisionComponent(android.content.ComponentName p0) { return false; }
-    public boolean isUnattendedManagedKiosk() { return (megletProps.get("UnattendedManagedKiosk") instanceof Boolean ? (Boolean) megletProps.get("UnattendedManagedKiosk") : false); }
+    public boolean isUnattendedManagedKiosk() { return (meglerProps.get("UnattendedManagedKiosk") instanceof Boolean ? (Boolean) meglerProps.get("UnattendedManagedKiosk") : false); }
     public boolean isUninstallBlocked(android.content.ComponentName p0, java.lang.String p1) { return false; }
     public boolean isUninstallInQueue(java.lang.String p0) { return false; }
-    public boolean isUniqueDeviceAttestationSupported() { return (megletProps.get("UniqueDeviceAttestationSupported") instanceof Boolean ? (Boolean) megletProps.get("UniqueDeviceAttestationSupported") : false); }
-    public boolean isUsbDataSignalingEnabled() { return (megletProps.get("UsbDataSignalingEnabled") instanceof Boolean ? (Boolean) megletProps.get("UsbDataSignalingEnabled") : false); }
+    public boolean isUniqueDeviceAttestationSupported() { return (meglerProps.get("UniqueDeviceAttestationSupported") instanceof Boolean ? (Boolean) meglerProps.get("UniqueDeviceAttestationSupported") : false); }
+    public boolean isUsbDataSignalingEnabled() { return (meglerProps.get("UsbDataSignalingEnabled") instanceof Boolean ? (Boolean) meglerProps.get("UsbDataSignalingEnabled") : false); }
     public boolean isUsingUnifiedPassword(android.content.ComponentName p0) { return false; }
     public java.util.List listForegroundAffiliatedUsers() { return new java.util.ArrayList(); }
     public void lockNow() {}
@@ -721,19 +721,19 @@ public class DevicePolicyManager {
     public void setAffiliationIds(android.content.ComponentName p0, java.util.Set p1) {}
     public void setAlwaysOnVpnPackage(android.content.ComponentName p0, java.lang.String p1, boolean p2) {}
     public void setAlwaysOnVpnPackage(android.content.ComponentName p0, java.lang.String p1, boolean p2, java.util.Set p3) {}
-    public void setAppFunctionsPolicy(int p0) { megletProps.put("AppFunctionsPolicy", Integer.valueOf(p0)); }
+    public void setAppFunctionsPolicy(int p0) { meglerProps.put("AppFunctionsPolicy", Integer.valueOf(p0)); }
     public void setApplicationExemptions(java.lang.String p0, java.util.Set p1) {}
     public boolean setApplicationHidden(android.content.ComponentName p0, java.lang.String p1, boolean p2) { return false; }
     public void setApplicationRestrictions(android.content.ComponentName p0, java.lang.String p1, android.os.Bundle p2) {}
     public void setApplicationRestrictionsBySystem(java.lang.String p0, java.lang.String p1, android.os.Bundle p2) {}
     public void setApplicationRestrictionsManagingPackage(android.content.ComponentName p0, java.lang.String p1) {}
-    public void setAuditLogEnabled(boolean p0) { megletProps.put("AuditLogEnabled", Boolean.valueOf(p0)); }
+    public void setAuditLogEnabled(boolean p0) { meglerProps.put("AuditLogEnabled", Boolean.valueOf(p0)); }
     public void setAuditLogEventCallback(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
     public void setAutoTimeEnabled(android.content.ComponentName p0, boolean p1) {}
-    public void setAutoTimePolicy(int p0) { megletProps.put("AutoTimePolicy", Integer.valueOf(p0)); }
+    public void setAutoTimePolicy(int p0) { meglerProps.put("AutoTimePolicy", Integer.valueOf(p0)); }
     public void setAutoTimeRequired(android.content.ComponentName p0, boolean p1) {}
     public void setAutoTimeZoneEnabled(android.content.ComponentName p0, boolean p1) {}
-    public void setAutoTimeZonePolicy(int p0) { megletProps.put("AutoTimeZonePolicy", Integer.valueOf(p0)); }
+    public void setAutoTimeZonePolicy(int p0) { meglerProps.put("AutoTimeZonePolicy", Integer.valueOf(p0)); }
     public void setBackupServiceEnabled(android.content.ComponentName p0, boolean p1) {}
     public void setBluetoothContactSharingDisabled(android.content.ComponentName p0, boolean p1) {}
     public void setBooleanPolicy(java.lang.String p0, int p1, boolean p2) {}
@@ -742,13 +742,13 @@ public class DevicePolicyManager {
     public void setCommonCriteriaModeEnabled(android.content.ComponentName p0, boolean p1) {}
     public void setConfiguredNetworksLockdownState(android.content.ComponentName p0, boolean p1) {}
     public void setContentProtectionPolicy(android.content.ComponentName p0, int p1) {}
-    public void setCredentialManagerPolicy(android.app.admin.PackagePolicy p0) { megletProps.put("CredentialManagerPolicy", p0); }
+    public void setCredentialManagerPolicy(android.app.admin.PackagePolicy p0) { meglerProps.put("CredentialManagerPolicy", p0); }
     public void setCrossProfileCalendarPackages(android.content.ComponentName p0, java.util.Set p1) {}
     public void setCrossProfileCallerIdDisabled(android.content.ComponentName p0, boolean p1) {}
     public void setCrossProfileContactsSearchDisabled(android.content.ComponentName p0, boolean p1) {}
     public void setCrossProfilePackages(android.content.ComponentName p0, java.util.Set p1) {}
-    public void setCrossProfileWidgetProviders(java.util.Set p0) { megletProps.put("CrossProfileWidgetProviders", p0); }
-    public void setDefaultDialerApplication(java.lang.String p0) { megletProps.put("DefaultDialerApplication", p0); }
+    public void setCrossProfileWidgetProviders(java.util.Set p0) { meglerProps.put("CrossProfileWidgetProviders", p0); }
+    public void setDefaultDialerApplication(java.lang.String p0) { meglerProps.put("DefaultDialerApplication", p0); }
     public void setDefaultSmsApplication(android.content.ComponentName p0, java.lang.String p1) {}
     public void setDelegatedScopes(android.content.ComponentName p0, java.lang.String p1, java.util.List p2) {}
     public boolean setDeviceOwner(android.content.ComponentName p0, int p1) { return false; }
@@ -756,7 +756,7 @@ public class DevicePolicyManager {
     public boolean setDeviceOwnerOnly(android.content.ComponentName p0, int p1) { return false; }
     public void setDeviceOwnerType(android.content.ComponentName p0, int p1) {}
     public void setDeviceProvisioningConfigApplied() {}
-    public void setDpcDownloaded(boolean p0) { megletProps.put("DpcDownloaded", Boolean.valueOf(p0)); }
+    public void setDpcDownloaded(boolean p0) { meglerProps.put("DpcDownloaded", Boolean.valueOf(p0)); }
     public void setEndUserSessionMessage(android.content.ComponentName p0, java.lang.CharSequence p1) {}
     public void setFactoryResetProtectionPolicy(android.content.ComponentName p0, android.app.admin.FactoryResetProtectionPolicy p1) {}
     public void setForceEphemeralUsers(android.content.ComponentName p0, boolean p1) {}
@@ -774,25 +774,25 @@ public class DevicePolicyManager {
     public void setLockTaskPackages(android.content.ComponentName p0, java.lang.String[] p1) {}
     public void setLogoutEnabled(android.content.ComponentName p0, boolean p1) {}
     public void setLongSupportMessage(android.content.ComponentName p0, java.lang.CharSequence p1) {}
-    public void setManagedProfileCallerIdAccessPolicy(android.app.admin.PackagePolicy p0) { megletProps.put("ManagedProfileCallerIdAccessPolicy", p0); }
-    public void setManagedProfileContactsAccessPolicy(android.app.admin.PackagePolicy p0) { megletProps.put("ManagedProfileContactsAccessPolicy", p0); }
+    public void setManagedProfileCallerIdAccessPolicy(android.app.admin.PackagePolicy p0) { meglerProps.put("ManagedProfileCallerIdAccessPolicy", p0); }
+    public void setManagedProfileContactsAccessPolicy(android.app.admin.PackagePolicy p0) { meglerProps.put("ManagedProfileContactsAccessPolicy", p0); }
     public void setManagedProfileMaximumTimeOff(android.content.ComponentName p0, long p1) {}
-    public void setManagedSubscriptionsPolicy(android.app.admin.ManagedSubscriptionsPolicy p0) { megletProps.put("ManagedSubscriptionsPolicy", p0); }
+    public void setManagedSubscriptionsPolicy(android.app.admin.ManagedSubscriptionsPolicy p0) { meglerProps.put("ManagedSubscriptionsPolicy", p0); }
     public void setMasterVolumeMuted(android.content.ComponentName p0, boolean p1) {}
-    public void setMaxPolicyStorageLimit(int p0) { megletProps.put("MaxPolicyStorageLimit", Integer.valueOf(p0)); }
+    public void setMaxPolicyStorageLimit(int p0) { meglerProps.put("MaxPolicyStorageLimit", Integer.valueOf(p0)); }
     public void setMaximumFailedPasswordsForWipe(android.content.ComponentName p0, int p1) {}
     public void setMaximumTimeToLock(android.content.ComponentName p0, long p1) {}
     public java.util.List setMeteredDataDisabledPackages(android.content.ComponentName p0, java.util.List p1) { return new java.util.ArrayList(); }
-    public void setMinimumRequiredWifiSecurityLevel(int p0) { megletProps.put("MinimumRequiredWifiSecurityLevel", Integer.valueOf(p0)); }
-    public void setMtePolicy(int p0) { megletProps.put("MtePolicy", Integer.valueOf(p0)); }
+    public void setMinimumRequiredWifiSecurityLevel(int p0) { meglerProps.put("MinimumRequiredWifiSecurityLevel", Integer.valueOf(p0)); }
+    public void setMtePolicy(int p0) { meglerProps.put("MtePolicy", Integer.valueOf(p0)); }
     public void setMtePolicy(java.lang.String p0, int p1) {}
-    public void setNearbyAppStreamingPolicy(int p0) { megletProps.put("NearbyAppStreamingPolicy", Integer.valueOf(p0)); }
-    public void setNearbyNotificationStreamingPolicy(int p0) { megletProps.put("NearbyNotificationStreamingPolicy", Integer.valueOf(p0)); }
+    public void setNearbyAppStreamingPolicy(int p0) { meglerProps.put("NearbyAppStreamingPolicy", Integer.valueOf(p0)); }
+    public void setNearbyNotificationStreamingPolicy(int p0) { meglerProps.put("NearbyNotificationStreamingPolicy", Integer.valueOf(p0)); }
     public void setNetworkLoggingEnabled(android.content.ComponentName p0, boolean p1) {}
     public void setNextOperationSafety(int p0, int p1) {}
     public void setOrganizationColor(android.content.ComponentName p0, int p1) {}
     public void setOrganizationColorForUser(int p0, int p1) {}
-    public void setOrganizationId(java.lang.String p0) { megletProps.put("OrganizationId", p0); }
+    public void setOrganizationId(java.lang.String p0) { meglerProps.put("OrganizationId", p0); }
     public void setOrganizationIdForUser(java.lang.String p0, java.lang.String p1, int p2) {}
     public void setOrganizationName(android.content.ComponentName p0, java.lang.CharSequence p1) {}
     public void setOverrideApnsEnabled(android.content.ComponentName p0, boolean p1) {}
@@ -814,15 +814,15 @@ public class DevicePolicyManager {
     public boolean setPermittedInputMethods(android.content.ComponentName p0, java.util.List p1) { return false; }
     public void setPersonalAppsSuspended(android.content.ComponentName p0, boolean p1) {}
     public void setPolicy(android.app.admin.PolicyIdentifier p0, int p1, java.lang.Object p2) {}
-    public void setPreferentialNetworkServiceConfigs(java.util.List p0) { megletProps.put("PreferentialNetworkServiceConfigs", p0); }
-    public void setPreferentialNetworkServiceEnabled(boolean p0) { megletProps.put("PreferentialNetworkServiceEnabled", Boolean.valueOf(p0)); }
-    public void setProfileEnabled(android.content.ComponentName p0) { megletProps.put("ProfileEnabled", p0); }
+    public void setPreferentialNetworkServiceConfigs(java.util.List p0) { meglerProps.put("PreferentialNetworkServiceConfigs", p0); }
+    public void setPreferentialNetworkServiceEnabled(boolean p0) { meglerProps.put("PreferentialNetworkServiceEnabled", Boolean.valueOf(p0)); }
+    public void setProfileEnabled(android.content.ComponentName p0) { meglerProps.put("ProfileEnabled", p0); }
     public void setProfileName(android.content.ComponentName p0, java.lang.String p1) {}
     public boolean setProfileOwner(android.content.ComponentName p0, int p1) { return false; }
-    public void setProfileOwnerCanAccessDeviceIds(android.content.ComponentName p0) { megletProps.put("ProfileOwnerCanAccessDeviceIds", p0); }
+    public void setProfileOwnerCanAccessDeviceIds(android.content.ComponentName p0) { meglerProps.put("ProfileOwnerCanAccessDeviceIds", p0); }
     public void setProfileOwnerOnOrganizationOwnedDevice(android.content.ComponentName p0, boolean p1) {}
     public void setRecommendedGlobalProxy(android.content.ComponentName p0, android.net.ProxyInfo p1) {}
-    public void setRequiredPasswordComplexity(int p0) { megletProps.put("RequiredPasswordComplexity", Integer.valueOf(p0)); }
+    public void setRequiredPasswordComplexity(int p0) { meglerProps.put("RequiredPasswordComplexity", Integer.valueOf(p0)); }
     public void setRequiredStrongAuthTimeout(android.content.ComponentName p0, long p1) {}
     public boolean setResetPasswordToken(android.content.ComponentName p0, byte[] p1) { return false; }
     public void setRestrictionsProvider(android.content.ComponentName p0, android.content.ComponentName p1) {}
@@ -841,12 +841,12 @@ public class DevicePolicyManager {
     public boolean setTimeZone(android.content.ComponentName p0, java.lang.String p1) { return false; }
     public void setTrustAgentConfiguration(android.content.ComponentName p0, android.content.ComponentName p1, android.os.PersistableBundle p2) {}
     public void setUninstallBlocked(android.content.ComponentName p0, java.lang.String p1, boolean p2) {}
-    public void setUsbDataSignalingEnabled(boolean p0) { megletProps.put("UsbDataSignalingEnabled", Boolean.valueOf(p0)); }
+    public void setUsbDataSignalingEnabled(boolean p0) { meglerProps.put("UsbDataSignalingEnabled", Boolean.valueOf(p0)); }
     public void setUserControlDisabledPackages(android.content.ComponentName p0, java.util.List p1) {}
     public void setUserIcon(android.content.ComponentName p0, android.graphics.Bitmap p1) {}
     public void setUserProvisioningState(int p0, int p1) {}
     public void setUserProvisioningState(int p0, android.os.UserHandle p1) {}
-    public void setWifiSsidPolicy(android.app.admin.WifiSsidPolicy p0) { megletProps.put("WifiSsidPolicy", p0); }
+    public void setWifiSsidPolicy(android.app.admin.WifiSsidPolicy p0) { meglerProps.put("WifiSsidPolicy", p0); }
     public boolean shouldAllowBypassingDevicePolicyManagementRoleQualification() { return false; }
     public void startManagedQuickContact(java.lang.String p0, long p1, android.content.Intent p2) {}
     public void startManagedQuickContact(java.lang.String p0, long p1, boolean p2, long p3, android.content.Intent p4) {}
@@ -865,7 +865,7 @@ public class DevicePolicyManager {
     public void wipeDevice(int p0) {}
     DevicePolicyManager() { this((android.content.Context) null, (android.app.admin.IDevicePolicyManager) null); }
     public static abstract class InstallSystemUpdateCallback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int UPDATE_ERROR_BATTERY_LOW = 5;
         public static final int UPDATE_ERROR_FILE_NOT_FOUND = 4;
         public static final int UPDATE_ERROR_INCORRECT_OS_VERSION = 2;

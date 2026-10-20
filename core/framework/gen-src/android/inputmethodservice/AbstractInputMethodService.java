@@ -3,13 +3,13 @@ package android.inputmethodservice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class AbstractInputMethodService extends android.window.WindowProviderService implements android.view.KeyEvent.Callback {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public AbstractInputMethodService() { super(); }
-    public int getInitialDisplayId() { return (megletProps.get("InitialDisplayId") instanceof Integer ? (Integer) megletProps.get("InitialDisplayId") : 0); }
-    public android.view.inputmethod.InputMethod getInputMethodInternal() { return (android.view.inputmethod.InputMethod) megletProps.get("InputMethodInternal"); }
-    public android.view.KeyEvent.DispatcherState getKeyDispatcherState() { return (android.view.KeyEvent.DispatcherState) megletProps.get("KeyDispatcherState"); }
-    public android.os.Bundle getWindowContextOptions() { return (android.os.Bundle) megletProps.get("WindowContextOptions"); }
-    public int getWindowType() { return (megletProps.get("WindowType") instanceof Integer ? (Integer) megletProps.get("WindowType") : 0); }
+    public int getInitialDisplayId() { return (meglerProps.get("InitialDisplayId") instanceof Integer ? (Integer) meglerProps.get("InitialDisplayId") : 0); }
+    public android.view.inputmethod.InputMethod getInputMethodInternal() { return (android.view.inputmethod.InputMethod) meglerProps.get("InputMethodInternal"); }
+    public android.view.KeyEvent.DispatcherState getKeyDispatcherState() { return (android.view.KeyEvent.DispatcherState) meglerProps.get("KeyDispatcherState"); }
+    public android.os.Bundle getWindowContextOptions() { return (android.os.Bundle) meglerProps.get("WindowContextOptions"); }
+    public int getWindowType() { return (meglerProps.get("WindowType") instanceof Integer ? (Integer) meglerProps.get("WindowType") : 0); }
     public android.os.IBinder onBind(android.content.Intent p0) { return null; }
     public abstract android.inputmethodservice.AbstractInputMethodService.AbstractInputMethodImpl onCreateInputMethodInterface();
     public abstract android.inputmethodservice.AbstractInputMethodService.AbstractInputMethodSessionImpl onCreateInputMethodSessionInterface();
@@ -17,7 +17,7 @@ public abstract class AbstractInputMethodService extends android.window.WindowPr
     public boolean onShouldVerifyKeyEvent(android.view.KeyEvent p0) { return false; }
     public boolean onTrackballEvent(android.view.MotionEvent p0) { return false; }
     public static abstract class AbstractInputMethodImpl implements android.view.inputmethod.InputMethod {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public AbstractInputMethodImpl(android.inputmethodservice.AbstractInputMethodService p0) {}
         public void createSession(android.view.inputmethod.InputMethod.SessionCallback p0) {}
         public void revokeSession(android.view.inputmethod.InputMethodSession p0) {}

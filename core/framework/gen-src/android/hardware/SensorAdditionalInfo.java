@@ -3,7 +3,7 @@ package android.hardware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SensorAdditionalInfo {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int TYPE_CUSTOM_INFO = 268435456;
     public static final int TYPE_DEBUG_INFO = 1073741824;
     public static final int TYPE_DOCK_STATE = 196610;

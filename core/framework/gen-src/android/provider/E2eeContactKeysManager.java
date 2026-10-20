@@ -3,7 +3,7 @@ package android.provider;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class E2eeContactKeysManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String AUTHORITY = "com.android.contactkeys.contactkeysprovider";
     public static android.net.Uri AUTHORITY_URI;
     public static final int VERIFICATION_STATE_UNVERIFIED = 0;
@@ -12,11 +12,11 @@ public final class E2eeContactKeysManager {
     public E2eeContactKeysManager(android.content.Context p0) {}
     public static int getMaxKeySizeBytes() { return 0; }
     public java.util.List getAllE2eeContactKeys(java.lang.String p0) { return new java.util.ArrayList(); }
-    public java.util.List getAllE2eeSelfKeys() { return (megletProps.get("AllE2eeSelfKeys") != null ? (java.util.List) megletProps.get("AllE2eeSelfKeys") : new java.util.ArrayList()); }
+    public java.util.List getAllE2eeSelfKeys() { return (meglerProps.get("AllE2eeSelfKeys") != null ? (java.util.List) meglerProps.get("AllE2eeSelfKeys") : new java.util.ArrayList()); }
     public android.provider.E2eeContactKeysManager.E2eeContactKey getE2eeContactKey(java.lang.String p0, java.lang.String p1, java.lang.String p2) { return null; }
     public android.provider.E2eeContactKeysManager.E2eeSelfKey getE2eeSelfKey(java.lang.String p0, java.lang.String p1) { return null; }
     public java.util.List getOwnerE2eeContactKeys(java.lang.String p0) { return new java.util.ArrayList(); }
-    public java.util.List getOwnerE2eeSelfKeys() { return (megletProps.get("OwnerE2eeSelfKeys") != null ? (java.util.List) megletProps.get("OwnerE2eeSelfKeys") : new java.util.ArrayList()); }
+    public java.util.List getOwnerE2eeSelfKeys() { return (meglerProps.get("OwnerE2eeSelfKeys") != null ? (java.util.List) meglerProps.get("OwnerE2eeSelfKeys") : new java.util.ArrayList()); }
     public boolean removeE2eeContactKey(java.lang.String p0, java.lang.String p1, java.lang.String p2) { return false; }
     public boolean removeE2eeSelfKey(java.lang.String p0, java.lang.String p1) { return false; }
     public boolean updateE2eeContactKeyLocalVerificationState(java.lang.String p0, java.lang.String p1, java.lang.String p2, int p3) { return false; }
@@ -29,7 +29,7 @@ public final class E2eeContactKeysManager {
     public boolean updateOrInsertE2eeSelfKey(java.lang.String p0, java.lang.String p1, byte[] p2) { return false; }
     E2eeContactKeysManager() { this((android.content.Context) null); }
     public static abstract class E2eeBaseKey {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         protected java.lang.String mAccountId;
         protected java.lang.String mDeviceId;
         protected byte[] mKeyValue;
@@ -37,34 +37,34 @@ public final class E2eeContactKeysManager {
         protected int mRemoteVerificationState;
         protected long mTimeUpdated;
         protected E2eeBaseKey(java.lang.String p0, java.lang.String p1, java.lang.String p2, long p3, byte[] p4, int p5) {}
-        public java.lang.String getAccountId() { return (java.lang.String) megletProps.get("AccountId"); }
-        public java.lang.String getDeviceId() { return (java.lang.String) megletProps.get("DeviceId"); }
-        public byte[] getKeyValue() { return (byte[]) megletProps.get("KeyValue"); }
-        public java.lang.String getOwnerPackageName() { return (java.lang.String) megletProps.get("OwnerPackageName"); }
-        public int getRemoteVerificationState() { return (megletProps.get("RemoteVerificationState") instanceof Integer ? (Integer) megletProps.get("RemoteVerificationState") : 0); }
-        public long getTimeUpdated() { return (megletProps.get("TimeUpdated") instanceof Long ? (Long) megletProps.get("TimeUpdated") : 0L); }
+        public java.lang.String getAccountId() { return (java.lang.String) meglerProps.get("AccountId"); }
+        public java.lang.String getDeviceId() { return (java.lang.String) meglerProps.get("DeviceId"); }
+        public byte[] getKeyValue() { return (byte[]) meglerProps.get("KeyValue"); }
+        public java.lang.String getOwnerPackageName() { return (java.lang.String) meglerProps.get("OwnerPackageName"); }
+        public int getRemoteVerificationState() { return (meglerProps.get("RemoteVerificationState") instanceof Integer ? (Integer) meglerProps.get("RemoteVerificationState") : 0); }
+        public long getTimeUpdated() { return (meglerProps.get("TimeUpdated") instanceof Long ? (Long) meglerProps.get("TimeUpdated") : 0L); }
         E2eeBaseKey() { this((java.lang.String) null, (java.lang.String) null, (java.lang.String) null, (long) 0L, (byte[]) null, (int) 0); }
     }
     public static final class E2eeContactKey extends android.provider.E2eeContactKeysManager.E2eeBaseKey implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public E2eeContactKey(java.lang.String p0, java.lang.String p1, java.lang.String p2, long p3, byte[] p4, int p5, int p6, java.lang.String p7, java.lang.String p8, java.lang.String p9) { super((java.lang.String) null, (java.lang.String) null, (java.lang.String) null, (long) 0L, (byte[]) null, (int) 0); }
         public int describeContents() { return 0; }
-        public java.lang.String getAccountId() { return (java.lang.String) megletProps.get("AccountId"); }
-        public java.lang.String getDeviceId() { return (java.lang.String) megletProps.get("DeviceId"); }
-        public java.lang.String getDisplayName() { return (java.lang.String) megletProps.get("DisplayName"); }
-        public java.lang.String getEmailAddress() { return (java.lang.String) megletProps.get("EmailAddress"); }
-        public byte[] getKeyValue() { return (byte[]) megletProps.get("KeyValue"); }
-        public int getLocalVerificationState() { return (megletProps.get("LocalVerificationState") instanceof Integer ? (Integer) megletProps.get("LocalVerificationState") : 0); }
-        public java.lang.String getOwnerPackageName() { return (java.lang.String) megletProps.get("OwnerPackageName"); }
-        public java.lang.String getPhoneNumber() { return (java.lang.String) megletProps.get("PhoneNumber"); }
-        public int getRemoteVerificationState() { return (megletProps.get("RemoteVerificationState") instanceof Integer ? (Integer) megletProps.get("RemoteVerificationState") : 0); }
-        public long getTimeUpdated() { return (megletProps.get("TimeUpdated") instanceof Long ? (Long) megletProps.get("TimeUpdated") : 0L); }
+        public java.lang.String getAccountId() { return (java.lang.String) meglerProps.get("AccountId"); }
+        public java.lang.String getDeviceId() { return (java.lang.String) meglerProps.get("DeviceId"); }
+        public java.lang.String getDisplayName() { return (java.lang.String) meglerProps.get("DisplayName"); }
+        public java.lang.String getEmailAddress() { return (java.lang.String) meglerProps.get("EmailAddress"); }
+        public byte[] getKeyValue() { return (byte[]) meglerProps.get("KeyValue"); }
+        public int getLocalVerificationState() { return (meglerProps.get("LocalVerificationState") instanceof Integer ? (Integer) meglerProps.get("LocalVerificationState") : 0); }
+        public java.lang.String getOwnerPackageName() { return (java.lang.String) meglerProps.get("OwnerPackageName"); }
+        public java.lang.String getPhoneNumber() { return (java.lang.String) meglerProps.get("PhoneNumber"); }
+        public int getRemoteVerificationState() { return (meglerProps.get("RemoteVerificationState") instanceof Integer ? (Integer) meglerProps.get("RemoteVerificationState") : 0); }
+        public long getTimeUpdated() { return (meglerProps.get("TimeUpdated") instanceof Long ? (Long) meglerProps.get("TimeUpdated") : 0L); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         E2eeContactKey() { this((java.lang.String) null, (java.lang.String) null, (java.lang.String) null, (long) 0L, (byte[]) null, (int) 0, (int) 0, (java.lang.String) null, (java.lang.String) null, (java.lang.String) null); }
     }
     public static final class E2eeContactKeys {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String ACCOUNT_ID = "account_id";
         public static final java.lang.String DEVICE_ID = "device_id";
         public static final java.lang.String DISPLAY_NAME = "display_name";
@@ -95,16 +95,16 @@ public final class E2eeContactKeysManager {
         protected E2eeContactKeys() {}
     }
     public static final class E2eeSelfKey extends android.provider.E2eeContactKeysManager.E2eeBaseKey implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public E2eeSelfKey(java.lang.String p0, java.lang.String p1, java.lang.String p2, long p3, byte[] p4, int p5) { super(p0, p1, p2, p3, p4, p5); }
         public int describeContents() { return 0; }
-        public java.lang.String getAccountId() { return (java.lang.String) megletProps.get("AccountId"); }
-        public java.lang.String getDeviceId() { return (java.lang.String) megletProps.get("DeviceId"); }
-        public byte[] getKeyValue() { return (byte[]) megletProps.get("KeyValue"); }
-        public java.lang.String getOwnerPackageName() { return (java.lang.String) megletProps.get("OwnerPackageName"); }
-        public int getRemoteVerificationState() { return (megletProps.get("RemoteVerificationState") instanceof Integer ? (Integer) megletProps.get("RemoteVerificationState") : 0); }
-        public long getTimeUpdated() { return (megletProps.get("TimeUpdated") instanceof Long ? (Long) megletProps.get("TimeUpdated") : 0L); }
+        public java.lang.String getAccountId() { return (java.lang.String) meglerProps.get("AccountId"); }
+        public java.lang.String getDeviceId() { return (java.lang.String) meglerProps.get("DeviceId"); }
+        public byte[] getKeyValue() { return (byte[]) meglerProps.get("KeyValue"); }
+        public java.lang.String getOwnerPackageName() { return (java.lang.String) meglerProps.get("OwnerPackageName"); }
+        public int getRemoteVerificationState() { return (meglerProps.get("RemoteVerificationState") instanceof Integer ? (Integer) meglerProps.get("RemoteVerificationState") : 0); }
+        public long getTimeUpdated() { return (meglerProps.get("TimeUpdated") instanceof Long ? (Long) meglerProps.get("TimeUpdated") : 0L); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         E2eeSelfKey() { this((java.lang.String) null, (java.lang.String) null, (java.lang.String) null, (long) 0L, (byte[]) null, (int) 0); }
     }

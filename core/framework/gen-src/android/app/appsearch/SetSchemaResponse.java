@@ -3,16 +3,16 @@ package android.app.appsearch;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class SetSchemaResponse extends android.app.appsearch.safeparcel.AbstractSafeParcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
-    public java.util.Set getDeletedTypes() { return (megletProps.get("DeletedTypes") != null ? (java.util.Set) megletProps.get("DeletedTypes") : new java.util.HashSet()); }
-    public java.util.Set getIncompatibleTypes() { return (megletProps.get("IncompatibleTypes") != null ? (java.util.Set) megletProps.get("IncompatibleTypes") : new java.util.HashSet()); }
-    public java.util.Set getMigratedTypes() { return (megletProps.get("MigratedTypes") != null ? (java.util.Set) megletProps.get("MigratedTypes") : new java.util.HashSet()); }
-    public java.util.List getMigrationFailures() { return (megletProps.get("MigrationFailures") != null ? (java.util.List) megletProps.get("MigrationFailures") : new java.util.ArrayList()); }
+    public java.util.Set getDeletedTypes() { return (meglerProps.get("DeletedTypes") != null ? (java.util.Set) meglerProps.get("DeletedTypes") : new java.util.HashSet()); }
+    public java.util.Set getIncompatibleTypes() { return (meglerProps.get("IncompatibleTypes") != null ? (java.util.Set) meglerProps.get("IncompatibleTypes") : new java.util.HashSet()); }
+    public java.util.Set getMigratedTypes() { return (meglerProps.get("MigratedTypes") != null ? (java.util.Set) meglerProps.get("MigratedTypes") : new java.util.HashSet()); }
+    public java.util.List getMigrationFailures() { return (meglerProps.get("MigrationFailures") != null ? (java.util.List) meglerProps.get("MigrationFailures") : new java.util.ArrayList()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected SetSchemaResponse() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.app.appsearch.SetSchemaResponse p0) {}
         public android.app.appsearch.SetSchemaResponse.Builder addDeletedType(java.lang.String p0) { return this; }
@@ -26,13 +26,13 @@ public abstract class SetSchemaResponse extends android.app.appsearch.safeparcel
         public android.app.appsearch.SetSchemaResponse build() { return null; }
     }
     public static abstract class MigrationFailure extends android.app.appsearch.safeparcel.AbstractSafeParcelable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public MigrationFailure(java.lang.String p0, java.lang.String p1, java.lang.String p2, android.app.appsearch.AppSearchResult p3) { super(); }
-        public android.app.appsearch.AppSearchResult getAppSearchResult() { return (android.app.appsearch.AppSearchResult) megletProps.get("AppSearchResult"); }
-        public java.lang.String getDocumentId() { return (java.lang.String) megletProps.get("DocumentId"); }
-        public java.lang.String getNamespace() { return (java.lang.String) megletProps.get("Namespace"); }
-        public java.lang.String getSchemaType() { return (java.lang.String) megletProps.get("SchemaType"); }
+        public android.app.appsearch.AppSearchResult getAppSearchResult() { return (android.app.appsearch.AppSearchResult) meglerProps.get("AppSearchResult"); }
+        public java.lang.String getDocumentId() { return (java.lang.String) meglerProps.get("DocumentId"); }
+        public java.lang.String getNamespace() { return (java.lang.String) meglerProps.get("Namespace"); }
+        public java.lang.String getSchemaType() { return (java.lang.String) meglerProps.get("SchemaType"); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         MigrationFailure() { this((java.lang.String) null, (java.lang.String) null, (java.lang.String) null, (android.app.appsearch.AppSearchResult) null); }
     }

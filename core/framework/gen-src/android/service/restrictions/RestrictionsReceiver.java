@@ -3,7 +3,7 @@ package android.service.restrictions;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class RestrictionsReceiver extends android.content.BroadcastReceiver {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public RestrictionsReceiver() { super(); }
     public void onReceive(android.content.Context p0, android.content.Intent p1) {}
     public abstract void onRequestPermission(android.content.Context p0, java.lang.String p1, java.lang.String p2, java.lang.String p3, android.os.PersistableBundle p4);

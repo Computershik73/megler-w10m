@@ -3,7 +3,7 @@ package android.renderscript;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class FieldPacker {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public FieldPacker(int p0) {}
     public FieldPacker(byte[] p0) {}
     public void addBoolean(boolean p0) {}
@@ -52,8 +52,8 @@ public class FieldPacker {
     public void addU8(android.renderscript.Short4 p0) {}
     public void addU8(short p0) {}
     public void align(int p0) {}
-    public byte[] getData() { return (byte[]) megletProps.get("Data"); }
-    public int getPos() { return (megletProps.get("Pos") instanceof Integer ? (Integer) megletProps.get("Pos") : 0); }
+    public byte[] getData() { return (byte[]) meglerProps.get("Data"); }
+    public int getPos() { return (meglerProps.get("Pos") instanceof Integer ? (Integer) meglerProps.get("Pos") : 0); }
     public void reset() {}
     public void reset(int p0) {}
     public void skip(int p0) {}

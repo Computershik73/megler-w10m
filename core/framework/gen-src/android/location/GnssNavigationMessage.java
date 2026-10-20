@@ -3,7 +3,7 @@ package android.location;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GnssNavigationMessage implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int STATUS_PARITY_PASSED = 1;
     public static final int STATUS_PARITY_REBUILT = 2;
@@ -27,20 +27,20 @@ public final class GnssNavigationMessage implements android.os.Parcelable {
     public static int TYPE_UNKNOWN;
     public GnssNavigationMessage() {}
     public int describeContents() { return 0; }
-    public byte[] getData() { return (byte[]) megletProps.get("Data"); }
-    public int getMessageId() { return (megletProps.get("MessageId") instanceof Integer ? (Integer) megletProps.get("MessageId") : 0); }
-    public int getStatus() { return (megletProps.get("Status") instanceof Integer ? (Integer) megletProps.get("Status") : 0); }
-    public int getSubmessageId() { return (megletProps.get("SubmessageId") instanceof Integer ? (Integer) megletProps.get("SubmessageId") : 0); }
-    public int getSvid() { return (megletProps.get("Svid") instanceof Integer ? (Integer) megletProps.get("Svid") : 0); }
-    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
+    public byte[] getData() { return (byte[]) meglerProps.get("Data"); }
+    public int getMessageId() { return (meglerProps.get("MessageId") instanceof Integer ? (Integer) meglerProps.get("MessageId") : 0); }
+    public int getStatus() { return (meglerProps.get("Status") instanceof Integer ? (Integer) meglerProps.get("Status") : 0); }
+    public int getSubmessageId() { return (meglerProps.get("SubmessageId") instanceof Integer ? (Integer) meglerProps.get("SubmessageId") : 0); }
+    public int getSvid() { return (meglerProps.get("Svid") instanceof Integer ? (Integer) meglerProps.get("Svid") : 0); }
+    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
     public void reset() {}
     public void set(android.location.GnssNavigationMessage p0) {}
-    public void setData(byte[] p0) { megletProps.put("Data", p0); }
-    public void setMessageId(int p0) { megletProps.put("MessageId", Integer.valueOf(p0)); }
-    public void setStatus(int p0) { megletProps.put("Status", Integer.valueOf(p0)); }
-    public void setSubmessageId(int p0) { megletProps.put("SubmessageId", Integer.valueOf(p0)); }
-    public void setSvid(int p0) { megletProps.put("Svid", Integer.valueOf(p0)); }
-    public void setType(int p0) { megletProps.put("Type", Integer.valueOf(p0)); }
+    public void setData(byte[] p0) { meglerProps.put("Data", p0); }
+    public void setMessageId(int p0) { meglerProps.put("MessageId", Integer.valueOf(p0)); }
+    public void setStatus(int p0) { meglerProps.put("Status", Integer.valueOf(p0)); }
+    public void setSubmessageId(int p0) { meglerProps.put("SubmessageId", Integer.valueOf(p0)); }
+    public void setSvid(int p0) { meglerProps.put("Svid", Integer.valueOf(p0)); }
+    public void setType(int p0) { meglerProps.put("Type", Integer.valueOf(p0)); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public static abstract class Callback {
         protected Callback() {}

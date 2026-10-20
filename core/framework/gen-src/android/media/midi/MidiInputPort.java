@@ -3,10 +3,10 @@ package android.media.midi;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MidiInputPort extends android.media.midi.MidiReceiver implements java.io.Closeable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public void close() {}
     protected void finalize() {}
-    public int getPortNumber() { return (megletProps.get("PortNumber") instanceof Integer ? (Integer) megletProps.get("PortNumber") : 0); }
+    public int getPortNumber() { return (meglerProps.get("PortNumber") instanceof Integer ? (Integer) meglerProps.get("PortNumber") : 0); }
     public void onFlush() {}
     public void onSend(byte[] p0, int p1, int p2, long p3) {}
     public int pullTotalBytesCount() { return 0; }

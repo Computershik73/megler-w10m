@@ -3,7 +3,7 @@ package android.bluetooth.le;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class ScanCallback {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int NO_ERROR = 0;
     public static final int SCAN_FAILED_ALREADY_STARTED = 1;
     public static final int SCAN_FAILED_APPLICATION_REGISTRATION_FAILED = 2;

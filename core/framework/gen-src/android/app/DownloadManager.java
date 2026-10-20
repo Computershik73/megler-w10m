@@ -3,7 +3,7 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DownloadManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_DOWNLOAD_COMPLETE = "android.intent.action.DOWNLOAD_COMPLETE";
     public static final java.lang.String ACTION_DOWNLOAD_COMPLETED = "android.intent.action.DOWNLOAD_COMPLETED";
     public static final java.lang.String ACTION_NOTIFICATION_CLICKED = "android.intent.action.DOWNLOAD_NOTIFICATION_CLICKED";
@@ -73,22 +73,22 @@ public class DownloadManager {
     public boolean rename(android.content.Context p0, long p1, java.lang.String p2) { return false; }
     public void restartDownload(long[] p0) {}
     public int resumeDownload(long p0) { return 0; }
-    public void setAccessAllDownloads(boolean p0) { megletProps.put("AccessAllDownloads", Boolean.valueOf(p0)); }
-    public void setAccessFilename(boolean p0) { megletProps.put("AccessFilename", Boolean.valueOf(p0)); }
+    public void setAccessAllDownloads(boolean p0) { meglerProps.put("AccessAllDownloads", Boolean.valueOf(p0)); }
+    public void setAccessFilename(boolean p0) { meglerProps.put("AccessFilename", Boolean.valueOf(p0)); }
     DownloadManager() { this((android.content.Context) null); }
     public static class Query {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int ORDER_ASCENDING = 1;
         public static final int ORDER_DESCENDING = 2;
         public Query() {}
         public android.app.DownloadManager.Query orderBy(java.lang.String p0, int p1) { return this; }
-        public android.app.DownloadManager.Query setFilterById(long[] p0) { megletProps.put("FilterById", p0); return this; }
-        public android.app.DownloadManager.Query setFilterByStatus(int p0) { megletProps.put("FilterByStatus", Integer.valueOf(p0)); return this; }
-        public android.app.DownloadManager.Query setFilterByString(java.lang.String p0) { megletProps.put("FilterByString", p0); return this; }
-        public android.app.DownloadManager.Query setOnlyIncludeVisibleInDownloadsUi(boolean p0) { megletProps.put("OnlyIncludeVisibleInDownloadsUi", Boolean.valueOf(p0)); return this; }
+        public android.app.DownloadManager.Query setFilterById(long[] p0) { meglerProps.put("FilterById", p0); return this; }
+        public android.app.DownloadManager.Query setFilterByStatus(int p0) { meglerProps.put("FilterByStatus", Integer.valueOf(p0)); return this; }
+        public android.app.DownloadManager.Query setFilterByString(java.lang.String p0) { meglerProps.put("FilterByString", p0); return this; }
+        public android.app.DownloadManager.Query setOnlyIncludeVisibleInDownloadsUi(boolean p0) { meglerProps.put("OnlyIncludeVisibleInDownloadsUi", Boolean.valueOf(p0)); return this; }
     }
     public static class Request {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int NETWORK_BLUETOOTH = 4;
         public static final int NETWORK_MOBILE = 1;
         public static final int NETWORK_WIFI = 2;
@@ -99,20 +99,20 @@ public class DownloadManager {
         public Request(android.net.Uri p0) {}
         public android.app.DownloadManager.Request addRequestHeader(java.lang.String p0, java.lang.String p1) { return this; }
         public void allowScanningByMediaScanner() {}
-        public android.app.DownloadManager.Request setAllowedNetworkTypes(int p0) { megletProps.put("AllowedNetworkTypes", Integer.valueOf(p0)); return this; }
-        public android.app.DownloadManager.Request setAllowedOverMetered(boolean p0) { megletProps.put("AllowedOverMetered", Boolean.valueOf(p0)); return this; }
-        public android.app.DownloadManager.Request setAllowedOverRoaming(boolean p0) { megletProps.put("AllowedOverRoaming", Boolean.valueOf(p0)); return this; }
-        public android.app.DownloadManager.Request setDescription(java.lang.CharSequence p0) { megletProps.put("Description", p0); return this; }
+        public android.app.DownloadManager.Request setAllowedNetworkTypes(int p0) { meglerProps.put("AllowedNetworkTypes", Integer.valueOf(p0)); return this; }
+        public android.app.DownloadManager.Request setAllowedOverMetered(boolean p0) { meglerProps.put("AllowedOverMetered", Boolean.valueOf(p0)); return this; }
+        public android.app.DownloadManager.Request setAllowedOverRoaming(boolean p0) { meglerProps.put("AllowedOverRoaming", Boolean.valueOf(p0)); return this; }
+        public android.app.DownloadManager.Request setDescription(java.lang.CharSequence p0) { meglerProps.put("Description", p0); return this; }
         public android.app.DownloadManager.Request setDestinationInExternalFilesDir(android.content.Context p0, java.lang.String p1, java.lang.String p2) { return this; }
         public android.app.DownloadManager.Request setDestinationInExternalPublicDir(java.lang.String p0, java.lang.String p1) { return this; }
-        public android.app.DownloadManager.Request setDestinationUri(android.net.Uri p0) { megletProps.put("DestinationUri", p0); return this; }
-        public android.app.DownloadManager.Request setMimeType(java.lang.String p0) { megletProps.put("MimeType", p0); return this; }
-        public android.app.DownloadManager.Request setNotificationVisibility(int p0) { megletProps.put("NotificationVisibility", Integer.valueOf(p0)); return this; }
-        public android.app.DownloadManager.Request setRequiresCharging(boolean p0) { megletProps.put("RequiresCharging", Boolean.valueOf(p0)); return this; }
-        public android.app.DownloadManager.Request setRequiresDeviceIdle(boolean p0) { megletProps.put("RequiresDeviceIdle", Boolean.valueOf(p0)); return this; }
-        public android.app.DownloadManager.Request setShowRunningNotification(boolean p0) { megletProps.put("ShowRunningNotification", Boolean.valueOf(p0)); return this; }
-        public android.app.DownloadManager.Request setTitle(java.lang.CharSequence p0) { megletProps.put("Title", p0); return this; }
-        public android.app.DownloadManager.Request setVisibleInDownloadsUi(boolean p0) { megletProps.put("VisibleInDownloadsUi", Boolean.valueOf(p0)); return this; }
+        public android.app.DownloadManager.Request setDestinationUri(android.net.Uri p0) { meglerProps.put("DestinationUri", p0); return this; }
+        public android.app.DownloadManager.Request setMimeType(java.lang.String p0) { meglerProps.put("MimeType", p0); return this; }
+        public android.app.DownloadManager.Request setNotificationVisibility(int p0) { meglerProps.put("NotificationVisibility", Integer.valueOf(p0)); return this; }
+        public android.app.DownloadManager.Request setRequiresCharging(boolean p0) { meglerProps.put("RequiresCharging", Boolean.valueOf(p0)); return this; }
+        public android.app.DownloadManager.Request setRequiresDeviceIdle(boolean p0) { meglerProps.put("RequiresDeviceIdle", Boolean.valueOf(p0)); return this; }
+        public android.app.DownloadManager.Request setShowRunningNotification(boolean p0) { meglerProps.put("ShowRunningNotification", Boolean.valueOf(p0)); return this; }
+        public android.app.DownloadManager.Request setTitle(java.lang.CharSequence p0) { meglerProps.put("Title", p0); return this; }
+        public android.app.DownloadManager.Request setVisibleInDownloadsUi(boolean p0) { meglerProps.put("VisibleInDownloadsUi", Boolean.valueOf(p0)); return this; }
         Request() { this((android.net.Uri) null); }
     }
 }

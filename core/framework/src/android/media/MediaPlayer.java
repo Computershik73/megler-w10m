@@ -9,8 +9,8 @@ import java.io.FileDescriptor;
 import java.util.Map;
 
 /**
- * Music and other long sounds: the file is decoded as it plays (meglet.Audio's decoder: Ogg Vorbis, MP3, AAC, WAV...) into a stream
- * of Meglet's mixer, from a thread of the player's own. Video has no picture: its sound still plays.
+ * Music and other long sounds: the file is decoded as it plays (megler.Audio's decoder: Ogg Vorbis, MP3, AAC, WAV...) into a stream
+ * of Megler's mixer, from a thread of the player's own. Video has no picture: its sound still plays.
  */
 public class MediaPlayer implements AudioRouting {
     public interface OnCompletionListener { void onCompletion(MediaPlayer mp); }
@@ -43,7 +43,7 @@ public class MediaPlayer implements AudioRouting {
     public MediaPlayer(Context c) { this(); }
     public static MediaPlayer create(Context c, int resId) { return create(c, resId, null, 0); }
     public static MediaPlayer create(Context c, int resId, AudioAttributes a, int session) {
-        try { MediaPlayer mp = new MediaPlayer(); try (java.io.InputStream in = c.getResources().openRawResource(resId)) { mp.mBytes = meglet.Audio.readAll(in); } mp.mState = INITIALIZED; mp.prepare(); return mp; }
+        try { MediaPlayer mp = new MediaPlayer(); try (java.io.InputStream in = c.getResources().openRawResource(resId)) { mp.mBytes = megler.Audio.readAll(in); } mp.mState = INITIALIZED; mp.prepare(); return mp; }
         catch (Exception e) { android.util.Log.w("MediaPlayer", "create failed for resource " + resId + ": " + e); return null; }
     }
     public static MediaPlayer create(Context c, Uri u) { return create(c, u, null); }
@@ -55,9 +55,9 @@ public class MediaPlayer implements AudioRouting {
     private void checkIdle() { if (mState != IDLE) throw new IllegalStateException("setDataSource called in state " + mState); }
     public void setDataSource(String path) throws java.io.IOException {
         checkIdle();
-        if (path.startsWith("http://") || path.startsWith("https://")) { try (java.io.InputStream in = new java.net.URL(path).openStream()) { mBytes = meglet.Audio.readAll(in); } }
+        if (path.startsWith("http://") || path.startsWith("https://")) { try (java.io.InputStream in = new java.net.URL(path).openStream()) { mBytes = megler.Audio.readAll(in); } }
         else if (path.startsWith("file://")) setDataSource(path.substring(7));
-        else { try (java.io.FileInputStream in = new java.io.FileInputStream(path)) { mBytes = meglet.Audio.readAll(in); } }
+        else { try (java.io.FileInputStream in = new java.io.FileInputStream(path)) { mBytes = megler.Audio.readAll(in); } }
         mState = INITIALIZED;
     }
     public void setDataSource(String path, Map<String, String> headers) throws java.io.IOException { setDataSource(path); }
@@ -66,7 +66,7 @@ public class MediaPlayer implements AudioRouting {
         String s = u.getScheme();
         if (s == null || "file".equals(s)) { setDataSource(u.getPath()); return; }
         if ("http".equals(s) || "https".equals(s)) { setDataSource(u.toString()); return; }
-        mBytes = meglet.Audio.bytesOf(c, u);
+        mBytes = megler.Audio.bytesOf(c, u);
         mState = INITIALIZED;
     }
     public void setDataSource(Context c, Uri u, Map<String, String> headers) throws java.io.IOException { setDataSource(c, u); }
@@ -74,13 +74,13 @@ public class MediaPlayer implements AudioRouting {
     public void setDataSource(FileDescriptor fd) throws java.io.IOException { setDataSource(fd, 0, -1); }
     public void setDataSource(FileDescriptor fd, long offset, long length) throws java.io.IOException {
         checkIdle();
-        int n = meglet.Audio.fdOf(fd);
-        if (n < 0) throw new java.io.IOException("not a file descriptor Meglet can read");
+        int n = megler.Audio.fdOf(fd);
+        if (n < 0) throw new java.io.IOException("not a file descriptor Megler can read");
         mFd = n; mFdOff = offset; mFdLen = length; mState = INITIALIZED;
     }
     public void setDataSource(AssetFileDescriptor afd) throws java.io.IOException {
-        if (afd.getFileDescriptor() != null && meglet.Audio.fdOf(afd.getFileDescriptor()) >= 0) setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
-        else if (afd.megletAssetName() != null) { checkIdle(); mBytes = meglet.Native.readAsset(afd.megletAssetName()); if (mBytes == null) throw new java.io.IOException("no asset " + afd.megletAssetName()); mState = INITIALIZED; }
+        if (afd.getFileDescriptor() != null && megler.Audio.fdOf(afd.getFileDescriptor()) >= 0) setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
+        else if (afd.meglerAssetName() != null) { checkIdle(); mBytes = megler.Native.readAsset(afd.meglerAssetName()); if (mBytes == null) throw new java.io.IOException("no asset " + afd.meglerAssetName()); mState = INITIALIZED; }
         else throw new java.io.IOException("unreadable AssetFileDescriptor");
     }
     public void setDataSource(MediaDataSource ds) throws java.io.IOException {
@@ -97,10 +97,10 @@ public class MediaPlayer implements AudioRouting {
         open();
     }
     private void open() throws java.io.IOException {
-        long d = mBytes != null ? meglet.Audio.decOpen(mBytes) : mFd >= 0 ? meglet.Audio.decOpenFd(mFd, mFdOff, mFdLen) : 0;
+        long d = mBytes != null ? megler.Audio.decOpen(mBytes) : mFd >= 0 ? megler.Audio.decOpenFd(mFd, mFdOff, mFdLen) : 0;
         if (d == 0) { mState = ERROR; throw new java.io.IOException("Prepare failed.: status=0x1"); }
         int[] info = new int[3];
-        meglet.Audio.decInfo(d, info);
+        megler.Audio.decInfo(d, info);
         synchronized (mLock) { mDec = d; mRate = info[0]; mChannels = info[1]; mDuration = info[2]; mState = PREPARED; mPosBase = 0; mPosBaseMs = 0; }
     }
     public void prepareAsync() {
@@ -118,10 +118,10 @@ public class MediaPlayer implements AudioRouting {
     }
     public void start() {
         synchronized (mLock) {
-            if (mState == COMPLETED) { meglet.Audio.decSeek(mDec, 0); resetPosition(0); }
+            if (mState == COMPLETED) { megler.Audio.decSeek(mDec, 0); resetPosition(0); }
             if (mState != PREPARED && mState != PAUSED && mState != COMPLETED && mState != STARTED) throw new IllegalStateException("start called in state " + mState);
-            if (mTrack < 0) { mTrack = meglet.Audio.trackOpen(mRate, mChannels); meglet.Audio.trackVolume(mTrack, mL, mR); }
-            meglet.Audio.trackPlay(mTrack, true);
+            if (mTrack < 0) { mTrack = megler.Audio.trackOpen(mRate, mChannels); megler.Audio.trackVolume(mTrack, mL, mR); }
+            megler.Audio.trackPlay(mTrack, true);
             mState = STARTED;
             if (mThread == null) {
                 mStopThread = false;
@@ -140,14 +140,14 @@ public class MediaPlayer implements AudioRouting {
             synchronized (mLock) {
                 while (!mStopThread && mState != STARTED) { try { mLock.wait(); } catch (InterruptedException e) { return; } }
                 if (mStopThread) return;
-                if (mSeekTo >= 0) { meglet.Audio.trackFlush(mTrack); meglet.Audio.decSeek(mDec, mSeekTo); resetPosition(mSeekTo); final int ms = mSeekTo; mSeekTo = -1; mMain.post(() -> { if (mOnSeek != null) mOnSeek.onSeekComplete(this); }); }
+                if (mSeekTo >= 0) { megler.Audio.trackFlush(mTrack); megler.Audio.decSeek(mDec, mSeekTo); resetPosition(mSeekTo); final int ms = mSeekTo; mSeekTo = -1; mMain.post(() -> { if (mOnSeek != null) mOnSeek.onSeekComplete(this); }); }
                 dec = mDec; track = mTrack;
             }
-            int n = meglet.Audio.decRead(dec, buf);
+            int n = megler.Audio.decRead(dec, buf);
             if (n <= 0) {
-                if (mLooping) { synchronized (mLock) { meglet.Audio.decSeek(mDec, 0); } continue; }
+                if (mLooping) { synchronized (mLock) { megler.Audio.decSeek(mDec, 0); } continue; }
                 // let what is queued play out, then finish
-                while (meglet.Audio.trackPending(track) > 0 && !mStopThread && mState == STARTED) { try { Thread.sleep(20); } catch (InterruptedException e) { return; } }
+                while (megler.Audio.trackPending(track) > 0 && !mStopThread && mState == STARTED) { try { Thread.sleep(20); } catch (InterruptedException e) { return; } }
                 synchronized (mLock) { if (mState == STARTED) mState = COMPLETED; mThread = null; }
                 mMain.post(() -> {
                     if (mNext != null) { try { mNext.start(); } catch (IllegalStateException e) {} }
@@ -157,41 +157,41 @@ public class MediaPlayer implements AudioRouting {
             }
             int off = 0;
             while (off < n && !mStopThread) {
-                int w = meglet.Audio.trackWrite(track, buf, off, n - off, true);
+                int w = megler.Audio.trackWrite(track, buf, off, n - off, true);
                 if (w <= 0) { if (mState != STARTED) { synchronized (mLock) { while (!mStopThread && mState != STARTED && mSeekTo < 0) { try { mLock.wait(); } catch (InterruptedException e) { return; } } } if (mSeekTo >= 0) break; continue; } break; }
                 off += w;
             }
         }
     }
-    private void resetPosition(int ms) { mPosBase = mTrack >= 0 ? meglet.Audio.trackPosition(mTrack) : 0; mPosBaseMs = ms; }
-    public void pause() { synchronized (mLock) { if (mState == STARTED) { mState = PAUSED; if (mTrack >= 0) meglet.Audio.trackPlay(mTrack, false); } } }
+    private void resetPosition(int ms) { mPosBase = mTrack >= 0 ? megler.Audio.trackPosition(mTrack) : 0; mPosBaseMs = ms; }
+    public void pause() { synchronized (mLock) { if (mState == STARTED) { mState = PAUSED; if (mTrack >= 0) megler.Audio.trackPlay(mTrack, false); } } }
     public void stop() {
         synchronized (mLock) {
             if (mState == IDLE || mState == END || mState == ERROR) return;
             mStopThread = true; mLock.notifyAll();
-            if (mTrack >= 0) { meglet.Audio.trackFlush(mTrack); meglet.Audio.trackPlay(mTrack, false); }
-            if (mDec != 0) { meglet.Audio.decClose(mDec); mDec = 0; }
+            if (mTrack >= 0) { megler.Audio.trackFlush(mTrack); megler.Audio.trackPlay(mTrack, false); }
+            if (mDec != 0) { megler.Audio.decClose(mDec); mDec = 0; }
             mThread = null;
             mState = STOPPED;
         }
     }
     public void reset() {
         stop();
-        synchronized (mLock) { if (mTrack >= 0) { meglet.Audio.trackClose(mTrack); mTrack = -1; } mBytes = null; mFd = -1; mState = IDLE; mSeekTo = -1; }
+        synchronized (mLock) { if (mTrack >= 0) { megler.Audio.trackClose(mTrack); mTrack = -1; } mBytes = null; mFd = -1; mState = IDLE; mSeekTo = -1; }
     }
     public void release() { reset(); mState = END; mOnCompletion = null; mOnPrepared = null; mOnError = null; mOnSeek = null; }
     public boolean isPlaying() { return mState == STARTED; }
     public boolean isLooping() { return mLooping; }
     public void setLooping(boolean l) { mLooping = l; }
     public void setNextMediaPlayer(MediaPlayer next) { mNext = next; }
-    public void setVolume(float l, float r) { mL = Math.max(0, Math.min(1, l)); mR = Math.max(0, Math.min(1, r)); if (mTrack >= 0) meglet.Audio.trackVolume(mTrack, mL, mR); }
+    public void setVolume(float l, float r) { mL = Math.max(0, Math.min(1, l)); mR = Math.max(0, Math.min(1, r)); if (mTrack >= 0) megler.Audio.trackVolume(mTrack, mL, mR); }
     public void setVolume(float v) { setVolume(v, v); }
     public void seekTo(int ms) {
         synchronized (mLock) {
             if (mDec == 0) return;
             ms = Math.max(0, mDuration > 0 ? Math.min(ms, mDuration) : ms);
             if (mState == STARTED || mThread != null) { mSeekTo = ms; mLock.notifyAll(); }
-            else { meglet.Audio.decSeek(mDec, ms); if (mTrack >= 0) meglet.Audio.trackFlush(mTrack); resetPosition(ms); final int done = ms; mMain.post(() -> { if (mOnSeek != null) mOnSeek.onSeekComplete(this); }); }
+            else { megler.Audio.decSeek(mDec, ms); if (mTrack >= 0) megler.Audio.trackFlush(mTrack); resetPosition(ms); final int done = ms; mMain.post(() -> { if (mOnSeek != null) mOnSeek.onSeekComplete(this); }); }
             if (mState == COMPLETED) mState = PAUSED;
         }
     }
@@ -201,7 +201,7 @@ public class MediaPlayer implements AudioRouting {
             if (mSeekTo >= 0) return mSeekTo;
             if (mState == COMPLETED) return mDuration;
             if (mTrack < 0 || mRate <= 0) return mPosBaseMs;
-            long frames = meglet.Audio.trackPosition(mTrack) - mPosBase;
+            long frames = megler.Audio.trackPosition(mTrack) - mPosBase;
             return (int) Math.min(mDuration > 0 ? mDuration : Integer.MAX_VALUE, mPosBaseMs + frames * 1000L / mRate);
         }
     }
@@ -233,7 +233,7 @@ public class MediaPlayer implements AudioRouting {
     public void setOnBufferingUpdateListener(OnBufferingUpdateListener l) {}
     public void setOnVideoSizeChangedListener(OnVideoSizeChangedListener l) {}
     public void setOnTimedTextListener(OnTimedTextListener l) {}
-    public AudioDeviceInfo getRoutedDevice() { return AudioDeviceInfo.megletSpeaker(); }
+    public AudioDeviceInfo getRoutedDevice() { return AudioDeviceInfo.meglerSpeaker(); }
     public boolean setPreferredDevice(AudioDeviceInfo d) { return true; }
     public AudioDeviceInfo getPreferredDevice() { return null; }
     public void addOnRoutingChangedListener(AudioRouting.OnRoutingChangedListener l, android.os.Handler h) {}
@@ -248,7 +248,7 @@ public class MediaPlayer implements AudioRouting {
         // ---- end of generated members (TrackInfo)
     }
     // ---- generated by tools/compat/fillmembers.py: the platform's members this class does not write (signatures only)
-    private final java.util.HashMap<String, Object> megletFill = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerFill = new java.util.HashMap<>();
     public static final boolean APPLY_METADATA_FILTER = true;
     public static final boolean BYPASS_METADATA_FILTER = false;
     public static final int MEDIA_ERROR_SYSTEM = -2147483648;
@@ -291,7 +291,7 @@ public class MediaPlayer implements AudioRouting {
     public android.os.PersistableBundle getMetrics() { return null; }
     public java.util.List getRoutedDevices() { return new java.util.ArrayList(); }
     public int getSelectedTrack(int p0) { return 0; }
-    public android.media.SyncParams getSyncParams() { return (android.media.SyncParams) megletFill.get("SyncParams"); }
+    public android.media.SyncParams getSyncParams() { return (android.media.SyncParams) meglerFill.get("SyncParams"); }
     public void invoke(android.os.Parcel p0, android.os.Parcel p1) {}
     public android.os.Parcel newRequest() { return null; }
     public void notifyAt(long p0) {}
@@ -313,17 +313,17 @@ public class MediaPlayer implements AudioRouting {
     public void setOnSubtitleDataListener(android.media.MediaPlayer.OnSubtitleDataListener p0, android.os.Handler p1) {}
     public void setOnTimedMetaDataAvailableListener(android.media.MediaPlayer.OnTimedMetaDataAvailableListener p0) {}
     public void setRetransmitEndpoint(java.net.InetSocketAddress p0) {}
-    public void setSyncParams(android.media.SyncParams p0) { megletFill.put("SyncParams", p0); }
+    public void setSyncParams(android.media.SyncParams p0) { meglerFill.put("SyncParams", p0); }
     // ---- end of generated members
     // ---- generated by tools/compat/genstubs.py: the platform's nested classes this class does not write
     public static final class DrmInfo {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public java.util.Map getPssh() { return (megletProps.get("Pssh") != null ? (java.util.Map) megletProps.get("Pssh") : new java.util.HashMap()); }
-        public java.util.UUID[] getSupportedSchemes() { return (java.util.UUID[]) megletProps.get("SupportedSchemes"); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public java.util.Map getPssh() { return (meglerProps.get("Pssh") != null ? (java.util.Map) meglerProps.get("Pssh") : new java.util.HashMap()); }
+        public java.util.UUID[] getSupportedSchemes() { return (java.util.UUID[]) meglerProps.get("SupportedSchemes"); }
         protected DrmInfo() {}
     }
     public static final class MetricsConstants {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String CODEC_AUDIO = "android.media.mediaplayer.audio.codec";
         public static final java.lang.String CODEC_VIDEO = "android.media.mediaplayer.video.codec";
         public static final java.lang.String DURATION = "android.media.mediaplayer.durationMs";
@@ -339,7 +339,7 @@ public class MediaPlayer implements AudioRouting {
         protected MetricsConstants() {}
     }
     public static final class NoDrmSchemeException extends android.media.MediaDrmException {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public NoDrmSchemeException(java.lang.String p0) { super(p0); }
         NoDrmSchemeException() { this((java.lang.String) null); }
     }
@@ -365,12 +365,12 @@ public class MediaPlayer implements AudioRouting {
         void onTimedMetaDataAvailable(android.media.MediaPlayer p0, android.media.TimedMetaData p1);
     }
     public static final class ProvisioningNetworkErrorException extends android.media.MediaDrmException {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public ProvisioningNetworkErrorException(java.lang.String p0) { super(p0); }
         ProvisioningNetworkErrorException() { this((java.lang.String) null); }
     }
     public static final class ProvisioningServerErrorException extends android.media.MediaDrmException {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public ProvisioningServerErrorException(java.lang.String p0) { super(p0); }
         ProvisioningServerErrorException() { this((java.lang.String) null); }
     }

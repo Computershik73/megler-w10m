@@ -92,7 +92,7 @@ public class Dialog implements DialogInterface, Window.Callback, KeyEvent.Callba
     public boolean onKeyLongPress(int k, KeyEvent e) { return false; }
     public boolean onKeyUp(int keyCode, KeyEvent e) { if ((keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_ESCAPE) && e.isTracking() && !e.isCanceled()) { onBackPressed(); return true; } return false; }
     public boolean onKeyMultiple(int k, int n, KeyEvent e) { return false; }
-    public void onBackPressed() { if (mWindow.megletDispatchBack()) return; if (mCancelable) cancel(); }
+    public void onBackPressed() { if (mWindow.meglerDispatchBack()) return; if (mCancelable) cancel(); }
     public boolean onKeyShortcut(int k, KeyEvent e) { return false; }
     public boolean onTouchEvent(MotionEvent e) {
         if (mCancelable && mShowing && mCanceledOnTouchOutside && e.getAction() == MotionEvent.ACTION_DOWN && isOutOfBounds(e)) { cancel(); return true; }

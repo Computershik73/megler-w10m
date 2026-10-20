@@ -3,11 +3,11 @@ package android.media.midi;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class MidiDeviceService extends android.app.Service {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String SERVICE_INTERFACE = "android.media.midi.MidiDeviceService";
     public MidiDeviceService() { super(); }
-    public android.media.midi.MidiDeviceInfo getDeviceInfo() { return (android.media.midi.MidiDeviceInfo) megletProps.get("DeviceInfo"); }
-    public android.media.midi.MidiReceiver[] getOutputPortReceivers() { return (android.media.midi.MidiReceiver[]) megletProps.get("OutputPortReceivers"); }
+    public android.media.midi.MidiDeviceInfo getDeviceInfo() { return (android.media.midi.MidiDeviceInfo) meglerProps.get("DeviceInfo"); }
+    public android.media.midi.MidiReceiver[] getOutputPortReceivers() { return (android.media.midi.MidiReceiver[]) meglerProps.get("OutputPortReceivers"); }
     public android.os.IBinder onBind(android.content.Intent p0) { return null; }
     public void onClose() {}
     public void onDeviceStatusChanged(android.media.midi.MidiDeviceStatus p0) {}

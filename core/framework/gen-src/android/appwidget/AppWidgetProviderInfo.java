@@ -3,7 +3,7 @@ package android.appwidget;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AppWidgetProviderInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int RESIZE_BOTH = 3;
     public static final int RESIZE_HORIZONTAL = 1;
@@ -46,8 +46,8 @@ public class AppWidgetProviderInfo implements android.os.Parcelable {
     public AppWidgetProviderInfo(android.os.Parcel p0) {}
     public android.appwidget.AppWidgetProviderInfo clone() { return new android.appwidget.AppWidgetProviderInfo(); }
     public int describeContents() { return 0; }
-    public android.content.pm.ActivityInfo getActivityInfo() { return (android.content.pm.ActivityInfo) megletProps.get("ActivityInfo"); }
-    public android.os.UserHandle getProfile() { return (android.os.UserHandle) megletProps.get("Profile"); }
+    public android.content.pm.ActivityInfo getActivityInfo() { return (android.content.pm.ActivityInfo) meglerProps.get("ActivityInfo"); }
+    public android.os.UserHandle getProfile() { return (android.os.UserHandle) meglerProps.get("Profile"); }
     public java.lang.CharSequence loadDescription(android.content.Context p0) { return null; }
     public android.graphics.drawable.Drawable loadIcon(android.content.Context p0, int p1) { return null; }
     public java.lang.String loadLabel(android.content.pm.PackageManager p0) { return null; }

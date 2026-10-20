@@ -3,11 +3,11 @@ package android.security;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class FileIntegrityManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public FileIntegrityManager(android.content.Context p0, android.security.IFileIntegrityService p1) {}
     public byte[] getFsVerityDigest(java.io.File p0) { return null; }
-    public boolean isApkVeritySupported() { return (megletProps.get("ApkVeritySupported") instanceof Boolean ? (Boolean) megletProps.get("ApkVeritySupported") : false); }
+    public boolean isApkVeritySupported() { return (meglerProps.get("ApkVeritySupported") instanceof Boolean ? (Boolean) meglerProps.get("ApkVeritySupported") : false); }
     public boolean isAppSourceCertificateTrusted(java.security.cert.X509Certificate p0) { return false; }
-    public void setupFsVerity(java.io.File p0) { megletProps.put("upFsVerity", p0); }
+    public void setupFsVerity(java.io.File p0) { meglerProps.put("upFsVerity", p0); }
     FileIntegrityManager() { this((android.content.Context) null, (android.security.IFileIntegrityService) null); }
 }

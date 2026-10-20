@@ -2562,7 +2562,7 @@ public class WebView extends AbsoluteLayout
         mProvider.getViewDelegate().onAttachedToWindow();
     }
 
-    // Meglet: this framework's View has no onDetachedFromWindowInternal; its onDetachedFromWindow is the hook.
+    // Megler: this framework's View has no onDetachedFromWindowInternal; its onDetachedFromWindow is the hook.
     @Override
     protected void onDetachedFromWindow() {
         mProvider.getViewDelegate().onDetachedFromWindow();
@@ -2793,10 +2793,10 @@ public class WebView extends AbsoluteLayout
         return mProvider.getViewDelegate().isVisibleToUserForAutofill(virtualId);
     }
 
-    // Meglet: the three overrides of View's translation methods are left out: this framework's View declares them
+    // Megler: the three overrides of View's translation methods are left out: this framework's View declares them
     // with raw types, and nothing here translates a view.
 
-    // Meglet: this framework's View has no ...Internal forms of these three; the public ones are the hooks.
+    // Megler: this framework's View has no ...Internal forms of these three; the public ones are the hooks.
     @Override
     public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
         super.onInitializeAccessibilityNodeInfo(info);
@@ -2834,29 +2834,29 @@ public class WebView extends AbsoluteLayout
 
     @Override
     protected void onDraw(Canvas canvas) {
-        // Meglet: a canvas that says it is hardware-accelerated -- a RenderNode's, which Compose draws an AndroidView
+        // Megler: a canvas that says it is hardware-accelerated -- a RenderNode's, which Compose draws an AndroidView
         // into -- is given what the WebView draws in software, through a bitmap of the view's size. Chromium draws a
         // hardware-accelerated canvas through the platform's draw functor (AwDrawFn), and this platform has none: its
         // function table is null (drivers/mg_java_webview.c), and Spotify's WebView ended the app making its functor.
         // Every canvas here draws bitmaps, and a RenderNode's is a bitmap of the node's.
         if (canvas.isHardwareAccelerated()) {
-            megletDrawThroughBitmap(canvas);
+            meglerDrawThroughBitmap(canvas);
             return;
         }
         mProvider.getViewDelegate().onDraw(canvas);
     }
 
-    private Bitmap mMegletBitmap;
-    private Canvas mMegletCanvas;
-    private final Rect mMegletVisible = new Rect();
+    private Bitmap mMeglerBitmap;
+    private Canvas mMeglerCanvas;
+    private final Rect mMeglerVisible = new Rect();
 
-    // Meglet: only the part of the view that can be seen in the window, as a draw functor draws it on Android. A
+    // Megler: only the part of the view that can be seen in the window, as a draw functor draws it on Android. A
     // RenderNode is the size of its view, and a WebView sized to its page is many screens tall: a bitmap of all of it
     // was as big (1440 by 20000 is 115 MB). Where no window says what of the view it shows (a view not in one), at most
     // a screen's worth from the scroll position is drawn.
-    private void megletDrawThroughBitmap(Canvas canvas) {
+    private void meglerDrawThroughBitmap(Canvas canvas) {
         int sx = getScrollX(), sy = getScrollY();
-        Rect area = mMegletVisible;
+        Rect area = mMeglerVisible;
         if (getWidth() <= 0 || getHeight() <= 0) return;
         if (!isAttachedToWindow() || !getLocalVisibleRect(area)) {
             android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
@@ -2864,21 +2864,21 @@ public class WebView extends AbsoluteLayout
         }
         if (!area.intersect(sx, sy, sx + getWidth(), sy + getHeight())) return;
         int w = area.width(), h = area.height();
-        if (mMegletBitmap == null || mMegletBitmap.getWidth() != w || mMegletBitmap.getHeight() != h) {
+        if (mMeglerBitmap == null || mMeglerBitmap.getWidth() != w || mMeglerBitmap.getHeight() != h) {
             android.util.Log.i("WebView", "drawn on a hardware-accelerated canvas through a bitmap of " + w + "x" + h + ", of a view of "
                     + getWidth() + "x" + getHeight());
-            mMegletBitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-            mMegletCanvas = new Canvas(mMegletBitmap);
+            mMeglerBitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+            mMeglerCanvas = new Canvas(mMeglerBitmap);
         } else {
-            mMegletCanvas.drawColor(0, android.graphics.PorterDuff.Mode.CLEAR);
+            mMeglerCanvas.drawColor(0, android.graphics.PorterDuff.Mode.CLEAR);
         }
         // What View.draw did to the canvas it was given -- the view's content scrolled by its scroll position -- with the
         // visible part's corner at the bitmap's.
-        int save = mMegletCanvas.save();
-        mMegletCanvas.translate(-area.left, -area.top);
-        mProvider.getViewDelegate().onDraw(mMegletCanvas);
-        mMegletCanvas.restoreToCount(save);
-        canvas.drawBitmap(mMegletBitmap, area.left, area.top, null);
+        int save = mMeglerCanvas.save();
+        mMeglerCanvas.translate(-area.left, -area.top);
+        mProvider.getViewDelegate().onDraw(mMeglerCanvas);
+        mMeglerCanvas.restoreToCount(save);
+        canvas.drawBitmap(mMeglerBitmap, area.left, area.top, null);
     }
 
     @Override
@@ -2886,7 +2886,7 @@ public class WebView extends AbsoluteLayout
         return mProvider.getViewDelegate().performLongClick();
     }
 
-    // Meglet: public, as this framework's View declares it.
+    // Megler: public, as this framework's View declares it.
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         mProvider.getViewDelegate().onConfigurationChanged(newConfig);
@@ -3024,7 +3024,7 @@ public class WebView extends AbsoluteLayout
         if (webviewPackage != null) {
             return webviewPackage;
         }
-        // Meglet: there is no update service; the WebView package is the one in the Android root.
+        // Megler: there is no update service; the WebView package is the one in the Android root.
         return WebViewFactory.getCurrentWebViewPackage();
     }
 
@@ -3050,7 +3050,7 @@ public class WebView extends AbsoluteLayout
         return mProvider.getViewDelegate().onCheckIsTextEditor();
     }
 
-    // Meglet: encodeProperties is left out: this framework's ViewHierarchyEncoder has no addProperty.
+    // Megler: encodeProperties is left out: this framework's ViewHierarchyEncoder has no addProperty.
 
     @Override
     public WindowInsets onApplyWindowInsets(WindowInsets insets) {

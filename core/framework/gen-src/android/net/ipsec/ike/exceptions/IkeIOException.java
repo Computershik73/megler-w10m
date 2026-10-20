@@ -3,10 +3,10 @@ package android.net.ipsec.ike.exceptions;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class IkeIOException extends android.net.ipsec.ike.exceptions.IkeNonProtocolException {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public IkeIOException(java.io.IOException p0) { super(); }
-    public java.io.IOException getCause() { return (java.io.IOException) megletProps.get("Cause"); }
-    public int getMetricsErrorCode() { return (megletProps.get("MetricsErrorCode") instanceof Integer ? (Integer) megletProps.get("MetricsErrorCode") : 0); }
+    public java.io.IOException getCause() { return (java.io.IOException) meglerProps.get("Cause"); }
+    public int getMetricsErrorCode() { return (meglerProps.get("MetricsErrorCode") instanceof Integer ? (Integer) meglerProps.get("MetricsErrorCode") : 0); }
     public java.lang.Throwable initCause(java.lang.Throwable p0) { return null; }
     IkeIOException() { this((java.io.IOException) null); }
 }

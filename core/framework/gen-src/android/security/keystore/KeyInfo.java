@@ -3,30 +3,30 @@ package android.security.keystore;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class KeyInfo implements java.security.spec.KeySpec {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public KeyInfo(java.lang.String p0, boolean p1, int p2, int p3, java.util.Date p4, java.util.Date p5, java.util.Date p6, int p7, java.lang.String[] p8, java.lang.String[] p9, java.lang.String[] p10, java.lang.String[] p11, boolean p12, int p13, int p14, boolean p15, boolean p16, boolean p17, boolean p18, boolean p19, boolean p20, int p21, int p22) {}
-    public java.lang.String[] getBlockModes() { return (java.lang.String[]) megletProps.get("BlockModes"); }
-    public java.lang.String[] getDigests() { return (java.lang.String[]) megletProps.get("Digests"); }
-    public java.lang.String[] getEncryptionPaddings() { return (java.lang.String[]) megletProps.get("EncryptionPaddings"); }
-    public int getKeySize() { return (megletProps.get("KeySize") instanceof Integer ? (Integer) megletProps.get("KeySize") : 0); }
-    public java.util.Date getKeyValidityForConsumptionEnd() { return (java.util.Date) megletProps.get("KeyValidityForConsumptionEnd"); }
-    public java.util.Date getKeyValidityForOriginationEnd() { return (java.util.Date) megletProps.get("KeyValidityForOriginationEnd"); }
-    public java.util.Date getKeyValidityStart() { return (java.util.Date) megletProps.get("KeyValidityStart"); }
-    public java.lang.String getKeystoreAlias() { return (java.lang.String) megletProps.get("KeystoreAlias"); }
-    public int getOrigin() { return (megletProps.get("Origin") instanceof Integer ? (Integer) megletProps.get("Origin") : 0); }
-    public int getPurposes() { return (megletProps.get("Purposes") instanceof Integer ? (Integer) megletProps.get("Purposes") : 0); }
-    public int getRemainingUsageCount() { return (megletProps.get("RemainingUsageCount") instanceof Integer ? (Integer) megletProps.get("RemainingUsageCount") : 0); }
-    public int getSecurityLevel() { return (megletProps.get("SecurityLevel") instanceof Integer ? (Integer) megletProps.get("SecurityLevel") : 0); }
-    public java.lang.String[] getSignaturePaddings() { return (java.lang.String[]) megletProps.get("SignaturePaddings"); }
-    public int getUserAuthenticationType() { return (megletProps.get("UserAuthenticationType") instanceof Integer ? (Integer) megletProps.get("UserAuthenticationType") : 0); }
-    public int getUserAuthenticationValidityDurationSeconds() { return (megletProps.get("UserAuthenticationValidityDurationSeconds") instanceof Integer ? (Integer) megletProps.get("UserAuthenticationValidityDurationSeconds") : 0); }
-    public boolean isInsideSecureHardware() { return (megletProps.get("InsideSecureHardware") instanceof Boolean ? (Boolean) megletProps.get("InsideSecureHardware") : false); }
-    public boolean isInvalidatedByBiometricEnrollment() { return (megletProps.get("InvalidatedByBiometricEnrollment") instanceof Boolean ? (Boolean) megletProps.get("InvalidatedByBiometricEnrollment") : false); }
-    public boolean isTrustedUserPresenceRequired() { return (megletProps.get("TrustedUserPresenceRequired") instanceof Boolean ? (Boolean) megletProps.get("TrustedUserPresenceRequired") : false); }
-    public boolean isUnlockedDeviceRequired() { return (megletProps.get("UnlockedDeviceRequired") instanceof Boolean ? (Boolean) megletProps.get("UnlockedDeviceRequired") : false); }
-    public boolean isUserAuthenticationRequired() { return (megletProps.get("UserAuthenticationRequired") instanceof Boolean ? (Boolean) megletProps.get("UserAuthenticationRequired") : false); }
-    public boolean isUserAuthenticationRequirementEnforcedBySecureHardware() { return (megletProps.get("UserAuthenticationRequirementEnforcedBySecureHardware") instanceof Boolean ? (Boolean) megletProps.get("UserAuthenticationRequirementEnforcedBySecureHardware") : false); }
-    public boolean isUserAuthenticationValidWhileOnBody() { return (megletProps.get("UserAuthenticationValidWhileOnBody") instanceof Boolean ? (Boolean) megletProps.get("UserAuthenticationValidWhileOnBody") : false); }
-    public boolean isUserConfirmationRequired() { return (megletProps.get("UserConfirmationRequired") instanceof Boolean ? (Boolean) megletProps.get("UserConfirmationRequired") : false); }
+    public java.lang.String[] getBlockModes() { return (java.lang.String[]) meglerProps.get("BlockModes"); }
+    public java.lang.String[] getDigests() { return (java.lang.String[]) meglerProps.get("Digests"); }
+    public java.lang.String[] getEncryptionPaddings() { return (java.lang.String[]) meglerProps.get("EncryptionPaddings"); }
+    public int getKeySize() { return (meglerProps.get("KeySize") instanceof Integer ? (Integer) meglerProps.get("KeySize") : 0); }
+    public java.util.Date getKeyValidityForConsumptionEnd() { return (java.util.Date) meglerProps.get("KeyValidityForConsumptionEnd"); }
+    public java.util.Date getKeyValidityForOriginationEnd() { return (java.util.Date) meglerProps.get("KeyValidityForOriginationEnd"); }
+    public java.util.Date getKeyValidityStart() { return (java.util.Date) meglerProps.get("KeyValidityStart"); }
+    public java.lang.String getKeystoreAlias() { return (java.lang.String) meglerProps.get("KeystoreAlias"); }
+    public int getOrigin() { return (meglerProps.get("Origin") instanceof Integer ? (Integer) meglerProps.get("Origin") : 0); }
+    public int getPurposes() { return (meglerProps.get("Purposes") instanceof Integer ? (Integer) meglerProps.get("Purposes") : 0); }
+    public int getRemainingUsageCount() { return (meglerProps.get("RemainingUsageCount") instanceof Integer ? (Integer) meglerProps.get("RemainingUsageCount") : 0); }
+    public int getSecurityLevel() { return (meglerProps.get("SecurityLevel") instanceof Integer ? (Integer) meglerProps.get("SecurityLevel") : 0); }
+    public java.lang.String[] getSignaturePaddings() { return (java.lang.String[]) meglerProps.get("SignaturePaddings"); }
+    public int getUserAuthenticationType() { return (meglerProps.get("UserAuthenticationType") instanceof Integer ? (Integer) meglerProps.get("UserAuthenticationType") : 0); }
+    public int getUserAuthenticationValidityDurationSeconds() { return (meglerProps.get("UserAuthenticationValidityDurationSeconds") instanceof Integer ? (Integer) meglerProps.get("UserAuthenticationValidityDurationSeconds") : 0); }
+    public boolean isInsideSecureHardware() { return (meglerProps.get("InsideSecureHardware") instanceof Boolean ? (Boolean) meglerProps.get("InsideSecureHardware") : false); }
+    public boolean isInvalidatedByBiometricEnrollment() { return (meglerProps.get("InvalidatedByBiometricEnrollment") instanceof Boolean ? (Boolean) meglerProps.get("InvalidatedByBiometricEnrollment") : false); }
+    public boolean isTrustedUserPresenceRequired() { return (meglerProps.get("TrustedUserPresenceRequired") instanceof Boolean ? (Boolean) meglerProps.get("TrustedUserPresenceRequired") : false); }
+    public boolean isUnlockedDeviceRequired() { return (meglerProps.get("UnlockedDeviceRequired") instanceof Boolean ? (Boolean) meglerProps.get("UnlockedDeviceRequired") : false); }
+    public boolean isUserAuthenticationRequired() { return (meglerProps.get("UserAuthenticationRequired") instanceof Boolean ? (Boolean) meglerProps.get("UserAuthenticationRequired") : false); }
+    public boolean isUserAuthenticationRequirementEnforcedBySecureHardware() { return (meglerProps.get("UserAuthenticationRequirementEnforcedBySecureHardware") instanceof Boolean ? (Boolean) meglerProps.get("UserAuthenticationRequirementEnforcedBySecureHardware") : false); }
+    public boolean isUserAuthenticationValidWhileOnBody() { return (meglerProps.get("UserAuthenticationValidWhileOnBody") instanceof Boolean ? (Boolean) meglerProps.get("UserAuthenticationValidWhileOnBody") : false); }
+    public boolean isUserConfirmationRequired() { return (meglerProps.get("UserConfirmationRequired") instanceof Boolean ? (Boolean) meglerProps.get("UserConfirmationRequired") : false); }
     KeyInfo() { this((java.lang.String) null, (boolean) false, (int) 0, (int) 0, (java.util.Date) null, (java.util.Date) null, (java.util.Date) null, (int) 0, (java.lang.String[]) null, (java.lang.String[]) null, (java.lang.String[]) null, (java.lang.String[]) null, (boolean) false, (int) 0, (int) 0, (boolean) false, (boolean) false, (boolean) false, (boolean) false, (boolean) false, (boolean) false, (int) 0, (int) 0); }
 }

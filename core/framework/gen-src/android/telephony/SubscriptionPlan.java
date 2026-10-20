@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SubscriptionPlan implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final long BYTES_UNKNOWN = -1L;
     public static final long BYTES_UNLIMITED = 9223372036854775807L;
     public static android.os.Parcelable.Creator CREATOR;
@@ -19,34 +19,34 @@ public final class SubscriptionPlan implements android.os.Parcelable {
     public static final long TIME_UNKNOWN = -1L;
     public java.util.Iterator cycleIterator() { return null; }
     public int describeContents() { return 0; }
-    public android.util.RecurrenceRule getCycleRule() { return (android.util.RecurrenceRule) megletProps.get("CycleRule"); }
-    public int getDataLimitBehavior() { return (megletProps.get("DataLimitBehavior") instanceof Integer ? (Integer) megletProps.get("DataLimitBehavior") : 0); }
-    public long getDataLimitBytes() { return (megletProps.get("DataLimitBytes") instanceof Long ? (Long) megletProps.get("DataLimitBytes") : 0L); }
-    public long getDataUsageBytes() { return (megletProps.get("DataUsageBytes") instanceof Long ? (Long) megletProps.get("DataUsageBytes") : 0L); }
-    public long getDataUsageTime() { return (megletProps.get("DataUsageTime") instanceof Long ? (Long) megletProps.get("DataUsageTime") : 0L); }
-    public int[] getNetworkTypes() { return (int[]) megletProps.get("NetworkTypes"); }
-    public java.time.ZonedDateTime getPlanEndDate() { return (java.time.ZonedDateTime) megletProps.get("PlanEndDate"); }
-    public int getSubscriptionStatus() { return (megletProps.get("SubscriptionStatus") instanceof Integer ? (Integer) megletProps.get("SubscriptionStatus") : 0); }
-    public java.lang.CharSequence getSummary() { return (java.lang.CharSequence) megletProps.get("Summary"); }
-    public java.lang.CharSequence getTitle() { return (java.lang.CharSequence) megletProps.get("Title"); }
+    public android.util.RecurrenceRule getCycleRule() { return (android.util.RecurrenceRule) meglerProps.get("CycleRule"); }
+    public int getDataLimitBehavior() { return (meglerProps.get("DataLimitBehavior") instanceof Integer ? (Integer) meglerProps.get("DataLimitBehavior") : 0); }
+    public long getDataLimitBytes() { return (meglerProps.get("DataLimitBytes") instanceof Long ? (Long) meglerProps.get("DataLimitBytes") : 0L); }
+    public long getDataUsageBytes() { return (meglerProps.get("DataUsageBytes") instanceof Long ? (Long) meglerProps.get("DataUsageBytes") : 0L); }
+    public long getDataUsageTime() { return (meglerProps.get("DataUsageTime") instanceof Long ? (Long) meglerProps.get("DataUsageTime") : 0L); }
+    public int[] getNetworkTypes() { return (int[]) meglerProps.get("NetworkTypes"); }
+    public java.time.ZonedDateTime getPlanEndDate() { return (java.time.ZonedDateTime) meglerProps.get("PlanEndDate"); }
+    public int getSubscriptionStatus() { return (meglerProps.get("SubscriptionStatus") instanceof Integer ? (Integer) meglerProps.get("SubscriptionStatus") : 0); }
+    public java.lang.CharSequence getSummary() { return (java.lang.CharSequence) meglerProps.get("Summary"); }
+    public java.lang.CharSequence getTitle() { return (java.lang.CharSequence) meglerProps.get("Title"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected SubscriptionPlan() {}
     public static class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(java.time.ZonedDateTime p0, java.time.ZonedDateTime p1, java.time.Period p2) {}
         public static android.telephony.SubscriptionPlan.Builder createNonrecurring(java.time.ZonedDateTime p0, java.time.ZonedDateTime p1) { return new Builder(); }
         public static android.telephony.SubscriptionPlan.Builder createRecurring(java.time.ZonedDateTime p0, java.time.Period p1) { return new Builder(); }
         public static android.telephony.SubscriptionPlan.Builder createRecurringDaily(java.time.ZonedDateTime p0) { return new Builder(); }
         public static android.telephony.SubscriptionPlan.Builder createRecurringMonthly(java.time.ZonedDateTime p0) { return new Builder(); }
         public static android.telephony.SubscriptionPlan.Builder createRecurringWeekly(java.time.ZonedDateTime p0) { return new Builder(); }
-        public android.telephony.SubscriptionPlan build() { android.telephony.SubscriptionPlan x = new android.telephony.SubscriptionPlan(); x.megletProps.putAll(megletProps); return x; }
+        public android.telephony.SubscriptionPlan build() { android.telephony.SubscriptionPlan x = new android.telephony.SubscriptionPlan(); x.meglerProps.putAll(meglerProps); return x; }
         public android.telephony.SubscriptionPlan.Builder resetNetworkTypes() { return this; }
         public android.telephony.SubscriptionPlan.Builder setDataLimit(long p0, int p1) { return this; }
         public android.telephony.SubscriptionPlan.Builder setDataUsage(long p0, long p1) { return this; }
-        public android.telephony.SubscriptionPlan.Builder setNetworkTypes(int[] p0) { megletProps.put("NetworkTypes", p0); return this; }
-        public android.telephony.SubscriptionPlan.Builder setSubscriptionStatus(int p0) { megletProps.put("SubscriptionStatus", Integer.valueOf(p0)); return this; }
-        public android.telephony.SubscriptionPlan.Builder setSummary(java.lang.CharSequence p0) { megletProps.put("Summary", p0); return this; }
-        public android.telephony.SubscriptionPlan.Builder setTitle(java.lang.CharSequence p0) { megletProps.put("Title", p0); return this; }
+        public android.telephony.SubscriptionPlan.Builder setNetworkTypes(int[] p0) { meglerProps.put("NetworkTypes", p0); return this; }
+        public android.telephony.SubscriptionPlan.Builder setSubscriptionStatus(int p0) { meglerProps.put("SubscriptionStatus", Integer.valueOf(p0)); return this; }
+        public android.telephony.SubscriptionPlan.Builder setSummary(java.lang.CharSequence p0) { meglerProps.put("Summary", p0); return this; }
+        public android.telephony.SubscriptionPlan.Builder setTitle(java.lang.CharSequence p0) { meglerProps.put("Title", p0); return this; }
         Builder() { this((java.time.ZonedDateTime) null, (java.time.ZonedDateTime) null, (java.time.Period) null); }
     }
 }

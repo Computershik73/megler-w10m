@@ -3,7 +3,7 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BluetoothCodecConfig implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int BITS_PER_SAMPLE_16 = 1;
     public static final int BITS_PER_SAMPLE_24 = 2;
     public static final int BITS_PER_SAMPLE_32 = 4;
@@ -35,39 +35,39 @@ public final class BluetoothCodecConfig implements android.os.Parcelable {
     public BluetoothCodecConfig(android.bluetooth.BluetoothCodecType p0, int p1, int p2, int p3, int p4, long p5, long p6, long p7, long p8) {}
     public static java.lang.String getCodecName(int p0) { return null; }
     public int describeContents() { return 0; }
-    public int getBitsPerSample() { return (megletProps.get("BitsPerSample") instanceof Integer ? (Integer) megletProps.get("BitsPerSample") : 0); }
-    public int getChannelMode() { return (megletProps.get("ChannelMode") instanceof Integer ? (Integer) megletProps.get("ChannelMode") : 0); }
-    public int getCodecPriority() { return (megletProps.get("CodecPriority") instanceof Integer ? (Integer) megletProps.get("CodecPriority") : 0); }
-    public long getCodecSpecific1() { return (megletProps.get("CodecSpecific1") instanceof Long ? (Long) megletProps.get("CodecSpecific1") : 0L); }
-    public long getCodecSpecific2() { return (megletProps.get("CodecSpecific2") instanceof Long ? (Long) megletProps.get("CodecSpecific2") : 0L); }
-    public long getCodecSpecific3() { return (megletProps.get("CodecSpecific3") instanceof Long ? (Long) megletProps.get("CodecSpecific3") : 0L); }
-    public long getCodecSpecific4() { return (megletProps.get("CodecSpecific4") instanceof Long ? (Long) megletProps.get("CodecSpecific4") : 0L); }
-    public int getCodecType() { return (megletProps.get("CodecType") instanceof Integer ? (Integer) megletProps.get("CodecType") : 0); }
-    public android.bluetooth.BluetoothCodecType getExtendedCodecType() { return (android.bluetooth.BluetoothCodecType) megletProps.get("ExtendedCodecType"); }
-    public int getSampleRate() { return (megletProps.get("SampleRate") instanceof Integer ? (Integer) megletProps.get("SampleRate") : 0); }
+    public int getBitsPerSample() { return (meglerProps.get("BitsPerSample") instanceof Integer ? (Integer) meglerProps.get("BitsPerSample") : 0); }
+    public int getChannelMode() { return (meglerProps.get("ChannelMode") instanceof Integer ? (Integer) meglerProps.get("ChannelMode") : 0); }
+    public int getCodecPriority() { return (meglerProps.get("CodecPriority") instanceof Integer ? (Integer) meglerProps.get("CodecPriority") : 0); }
+    public long getCodecSpecific1() { return (meglerProps.get("CodecSpecific1") instanceof Long ? (Long) meglerProps.get("CodecSpecific1") : 0L); }
+    public long getCodecSpecific2() { return (meglerProps.get("CodecSpecific2") instanceof Long ? (Long) meglerProps.get("CodecSpecific2") : 0L); }
+    public long getCodecSpecific3() { return (meglerProps.get("CodecSpecific3") instanceof Long ? (Long) meglerProps.get("CodecSpecific3") : 0L); }
+    public long getCodecSpecific4() { return (meglerProps.get("CodecSpecific4") instanceof Long ? (Long) meglerProps.get("CodecSpecific4") : 0L); }
+    public int getCodecType() { return (meglerProps.get("CodecType") instanceof Integer ? (Integer) meglerProps.get("CodecType") : 0); }
+    public android.bluetooth.BluetoothCodecType getExtendedCodecType() { return (android.bluetooth.BluetoothCodecType) meglerProps.get("ExtendedCodecType"); }
+    public int getSampleRate() { return (meglerProps.get("SampleRate") instanceof Integer ? (Integer) meglerProps.get("SampleRate") : 0); }
     public boolean hasSingleBitsPerSample() { return false; }
     public boolean hasSingleChannelMode() { return false; }
     public boolean hasSingleSampleRate() { return false; }
-    public boolean isMandatoryCodec() { return (megletProps.get("MandatoryCodec") instanceof Boolean ? (Boolean) megletProps.get("MandatoryCodec") : false); }
+    public boolean isMandatoryCodec() { return (meglerProps.get("MandatoryCodec") instanceof Boolean ? (Boolean) meglerProps.get("MandatoryCodec") : false); }
     public boolean sameAudioFeedingParameters(android.bluetooth.BluetoothCodecConfig p0) { return false; }
     public boolean sameCodecSpecificParameters(android.bluetooth.BluetoothCodecConfig p0) { return false; }
-    public void setCodecPriority(int p0) { megletProps.put("CodecPriority", Integer.valueOf(p0)); }
+    public void setCodecPriority(int p0) { meglerProps.put("CodecPriority", Integer.valueOf(p0)); }
     public boolean similarCodecFeedingParameters(android.bluetooth.BluetoothCodecConfig p0) { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     BluetoothCodecConfig() { this((int) 0); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.bluetooth.BluetoothCodecConfig build() { android.bluetooth.BluetoothCodecConfig x = new android.bluetooth.BluetoothCodecConfig(); x.megletProps.putAll(megletProps); return x; }
-        public android.bluetooth.BluetoothCodecConfig.Builder setBitsPerSample(int p0) { megletProps.put("BitsPerSample", Integer.valueOf(p0)); return this; }
-        public android.bluetooth.BluetoothCodecConfig.Builder setChannelMode(int p0) { megletProps.put("ChannelMode", Integer.valueOf(p0)); return this; }
-        public android.bluetooth.BluetoothCodecConfig.Builder setCodecPriority(int p0) { megletProps.put("CodecPriority", Integer.valueOf(p0)); return this; }
-        public android.bluetooth.BluetoothCodecConfig.Builder setCodecSpecific1(long p0) { megletProps.put("CodecSpecific1", Long.valueOf(p0)); return this; }
-        public android.bluetooth.BluetoothCodecConfig.Builder setCodecSpecific2(long p0) { megletProps.put("CodecSpecific2", Long.valueOf(p0)); return this; }
-        public android.bluetooth.BluetoothCodecConfig.Builder setCodecSpecific3(long p0) { megletProps.put("CodecSpecific3", Long.valueOf(p0)); return this; }
-        public android.bluetooth.BluetoothCodecConfig.Builder setCodecSpecific4(long p0) { megletProps.put("CodecSpecific4", Long.valueOf(p0)); return this; }
-        public android.bluetooth.BluetoothCodecConfig.Builder setCodecType(int p0) { megletProps.put("CodecType", Integer.valueOf(p0)); return this; }
-        public android.bluetooth.BluetoothCodecConfig.Builder setExtendedCodecType(android.bluetooth.BluetoothCodecType p0) { megletProps.put("ExtendedCodecType", p0); return this; }
-        public android.bluetooth.BluetoothCodecConfig.Builder setSampleRate(int p0) { megletProps.put("SampleRate", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.BluetoothCodecConfig build() { android.bluetooth.BluetoothCodecConfig x = new android.bluetooth.BluetoothCodecConfig(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.bluetooth.BluetoothCodecConfig.Builder setBitsPerSample(int p0) { meglerProps.put("BitsPerSample", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.BluetoothCodecConfig.Builder setChannelMode(int p0) { meglerProps.put("ChannelMode", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.BluetoothCodecConfig.Builder setCodecPriority(int p0) { meglerProps.put("CodecPriority", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.BluetoothCodecConfig.Builder setCodecSpecific1(long p0) { meglerProps.put("CodecSpecific1", Long.valueOf(p0)); return this; }
+        public android.bluetooth.BluetoothCodecConfig.Builder setCodecSpecific2(long p0) { meglerProps.put("CodecSpecific2", Long.valueOf(p0)); return this; }
+        public android.bluetooth.BluetoothCodecConfig.Builder setCodecSpecific3(long p0) { meglerProps.put("CodecSpecific3", Long.valueOf(p0)); return this; }
+        public android.bluetooth.BluetoothCodecConfig.Builder setCodecSpecific4(long p0) { meglerProps.put("CodecSpecific4", Long.valueOf(p0)); return this; }
+        public android.bluetooth.BluetoothCodecConfig.Builder setCodecType(int p0) { meglerProps.put("CodecType", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.BluetoothCodecConfig.Builder setExtendedCodecType(android.bluetooth.BluetoothCodecType p0) { meglerProps.put("ExtendedCodecType", p0); return this; }
+        public android.bluetooth.BluetoothCodecConfig.Builder setSampleRate(int p0) { meglerProps.put("SampleRate", Integer.valueOf(p0)); return this; }
     }
 }

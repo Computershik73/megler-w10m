@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SmsMessage {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int ENCODING_16BIT = 3;
     public static final int ENCODING_7BIT = 1;
     public static final int ENCODING_8BIT = 2;
@@ -34,42 +34,42 @@ public class SmsMessage {
     public static int getTPLayerLengthForPDU(java.lang.String p0) { return 0; }
     public static boolean hasEmsSupport() { return false; }
     public static boolean shouldAppendPageNumberAsPrefix() { return false; }
-    public java.lang.String getDisplayMessageBody() { return (java.lang.String) megletProps.get("DisplayMessageBody"); }
-    public java.lang.String getDisplayOriginatingAddress() { return (java.lang.String) megletProps.get("DisplayOriginatingAddress"); }
-    public java.lang.String getEmailBody() { return (java.lang.String) megletProps.get("EmailBody"); }
-    public java.lang.String getEmailFrom() { return (java.lang.String) megletProps.get("EmailFrom"); }
-    public int getIndexOnIcc() { return (megletProps.get("IndexOnIcc") instanceof Integer ? (Integer) megletProps.get("IndexOnIcc") : 0); }
-    public int getIndexOnSim() { return (megletProps.get("IndexOnSim") instanceof Integer ? (Integer) megletProps.get("IndexOnSim") : 0); }
-    public java.lang.String getMessageBody() { return (java.lang.String) megletProps.get("MessageBody"); }
-    public android.telephony.SmsMessage.MessageClass getMessageClass() { return (android.telephony.SmsMessage.MessageClass) megletProps.get("MessageClass"); }
-    public java.lang.String getOriginatingAddress() { return (java.lang.String) megletProps.get("OriginatingAddress"); }
-    public byte[] getPdu() { return (byte[]) megletProps.get("Pdu"); }
-    public int getProtocolIdentifier() { return (megletProps.get("ProtocolIdentifier") instanceof Integer ? (Integer) megletProps.get("ProtocolIdentifier") : 0); }
-    public java.lang.String getPseudoSubject() { return (java.lang.String) megletProps.get("PseudoSubject"); }
-    public int getReceivedEncodingType() { return (megletProps.get("ReceivedEncodingType") instanceof Integer ? (Integer) megletProps.get("ReceivedEncodingType") : 0); }
-    public java.lang.String getRecipientAddress() { return (java.lang.String) megletProps.get("RecipientAddress"); }
-    public java.lang.String getServiceCenterAddress() { return (java.lang.String) megletProps.get("ServiceCenterAddress"); }
-    public int getStatus() { return (megletProps.get("Status") instanceof Integer ? (Integer) megletProps.get("Status") : 0); }
-    public int getStatusOnIcc() { return (megletProps.get("StatusOnIcc") instanceof Integer ? (Integer) megletProps.get("StatusOnIcc") : 0); }
-    public int getStatusOnSim() { return (megletProps.get("StatusOnSim") instanceof Integer ? (Integer) megletProps.get("StatusOnSim") : 0); }
-    public int getSubId() { return (megletProps.get("SubId") instanceof Integer ? (Integer) megletProps.get("SubId") : 0); }
-    public long getTimestampMillis() { return (megletProps.get("TimestampMillis") instanceof Long ? (Long) megletProps.get("TimestampMillis") : 0L); }
-    public byte[] getUserData() { return (byte[]) megletProps.get("UserData"); }
-    public boolean is3gpp() { return (megletProps.get("3gpp") instanceof Boolean ? (Boolean) megletProps.get("3gpp") : false); }
-    public boolean isCphsMwiMessage() { return (megletProps.get("CphsMwiMessage") instanceof Boolean ? (Boolean) megletProps.get("CphsMwiMessage") : false); }
-    public boolean isEmail() { return (megletProps.get("Email") instanceof Boolean ? (Boolean) megletProps.get("Email") : false); }
-    public boolean isMWIClearMessage() { return (megletProps.get("MWIClearMessage") instanceof Boolean ? (Boolean) megletProps.get("MWIClearMessage") : false); }
-    public boolean isMWISetMessage() { return (megletProps.get("MWISetMessage") instanceof Boolean ? (Boolean) megletProps.get("MWISetMessage") : false); }
-    public boolean isMwiDontStore() { return (megletProps.get("MwiDontStore") instanceof Boolean ? (Boolean) megletProps.get("MwiDontStore") : false); }
-    public boolean isReplace() { return (megletProps.get("Replace") instanceof Boolean ? (Boolean) megletProps.get("Replace") : false); }
-    public boolean isReplyPathPresent() { return (megletProps.get("ReplyPathPresent") instanceof Boolean ? (Boolean) megletProps.get("ReplyPathPresent") : false); }
-    public boolean isStatusReportMessage() { return (megletProps.get("StatusReportMessage") instanceof Boolean ? (Boolean) megletProps.get("StatusReportMessage") : false); }
-    public void setSubId(int p0) { megletProps.put("SubId", Integer.valueOf(p0)); }
+    public java.lang.String getDisplayMessageBody() { return (java.lang.String) meglerProps.get("DisplayMessageBody"); }
+    public java.lang.String getDisplayOriginatingAddress() { return (java.lang.String) meglerProps.get("DisplayOriginatingAddress"); }
+    public java.lang.String getEmailBody() { return (java.lang.String) meglerProps.get("EmailBody"); }
+    public java.lang.String getEmailFrom() { return (java.lang.String) meglerProps.get("EmailFrom"); }
+    public int getIndexOnIcc() { return (meglerProps.get("IndexOnIcc") instanceof Integer ? (Integer) meglerProps.get("IndexOnIcc") : 0); }
+    public int getIndexOnSim() { return (meglerProps.get("IndexOnSim") instanceof Integer ? (Integer) meglerProps.get("IndexOnSim") : 0); }
+    public java.lang.String getMessageBody() { return (java.lang.String) meglerProps.get("MessageBody"); }
+    public android.telephony.SmsMessage.MessageClass getMessageClass() { return (android.telephony.SmsMessage.MessageClass) meglerProps.get("MessageClass"); }
+    public java.lang.String getOriginatingAddress() { return (java.lang.String) meglerProps.get("OriginatingAddress"); }
+    public byte[] getPdu() { return (byte[]) meglerProps.get("Pdu"); }
+    public int getProtocolIdentifier() { return (meglerProps.get("ProtocolIdentifier") instanceof Integer ? (Integer) meglerProps.get("ProtocolIdentifier") : 0); }
+    public java.lang.String getPseudoSubject() { return (java.lang.String) meglerProps.get("PseudoSubject"); }
+    public int getReceivedEncodingType() { return (meglerProps.get("ReceivedEncodingType") instanceof Integer ? (Integer) meglerProps.get("ReceivedEncodingType") : 0); }
+    public java.lang.String getRecipientAddress() { return (java.lang.String) meglerProps.get("RecipientAddress"); }
+    public java.lang.String getServiceCenterAddress() { return (java.lang.String) meglerProps.get("ServiceCenterAddress"); }
+    public int getStatus() { return (meglerProps.get("Status") instanceof Integer ? (Integer) meglerProps.get("Status") : 0); }
+    public int getStatusOnIcc() { return (meglerProps.get("StatusOnIcc") instanceof Integer ? (Integer) meglerProps.get("StatusOnIcc") : 0); }
+    public int getStatusOnSim() { return (meglerProps.get("StatusOnSim") instanceof Integer ? (Integer) meglerProps.get("StatusOnSim") : 0); }
+    public int getSubId() { return (meglerProps.get("SubId") instanceof Integer ? (Integer) meglerProps.get("SubId") : 0); }
+    public long getTimestampMillis() { return (meglerProps.get("TimestampMillis") instanceof Long ? (Long) meglerProps.get("TimestampMillis") : 0L); }
+    public byte[] getUserData() { return (byte[]) meglerProps.get("UserData"); }
+    public boolean is3gpp() { return (meglerProps.get("3gpp") instanceof Boolean ? (Boolean) meglerProps.get("3gpp") : false); }
+    public boolean isCphsMwiMessage() { return (meglerProps.get("CphsMwiMessage") instanceof Boolean ? (Boolean) meglerProps.get("CphsMwiMessage") : false); }
+    public boolean isEmail() { return (meglerProps.get("Email") instanceof Boolean ? (Boolean) meglerProps.get("Email") : false); }
+    public boolean isMWIClearMessage() { return (meglerProps.get("MWIClearMessage") instanceof Boolean ? (Boolean) meglerProps.get("MWIClearMessage") : false); }
+    public boolean isMWISetMessage() { return (meglerProps.get("MWISetMessage") instanceof Boolean ? (Boolean) meglerProps.get("MWISetMessage") : false); }
+    public boolean isMwiDontStore() { return (meglerProps.get("MwiDontStore") instanceof Boolean ? (Boolean) meglerProps.get("MwiDontStore") : false); }
+    public boolean isReplace() { return (meglerProps.get("Replace") instanceof Boolean ? (Boolean) meglerProps.get("Replace") : false); }
+    public boolean isReplyPathPresent() { return (meglerProps.get("ReplyPathPresent") instanceof Boolean ? (Boolean) meglerProps.get("ReplyPathPresent") : false); }
+    public boolean isStatusReportMessage() { return (meglerProps.get("StatusReportMessage") instanceof Boolean ? (Boolean) meglerProps.get("StatusReportMessage") : false); }
+    public void setSubId(int p0) { meglerProps.put("SubId", Integer.valueOf(p0)); }
     public enum MessageClass {
         CLASS_0, CLASS_1, CLASS_2, CLASS_3, UNKNOWN;
     }
     public static class SubmitPdu {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public byte[] encodedMessage;
         public byte[] encodedScAddress;
     }

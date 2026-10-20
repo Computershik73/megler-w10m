@@ -3,7 +3,7 @@ package android.net.wifi.aware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ParcelablePeerHandle extends android.net.wifi.aware.PeerHandle implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public ParcelablePeerHandle(android.net.wifi.aware.PeerHandle p0) { super((int) 0); }
     public int describeContents() { return 0; }

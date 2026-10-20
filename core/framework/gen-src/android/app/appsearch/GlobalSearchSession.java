@@ -3,7 +3,7 @@ package android.app.appsearch;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class GlobalSearchSession extends android.app.appsearch.ReadOnlyGlobalSearchSession implements java.io.Closeable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public void close() {}
     public void getByDocumentId(java.lang.String p0, java.lang.String p1, android.app.appsearch.GetByDocumentIdRequest p2, java.util.concurrent.Executor p3, android.app.appsearch.BatchResultCallback p4) {}
     public void getSchema(java.lang.String p0, java.lang.String p1, java.util.concurrent.Executor p2, java.util.function.Consumer p3) {}

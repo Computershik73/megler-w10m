@@ -3,20 +3,20 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ExerciseLap implements android.health.connect.datatypes.TimeInterval.TimeIntervalHolder {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public java.time.Instant getEndTime() { return (java.time.Instant) megletProps.get("EndTime"); }
-    public android.health.connect.datatypes.TimeInterval getInterval() { return (android.health.connect.datatypes.TimeInterval) megletProps.get("Interval"); }
-    public android.health.connect.datatypes.units.Length getLength() { return (android.health.connect.datatypes.units.Length) megletProps.get("Length"); }
-    public java.time.Instant getStartTime() { return (java.time.Instant) megletProps.get("StartTime"); }
-    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public java.time.Instant getEndTime() { return (java.time.Instant) meglerProps.get("EndTime"); }
+    public android.health.connect.datatypes.TimeInterval getInterval() { return (android.health.connect.datatypes.TimeInterval) meglerProps.get("Interval"); }
+    public android.health.connect.datatypes.units.Length getLength() { return (android.health.connect.datatypes.units.Length) meglerProps.get("Length"); }
+    public java.time.Instant getStartTime() { return (java.time.Instant) meglerProps.get("StartTime"); }
+    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
     public android.health.connect.internal.datatypes.ExerciseLapInternal toExerciseLapInternal() { return null; }
     protected ExerciseLap() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(java.time.Instant p0, java.time.Instant p1) {}
-        public android.health.connect.datatypes.ExerciseLap build() { android.health.connect.datatypes.ExerciseLap x = new android.health.connect.datatypes.ExerciseLap(); x.megletProps.putAll(megletProps); return x; }
+        public android.health.connect.datatypes.ExerciseLap build() { android.health.connect.datatypes.ExerciseLap x = new android.health.connect.datatypes.ExerciseLap(); x.meglerProps.putAll(meglerProps); return x; }
         public android.health.connect.datatypes.ExerciseLap buildWithoutValidation() { return null; }
-        public android.health.connect.datatypes.ExerciseLap.Builder setLength(android.health.connect.datatypes.units.Length p0) { megletProps.put("Length", p0); return this; }
+        public android.health.connect.datatypes.ExerciseLap.Builder setLength(android.health.connect.datatypes.units.Length p0) { meglerProps.put("Length", p0); return this; }
         Builder() { this((java.time.Instant) null, (java.time.Instant) null); }
     }
 }

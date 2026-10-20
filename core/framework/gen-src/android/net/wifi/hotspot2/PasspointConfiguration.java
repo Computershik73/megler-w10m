@@ -3,7 +3,7 @@ package android.net.wifi.hotspot2;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PasspointConfiguration implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final long MAX_HESSID_VALUE = 281474976710655L;
     public static final int MAX_NUMBER_OF_ENTRIES = 16;
@@ -14,63 +14,63 @@ public final class PasspointConfiguration implements android.os.Parcelable {
     public PasspointConfiguration() {}
     public PasspointConfiguration(android.net.wifi.hotspot2.PasspointConfiguration p0) {}
     public int describeContents() { return 0; }
-    public java.lang.String[] getAaaServerTrustedNames() { return (java.lang.String[]) megletProps.get("AaaServerTrustedNames"); }
-    public int getCarrierId() { return (megletProps.get("CarrierId") instanceof Integer ? (Integer) megletProps.get("CarrierId") : 0); }
-    public android.net.wifi.hotspot2.pps.Credential getCredential() { return (android.net.wifi.hotspot2.pps.Credential) megletProps.get("Credential"); }
-    public int getCredentialPriority() { return (megletProps.get("CredentialPriority") instanceof Integer ? (Integer) megletProps.get("CredentialPriority") : 0); }
-    public java.lang.String getDecoratedIdentityPrefix() { return (java.lang.String) megletProps.get("DecoratedIdentityPrefix"); }
-    public android.net.wifi.hotspot2.pps.HomeSp getHomeSp() { return (android.net.wifi.hotspot2.pps.HomeSp) megletProps.get("HomeSp"); }
-    public int getMeteredOverride() { return (megletProps.get("MeteredOverride") instanceof Integer ? (Integer) megletProps.get("MeteredOverride") : 0); }
-    public android.net.wifi.hotspot2.pps.Policy getPolicy() { return (android.net.wifi.hotspot2.pps.Policy) megletProps.get("Policy"); }
-    public java.lang.String getServiceFriendlyName() { return (java.lang.String) megletProps.get("ServiceFriendlyName"); }
-    public java.util.Map getServiceFriendlyNames() { return (megletProps.get("ServiceFriendlyNames") != null ? (java.util.Map) megletProps.get("ServiceFriendlyNames") : new java.util.HashMap()); }
-    public long getSubscriptionCreationTimeInMillis() { return (megletProps.get("SubscriptionCreationTimeInMillis") instanceof Long ? (Long) megletProps.get("SubscriptionCreationTimeInMillis") : 0L); }
-    public long getSubscriptionExpirationTimeMillis() { return (megletProps.get("SubscriptionExpirationTimeMillis") instanceof Long ? (Long) megletProps.get("SubscriptionExpirationTimeMillis") : 0L); }
-    public android.os.ParcelUuid getSubscriptionGroup() { return (android.os.ParcelUuid) megletProps.get("SubscriptionGroup"); }
-    public int getSubscriptionId() { return (megletProps.get("SubscriptionId") instanceof Integer ? (Integer) megletProps.get("SubscriptionId") : 0); }
-    public java.lang.String getSubscriptionType() { return (java.lang.String) megletProps.get("SubscriptionType"); }
-    public android.net.wifi.hotspot2.pps.UpdateParameter getSubscriptionUpdate() { return (android.net.wifi.hotspot2.pps.UpdateParameter) megletProps.get("SubscriptionUpdate"); }
-    public java.util.Map getTrustRootCertList() { return (megletProps.get("TrustRootCertList") != null ? (java.util.Map) megletProps.get("TrustRootCertList") : new java.util.HashMap()); }
-    public java.lang.String getUniqueId() { return (java.lang.String) megletProps.get("UniqueId"); }
-    public int getUpdateIdentifier() { return (megletProps.get("UpdateIdentifier") instanceof Integer ? (Integer) megletProps.get("UpdateIdentifier") : 0); }
-    public long getUsageLimitDataLimit() { return (megletProps.get("UsageLimitDataLimit") instanceof Long ? (Long) megletProps.get("UsageLimitDataLimit") : 0L); }
-    public long getUsageLimitStartTimeInMillis() { return (megletProps.get("UsageLimitStartTimeInMillis") instanceof Long ? (Long) megletProps.get("UsageLimitStartTimeInMillis") : 0L); }
-    public long getUsageLimitTimeLimitInMinutes() { return (megletProps.get("UsageLimitTimeLimitInMinutes") instanceof Long ? (Long) megletProps.get("UsageLimitTimeLimitInMinutes") : 0L); }
-    public long getUsageLimitUsageTimePeriodInMinutes() { return (megletProps.get("UsageLimitUsageTimePeriodInMinutes") instanceof Long ? (Long) megletProps.get("UsageLimitUsageTimePeriodInMinutes") : 0L); }
-    public boolean isAutojoinEnabled() { return (megletProps.get("AutojoinEnabled") instanceof Boolean ? (Boolean) megletProps.get("AutojoinEnabled") : false); }
-    public boolean isCarrierMerged() { return (megletProps.get("CarrierMerged") instanceof Boolean ? (Boolean) megletProps.get("CarrierMerged") : false); }
-    public boolean isMacRandomizationEnabled() { return (megletProps.get("MacRandomizationEnabled") instanceof Boolean ? (Boolean) megletProps.get("MacRandomizationEnabled") : false); }
-    public boolean isNonPersistentMacRandomizationEnabled() { return (megletProps.get("NonPersistentMacRandomizationEnabled") instanceof Boolean ? (Boolean) megletProps.get("NonPersistentMacRandomizationEnabled") : false); }
-    public boolean isOemPaid() { return (megletProps.get("OemPaid") instanceof Boolean ? (Boolean) megletProps.get("OemPaid") : false); }
-    public boolean isOemPrivate() { return (megletProps.get("OemPrivate") instanceof Boolean ? (Boolean) megletProps.get("OemPrivate") : false); }
-    public boolean isOsuProvisioned() { return (megletProps.get("OsuProvisioned") instanceof Boolean ? (Boolean) megletProps.get("OsuProvisioned") : false); }
-    public void setAaaServerTrustedNames(java.lang.String[] p0) { megletProps.put("AaaServerTrustedNames", p0); }
-    public void setAutojoinEnabled(boolean p0) { megletProps.put("AutojoinEnabled", Boolean.valueOf(p0)); }
-    public void setCarrierId(int p0) { megletProps.put("CarrierId", Integer.valueOf(p0)); }
-    public void setCarrierMerged(boolean p0) { megletProps.put("CarrierMerged", Boolean.valueOf(p0)); }
-    public void setCredential(android.net.wifi.hotspot2.pps.Credential p0) { megletProps.put("Credential", p0); }
-    public void setCredentialPriority(int p0) { megletProps.put("CredentialPriority", Integer.valueOf(p0)); }
-    public void setDecoratedIdentityPrefix(java.lang.String p0) { megletProps.put("DecoratedIdentityPrefix", p0); }
-    public void setHomeSp(android.net.wifi.hotspot2.pps.HomeSp p0) { megletProps.put("HomeSp", p0); }
-    public void setMacRandomizationEnabled(boolean p0) { megletProps.put("MacRandomizationEnabled", Boolean.valueOf(p0)); }
-    public void setMeteredOverride(int p0) { megletProps.put("MeteredOverride", Integer.valueOf(p0)); }
-    public void setNonPersistentMacRandomizationEnabled(boolean p0) { megletProps.put("NonPersistentMacRandomizationEnabled", Boolean.valueOf(p0)); }
-    public void setOemPaid(boolean p0) { megletProps.put("OemPaid", Boolean.valueOf(p0)); }
-    public void setOemPrivate(boolean p0) { megletProps.put("OemPrivate", Boolean.valueOf(p0)); }
-    public void setPolicy(android.net.wifi.hotspot2.pps.Policy p0) { megletProps.put("Policy", p0); }
-    public void setServiceFriendlyNames(java.util.Map p0) { megletProps.put("ServiceFriendlyNames", p0); }
-    public void setSubscriptionCreationTimeInMillis(long p0) { megletProps.put("SubscriptionCreationTimeInMillis", Long.valueOf(p0)); }
-    public void setSubscriptionExpirationTimeInMillis(long p0) { megletProps.put("SubscriptionExpirationTimeInMillis", Long.valueOf(p0)); }
-    public void setSubscriptionGroup(android.os.ParcelUuid p0) { megletProps.put("SubscriptionGroup", p0); }
-    public void setSubscriptionId(int p0) { megletProps.put("SubscriptionId", Integer.valueOf(p0)); }
-    public void setSubscriptionType(java.lang.String p0) { megletProps.put("SubscriptionType", p0); }
-    public void setSubscriptionUpdate(android.net.wifi.hotspot2.pps.UpdateParameter p0) { megletProps.put("SubscriptionUpdate", p0); }
-    public void setTrustRootCertList(java.util.Map p0) { megletProps.put("TrustRootCertList", p0); }
-    public void setUpdateIdentifier(int p0) { megletProps.put("UpdateIdentifier", Integer.valueOf(p0)); }
-    public void setUsageLimitDataLimit(long p0) { megletProps.put("UsageLimitDataLimit", Long.valueOf(p0)); }
-    public void setUsageLimitStartTimeInMillis(long p0) { megletProps.put("UsageLimitStartTimeInMillis", Long.valueOf(p0)); }
-    public void setUsageLimitTimeLimitInMinutes(long p0) { megletProps.put("UsageLimitTimeLimitInMinutes", Long.valueOf(p0)); }
-    public void setUsageLimitUsageTimePeriodInMinutes(long p0) { megletProps.put("UsageLimitUsageTimePeriodInMinutes", Long.valueOf(p0)); }
+    public java.lang.String[] getAaaServerTrustedNames() { return (java.lang.String[]) meglerProps.get("AaaServerTrustedNames"); }
+    public int getCarrierId() { return (meglerProps.get("CarrierId") instanceof Integer ? (Integer) meglerProps.get("CarrierId") : 0); }
+    public android.net.wifi.hotspot2.pps.Credential getCredential() { return (android.net.wifi.hotspot2.pps.Credential) meglerProps.get("Credential"); }
+    public int getCredentialPriority() { return (meglerProps.get("CredentialPriority") instanceof Integer ? (Integer) meglerProps.get("CredentialPriority") : 0); }
+    public java.lang.String getDecoratedIdentityPrefix() { return (java.lang.String) meglerProps.get("DecoratedIdentityPrefix"); }
+    public android.net.wifi.hotspot2.pps.HomeSp getHomeSp() { return (android.net.wifi.hotspot2.pps.HomeSp) meglerProps.get("HomeSp"); }
+    public int getMeteredOverride() { return (meglerProps.get("MeteredOverride") instanceof Integer ? (Integer) meglerProps.get("MeteredOverride") : 0); }
+    public android.net.wifi.hotspot2.pps.Policy getPolicy() { return (android.net.wifi.hotspot2.pps.Policy) meglerProps.get("Policy"); }
+    public java.lang.String getServiceFriendlyName() { return (java.lang.String) meglerProps.get("ServiceFriendlyName"); }
+    public java.util.Map getServiceFriendlyNames() { return (meglerProps.get("ServiceFriendlyNames") != null ? (java.util.Map) meglerProps.get("ServiceFriendlyNames") : new java.util.HashMap()); }
+    public long getSubscriptionCreationTimeInMillis() { return (meglerProps.get("SubscriptionCreationTimeInMillis") instanceof Long ? (Long) meglerProps.get("SubscriptionCreationTimeInMillis") : 0L); }
+    public long getSubscriptionExpirationTimeMillis() { return (meglerProps.get("SubscriptionExpirationTimeMillis") instanceof Long ? (Long) meglerProps.get("SubscriptionExpirationTimeMillis") : 0L); }
+    public android.os.ParcelUuid getSubscriptionGroup() { return (android.os.ParcelUuid) meglerProps.get("SubscriptionGroup"); }
+    public int getSubscriptionId() { return (meglerProps.get("SubscriptionId") instanceof Integer ? (Integer) meglerProps.get("SubscriptionId") : 0); }
+    public java.lang.String getSubscriptionType() { return (java.lang.String) meglerProps.get("SubscriptionType"); }
+    public android.net.wifi.hotspot2.pps.UpdateParameter getSubscriptionUpdate() { return (android.net.wifi.hotspot2.pps.UpdateParameter) meglerProps.get("SubscriptionUpdate"); }
+    public java.util.Map getTrustRootCertList() { return (meglerProps.get("TrustRootCertList") != null ? (java.util.Map) meglerProps.get("TrustRootCertList") : new java.util.HashMap()); }
+    public java.lang.String getUniqueId() { return (java.lang.String) meglerProps.get("UniqueId"); }
+    public int getUpdateIdentifier() { return (meglerProps.get("UpdateIdentifier") instanceof Integer ? (Integer) meglerProps.get("UpdateIdentifier") : 0); }
+    public long getUsageLimitDataLimit() { return (meglerProps.get("UsageLimitDataLimit") instanceof Long ? (Long) meglerProps.get("UsageLimitDataLimit") : 0L); }
+    public long getUsageLimitStartTimeInMillis() { return (meglerProps.get("UsageLimitStartTimeInMillis") instanceof Long ? (Long) meglerProps.get("UsageLimitStartTimeInMillis") : 0L); }
+    public long getUsageLimitTimeLimitInMinutes() { return (meglerProps.get("UsageLimitTimeLimitInMinutes") instanceof Long ? (Long) meglerProps.get("UsageLimitTimeLimitInMinutes") : 0L); }
+    public long getUsageLimitUsageTimePeriodInMinutes() { return (meglerProps.get("UsageLimitUsageTimePeriodInMinutes") instanceof Long ? (Long) meglerProps.get("UsageLimitUsageTimePeriodInMinutes") : 0L); }
+    public boolean isAutojoinEnabled() { return (meglerProps.get("AutojoinEnabled") instanceof Boolean ? (Boolean) meglerProps.get("AutojoinEnabled") : false); }
+    public boolean isCarrierMerged() { return (meglerProps.get("CarrierMerged") instanceof Boolean ? (Boolean) meglerProps.get("CarrierMerged") : false); }
+    public boolean isMacRandomizationEnabled() { return (meglerProps.get("MacRandomizationEnabled") instanceof Boolean ? (Boolean) meglerProps.get("MacRandomizationEnabled") : false); }
+    public boolean isNonPersistentMacRandomizationEnabled() { return (meglerProps.get("NonPersistentMacRandomizationEnabled") instanceof Boolean ? (Boolean) meglerProps.get("NonPersistentMacRandomizationEnabled") : false); }
+    public boolean isOemPaid() { return (meglerProps.get("OemPaid") instanceof Boolean ? (Boolean) meglerProps.get("OemPaid") : false); }
+    public boolean isOemPrivate() { return (meglerProps.get("OemPrivate") instanceof Boolean ? (Boolean) meglerProps.get("OemPrivate") : false); }
+    public boolean isOsuProvisioned() { return (meglerProps.get("OsuProvisioned") instanceof Boolean ? (Boolean) meglerProps.get("OsuProvisioned") : false); }
+    public void setAaaServerTrustedNames(java.lang.String[] p0) { meglerProps.put("AaaServerTrustedNames", p0); }
+    public void setAutojoinEnabled(boolean p0) { meglerProps.put("AutojoinEnabled", Boolean.valueOf(p0)); }
+    public void setCarrierId(int p0) { meglerProps.put("CarrierId", Integer.valueOf(p0)); }
+    public void setCarrierMerged(boolean p0) { meglerProps.put("CarrierMerged", Boolean.valueOf(p0)); }
+    public void setCredential(android.net.wifi.hotspot2.pps.Credential p0) { meglerProps.put("Credential", p0); }
+    public void setCredentialPriority(int p0) { meglerProps.put("CredentialPriority", Integer.valueOf(p0)); }
+    public void setDecoratedIdentityPrefix(java.lang.String p0) { meglerProps.put("DecoratedIdentityPrefix", p0); }
+    public void setHomeSp(android.net.wifi.hotspot2.pps.HomeSp p0) { meglerProps.put("HomeSp", p0); }
+    public void setMacRandomizationEnabled(boolean p0) { meglerProps.put("MacRandomizationEnabled", Boolean.valueOf(p0)); }
+    public void setMeteredOverride(int p0) { meglerProps.put("MeteredOverride", Integer.valueOf(p0)); }
+    public void setNonPersistentMacRandomizationEnabled(boolean p0) { meglerProps.put("NonPersistentMacRandomizationEnabled", Boolean.valueOf(p0)); }
+    public void setOemPaid(boolean p0) { meglerProps.put("OemPaid", Boolean.valueOf(p0)); }
+    public void setOemPrivate(boolean p0) { meglerProps.put("OemPrivate", Boolean.valueOf(p0)); }
+    public void setPolicy(android.net.wifi.hotspot2.pps.Policy p0) { meglerProps.put("Policy", p0); }
+    public void setServiceFriendlyNames(java.util.Map p0) { meglerProps.put("ServiceFriendlyNames", p0); }
+    public void setSubscriptionCreationTimeInMillis(long p0) { meglerProps.put("SubscriptionCreationTimeInMillis", Long.valueOf(p0)); }
+    public void setSubscriptionExpirationTimeInMillis(long p0) { meglerProps.put("SubscriptionExpirationTimeInMillis", Long.valueOf(p0)); }
+    public void setSubscriptionGroup(android.os.ParcelUuid p0) { meglerProps.put("SubscriptionGroup", p0); }
+    public void setSubscriptionId(int p0) { meglerProps.put("SubscriptionId", Integer.valueOf(p0)); }
+    public void setSubscriptionType(java.lang.String p0) { meglerProps.put("SubscriptionType", p0); }
+    public void setSubscriptionUpdate(android.net.wifi.hotspot2.pps.UpdateParameter p0) { meglerProps.put("SubscriptionUpdate", p0); }
+    public void setTrustRootCertList(java.util.Map p0) { meglerProps.put("TrustRootCertList", p0); }
+    public void setUpdateIdentifier(int p0) { meglerProps.put("UpdateIdentifier", Integer.valueOf(p0)); }
+    public void setUsageLimitDataLimit(long p0) { meglerProps.put("UsageLimitDataLimit", Long.valueOf(p0)); }
+    public void setUsageLimitStartTimeInMillis(long p0) { meglerProps.put("UsageLimitStartTimeInMillis", Long.valueOf(p0)); }
+    public void setUsageLimitTimeLimitInMinutes(long p0) { meglerProps.put("UsageLimitTimeLimitInMinutes", Long.valueOf(p0)); }
+    public void setUsageLimitUsageTimePeriodInMinutes(long p0) { meglerProps.put("UsageLimitUsageTimePeriodInMinutes", Long.valueOf(p0)); }
     public boolean validate() { return false; }
     public boolean validateForR2() { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}

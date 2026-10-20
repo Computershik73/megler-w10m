@@ -3,7 +3,7 @@ package android.credentials;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CredentialManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String DEVICE_CONFIG_ENABLE_CREDENTIAL_MANAGER = "enable_credential_manager";
     public static final java.lang.String EXTRA_AUTOFILL_RESULT_RECEIVER = "android.credentials.AUTOFILL_RESULT_RECEIVER";
     public static final int PROVIDER_FILTER_ALL_PROVIDERS = 0;

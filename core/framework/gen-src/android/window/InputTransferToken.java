@@ -3,12 +3,12 @@ package android.window;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class InputTransferToken implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public long mNativeObject;
     public InputTransferToken() {}
     public InputTransferToken(android.os.IBinder p0) {}
     public int describeContents() { return 0; }
-    public android.os.IBinder getToken() { return (android.os.IBinder) megletProps.get("Token"); }
+    public android.os.IBinder getToken() { return (android.os.IBinder) meglerProps.get("Token"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
 }

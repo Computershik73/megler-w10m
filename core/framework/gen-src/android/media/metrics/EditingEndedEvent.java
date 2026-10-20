@@ -3,7 +3,7 @@ package android.media.metrics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class EditingEndedEvent extends android.media.metrics.Event implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int ERROR_CODE_AUDIO_PROCESSING_FAILED = 18;
     public static final int ERROR_CODE_DECODER_INIT_FAILED = 11;
@@ -38,31 +38,31 @@ public final class EditingEndedEvent extends android.media.metrics.Event impleme
     public static final int PROGRESS_PERCENT_UNKNOWN = -1;
     public static final int TIME_SINCE_CREATED_UNKNOWN = -1;
     public int describeContents() { return 0; }
-    public int getErrorCode() { return (megletProps.get("ErrorCode") instanceof Integer ? (Integer) megletProps.get("ErrorCode") : 0); }
-    public java.lang.String getExporterName() { return (java.lang.String) megletProps.get("ExporterName"); }
-    public float getFinalProgressPercent() { return (megletProps.get("FinalProgressPercent") instanceof Float ? (Float) megletProps.get("FinalProgressPercent") : 0f); }
-    public int getFinalState() { return (megletProps.get("FinalState") instanceof Integer ? (Integer) megletProps.get("FinalState") : 0); }
-    public java.util.List getInputMediaItemInfos() { return (megletProps.get("InputMediaItemInfos") != null ? (java.util.List) megletProps.get("InputMediaItemInfos") : new java.util.ArrayList()); }
-    public android.os.Bundle getMetricsBundle() { return (android.os.Bundle) megletProps.get("MetricsBundle"); }
-    public java.lang.String getMuxerName() { return (java.lang.String) megletProps.get("MuxerName"); }
-    public long getOperationTypes() { return (megletProps.get("OperationTypes") instanceof Long ? (Long) megletProps.get("OperationTypes") : 0L); }
-    public android.media.metrics.MediaItemInfo getOutputMediaItemInfo() { return (android.media.metrics.MediaItemInfo) megletProps.get("OutputMediaItemInfo"); }
-    public long getTimeSinceCreatedMillis() { return (megletProps.get("TimeSinceCreatedMillis") instanceof Long ? (Long) megletProps.get("TimeSinceCreatedMillis") : 0L); }
+    public int getErrorCode() { return (meglerProps.get("ErrorCode") instanceof Integer ? (Integer) meglerProps.get("ErrorCode") : 0); }
+    public java.lang.String getExporterName() { return (java.lang.String) meglerProps.get("ExporterName"); }
+    public float getFinalProgressPercent() { return (meglerProps.get("FinalProgressPercent") instanceof Float ? (Float) meglerProps.get("FinalProgressPercent") : 0f); }
+    public int getFinalState() { return (meglerProps.get("FinalState") instanceof Integer ? (Integer) meglerProps.get("FinalState") : 0); }
+    public java.util.List getInputMediaItemInfos() { return (meglerProps.get("InputMediaItemInfos") != null ? (java.util.List) meglerProps.get("InputMediaItemInfos") : new java.util.ArrayList()); }
+    public android.os.Bundle getMetricsBundle() { return (android.os.Bundle) meglerProps.get("MetricsBundle"); }
+    public java.lang.String getMuxerName() { return (java.lang.String) meglerProps.get("MuxerName"); }
+    public long getOperationTypes() { return (meglerProps.get("OperationTypes") instanceof Long ? (Long) meglerProps.get("OperationTypes") : 0L); }
+    public android.media.metrics.MediaItemInfo getOutputMediaItemInfo() { return (android.media.metrics.MediaItemInfo) meglerProps.get("OutputMediaItemInfo"); }
+    public long getTimeSinceCreatedMillis() { return (meglerProps.get("TimeSinceCreatedMillis") instanceof Long ? (Long) meglerProps.get("TimeSinceCreatedMillis") : 0L); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected EditingEndedEvent() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(int p0) {}
         public android.media.metrics.EditingEndedEvent.Builder addInputMediaItemInfo(android.media.metrics.MediaItemInfo p0) { return this; }
         public android.media.metrics.EditingEndedEvent.Builder addOperationType(long p0) { return this; }
-        public android.media.metrics.EditingEndedEvent build() { android.media.metrics.EditingEndedEvent x = new android.media.metrics.EditingEndedEvent(); x.megletProps.putAll(megletProps); return x; }
-        public android.media.metrics.EditingEndedEvent.Builder setErrorCode(int p0) { megletProps.put("ErrorCode", Integer.valueOf(p0)); return this; }
-        public android.media.metrics.EditingEndedEvent.Builder setExporterName(java.lang.String p0) { megletProps.put("ExporterName", p0); return this; }
-        public android.media.metrics.EditingEndedEvent.Builder setFinalProgressPercent(float p0) { megletProps.put("FinalProgressPercent", Float.valueOf(p0)); return this; }
-        public android.media.metrics.EditingEndedEvent.Builder setMetricsBundle(android.os.Bundle p0) { megletProps.put("MetricsBundle", p0); return this; }
-        public android.media.metrics.EditingEndedEvent.Builder setMuxerName(java.lang.String p0) { megletProps.put("MuxerName", p0); return this; }
-        public android.media.metrics.EditingEndedEvent.Builder setOutputMediaItemInfo(android.media.metrics.MediaItemInfo p0) { megletProps.put("OutputMediaItemInfo", p0); return this; }
-        public android.media.metrics.EditingEndedEvent.Builder setTimeSinceCreatedMillis(long p0) { megletProps.put("TimeSinceCreatedMillis", Long.valueOf(p0)); return this; }
+        public android.media.metrics.EditingEndedEvent build() { android.media.metrics.EditingEndedEvent x = new android.media.metrics.EditingEndedEvent(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.media.metrics.EditingEndedEvent.Builder setErrorCode(int p0) { meglerProps.put("ErrorCode", Integer.valueOf(p0)); return this; }
+        public android.media.metrics.EditingEndedEvent.Builder setExporterName(java.lang.String p0) { meglerProps.put("ExporterName", p0); return this; }
+        public android.media.metrics.EditingEndedEvent.Builder setFinalProgressPercent(float p0) { meglerProps.put("FinalProgressPercent", Float.valueOf(p0)); return this; }
+        public android.media.metrics.EditingEndedEvent.Builder setMetricsBundle(android.os.Bundle p0) { meglerProps.put("MetricsBundle", p0); return this; }
+        public android.media.metrics.EditingEndedEvent.Builder setMuxerName(java.lang.String p0) { meglerProps.put("MuxerName", p0); return this; }
+        public android.media.metrics.EditingEndedEvent.Builder setOutputMediaItemInfo(android.media.metrics.MediaItemInfo p0) { meglerProps.put("OutputMediaItemInfo", p0); return this; }
+        public android.media.metrics.EditingEndedEvent.Builder setTimeSinceCreatedMillis(long p0) { meglerProps.put("TimeSinceCreatedMillis", Long.valueOf(p0)); return this; }
         Builder() { this((int) 0); }
     }
 }

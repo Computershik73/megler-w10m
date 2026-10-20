@@ -3,7 +3,7 @@ package android.inputmethodservice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Keyboard {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int EDGE_BOTTOM = 8;
     public static final int EDGE_LEFT = 1;
     public static final int EDGE_RIGHT = 2;
@@ -20,26 +20,26 @@ public class Keyboard {
     public Keyboard(android.content.Context p0, int p1, java.lang.CharSequence p2, int p3, int p4) {}
     protected android.inputmethodservice.Keyboard.Key createKeyFromXml(android.content.res.Resources p0, android.inputmethodservice.Keyboard.Row p1, int p2, int p3, android.content.res.XmlResourceParser p4) { return null; }
     protected android.inputmethodservice.Keyboard.Row createRowFromXml(android.content.res.Resources p0, android.content.res.XmlResourceParser p1) { return null; }
-    public int getHeight() { return (megletProps.get("Height") instanceof Integer ? (Integer) megletProps.get("Height") : 0); }
-    protected int getHorizontalGap() { return (megletProps.get("HorizontalGap") instanceof Integer ? (Integer) megletProps.get("HorizontalGap") : 0); }
-    protected int getKeyHeight() { return (megletProps.get("KeyHeight") instanceof Integer ? (Integer) megletProps.get("KeyHeight") : 0); }
-    protected int getKeyWidth() { return (megletProps.get("KeyWidth") instanceof Integer ? (Integer) megletProps.get("KeyWidth") : 0); }
-    public java.util.List getKeys() { return (megletProps.get("Keys") != null ? (java.util.List) megletProps.get("Keys") : new java.util.ArrayList()); }
-    public int getMinWidth() { return (megletProps.get("MinWidth") instanceof Integer ? (Integer) megletProps.get("MinWidth") : 0); }
-    public java.util.List getModifierKeys() { return (megletProps.get("ModifierKeys") != null ? (java.util.List) megletProps.get("ModifierKeys") : new java.util.ArrayList()); }
+    public int getHeight() { return (meglerProps.get("Height") instanceof Integer ? (Integer) meglerProps.get("Height") : 0); }
+    protected int getHorizontalGap() { return (meglerProps.get("HorizontalGap") instanceof Integer ? (Integer) meglerProps.get("HorizontalGap") : 0); }
+    protected int getKeyHeight() { return (meglerProps.get("KeyHeight") instanceof Integer ? (Integer) meglerProps.get("KeyHeight") : 0); }
+    protected int getKeyWidth() { return (meglerProps.get("KeyWidth") instanceof Integer ? (Integer) meglerProps.get("KeyWidth") : 0); }
+    public java.util.List getKeys() { return (meglerProps.get("Keys") != null ? (java.util.List) meglerProps.get("Keys") : new java.util.ArrayList()); }
+    public int getMinWidth() { return (meglerProps.get("MinWidth") instanceof Integer ? (Integer) meglerProps.get("MinWidth") : 0); }
+    public java.util.List getModifierKeys() { return (meglerProps.get("ModifierKeys") != null ? (java.util.List) meglerProps.get("ModifierKeys") : new java.util.ArrayList()); }
     public int[] getNearestKeys(int p0, int p1) { return null; }
-    public int getShiftKeyIndex() { return (megletProps.get("ShiftKeyIndex") instanceof Integer ? (Integer) megletProps.get("ShiftKeyIndex") : 0); }
-    public int[] getShiftKeyIndices() { return (int[]) megletProps.get("ShiftKeyIndices"); }
-    protected int getVerticalGap() { return (megletProps.get("VerticalGap") instanceof Integer ? (Integer) megletProps.get("VerticalGap") : 0); }
-    public boolean isShifted() { return (megletProps.get("Shifted") instanceof Boolean ? (Boolean) megletProps.get("Shifted") : false); }
-    protected void setHorizontalGap(int p0) { megletProps.put("HorizontalGap", Integer.valueOf(p0)); }
-    protected void setKeyHeight(int p0) { megletProps.put("KeyHeight", Integer.valueOf(p0)); }
-    protected void setKeyWidth(int p0) { megletProps.put("KeyWidth", Integer.valueOf(p0)); }
+    public int getShiftKeyIndex() { return (meglerProps.get("ShiftKeyIndex") instanceof Integer ? (Integer) meglerProps.get("ShiftKeyIndex") : 0); }
+    public int[] getShiftKeyIndices() { return (int[]) meglerProps.get("ShiftKeyIndices"); }
+    protected int getVerticalGap() { return (meglerProps.get("VerticalGap") instanceof Integer ? (Integer) meglerProps.get("VerticalGap") : 0); }
+    public boolean isShifted() { return (meglerProps.get("Shifted") instanceof Boolean ? (Boolean) meglerProps.get("Shifted") : false); }
+    protected void setHorizontalGap(int p0) { meglerProps.put("HorizontalGap", Integer.valueOf(p0)); }
+    protected void setKeyHeight(int p0) { meglerProps.put("KeyHeight", Integer.valueOf(p0)); }
+    protected void setKeyWidth(int p0) { meglerProps.put("KeyWidth", Integer.valueOf(p0)); }
     public boolean setShifted(boolean p0) { return false; }
-    protected void setVerticalGap(int p0) { megletProps.put("VerticalGap", Integer.valueOf(p0)); }
+    protected void setVerticalGap(int p0) { meglerProps.put("VerticalGap", Integer.valueOf(p0)); }
     Keyboard() { this((android.content.Context) null, (int) 0); }
     public static class Key {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public int[] codes;
         public int edgeFlags;
         public int gap;
@@ -60,7 +60,7 @@ public class Keyboard {
         public int y;
         public Key(android.content.res.Resources p0, android.inputmethodservice.Keyboard.Row p1, int p2, int p3, android.content.res.XmlResourceParser p4) {}
         public Key(android.inputmethodservice.Keyboard.Row p0) {}
-        public int[] getCurrentDrawableState() { return (int[]) megletProps.get("CurrentDrawableState"); }
+        public int[] getCurrentDrawableState() { return (int[]) meglerProps.get("CurrentDrawableState"); }
         public boolean isInside(int p0, int p1) { return false; }
         public void onPressed() {}
         public void onReleased(boolean p0) {}
@@ -68,7 +68,7 @@ public class Keyboard {
         Key() { this((android.inputmethodservice.Keyboard.Row) null); }
     }
     public static class Row {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public int defaultHeight;
         public int defaultHorizontalGap;
         public int defaultWidth;

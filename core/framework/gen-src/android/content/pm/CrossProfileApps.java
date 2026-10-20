@@ -3,7 +3,7 @@ package android.content.pm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class CrossProfileApps {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_CAN_INTERACT_ACROSS_PROFILES_CHANGED = "android.content.pm.action.CAN_INTERACT_ACROSS_PROFILES_CHANGED";
     public CrossProfileApps(android.content.Context p0, android.content.pm.ICrossProfileApps p1) {}
     public boolean canConfigureInteractAcrossProfiles(java.lang.String p0) { return false; }
@@ -14,7 +14,7 @@ public class CrossProfileApps {
     public android.content.Intent createRequestInteractAcrossProfilesIntent() { return null; }
     public android.graphics.drawable.Drawable getProfileSwitchingIconDrawable(android.os.UserHandle p0) { return null; }
     public java.lang.CharSequence getProfileSwitchingLabel(android.os.UserHandle p0) { return null; }
-    public java.util.List getTargetUserProfiles() { return (megletProps.get("TargetUserProfiles") != null ? (java.util.List) megletProps.get("TargetUserProfiles") : new java.util.ArrayList()); }
+    public java.util.List getTargetUserProfiles() { return (meglerProps.get("TargetUserProfiles") != null ? (java.util.List) meglerProps.get("TargetUserProfiles") : new java.util.ArrayList()); }
     public boolean isManagedProfile(android.os.UserHandle p0) { return false; }
     public boolean isProfile(android.os.UserHandle p0) { return false; }
     public void resetInteractAcrossProfilesAppOps(java.util.Collection p0, java.util.Set p1) {}

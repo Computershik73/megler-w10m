@@ -3,7 +3,7 @@ package android.net.http;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class QuicException extends android.net.http.NetworkException {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     protected QuicException(java.lang.String p0, java.lang.Throwable p1) { super(p0, p1); }
     QuicException() { this((java.lang.String) null, (java.lang.Throwable) null); }
 }

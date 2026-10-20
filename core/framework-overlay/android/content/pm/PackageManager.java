@@ -1,11 +1,11 @@
 // Overlay: PackageManager must supply its installer even when there are no
 // installation sessions. F-Droid registers callbacks during startup.
 // And hasSystemFeature says what cameras the phone has (android.hardware.camera,
-// .any, .front, .autofocus, .flash), from the shell's (meglet.CameraNative): the
+// .any, .front, .autofocus, .flash), from the shell's (megler.CameraNative): the
 // original said no camera at all, and a scanner that asks before it opens one
 // (VK mp3 mod's QR sign-in among them) would not offer to scan. Likewise the
 // location (android.hardware.location, .gps, .network), wherever the shell can
-// find the phone (meglet.LocationNative).
+// find the phone (megler.LocationNative).
 // And getPackageInfo names the app's split APKs (splitNames, splitRevisionCodes),
 // as ApplicationInfo does: an app in several APKs that checks for its splits by
 // this way of asking found none, where the original left them empty.
@@ -47,21 +47,21 @@ public class PackageManager {
     public static class NameNotFoundException extends android.util.AndroidException { public NameNotFoundException() {} public NameNotFoundException(String s) { super(s); } }
     private static PackageManager sSelf;
     public static synchronized PackageManager self() { if (sSelf == null) sSelf = new PackageManager(); return sSelf; }
-    private static boolean mine(String pkg) { return pkg != null && pkg.equals(meglet.Native.packageName()); }
+    private static boolean mine(String pkg) { return pkg != null && pkg.equals(megler.Native.packageName()); }
     /* the process a component names (android:process: ":x" is the app's own "<package>:x"), the app's process when it names none */
-    private static String process(meglet.Manifest.Component c) {
-        String pkg = meglet.Native.packageName();
+    private static String process(megler.Manifest.Component c) {
+        String pkg = megler.Native.packageName();
         return c.process == null || c.process.isEmpty() ? pkg : c.process.startsWith(":") ? pkg + c.process : c.process;
     }
-    private static ActivityInfo activity(meglet.Manifest.Component c) {
+    private static ActivityInfo activity(megler.Manifest.Component c) {
         ActivityInfo a = new ActivityInfo();
-        a.name = c.name; a.packageName = meglet.Native.packageName(); a.theme = c.theme; a.labelRes = c.label; a.icon = c.icon; a.screenOrientation = c.screenOrientation;
+        a.name = c.name; a.packageName = megler.Native.packageName(); a.theme = c.theme; a.labelRes = c.label; a.icon = c.icon; a.screenOrientation = c.screenOrientation;
         a.configChanges = c.configChanges; a.launchMode = c.launchMode; a.exported = c.exported; a.enabled = c.enabled; a.metaData = c.metaData; a.parentActivityName = c.parentActivity;
         a.softInputMode = c.windowSoftInputMode; a.processName = process(c); a.taskAffinity = a.packageName;
         return a;
     }
-    private static ServiceInfo service(meglet.Manifest.Component c) { ServiceInfo s = new ServiceInfo(); s.name = c.name; s.packageName = meglet.Native.packageName(); s.exported = c.exported; s.enabled = c.enabled; s.metaData = c.metaData; s.permission = c.permission; s.processName = process(c); return s; }
-    private static ProviderInfo provider(meglet.Manifest.Component c) { ProviderInfo p = new ProviderInfo(); p.name = c.name; p.packageName = meglet.Native.packageName(); p.authority = c.authorities; p.exported = c.exported; p.metaData = c.metaData; p.processName = process(c); return p; }
+    private static ServiceInfo service(megler.Manifest.Component c) { ServiceInfo s = new ServiceInfo(); s.name = c.name; s.packageName = megler.Native.packageName(); s.exported = c.exported; s.enabled = c.enabled; s.metaData = c.metaData; s.permission = c.permission; s.processName = process(c); return s; }
+    private static ProviderInfo provider(megler.Manifest.Component c) { ProviderInfo p = new ProviderInfo(); p.name = c.name; p.packageName = megler.Native.packageName(); p.authority = c.authorities; p.exported = c.exported; p.metaData = c.metaData; p.processName = process(c); return p; }
     public PackageInfo getPackageInfo(String pkg, int flags) throws NameNotFoundException {
         if ("android".equals(pkg)) {
             // the platform itself (okhttp, Play libraries and WebView checks read its version)
@@ -73,21 +73,21 @@ public class PackageManager {
             p.signatures = new Signature[] { new Signature("") };
             return p;
         }
-        if (meglet.GooglePackages.is(pkg)) return meglet.GooglePackages.packageInfo(pkg);
+        if (megler.GooglePackages.is(pkg)) return megler.GooglePackages.packageInfo(pkg);
         if (!mine(pkg)) throw new NameNotFoundException(pkg);
-        meglet.Manifest.read();
+        megler.Manifest.read();
         PackageInfo p = new PackageInfo();
-        p.packageName = pkg; p.versionCode = meglet.Manifest.versionCode; p.versionName = meglet.Manifest.versionName != null ? meglet.Manifest.versionName : "1.0";
-        p.firstInstallTime = p.lastUpdateTime = new java.io.File(meglet.Native.apkPath()).lastModified();
+        p.packageName = pkg; p.versionCode = megler.Manifest.versionCode; p.versionName = megler.Manifest.versionName != null ? megler.Manifest.versionName : "1.0";
+        p.firstInstallTime = p.lastUpdateTime = new java.io.File(megler.Native.apkPath()).lastModified();
         String[] splits = ApplicationInfo.self().splitNames;
         if (splits != null) { p.splitNames = splits.clone(); p.splitRevisionCodes = new int[splits.length]; }
-        p.requestedPermissions = meglet.Manifest.permissions.toArray(new String[0]);
+        p.requestedPermissions = megler.Manifest.permissions.toArray(new String[0]);
         p.requestedPermissionsFlags = new int[p.requestedPermissions.length];
         java.util.Arrays.fill(p.requestedPermissionsFlags, PackageInfo.REQUESTED_PERMISSION_GRANTED);
-        if ((flags & GET_ACTIVITIES) != 0) { p.activities = new ActivityInfo[meglet.Manifest.activities.size()]; for (int i = 0; i < p.activities.length; i++) p.activities[i] = activity(meglet.Manifest.activities.get(i)); }
-        if ((flags & GET_RECEIVERS) != 0) { p.receivers = new ActivityInfo[meglet.Manifest.receivers.size()]; for (int i = 0; i < p.receivers.length; i++) p.receivers[i] = activity(meglet.Manifest.receivers.get(i)); }
-        if ((flags & GET_SERVICES) != 0) { p.services = new ServiceInfo[meglet.Manifest.services.size()]; for (int i = 0; i < p.services.length; i++) p.services[i] = service(meglet.Manifest.services.get(i)); }
-        if ((flags & GET_PROVIDERS) != 0) { p.providers = new ProviderInfo[meglet.Manifest.providers.size()]; for (int i = 0; i < p.providers.length; i++) p.providers[i] = provider(meglet.Manifest.providers.get(i)); }
+        if ((flags & GET_ACTIVITIES) != 0) { p.activities = new ActivityInfo[megler.Manifest.activities.size()]; for (int i = 0; i < p.activities.length; i++) p.activities[i] = activity(megler.Manifest.activities.get(i)); }
+        if ((flags & GET_RECEIVERS) != 0) { p.receivers = new ActivityInfo[megler.Manifest.receivers.size()]; for (int i = 0; i < p.receivers.length; i++) p.receivers[i] = activity(megler.Manifest.receivers.get(i)); }
+        if ((flags & GET_SERVICES) != 0) { p.services = new ServiceInfo[megler.Manifest.services.size()]; for (int i = 0; i < p.services.length; i++) p.services[i] = service(megler.Manifest.services.get(i)); }
+        if ((flags & GET_PROVIDERS) != 0) { p.providers = new ProviderInfo[megler.Manifest.providers.size()]; for (int i = 0; i < p.providers.length; i++) p.providers[i] = provider(megler.Manifest.providers.get(i)); }
         return p;
     }
     public PackageInfo getPackageInfo(String pkg, PackageInfoFlags flags) throws NameNotFoundException { return getPackageInfo(pkg, (int) flags.getValue()); }
@@ -97,44 +97,44 @@ public class PackageManager {
     public static final class ComponentInfoFlags { private final long v; private ComponentInfoFlags(long v) { this.v = v; } public static ComponentInfoFlags of(long v) { return new ComponentInfoFlags(v); } public long getValue() { return v; } }
     public static final class ResolveInfoFlags { private final long v; private ResolveInfoFlags(long v) { this.v = v; } public static ResolveInfoFlags of(long v) { return new ResolveInfoFlags(v); } public long getValue() { return v; } }
     public ApplicationInfo getApplicationInfo(String pkg, int flags) throws NameNotFoundException {
-        if (meglet.GooglePackages.is(pkg)) return meglet.GooglePackages.applicationInfo(pkg);
+        if (megler.GooglePackages.is(pkg)) return megler.GooglePackages.applicationInfo(pkg);
         if (!mine(pkg)) throw new NameNotFoundException(pkg);
         return ApplicationInfo.self();
     }
     public ApplicationInfo getApplicationInfo(String pkg, ApplicationInfoFlags flags) throws NameNotFoundException { return getApplicationInfo(pkg, 0); }
     public ActivityInfo getActivityInfo(ComponentName c, int flags) throws NameNotFoundException {
-        meglet.Manifest.Component m = meglet.Manifest.activity(c.getClassName());
-        if (m == null) for (meglet.Manifest.Component a : meglet.Manifest.activities) if (a.name.endsWith(c.getClassName())) m = a;
+        megler.Manifest.Component m = megler.Manifest.activity(c.getClassName());
+        if (m == null) for (megler.Manifest.Component a : megler.Manifest.activities) if (a.name.endsWith(c.getClassName())) m = a;
         if (m == null) throw new NameNotFoundException(c.toString());
         return activity(m);
     }
     public ActivityInfo getActivityInfo(ComponentName c, ComponentInfoFlags flags) throws NameNotFoundException { return getActivityInfo(c, 0); }
-    public ActivityInfo getReceiverInfo(ComponentName c, int flags) throws NameNotFoundException { for (meglet.Manifest.Component r : meglet.Manifest.receivers) if (r.name.equals(c.getClassName())) return activity(r); throw new NameNotFoundException(c.toString()); }
-    public ServiceInfo getServiceInfo(ComponentName c, int flags) throws NameNotFoundException { for (meglet.Manifest.Component s : meglet.Manifest.services) if (s.name.equals(c.getClassName())) return service(s); throw new NameNotFoundException(c.toString()); }
+    public ActivityInfo getReceiverInfo(ComponentName c, int flags) throws NameNotFoundException { for (megler.Manifest.Component r : megler.Manifest.receivers) if (r.name.equals(c.getClassName())) return activity(r); throw new NameNotFoundException(c.toString()); }
+    public ServiceInfo getServiceInfo(ComponentName c, int flags) throws NameNotFoundException { for (megler.Manifest.Component s : megler.Manifest.services) if (s.name.equals(c.getClassName())) return service(s); throw new NameNotFoundException(c.toString()); }
     public ServiceInfo getServiceInfo(ComponentName c, ComponentInfoFlags flags) throws NameNotFoundException { return getServiceInfo(c, 0); }
-    public ProviderInfo getProviderInfo(ComponentName c, int flags) throws NameNotFoundException { for (meglet.Manifest.Component p : meglet.Manifest.providers) if (p.name.equals(c.getClassName())) return provider(p); throw new NameNotFoundException(c.toString()); }
-    public ProviderInfo resolveContentProvider(String authority, int flags) { for (meglet.Manifest.Component p : meglet.Manifest.providers) if (p.authorities != null && java.util.Arrays.asList(p.authorities.split(";")).contains(authority)) return provider(p); return null; }
-    public List<ProviderInfo> queryContentProviders(String process, int uid, int flags) { ArrayList<ProviderInfo> l = new ArrayList<>(); for (meglet.Manifest.Component p : meglet.Manifest.providers) l.add(provider(p)); return l; }
+    public ProviderInfo getProviderInfo(ComponentName c, int flags) throws NameNotFoundException { for (megler.Manifest.Component p : megler.Manifest.providers) if (p.name.equals(c.getClassName())) return provider(p); throw new NameNotFoundException(c.toString()); }
+    public ProviderInfo resolveContentProvider(String authority, int flags) { for (megler.Manifest.Component p : megler.Manifest.providers) if (p.authorities != null && java.util.Arrays.asList(p.authorities.split(";")).contains(authority)) return provider(p); return null; }
+    public List<ProviderInfo> queryContentProviders(String process, int uid, int flags) { ArrayList<ProviderInfo> l = new ArrayList<>(); for (megler.Manifest.Component p : megler.Manifest.providers) l.add(provider(p)); return l; }
     public boolean hasSystemFeature(String name) { return hasSystemFeature(name, 0); }
     public boolean hasSystemFeature(String name, int version) {
         if (name == null) return false;
         if (name.startsWith("android.hardware.touchscreen") || name.equals(FEATURE_FAKETOUCH) || name.equals(FEATURE_SCREEN_PORTRAIT) || name.equals(FEATURE_SCREEN_LANDSCAPE)) return true;
         if (name.equals(FEATURE_WIFI) || name.equals(FEATURE_AUDIO_OUTPUT) || name.equals(FEATURE_OPENGLES_EXTENSION_PACK) || name.equals(FEATURE_SENSOR_ACCELEROMETER)) return true;
         if (name.equals(FEATURE_INPUT_METHODS) || name.equals(FEATURE_GAMEPAD)) return true;
-        // The phone's cameras, as the shell finds them (meglet.CameraNative, core/src/drivers/mg_java_camera.c).
+        // The phone's cameras, as the shell finds them (megler.CameraNative, core/src/drivers/mg_java_camera.c).
         if (name.startsWith("android.hardware.camera")) {
-            int f = meglet.CameraNative.features();
-            if (name.equals(FEATURE_CAMERA_ANY)) return (f & meglet.CameraNative.FEATURE_ANY) != 0;
-            if (name.equals(FEATURE_CAMERA)) return (f & meglet.CameraNative.FEATURE_BACK) != 0;
-            if (name.equals(FEATURE_CAMERA_FRONT)) return (f & meglet.CameraNative.FEATURE_FRONT) != 0;
-            if (name.equals(FEATURE_CAMERA_AUTOFOCUS)) return (f & meglet.CameraNative.FEATURE_AUTOFOCUS) != 0;
-            if (name.equals(FEATURE_CAMERA_FLASH)) return (f & meglet.CameraNative.FEATURE_FLASH) != 0;
+            int f = megler.CameraNative.features();
+            if (name.equals(FEATURE_CAMERA_ANY)) return (f & megler.CameraNative.FEATURE_ANY) != 0;
+            if (name.equals(FEATURE_CAMERA)) return (f & megler.CameraNative.FEATURE_BACK) != 0;
+            if (name.equals(FEATURE_CAMERA_FRONT)) return (f & megler.CameraNative.FEATURE_FRONT) != 0;
+            if (name.equals(FEATURE_CAMERA_AUTOFOCUS)) return (f & megler.CameraNative.FEATURE_AUTOFOCUS) != 0;
+            if (name.equals(FEATURE_CAMERA_FLASH)) return (f & megler.CameraNative.FEATURE_FLASH) != 0;
             return false;
         }
-        // The phone's location, where the shell can find it (meglet.LocationNative, core/src/drivers/mg_java_location.c): GPS and
+        // The phone's location, where the shell can find it (megler.LocationNative, core/src/drivers/mg_java_location.c): GPS and
         // the network's alike, as LocationManager offers both.
         if (name.equals(FEATURE_LOCATION) || name.equals(FEATURE_LOCATION_GPS) || name.equals(FEATURE_LOCATION_NETWORK))
-            return meglet.LocationNative.access(false) != meglet.LocationNative.NONE;
+            return megler.LocationNative.access(false) != megler.LocationNative.NONE;
         return false;
     }
     public FeatureInfo[] getSystemAvailableFeatures() { return new FeatureInfo[0]; }
@@ -151,16 +151,16 @@ public class PackageManager {
     public android.graphics.drawable.Drawable getApplicationLogo(ApplicationInfo a) { return null; }
     public android.graphics.drawable.Drawable getActivityIcon(ComponentName c) throws NameNotFoundException { return getActivityInfo(c, 0).loadIcon(this); }
     public android.graphics.drawable.Drawable getDefaultActivityIcon() { return new android.graphics.drawable.ColorDrawable(0); }
-    public android.graphics.drawable.Drawable getDrawable(String pkg, int res, ApplicationInfo a) { try { return meglet.ContextImpl.app().getResources().getDrawable(res); } catch (Exception e) { return null; } }
-    public CharSequence getText(String pkg, int res, ApplicationInfo a) { try { return meglet.ContextImpl.app().getResources().getText(res); } catch (Exception e) { return null; } }
-    public android.content.res.Resources getResourcesForApplication(String pkg) throws NameNotFoundException { if (!mine(pkg) && !"android".equals(pkg)) throw new NameNotFoundException(pkg); return meglet.ContextImpl.app().getResources(); }
+    public android.graphics.drawable.Drawable getDrawable(String pkg, int res, ApplicationInfo a) { try { return megler.ContextImpl.app().getResources().getDrawable(res); } catch (Exception e) { return null; } }
+    public CharSequence getText(String pkg, int res, ApplicationInfo a) { try { return megler.ContextImpl.app().getResources().getText(res); } catch (Exception e) { return null; } }
+    public android.content.res.Resources getResourcesForApplication(String pkg) throws NameNotFoundException { if (!mine(pkg) && !"android".equals(pkg)) throw new NameNotFoundException(pkg); return megler.ContextImpl.app().getResources(); }
     public android.content.res.Resources getResourcesForApplication(ApplicationInfo a) throws NameNotFoundException { return getResourcesForApplication(a.packageName); }
-    public android.content.res.Resources getResourcesForActivity(ComponentName c) { return meglet.ContextImpl.app().getResources(); }
+    public android.content.res.Resources getResourcesForActivity(ComponentName c) { return megler.ContextImpl.app().getResources(); }
     public String getInstallerPackageName(String pkg) { return "com.android.vending"; }
     public InstallSourceInfo getInstallSourceInfo(String pkg) throws NameNotFoundException { return new InstallSourceInfo(); }
     public List<ResolveInfo> queryIntentActivities(Intent i, int flags) {
         ArrayList<ResolveInfo> l = new ArrayList<>();
-        meglet.Manifest.Component c = meglet.Manifest.resolve(i);
+        megler.Manifest.Component c = megler.Manifest.resolve(i);
         if (c != null) { ResolveInfo r = new ResolveInfo(); r.activityInfo = activity(c); l.add(r); }
         else if (i.getData() != null && ("http".equals(i.getData().getScheme()) || "https".equals(i.getData().getScheme()) || "mailto".equals(i.getData().getScheme()))) {
             ResolveInfo r = new ResolveInfo(); r.activityInfo = new ActivityInfo(); r.activityInfo.name = "com.android.browser.Browser"; r.activityInfo.packageName = "com.android.browser"; r.nonLocalizedLabel = "Browser"; l.add(r);
@@ -172,14 +172,14 @@ public class PackageManager {
     public ResolveInfo resolveActivity(Intent i, ResolveInfoFlags flags) { return resolveActivity(i, 0); }
     public ResolveInfo resolveService(Intent i, int flags) { List<ResolveInfo> l = queryIntentServices(i, flags); return l.isEmpty() ? null : l.get(0); }
     /** The app's own services the intent reaches; and an intent meant for Google Play services (push registration, its APIs)
-     *  resolves to it, as it is installed (meglet.GooglePackages) -- apps take the first answer without checking for none. */
+     *  resolves to it, as it is installed (megler.GooglePackages) -- apps take the first answer without checking for none. */
     public List<ResolveInfo> queryIntentServices(Intent i, int flags) {
         ArrayList<ResolveInfo> l = new ArrayList<>();
-        for (meglet.Manifest.Component c : meglet.Manifest.match(meglet.Manifest.services, i)) { ResolveInfo r = new ResolveInfo(); r.serviceInfo = service(c); l.add(r); }
+        for (megler.Manifest.Component c : megler.Manifest.match(megler.Manifest.services, i)) { ResolveInfo r = new ResolveInfo(); r.serviceInfo = service(c); l.add(r); }
         if (l.isEmpty() && googleService(i)) {
             ResolveInfo r = new ResolveInfo(); ServiceInfo s = new ServiceInfo();
             s.packageName = "com.google.android.gms"; s.name = "com.google.android.gms.chimera.GmsIntentOperationService"; s.exported = true; s.enabled = true;
-            try { s.applicationInfo = meglet.GooglePackages.applicationInfo(s.packageName); } catch (Exception e) {}
+            try { s.applicationInfo = megler.GooglePackages.applicationInfo(s.packageName); } catch (Exception e) {}
             r.serviceInfo = s; l.add(r);
         }
         return l;
@@ -191,22 +191,22 @@ public class PackageManager {
     }
     public List<ResolveInfo> queryBroadcastReceivers(Intent i, int flags) {
         ArrayList<ResolveInfo> l = new ArrayList<>();
-        for (meglet.Manifest.Component c : meglet.Manifest.match(meglet.Manifest.receivers, i)) { ResolveInfo r = new ResolveInfo(); r.activityInfo = activity(c); l.add(r); }
+        for (megler.Manifest.Component c : megler.Manifest.match(megler.Manifest.receivers, i)) { ResolveInfo r = new ResolveInfo(); r.activityInfo = activity(c); l.add(r); }
         return l;
     }
     public List<ResolveInfo> queryIntentContentProviders(Intent i, int flags) { return new ArrayList<>(); }
     public Intent getLaunchIntentForPackage(String pkg) {
         if (!mine(pkg)) return null;
-        meglet.Manifest.Component c = meglet.Manifest.launcher();
+        megler.Manifest.Component c = megler.Manifest.launcher();
         return c == null ? null : new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setClassName(pkg, c.name);
     }
     public Intent getLeanbackLaunchIntentForPackage(String pkg) { return null; }
-    public List<PackageInfo> getInstalledPackages(int flags) { ArrayList<PackageInfo> l = new ArrayList<>(); try { l.add(getPackageInfo(meglet.Native.packageName(), flags)); } catch (NameNotFoundException e) {} return l; }
+    public List<PackageInfo> getInstalledPackages(int flags) { ArrayList<PackageInfo> l = new ArrayList<>(); try { l.add(getPackageInfo(megler.Native.packageName(), flags)); } catch (NameNotFoundException e) {} return l; }
     public List<PackageInfo> getInstalledPackages(PackageInfoFlags flags) { return getInstalledPackages(0); }
     public List<ApplicationInfo> getInstalledApplications(int flags) { ArrayList<ApplicationInfo> l = new ArrayList<>(); l.add(ApplicationInfo.self()); return l; }
-    public String[] getPackagesForUid(int uid) { return new String[] { meglet.Native.packageName() }; }
-    public String getNameForUid(int uid) { return meglet.Native.packageName(); }
-    public int getPackageUid(String pkg, int flags) throws NameNotFoundException { if (meglet.GooglePackages.is(pkg)) return meglet.GooglePackages.applicationInfo(pkg).uid; if (!mine(pkg)) throw new NameNotFoundException(pkg); return android.os.Process.myUid(); }
+    public String[] getPackagesForUid(int uid) { return new String[] { megler.Native.packageName() }; }
+    public String getNameForUid(int uid) { return megler.Native.packageName(); }
+    public int getPackageUid(String pkg, int flags) throws NameNotFoundException { if (megler.GooglePackages.is(pkg)) return megler.GooglePackages.applicationInfo(pkg).uid; if (!mine(pkg)) throw new NameNotFoundException(pkg); return android.os.Process.myUid(); }
     /* components the app enabled or disabled (Instagram turns its own on in stages and checks each took), kept across launches */
     private static java.util.Properties sStates;
     private static synchronized java.util.Properties states() {
@@ -216,7 +216,7 @@ public class PackageManager {
         }
         return sStates;
     }
-    private static java.io.File stateFile() { return new java.io.File(ApplicationInfo.self().dataDir, ".meglet-component-states"); }
+    private static java.io.File stateFile() { return new java.io.File(ApplicationInfo.self().dataDir, ".megler-component-states"); }
     public void setComponentEnabledSetting(ComponentName c, int state, int flags) {
         if (c == null) return;
         synchronized (PackageManager.class) {
@@ -233,7 +233,7 @@ public class PackageManager {
                 sSavePending = false;
                 try (java.io.FileOutputStream out = new java.io.FileOutputStream(stateFile())) { sStates.store(out, null); } catch (Exception e) {}
             }
-        }, "meglet-component-states").start();
+        }, "megler-component-states").start();
     }
     private static boolean sSavePending;
     public void setComponentEnabledSettings(java.util.List settings) {
@@ -249,20 +249,20 @@ public class PackageManager {
     public boolean isInstantApp() { return false; }
     public boolean isInstantApp(String pkg) { return false; }
     public boolean canRequestPackageInstalls() { return false; }
-    private final PackageInstaller megletInstaller = new PackageInstaller();
-    public PackageInstaller getPackageInstaller() { return megletInstaller; }
+    private final PackageInstaller meglerInstaller = new PackageInstaller();
+    public PackageInstaller getPackageInstaller() { return meglerInstaller; }
     public android.content.pm.ModuleInfo getModuleInfo(String pkg, int flags) throws NameNotFoundException { throw new NameNotFoundException(pkg); }
     public List<SharedLibraryInfo> getSharedLibraries(int flags) { return new ArrayList<>(); }
     public boolean isPackageSuspended() { return false; }
     public CharSequence getUserBadgedLabel(CharSequence l, android.os.UserHandle u) { return l; }
     public android.graphics.drawable.Drawable getUserBadgedIcon(android.graphics.drawable.Drawable d, android.os.UserHandle u) { return d; }
-    public android.content.res.XmlResourceParser getXml(String pkg, int res, ApplicationInfo a) { return meglet.ContextImpl.app().getResources().getXml(res); }
+    public android.content.res.XmlResourceParser getXml(String pkg, int res, ApplicationInfo a) { return megler.ContextImpl.app().getResources().getXml(res); }
     public android.content.pm.ChangedPackages getChangedPackages(int seq) { return null; }
-    public void addPermissionMeglet() {}
-    public Bundle_ getSuspendedPackageAppExtrasMeglet() { return null; }
+    public void addPermissionMegler() {}
+    public Bundle_ getSuspendedPackageAppExtrasMegler() { return null; }
     interface Bundle_ {}
     // ---- generated by tools/compat/fillmembers.py: the platform's members this class does not write (signatures only)
-    private final java.util.HashMap<String, Object> megletFill = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerFill = new java.util.HashMap<>();
     public static final java.lang.String ACTION_REQUEST_PERMISSIONS = "android.content.pm.action.REQUEST_PERMISSIONS";
     public static final java.lang.String ACTION_REQUEST_PERMISSIONS_FOR_OTHER = "android.content.pm.action.REQUEST_PERMISSIONS_FOR_OTHER";
     public static final java.lang.String ACTION_VERIFY_DEVELOPER = "android.content.pm.action.VERIFY_DEVELOPER";
@@ -759,7 +759,7 @@ public class PackageManager {
     public java.util.List getInstalledPackagesAsUser(int p0, int p1) { return new java.util.ArrayList(); }
     public java.util.List getInstalledPackagesAsUser(android.content.pm.PackageManager.PackageInfoFlags p0, int p1) { return new java.util.ArrayList(); }
     public java.lang.String getInstantAppAndroidId(java.lang.String p0, android.os.UserHandle p1) { return null; }
-    public byte[] getInstantAppCookie() { return (byte[]) megletFill.get("InstantAppCookie"); }
+    public byte[] getInstantAppCookie() { return (byte[]) meglerFill.get("InstantAppCookie"); }
     public int getInstantAppCookieMaxBytes() { return 0; }
     public int getInstantAppCookieMaxSize() { return 0; }
     public android.graphics.drawable.Drawable getInstantAppIcon(java.lang.String p0) { return null; }
@@ -833,7 +833,7 @@ public class PackageManager {
     public int installExistingPackage(java.lang.String p0, int p1) { return 0; }
     public int installExistingPackageAsUser(java.lang.String p0, int p1) { return 0; }
     public boolean isAppArchivable(java.lang.String p0) { return false; }
-    public boolean isAutoRevokeWhitelisted() { return (megletFill.get("AutoRevokeWhitelisted") instanceof Boolean ? (Boolean) megletFill.get("AutoRevokeWhitelisted") : false); }
+    public boolean isAutoRevokeWhitelisted() { return (meglerFill.get("AutoRevokeWhitelisted") instanceof Boolean ? (Boolean) meglerFill.get("AutoRevokeWhitelisted") : false); }
     public boolean isAutoRevokeWhitelisted(java.lang.String p0) { return false; }
     public boolean isDefaultApplicationIcon(android.graphics.drawable.Drawable p0) { return false; }
     public boolean isDeviceUpgrading() { return false; }
@@ -938,39 +938,39 @@ public class PackageManager {
     // ---- end of generated members
     // ---- generated by tools/compat/genstubs.py: the platform's nested classes this class does not write
     public static final class ComponentEnabledSetting implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
-        public ComponentEnabledSetting(android.content.ComponentName p0, int p1, int p2) { megletProps.put("ComponentName", p0); megletProps.put("EnabledState", p1); megletProps.put("EnabledFlags", p2); }
+        public ComponentEnabledSetting(android.content.ComponentName p0, int p1, int p2) { meglerProps.put("ComponentName", p0); meglerProps.put("EnabledState", p1); meglerProps.put("EnabledFlags", p2); }
         public ComponentEnabledSetting(java.lang.String p0, int p1, int p2) {}
         public int describeContents() { return 0; }
-        public java.lang.String getClassName() { return (java.lang.String) megletProps.get("ClassName"); }
-        public android.content.ComponentName getComponentName() { return (android.content.ComponentName) megletProps.get("ComponentName"); }
-        public int getEnabledFlags() { return (megletProps.get("EnabledFlags") instanceof Integer ? (Integer) megletProps.get("EnabledFlags") : 0); }
-        public int getEnabledState() { return (megletProps.get("EnabledState") instanceof Integer ? (Integer) megletProps.get("EnabledState") : 0); }
-        public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
-        public boolean isComponent() { return (megletProps.get("Component") instanceof Boolean ? (Boolean) megletProps.get("Component") : false); }
+        public java.lang.String getClassName() { return (java.lang.String) meglerProps.get("ClassName"); }
+        public android.content.ComponentName getComponentName() { return (android.content.ComponentName) meglerProps.get("ComponentName"); }
+        public int getEnabledFlags() { return (meglerProps.get("EnabledFlags") instanceof Integer ? (Integer) meglerProps.get("EnabledFlags") : 0); }
+        public int getEnabledState() { return (meglerProps.get("EnabledState") instanceof Integer ? (Integer) meglerProps.get("EnabledState") : 0); }
+        public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
+        public boolean isComponent() { return (meglerProps.get("Component") instanceof Boolean ? (Boolean) meglerProps.get("Component") : false); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         ComponentEnabledSetting() { this((android.content.ComponentName) null, (int) 0, (int) 0); }
     }
     public static abstract class DexModuleRegisterCallback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public DexModuleRegisterCallback() {}
         public abstract void onDexModuleRegistered(java.lang.String p0, boolean p1, java.lang.String p2);
     }
     public static class Flags {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         protected Flags(long p0) {}
-        public long getValue() { return (megletProps.get("Value") instanceof Long ? (Long) megletProps.get("Value") : 0L); }
+        public long getValue() { return (meglerProps.get("Value") instanceof Long ? (Long) meglerProps.get("Value") : 0L); }
         Flags() { this((long) 0L); }
     }
     public static abstract class LegacyPackageDeleteObserver extends android.app.PackageDeleteObserver {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public LegacyPackageDeleteObserver(android.content.pm.IPackageDeleteObserver p0) { super(); }
         public void onPackageDeleted(java.lang.String p0, int p1, java.lang.String p2) {}
         LegacyPackageDeleteObserver() { this((android.content.pm.IPackageDeleteObserver) null); }
     }
     public static abstract class MoveCallback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public MoveCallback() {}
         public void onCreated(int p0, android.os.Bundle p1) {}
         public abstract void onStatusChanged(int p0, int p1, long p2);
@@ -983,7 +983,7 @@ public class PackageManager {
         default void onPermissionsChanged(int p0, java.lang.String p1) {}
     }
     public static final class Property implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public Property(java.lang.String p0, float p1, java.lang.String p2, java.lang.String p3) {}
         public Property(java.lang.String p0, int p1, java.lang.String p2, java.lang.String p3) {}
@@ -991,26 +991,26 @@ public class PackageManager {
         public Property(java.lang.String p0, java.lang.String p1, java.lang.String p2, java.lang.String p3) {}
         public Property(java.lang.String p0, boolean p1, java.lang.String p2, java.lang.String p3) {}
         public int describeContents() { return 0; }
-        public boolean getBoolean() { return (megletProps.get("Boolean") instanceof Boolean ? (Boolean) megletProps.get("Boolean") : false); }
-        public java.lang.String getClassName() { return (java.lang.String) megletProps.get("ClassName"); }
-        public float getFloat() { return (megletProps.get("Float") instanceof Float ? (Float) megletProps.get("Float") : 0f); }
-        public int getInteger() { return (megletProps.get("Integer") instanceof Integer ? (Integer) megletProps.get("Integer") : 0); }
-        public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
-        public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
-        public int getResourceId() { return (megletProps.get("ResourceId") instanceof Integer ? (Integer) megletProps.get("ResourceId") : 0); }
-        public java.lang.String getString() { return (java.lang.String) megletProps.get("String"); }
-        public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
-        public boolean isBoolean() { return (megletProps.get("Boolean") instanceof Boolean ? (Boolean) megletProps.get("Boolean") : false); }
-        public boolean isFloat() { return (megletProps.get("Float") instanceof Boolean ? (Boolean) megletProps.get("Float") : false); }
-        public boolean isInteger() { return (megletProps.get("Integer") instanceof Boolean ? (Boolean) megletProps.get("Integer") : false); }
-        public boolean isResourceId() { return (megletProps.get("ResourceId") instanceof Boolean ? (Boolean) megletProps.get("ResourceId") : false); }
-        public boolean isString() { return (megletProps.get("String") instanceof Boolean ? (Boolean) megletProps.get("String") : false); }
+        public boolean getBoolean() { return (meglerProps.get("Boolean") instanceof Boolean ? (Boolean) meglerProps.get("Boolean") : false); }
+        public java.lang.String getClassName() { return (java.lang.String) meglerProps.get("ClassName"); }
+        public float getFloat() { return (meglerProps.get("Float") instanceof Float ? (Float) meglerProps.get("Float") : 0f); }
+        public int getInteger() { return (meglerProps.get("Integer") instanceof Integer ? (Integer) meglerProps.get("Integer") : 0); }
+        public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
+        public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
+        public int getResourceId() { return (meglerProps.get("ResourceId") instanceof Integer ? (Integer) meglerProps.get("ResourceId") : 0); }
+        public java.lang.String getString() { return (java.lang.String) meglerProps.get("String"); }
+        public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
+        public boolean isBoolean() { return (meglerProps.get("Boolean") instanceof Boolean ? (Boolean) meglerProps.get("Boolean") : false); }
+        public boolean isFloat() { return (meglerProps.get("Float") instanceof Boolean ? (Boolean) meglerProps.get("Float") : false); }
+        public boolean isInteger() { return (meglerProps.get("Integer") instanceof Boolean ? (Boolean) meglerProps.get("Integer") : false); }
+        public boolean isResourceId() { return (meglerProps.get("ResourceId") instanceof Boolean ? (Boolean) meglerProps.get("ResourceId") : false); }
+        public boolean isString() { return (meglerProps.get("String") instanceof Boolean ? (Boolean) meglerProps.get("String") : false); }
         public android.os.Bundle toBundle(android.os.Bundle p0) { return null; }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         Property() { this((java.lang.String) null, (float) 0f, (java.lang.String) null, (java.lang.String) null); }
     }
     public static final class UninstallCompleteCallback implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public UninstallCompleteCallback(android.os.IBinder p0) {}
         public int describeContents() { return 0; }

@@ -3,7 +3,7 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class IpSecAlgorithm implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static java.util.Map ALGO_TO_REQUIRED_FIRST_SDK;
     public static final java.lang.String AUTH_AES_CMAC = "cmac(aes)";
     public static final java.lang.String AUTH_AES_XCBC = "xcbc(aes)";
@@ -24,12 +24,12 @@ public final class IpSecAlgorithm implements android.os.Parcelable {
     public static java.util.Set getSupportedAlgorithms() { return new java.util.HashSet(); }
     public static java.util.Set loadAlgos(android.content.res.Resources p0) { return new java.util.HashSet(); }
     public int describeContents() { return 0; }
-    public byte[] getKey() { return (byte[]) megletProps.get("Key"); }
-    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
-    public int getTruncationLengthBits() { return (megletProps.get("TruncationLengthBits") instanceof Integer ? (Integer) megletProps.get("TruncationLengthBits") : 0); }
-    public boolean isAead() { return (megletProps.get("Aead") instanceof Boolean ? (Boolean) megletProps.get("Aead") : false); }
-    public boolean isAuthentication() { return (megletProps.get("Authentication") instanceof Boolean ? (Boolean) megletProps.get("Authentication") : false); }
-    public boolean isEncryption() { return (megletProps.get("Encryption") instanceof Boolean ? (Boolean) megletProps.get("Encryption") : false); }
+    public byte[] getKey() { return (byte[]) meglerProps.get("Key"); }
+    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
+    public int getTruncationLengthBits() { return (meglerProps.get("TruncationLengthBits") instanceof Integer ? (Integer) meglerProps.get("TruncationLengthBits") : 0); }
+    public boolean isAead() { return (meglerProps.get("Aead") instanceof Boolean ? (Boolean) meglerProps.get("Aead") : false); }
+    public boolean isAuthentication() { return (meglerProps.get("Authentication") instanceof Boolean ? (Boolean) meglerProps.get("Authentication") : false); }
+    public boolean isEncryption() { return (meglerProps.get("Encryption") instanceof Boolean ? (Boolean) meglerProps.get("Encryption") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     IpSecAlgorithm() { this((java.lang.String) null, (byte[]) null); }
 }

@@ -3,12 +3,12 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Presentation extends android.app.Dialog {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public Presentation(android.content.Context p0, android.view.Display p1) { super((android.content.Context) null); }
     public Presentation(android.content.Context p0, android.view.Display p1, int p2) { super((android.content.Context) null); }
     public Presentation(android.content.Context p0, android.view.Display p1, int p2, int p3) { super((android.content.Context) null); }
-    public android.view.Display getDisplay() { return (android.view.Display) megletProps.get("Display"); }
-    public android.content.res.Resources getResources() { return (android.content.res.Resources) megletProps.get("Resources"); }
+    public android.view.Display getDisplay() { return (android.view.Display) meglerProps.get("Display"); }
+    public android.content.res.Resources getResources() { return (android.content.res.Resources) meglerProps.get("Resources"); }
     public void onDisplayChanged() {}
     public void onDisplayRemoved() {}
     Presentation() { this((android.content.Context) null, (android.view.Display) null); }

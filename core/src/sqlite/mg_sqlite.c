@@ -14,7 +14,7 @@
 #include "../host/mg_host.h"
 
 /* The layer's own folder for what it writes (mg_api.c). */
-const char *meglet_data_dir(void);
+const char *megler_data_dir(void);
 
 /* ---------------------------------------------------------------- mutexes */
 
@@ -294,10 +294,10 @@ static int vfs_open(sqlite3_vfs *vfs, const char *name, sqlite3_file *file, int 
     memset(s, 0, sizeof(*s));
     if (!name) {
         /* A file with no name is a scratch file SQLite wants gone when it closes it; it goes into the layer's data folder. */
-        const char *dir = meglet_data_dir();
+        const char *dir = megler_data_dir();
         u32 r[2];
         mg_random(r, sizeof(r));
-        snprintf(temp, sizeof(temp), "%s%smeglet-sqlite-%08x%08x.tmp", dir ? dir : "", dir && dir[0] ? "/" : "", (unsigned)r[0], (unsigned)r[1]);
+        snprintf(temp, sizeof(temp), "%s%smegler-sqlite-%08x%08x.tmp", dir ? dir : "", dir && dir[0] ? "/" : "", (unsigned)r[0], (unsigned)r[1]);
         name = temp;
         flags |= SQLITE_OPEN_DELETEONCLOSE | SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE;
     }
@@ -366,7 +366,7 @@ static int vfs_time(sqlite3_vfs *vfs, double *out)
 
 static int vfs_last_error(sqlite3_vfs *vfs, int n, char *out) { (void)vfs; if (n > 0) out[0] = 0; return 0; }
 
-static sqlite3_vfs g_vfs = { 2, (int)sizeof(sq_file), 1024, NULL, "meglet", NULL, vfs_open, vfs_delete, vfs_access, vfs_full_path, NULL, NULL, NULL, NULL,
+static sqlite3_vfs g_vfs = { 2, (int)sizeof(sq_file), 1024, NULL, "megler", NULL, vfs_open, vfs_delete, vfs_access, vfs_full_path, NULL, NULL, NULL, NULL,
                              vfs_randomness, vfs_sleep, vfs_time, vfs_last_error, vfs_time64, NULL, NULL, NULL };
 
 /* What SQLite calls where it has no operating system of its own (SQLITE_OS_OTHER). */

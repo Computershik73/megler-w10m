@@ -3,13 +3,13 @@ package android.service.voice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class VisibleActivityInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int TYPE_ACTIVITY_ADDED = 1;
     public static final int TYPE_ACTIVITY_REMOVED = 2;
     public VisibleActivityInfo(int p0, android.os.IBinder p1) {}
     public int describeContents() { return 0; }
-    public android.service.voice.VoiceInteractionSession.ActivityId getActivityId() { return (android.service.voice.VoiceInteractionSession.ActivityId) megletProps.get("ActivityId"); }
+    public android.service.voice.VoiceInteractionSession.ActivityId getActivityId() { return (android.service.voice.VoiceInteractionSession.ActivityId) meglerProps.get("ActivityId"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     VisibleActivityInfo() { this((int) 0, (android.os.IBinder) null); }
 }

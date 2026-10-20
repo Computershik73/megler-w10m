@@ -3,16 +3,16 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class BroadcastInfoResponse implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int RESPONSE_RESULT_CANCEL = 3;
     public static final int RESPONSE_RESULT_ERROR = 1;
     public static final int RESPONSE_RESULT_OK = 2;
     public int describeContents() { return 0; }
-    public int getRequestId() { return (megletProps.get("RequestId") instanceof Integer ? (Integer) megletProps.get("RequestId") : 0); }
-    public int getResponseResult() { return (megletProps.get("ResponseResult") instanceof Integer ? (Integer) megletProps.get("ResponseResult") : 0); }
-    public int getSequence() { return (megletProps.get("Sequence") instanceof Integer ? (Integer) megletProps.get("Sequence") : 0); }
-    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
+    public int getRequestId() { return (meglerProps.get("RequestId") instanceof Integer ? (Integer) meglerProps.get("RequestId") : 0); }
+    public int getResponseResult() { return (meglerProps.get("ResponseResult") instanceof Integer ? (Integer) meglerProps.get("ResponseResult") : 0); }
+    public int getSequence() { return (meglerProps.get("Sequence") instanceof Integer ? (Integer) meglerProps.get("Sequence") : 0); }
+    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected BroadcastInfoResponse() {}
 }

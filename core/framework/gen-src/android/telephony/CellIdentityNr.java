@@ -3,21 +3,21 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CellIdentityNr extends android.telephony.CellIdentity {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public CellIdentityNr() { super((java.lang.String) null, (int) 0, (android.os.Parcel) null); }
     public CellIdentityNr(int p0, int p1, int p2, int[] p3, java.lang.String p4, java.lang.String p5, long p6, java.lang.String p7, java.lang.String p8, java.util.Collection p9) { super((java.lang.String) null, (int) 0, (android.os.Parcel) null); }
     protected static android.telephony.CellIdentityNr createFromParcelBody(android.os.Parcel p0) { return new CellIdentityNr(); }
     public android.telephony.CellLocation asCellLocation() { return null; }
-    public java.util.Set getAdditionalPlmns() { return (megletProps.get("AdditionalPlmns") != null ? (java.util.Set) megletProps.get("AdditionalPlmns") : new java.util.HashSet()); }
-    public int[] getBands() { return (int[]) megletProps.get("Bands"); }
-    public int getChannelNumber() { return (megletProps.get("ChannelNumber") instanceof Integer ? (Integer) megletProps.get("ChannelNumber") : 0); }
-    public java.lang.String getMccString() { return (java.lang.String) megletProps.get("MccString"); }
-    public java.lang.String getMncString() { return (java.lang.String) megletProps.get("MncString"); }
-    public long getNci() { return (megletProps.get("Nci") instanceof Long ? (Long) megletProps.get("Nci") : 0L); }
-    public int getNrarfcn() { return (megletProps.get("Nrarfcn") instanceof Integer ? (Integer) megletProps.get("Nrarfcn") : 0); }
-    public int getPci() { return (megletProps.get("Pci") instanceof Integer ? (Integer) megletProps.get("Pci") : 0); }
-    public int getTac() { return (megletProps.get("Tac") instanceof Integer ? (Integer) megletProps.get("Tac") : 0); }
+    public java.util.Set getAdditionalPlmns() { return (meglerProps.get("AdditionalPlmns") != null ? (java.util.Set) meglerProps.get("AdditionalPlmns") : new java.util.HashSet()); }
+    public int[] getBands() { return (int[]) meglerProps.get("Bands"); }
+    public int getChannelNumber() { return (meglerProps.get("ChannelNumber") instanceof Integer ? (Integer) meglerProps.get("ChannelNumber") : 0); }
+    public java.lang.String getMccString() { return (java.lang.String) meglerProps.get("MccString"); }
+    public java.lang.String getMncString() { return (java.lang.String) meglerProps.get("MncString"); }
+    public long getNci() { return (meglerProps.get("Nci") instanceof Long ? (Long) meglerProps.get("Nci") : 0L); }
+    public int getNrarfcn() { return (meglerProps.get("Nrarfcn") instanceof Integer ? (Integer) meglerProps.get("Nrarfcn") : 0); }
+    public int getPci() { return (meglerProps.get("Pci") instanceof Integer ? (Integer) meglerProps.get("Pci") : 0); }
+    public int getTac() { return (meglerProps.get("Tac") instanceof Integer ? (Integer) meglerProps.get("Tac") : 0); }
     public android.telephony.CellIdentityNr sanitizeLocationInfo() { return this; }
     protected void updateGlobalCellId() {}
     public void writeToParcel(android.os.Parcel p0, int p1) {}

@@ -3,7 +3,7 @@ package android.graphics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MeshSpecification {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int ALPHA_TYPE_OPAQUE = 1;
     public static final int ALPHA_TYPE_PREMULTIPLIED = 2;
     public static final int ALPHA_TYPE_UNKNOWN = 0;
@@ -18,18 +18,18 @@ public class MeshSpecification {
     public static android.graphics.MeshSpecification make(android.graphics.MeshSpecification.Attribute[] p0, int p1, android.graphics.MeshSpecification.Varying[] p2, java.lang.String p3, java.lang.String p4, android.graphics.ColorSpace p5, int p6) { return new MeshSpecification(); }
     protected MeshSpecification() {}
     public static class Attribute {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Attribute(int p0, int p1, java.lang.String p2) {}
-        public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
-        public int getOffset() { return (megletProps.get("Offset") instanceof Integer ? (Integer) megletProps.get("Offset") : 0); }
-        public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
+        public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
+        public int getOffset() { return (meglerProps.get("Offset") instanceof Integer ? (Integer) meglerProps.get("Offset") : 0); }
+        public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
         Attribute() { this((int) 0, (int) 0, (java.lang.String) null); }
     }
     public static class Varying {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Varying(int p0, java.lang.String p1) {}
-        public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
-        public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
+        public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
+        public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
         Varying() { this((int) 0, (java.lang.String) null); }
     }
 }

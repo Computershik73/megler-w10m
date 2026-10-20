@@ -3,7 +3,7 @@ package android.app.admin;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DevicePolicyIdentifiers {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACCOUNT_MANAGEMENT_DISABLED_POLICY = "accountManagementDisabled";
     public static final java.lang.String APPLICATION_HIDDEN_POLICY = "applicationHidden";
     public static final java.lang.String APPLICATION_RESTRICTIONS_POLICY = "applicationRestrictions";

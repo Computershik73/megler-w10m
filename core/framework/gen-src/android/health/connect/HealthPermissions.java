@@ -3,7 +3,7 @@ package android.health.connect;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class HealthPermissions {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String HEALTH_PERMISSION_GROUP = "android.permission-group.HEALTH";
     public static final java.lang.String MANAGE_HEALTH_DATA_PERMISSION = "android.permission.MANAGE_HEALTH_DATA";
     public static final java.lang.String MANAGE_HEALTH_PERMISSIONS = "android.permission.MANAGE_HEALTH_PERMISSIONS";

@@ -3,11 +3,11 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class WebTriggerInput {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public WebTriggerInput(android.adservices.ondevicepersonalization.WebTriggerInputParcel p0) {}
     public WebTriggerInput(android.net.Uri p0, java.lang.String p1, byte[] p2) {}
-    public java.lang.String getAppPackageName() { return (java.lang.String) megletProps.get("AppPackageName"); }
-    public byte[] getData() { return (byte[]) megletProps.get("Data"); }
-    public android.net.Uri getDestinationUrl() { return (android.net.Uri) megletProps.get("DestinationUrl"); }
+    public java.lang.String getAppPackageName() { return (java.lang.String) meglerProps.get("AppPackageName"); }
+    public byte[] getData() { return (byte[]) meglerProps.get("Data"); }
+    public android.net.Uri getDestinationUrl() { return (android.net.Uri) meglerProps.get("DestinationUrl"); }
     WebTriggerInput() { this((android.adservices.ondevicepersonalization.WebTriggerInputParcel) null); }
 }

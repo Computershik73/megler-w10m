@@ -3,7 +3,7 @@ package android.hardware.camera2.params;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SessionConfiguration implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int SESSION_HIGH_SPEED = 1;
     public static final int SESSION_REGULAR = 0;
@@ -13,16 +13,16 @@ public final class SessionConfiguration implements android.os.Parcelable {
     public SessionConfiguration(int p0, java.util.List p1, java.util.concurrent.Executor p2, android.hardware.camera2.CameraCaptureSession.StateCallback p3) {}
     public void clearColorSpace() {}
     public int describeContents() { return 0; }
-    public android.graphics.ColorSpace getColorSpace() { return (android.graphics.ColorSpace) megletProps.get("ColorSpace"); }
-    public java.util.concurrent.Executor getExecutor() { return (java.util.concurrent.Executor) megletProps.get("Executor"); }
-    public android.hardware.camera2.params.InputConfiguration getInputConfiguration() { return (android.hardware.camera2.params.InputConfiguration) megletProps.get("InputConfiguration"); }
-    public java.util.List getOutputConfigurations() { return (megletProps.get("OutputConfigurations") != null ? (java.util.List) megletProps.get("OutputConfigurations") : new java.util.ArrayList()); }
-    public android.hardware.camera2.CaptureRequest getSessionParameters() { return (android.hardware.camera2.CaptureRequest) megletProps.get("SessionParameters"); }
-    public int getSessionType() { return (megletProps.get("SessionType") instanceof Integer ? (Integer) megletProps.get("SessionType") : 0); }
-    public android.hardware.camera2.CameraCaptureSession.StateCallback getStateCallback() { return (android.hardware.camera2.CameraCaptureSession.StateCallback) megletProps.get("StateCallback"); }
-    public void setColorSpace(android.graphics.ColorSpace.Named p0) { megletProps.put("ColorSpace", p0); }
-    public void setInputConfiguration(android.hardware.camera2.params.InputConfiguration p0) { megletProps.put("InputConfiguration", p0); }
-    public void setSessionParameters(android.hardware.camera2.CaptureRequest p0) { megletProps.put("SessionParameters", p0); }
+    public android.graphics.ColorSpace getColorSpace() { return (android.graphics.ColorSpace) meglerProps.get("ColorSpace"); }
+    public java.util.concurrent.Executor getExecutor() { return (java.util.concurrent.Executor) meglerProps.get("Executor"); }
+    public android.hardware.camera2.params.InputConfiguration getInputConfiguration() { return (android.hardware.camera2.params.InputConfiguration) meglerProps.get("InputConfiguration"); }
+    public java.util.List getOutputConfigurations() { return (meglerProps.get("OutputConfigurations") != null ? (java.util.List) meglerProps.get("OutputConfigurations") : new java.util.ArrayList()); }
+    public android.hardware.camera2.CaptureRequest getSessionParameters() { return (android.hardware.camera2.CaptureRequest) meglerProps.get("SessionParameters"); }
+    public int getSessionType() { return (meglerProps.get("SessionType") instanceof Integer ? (Integer) meglerProps.get("SessionType") : 0); }
+    public android.hardware.camera2.CameraCaptureSession.StateCallback getStateCallback() { return (android.hardware.camera2.CameraCaptureSession.StateCallback) meglerProps.get("StateCallback"); }
+    public void setColorSpace(android.graphics.ColorSpace.Named p0) { meglerProps.put("ColorSpace", p0); }
+    public void setInputConfiguration(android.hardware.camera2.params.InputConfiguration p0) { meglerProps.put("InputConfiguration", p0); }
+    public void setSessionParameters(android.hardware.camera2.CaptureRequest p0) { meglerProps.put("SessionParameters", p0); }
     public void setStateCallback(java.util.concurrent.Executor p0, android.hardware.camera2.CameraCaptureSession.StateCallback p1) {}
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     SessionConfiguration() { this((int) 0, (java.util.List) null); }

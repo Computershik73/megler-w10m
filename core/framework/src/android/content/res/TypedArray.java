@@ -153,7 +153,7 @@ public class TypedArray implements AutoCloseable {
         if (t == null || t.type == TypedValue.TYPE_NULL) return null;
         if (t.type == TypedValue.TYPE_REFERENCE && t.resourceId != 0) {
             TypedValue r = new TypedValue();
-            if (mRes.megletValue(t.resourceId, r, true) && r.type != TypedValue.TYPE_NULL) return mRes.loadDrawable(r, t.resourceId, mTheme);
+            if (mRes.meglerValue(t.resourceId, r, true) && r.type != TypedValue.TYPE_NULL) return mRes.loadDrawable(r, t.resourceId, mTheme);
             return null;
         }
         return mRes.loadDrawable(t, t.resourceId, mTheme);

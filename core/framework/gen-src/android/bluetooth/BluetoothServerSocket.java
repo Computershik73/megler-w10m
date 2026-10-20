@@ -3,11 +3,11 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BluetoothServerSocket implements java.io.Closeable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public android.bluetooth.BluetoothSocket accept() { return null; }
     public android.bluetooth.BluetoothSocket accept(int p0) { return null; }
     public void close() {}
-    public int getChannel() { return (megletProps.get("Channel") instanceof Integer ? (Integer) megletProps.get("Channel") : 0); }
-    public int getPsm() { return (megletProps.get("Psm") instanceof Integer ? (Integer) megletProps.get("Psm") : 0); }
+    public int getChannel() { return (meglerProps.get("Channel") instanceof Integer ? (Integer) meglerProps.get("Channel") : 0); }
+    public int getPsm() { return (meglerProps.get("Psm") instanceof Integer ? (Integer) meglerProps.get("Psm") : 0); }
     protected BluetoothServerSocket() {}
 }

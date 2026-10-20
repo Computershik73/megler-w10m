@@ -3,21 +3,21 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BloodPressureRecord extends android.health.connect.datatypes.InstantRecord {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.health.connect.datatypes.AggregationType DIASTOLIC_AVG;
     public static android.health.connect.datatypes.AggregationType DIASTOLIC_MAX;
     public static android.health.connect.datatypes.AggregationType DIASTOLIC_MIN;
     public static android.health.connect.datatypes.AggregationType SYSTOLIC_AVG;
     public static android.health.connect.datatypes.AggregationType SYSTOLIC_MAX;
     public static android.health.connect.datatypes.AggregationType SYSTOLIC_MIN;
-    public int getBodyPosition() { return (megletProps.get("BodyPosition") instanceof Integer ? (Integer) megletProps.get("BodyPosition") : 0); }
-    public android.health.connect.datatypes.units.Pressure getDiastolic() { return (android.health.connect.datatypes.units.Pressure) megletProps.get("Diastolic"); }
-    public int getMeasurementLocation() { return (megletProps.get("MeasurementLocation") instanceof Integer ? (Integer) megletProps.get("MeasurementLocation") : 0); }
-    public android.health.connect.datatypes.units.Pressure getSystolic() { return (android.health.connect.datatypes.units.Pressure) megletProps.get("Systolic"); }
+    public int getBodyPosition() { return (meglerProps.get("BodyPosition") instanceof Integer ? (Integer) meglerProps.get("BodyPosition") : 0); }
+    public android.health.connect.datatypes.units.Pressure getDiastolic() { return (android.health.connect.datatypes.units.Pressure) meglerProps.get("Diastolic"); }
+    public int getMeasurementLocation() { return (meglerProps.get("MeasurementLocation") instanceof Integer ? (Integer) meglerProps.get("MeasurementLocation") : 0); }
+    public android.health.connect.datatypes.units.Pressure getSystolic() { return (android.health.connect.datatypes.units.Pressure) meglerProps.get("Systolic"); }
     public android.health.connect.internal.datatypes.BloodPressureRecordInternal toRecordInternal() { return null; }
     protected BloodPressureRecord() { super(); }
     public static final class BloodPressureMeasurementLocation {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int BLOOD_PRESSURE_MEASUREMENT_LOCATION_LEFT_UPPER_ARM = 3;
         public static final int BLOOD_PRESSURE_MEASUREMENT_LOCATION_LEFT_WRIST = 1;
         public static final int BLOOD_PRESSURE_MEASUREMENT_LOCATION_RIGHT_UPPER_ARM = 4;
@@ -27,7 +27,7 @@ public final class BloodPressureRecord extends android.health.connect.datatypes.
         protected BloodPressureMeasurementLocation() {}
     }
     public static final class BodyPosition {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int BODY_POSITION_LYING_DOWN = 3;
         public static final int BODY_POSITION_RECLINING = 4;
         public static final int BODY_POSITION_SITTING_DOWN = 2;
@@ -37,12 +37,12 @@ public final class BloodPressureRecord extends android.health.connect.datatypes.
         protected BodyPosition() {}
     }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.health.connect.datatypes.Metadata p0, java.time.Instant p1, int p2, android.health.connect.datatypes.units.Pressure p3, android.health.connect.datatypes.units.Pressure p4, int p5) {}
-        public android.health.connect.datatypes.BloodPressureRecord build() { android.health.connect.datatypes.BloodPressureRecord x = new android.health.connect.datatypes.BloodPressureRecord(); x.megletProps.putAll(megletProps); return x; }
+        public android.health.connect.datatypes.BloodPressureRecord build() { android.health.connect.datatypes.BloodPressureRecord x = new android.health.connect.datatypes.BloodPressureRecord(); x.meglerProps.putAll(meglerProps); return x; }
         public android.health.connect.datatypes.BloodPressureRecord buildWithoutValidation() { return null; }
         public android.health.connect.datatypes.BloodPressureRecord.Builder clearZoneOffset() { return this; }
-        public android.health.connect.datatypes.BloodPressureRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { megletProps.put("ZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.BloodPressureRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("ZoneOffset", p0); return this; }
         Builder() { this((android.health.connect.datatypes.Metadata) null, (java.time.Instant) null, (int) 0, (android.health.connect.datatypes.units.Pressure) null, (android.health.connect.datatypes.units.Pressure) null, (int) 0); }
     }
 }

@@ -3,11 +3,11 @@ package android.app.backup;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class BackupDataInput {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public BackupDataInput(java.io.FileDescriptor p0) {}
     protected void finalize() {}
-    public int getDataSize() { return (megletProps.get("DataSize") instanceof Integer ? (Integer) megletProps.get("DataSize") : 0); }
-    public java.lang.String getKey() { return (java.lang.String) megletProps.get("Key"); }
+    public int getDataSize() { return (meglerProps.get("DataSize") instanceof Integer ? (Integer) meglerProps.get("DataSize") : 0); }
+    public java.lang.String getKey() { return (java.lang.String) meglerProps.get("Key"); }
     public int readEntityData(byte[] p0, int p1, int p2) { return 0; }
     public boolean readNextHeader() { return false; }
     public void skipEntityData() {}

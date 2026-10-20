@@ -3,10 +3,10 @@ package android.health.connect.datatypes.units;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BloodGlucose implements java.lang.Comparable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.health.connect.datatypes.units.BloodGlucose fromMillimolesPerLiter(double p0) { return new BloodGlucose(); }
     public int compareTo(android.health.connect.datatypes.units.BloodGlucose p0) { return 0; }
     public int compareTo(java.lang.Object p0) { return 0; }
-    public double getInMillimolesPerLiter() { return (megletProps.get("InMillimolesPerLiter") instanceof Double ? (Double) megletProps.get("InMillimolesPerLiter") : 0d); }
+    public double getInMillimolesPerLiter() { return (meglerProps.get("InMillimolesPerLiter") instanceof Double ? (Double) meglerProps.get("InMillimolesPerLiter") : 0d); }
     protected BloodGlucose() {}
 }

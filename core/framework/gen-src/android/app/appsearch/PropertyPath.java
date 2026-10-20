@@ -3,7 +3,7 @@ package android.app.appsearch;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class PropertyPath implements java.lang.Iterable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public PropertyPath(java.lang.String p0) {}
     public PropertyPath(java.util.List p0) {}
     public android.app.appsearch.PropertyPath.PathSegment get(int p0) { return null; }
@@ -11,12 +11,12 @@ public class PropertyPath implements java.lang.Iterable {
     public int size() { return 0; }
     PropertyPath() { this((java.lang.String) null); }
     public static class PathSegment {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int NON_REPEATED_CARDINALITY = -1;
         public static android.app.appsearch.PropertyPath.PathSegment create(java.lang.String p0) { return new PathSegment(); }
         public static android.app.appsearch.PropertyPath.PathSegment create(java.lang.String p0, int p1) { return new PathSegment(); }
-        public int getPropertyIndex() { return (megletProps.get("PropertyIndex") instanceof Integer ? (Integer) megletProps.get("PropertyIndex") : 0); }
-        public java.lang.String getPropertyName() { return (java.lang.String) megletProps.get("PropertyName"); }
+        public int getPropertyIndex() { return (meglerProps.get("PropertyIndex") instanceof Integer ? (Integer) meglerProps.get("PropertyIndex") : 0); }
+        public java.lang.String getPropertyName() { return (java.lang.String) meglerProps.get("PropertyName"); }
         protected PathSegment() {}
     }
 }

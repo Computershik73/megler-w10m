@@ -3,14 +3,14 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DownloadCompletedOutput {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public java.util.List getRetainedKeys() { return (megletProps.get("RetainedKeys") != null ? (java.util.List) megletProps.get("RetainedKeys") : new java.util.ArrayList()); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public java.util.List getRetainedKeys() { return (meglerProps.get("RetainedKeys") != null ? (java.util.List) meglerProps.get("RetainedKeys") : new java.util.ArrayList()); }
     protected DownloadCompletedOutput() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public android.adservices.ondevicepersonalization.DownloadCompletedOutput.Builder addRetainedKey(java.lang.String p0) { return this; }
-        public android.adservices.ondevicepersonalization.DownloadCompletedOutput build() { android.adservices.ondevicepersonalization.DownloadCompletedOutput x = new android.adservices.ondevicepersonalization.DownloadCompletedOutput(); x.megletProps.putAll(megletProps); return x; }
-        public android.adservices.ondevicepersonalization.DownloadCompletedOutput.Builder setRetainedKeys(java.util.List p0) { megletProps.put("RetainedKeys", p0); return this; }
+        public android.adservices.ondevicepersonalization.DownloadCompletedOutput build() { android.adservices.ondevicepersonalization.DownloadCompletedOutput x = new android.adservices.ondevicepersonalization.DownloadCompletedOutput(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.adservices.ondevicepersonalization.DownloadCompletedOutput.Builder setRetainedKeys(java.util.List p0) { meglerProps.put("RetainedKeys", p0); return this; }
     }
 }

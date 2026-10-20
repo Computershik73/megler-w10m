@@ -1,6 +1,6 @@
 /*
  * A guest library that uses what tools/android9-natives.sh built, for
- * tools/android9-natives/loadtest.sh: Meglet's linker loads it, and its
+ * tools/android9-natives/loadtest.sh: Megler's linker loads it, and its
  * constructor calls into libicuuc, libicui18n, libexpat and libopenjdk and
  * says through the log what came back. `mg_tests --load` runs constructors and
  * nothing else, and gives a guest no file to open, so:
@@ -159,7 +159,7 @@ __attribute__((constructor)) static void probe(void)
         int32_t start = -1, end = -1;
         e = U_ZERO_ERROR;
         re = uregex_openC("(\\d+)-(\\p{L}+)", 0, NULL, &e);
-        u_uastrcpy(a, "see 2026-meglet now");
+        u_uastrcpy(a, "see 2026-megler now");
         if (re) {
             uregex_setText(re, a, -1, &e);
             found = uregex_find(re, 0, &e);

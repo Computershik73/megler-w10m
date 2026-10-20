@@ -3,24 +3,24 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BloodGlucoseRecord extends android.health.connect.datatypes.InstantRecord {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public android.health.connect.datatypes.units.BloodGlucose getLevel() { return (android.health.connect.datatypes.units.BloodGlucose) megletProps.get("Level"); }
-    public int getMealType() { return (megletProps.get("MealType") instanceof Integer ? (Integer) megletProps.get("MealType") : 0); }
-    public int getRelationToMeal() { return (megletProps.get("RelationToMeal") instanceof Integer ? (Integer) megletProps.get("RelationToMeal") : 0); }
-    public int getSpecimenSource() { return (megletProps.get("SpecimenSource") instanceof Integer ? (Integer) megletProps.get("SpecimenSource") : 0); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public android.health.connect.datatypes.units.BloodGlucose getLevel() { return (android.health.connect.datatypes.units.BloodGlucose) meglerProps.get("Level"); }
+    public int getMealType() { return (meglerProps.get("MealType") instanceof Integer ? (Integer) meglerProps.get("MealType") : 0); }
+    public int getRelationToMeal() { return (meglerProps.get("RelationToMeal") instanceof Integer ? (Integer) meglerProps.get("RelationToMeal") : 0); }
+    public int getSpecimenSource() { return (meglerProps.get("SpecimenSource") instanceof Integer ? (Integer) meglerProps.get("SpecimenSource") : 0); }
     public android.health.connect.internal.datatypes.BloodGlucoseRecordInternal toRecordInternal() { return null; }
     protected BloodGlucoseRecord() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.health.connect.datatypes.Metadata p0, java.time.Instant p1, int p2, android.health.connect.datatypes.units.BloodGlucose p3, int p4, int p5) {}
-        public android.health.connect.datatypes.BloodGlucoseRecord build() { android.health.connect.datatypes.BloodGlucoseRecord x = new android.health.connect.datatypes.BloodGlucoseRecord(); x.megletProps.putAll(megletProps); return x; }
+        public android.health.connect.datatypes.BloodGlucoseRecord build() { android.health.connect.datatypes.BloodGlucoseRecord x = new android.health.connect.datatypes.BloodGlucoseRecord(); x.meglerProps.putAll(meglerProps); return x; }
         public android.health.connect.datatypes.BloodGlucoseRecord buildWithoutValidation() { return null; }
         public android.health.connect.datatypes.BloodGlucoseRecord.Builder clearZoneOffset() { return this; }
-        public android.health.connect.datatypes.BloodGlucoseRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { megletProps.put("ZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.BloodGlucoseRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("ZoneOffset", p0); return this; }
         Builder() { this((android.health.connect.datatypes.Metadata) null, (java.time.Instant) null, (int) 0, (android.health.connect.datatypes.units.BloodGlucose) null, (int) 0, (int) 0); }
     }
     public static final class RelationToMealType {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int RELATION_TO_MEAL_AFTER_MEAL = 4;
         public static final int RELATION_TO_MEAL_BEFORE_MEAL = 3;
         public static final int RELATION_TO_MEAL_FASTING = 2;
@@ -30,7 +30,7 @@ public final class BloodGlucoseRecord extends android.health.connect.datatypes.I
         protected RelationToMealType() {}
     }
     public static final class SpecimenSource {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int SPECIMEN_SOURCE_CAPILLARY_BLOOD = 2;
         public static final int SPECIMEN_SOURCE_INTERSTITIAL_FLUID = 1;
         public static final int SPECIMEN_SOURCE_PLASMA = 3;

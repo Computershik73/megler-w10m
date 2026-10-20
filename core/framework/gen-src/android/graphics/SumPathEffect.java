@@ -3,7 +3,7 @@ package android.graphics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SumPathEffect extends android.graphics.PathEffect {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public SumPathEffect(android.graphics.PathEffect p0, android.graphics.PathEffect p1) { super(); }
     SumPathEffect() { this((android.graphics.PathEffect) null, (android.graphics.PathEffect) null); }
 }

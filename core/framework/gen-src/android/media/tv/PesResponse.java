@@ -3,11 +3,11 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PesResponse extends android.media.tv.BroadcastInfoResponse implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public PesResponse(int p0, int p1, int p2, java.lang.String p3) { super(); }
     public int describeContents() { return 0; }
-    public java.lang.String getSharedFilterToken() { return (java.lang.String) megletProps.get("SharedFilterToken"); }
+    public java.lang.String getSharedFilterToken() { return (java.lang.String) meglerProps.get("SharedFilterToken"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     PesResponse() { this((int) 0, (int) 0, (int) 0, (java.lang.String) null); }
 }

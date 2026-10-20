@@ -1,5 +1,5 @@
 /*
- * Bundles of split APKs (.apks, .xapk): what meglet_bundle_unpack (meglet.h) writes, and the record it leaves for the APK
+ * Bundles of split APKs (.apks, .xapk): what megler_bundle_unpack (megler.h) writes, and the record it leaves for the APK
  * report to read again.
  */
 #ifndef MG_BUNDLE_H
@@ -11,7 +11,7 @@
 extern "C" {
 #endif
 
-/* In the folder of splits meglet_bundle_unpack makes: what it did (the JSON it answers), and the icon the bundle came with. */
+/* In the folder of splits megler_bundle_unpack makes: what it did (the JSON it answers), and the icon the bundle came with. */
 #define MG_BUNDLE_RECORD "bundle.json"
 #define MG_BUNDLE_ICON "icon.png"
 

@@ -3,16 +3,16 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AggregationType {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int AVG = 2;
     public static final int COUNT = 4;
     public static final int MAX = 0;
     public static final int MIN = 1;
     public static java.util.Set OPERATION_VALID_TYPES;
     public static final int SUM = 3;
-    public int getAggregateOperationType() { return (megletProps.get("AggregateOperationType") instanceof Integer ? (Integer) megletProps.get("AggregateOperationType") : 0); }
-    public java.lang.Class getAggregateResultClass() { return (java.lang.Class) megletProps.get("AggregateResultClass"); }
-    public int getAggregationTypeIdentifier() { return (megletProps.get("AggregationTypeIdentifier") instanceof Integer ? (Integer) megletProps.get("AggregationTypeIdentifier") : 0); }
-    public int getApplicableRecordTypeId() { return (megletProps.get("ApplicableRecordTypeId") instanceof Integer ? (Integer) megletProps.get("ApplicableRecordTypeId") : 0); }
+    public int getAggregateOperationType() { return (meglerProps.get("AggregateOperationType") instanceof Integer ? (Integer) meglerProps.get("AggregateOperationType") : 0); }
+    public java.lang.Class getAggregateResultClass() { return (java.lang.Class) meglerProps.get("AggregateResultClass"); }
+    public int getAggregationTypeIdentifier() { return (meglerProps.get("AggregationTypeIdentifier") instanceof Integer ? (Integer) meglerProps.get("AggregationTypeIdentifier") : 0); }
+    public int getApplicableRecordTypeId() { return (meglerProps.get("ApplicableRecordTypeId") instanceof Integer ? (Integer) meglerProps.get("ApplicableRecordTypeId") : 0); }
     protected AggregationType() {}
 }

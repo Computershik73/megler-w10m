@@ -3,7 +3,7 @@ package android.util;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class NoSuchPropertyException extends java.lang.RuntimeException {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public NoSuchPropertyException(java.lang.String p0) { super(); }
     NoSuchPropertyException() { this((java.lang.String) null); }
 }

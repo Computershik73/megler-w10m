@@ -3,7 +3,7 @@ package android.security.identity;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class IdentityCredentialException extends java.lang.Exception {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public IdentityCredentialException(java.lang.String p0) { super(); }
     public IdentityCredentialException(java.lang.String p0, java.lang.Throwable p1) { super(); }
     IdentityCredentialException() { this((java.lang.String) null); }

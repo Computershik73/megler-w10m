@@ -3,7 +3,7 @@ package android.security.keystore;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SecureKeyImportUnavailableException extends java.security.ProviderException {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public SecureKeyImportUnavailableException() { super(); }
     public SecureKeyImportUnavailableException(java.lang.String p0) { super(); }
     public SecureKeyImportUnavailableException(java.lang.String p0, java.lang.Throwable p1) { super(); }

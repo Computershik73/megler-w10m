@@ -3,21 +3,21 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SignalStrengthUpdateRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public android.os.IBinder getLiveToken() { return (android.os.IBinder) megletProps.get("LiveToken"); }
-    public java.util.Collection getSignalThresholdInfos() { return (megletProps.get("SignalThresholdInfos") != null ? (java.util.Collection) megletProps.get("SignalThresholdInfos") : new java.util.ArrayList()); }
-    public boolean isReportingRequestedWhileIdle() { return (megletProps.get("ReportingRequestedWhileIdle") instanceof Boolean ? (Boolean) megletProps.get("ReportingRequestedWhileIdle") : false); }
-    public boolean isSystemThresholdReportingRequestedWhileIdle() { return (megletProps.get("SystemThresholdReportingRequestedWhileIdle") instanceof Boolean ? (Boolean) megletProps.get("SystemThresholdReportingRequestedWhileIdle") : false); }
+    public android.os.IBinder getLiveToken() { return (android.os.IBinder) meglerProps.get("LiveToken"); }
+    public java.util.Collection getSignalThresholdInfos() { return (meglerProps.get("SignalThresholdInfos") != null ? (java.util.Collection) meglerProps.get("SignalThresholdInfos") : new java.util.ArrayList()); }
+    public boolean isReportingRequestedWhileIdle() { return (meglerProps.get("ReportingRequestedWhileIdle") instanceof Boolean ? (Boolean) meglerProps.get("ReportingRequestedWhileIdle") : false); }
+    public boolean isSystemThresholdReportingRequestedWhileIdle() { return (meglerProps.get("SystemThresholdReportingRequestedWhileIdle") instanceof Boolean ? (Boolean) meglerProps.get("SystemThresholdReportingRequestedWhileIdle") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected SignalStrengthUpdateRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.telephony.SignalStrengthUpdateRequest build() { android.telephony.SignalStrengthUpdateRequest x = new android.telephony.SignalStrengthUpdateRequest(); x.megletProps.putAll(megletProps); return x; }
-        public android.telephony.SignalStrengthUpdateRequest.Builder setReportingRequestedWhileIdle(boolean p0) { megletProps.put("ReportingRequestedWhileIdle", Boolean.valueOf(p0)); return this; }
-        public android.telephony.SignalStrengthUpdateRequest.Builder setSignalThresholdInfos(java.util.Collection p0) { megletProps.put("SignalThresholdInfos", p0); return this; }
-        public android.telephony.SignalStrengthUpdateRequest.Builder setSystemThresholdReportingRequestedWhileIdle(boolean p0) { megletProps.put("SystemThresholdReportingRequestedWhileIdle", Boolean.valueOf(p0)); return this; }
+        public android.telephony.SignalStrengthUpdateRequest build() { android.telephony.SignalStrengthUpdateRequest x = new android.telephony.SignalStrengthUpdateRequest(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.telephony.SignalStrengthUpdateRequest.Builder setReportingRequestedWhileIdle(boolean p0) { meglerProps.put("ReportingRequestedWhileIdle", Boolean.valueOf(p0)); return this; }
+        public android.telephony.SignalStrengthUpdateRequest.Builder setSignalThresholdInfos(java.util.Collection p0) { meglerProps.put("SignalThresholdInfos", p0); return this; }
+        public android.telephony.SignalStrengthUpdateRequest.Builder setSystemThresholdReportingRequestedWhileIdle(boolean p0) { meglerProps.put("SystemThresholdReportingRequestedWhileIdle", Boolean.valueOf(p0)); return this; }
     }
 }

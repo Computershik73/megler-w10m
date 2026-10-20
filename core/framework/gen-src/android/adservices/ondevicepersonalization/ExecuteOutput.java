@@ -3,22 +3,22 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ExecuteOutput {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public int getBestValue() { return (megletProps.get("BestValue") instanceof Integer ? (Integer) megletProps.get("BestValue") : 0); }
-    public java.util.List getEventLogRecords() { return (megletProps.get("EventLogRecords") != null ? (java.util.List) megletProps.get("EventLogRecords") : new java.util.ArrayList()); }
-    public byte[] getOutputData() { return (byte[]) megletProps.get("OutputData"); }
-    public android.adservices.ondevicepersonalization.RenderingConfig getRenderingConfig() { return (android.adservices.ondevicepersonalization.RenderingConfig) megletProps.get("RenderingConfig"); }
-    public android.adservices.ondevicepersonalization.RequestLogRecord getRequestLogRecord() { return (android.adservices.ondevicepersonalization.RequestLogRecord) megletProps.get("RequestLogRecord"); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public int getBestValue() { return (meglerProps.get("BestValue") instanceof Integer ? (Integer) meglerProps.get("BestValue") : 0); }
+    public java.util.List getEventLogRecords() { return (meglerProps.get("EventLogRecords") != null ? (java.util.List) meglerProps.get("EventLogRecords") : new java.util.ArrayList()); }
+    public byte[] getOutputData() { return (byte[]) meglerProps.get("OutputData"); }
+    public android.adservices.ondevicepersonalization.RenderingConfig getRenderingConfig() { return (android.adservices.ondevicepersonalization.RenderingConfig) meglerProps.get("RenderingConfig"); }
+    public android.adservices.ondevicepersonalization.RequestLogRecord getRequestLogRecord() { return (android.adservices.ondevicepersonalization.RequestLogRecord) meglerProps.get("RequestLogRecord"); }
     protected ExecuteOutput() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public android.adservices.ondevicepersonalization.ExecuteOutput.Builder addEventLogRecord(android.adservices.ondevicepersonalization.EventLogRecord p0) { return this; }
-        public android.adservices.ondevicepersonalization.ExecuteOutput build() { android.adservices.ondevicepersonalization.ExecuteOutput x = new android.adservices.ondevicepersonalization.ExecuteOutput(); x.megletProps.putAll(megletProps); return x; }
-        public android.adservices.ondevicepersonalization.ExecuteOutput.Builder setBestValue(int p0) { megletProps.put("BestValue", Integer.valueOf(p0)); return this; }
-        public android.adservices.ondevicepersonalization.ExecuteOutput.Builder setEventLogRecords(java.util.List p0) { megletProps.put("EventLogRecords", p0); return this; }
-        public android.adservices.ondevicepersonalization.ExecuteOutput.Builder setOutputData(byte[] p0) { megletProps.put("OutputData", p0); return this; }
-        public android.adservices.ondevicepersonalization.ExecuteOutput.Builder setRenderingConfig(android.adservices.ondevicepersonalization.RenderingConfig p0) { megletProps.put("RenderingConfig", p0); return this; }
-        public android.adservices.ondevicepersonalization.ExecuteOutput.Builder setRequestLogRecord(android.adservices.ondevicepersonalization.RequestLogRecord p0) { megletProps.put("RequestLogRecord", p0); return this; }
+        public android.adservices.ondevicepersonalization.ExecuteOutput build() { android.adservices.ondevicepersonalization.ExecuteOutput x = new android.adservices.ondevicepersonalization.ExecuteOutput(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.adservices.ondevicepersonalization.ExecuteOutput.Builder setBestValue(int p0) { meglerProps.put("BestValue", Integer.valueOf(p0)); return this; }
+        public android.adservices.ondevicepersonalization.ExecuteOutput.Builder setEventLogRecords(java.util.List p0) { meglerProps.put("EventLogRecords", p0); return this; }
+        public android.adservices.ondevicepersonalization.ExecuteOutput.Builder setOutputData(byte[] p0) { meglerProps.put("OutputData", p0); return this; }
+        public android.adservices.ondevicepersonalization.ExecuteOutput.Builder setRenderingConfig(android.adservices.ondevicepersonalization.RenderingConfig p0) { meglerProps.put("RenderingConfig", p0); return this; }
+        public android.adservices.ondevicepersonalization.ExecuteOutput.Builder setRequestLogRecord(android.adservices.ondevicepersonalization.RequestLogRecord p0) { meglerProps.put("RequestLogRecord", p0); return this; }
     }
 }

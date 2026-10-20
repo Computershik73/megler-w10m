@@ -3,16 +3,16 @@ package android.health.connect;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TimeInstantRangeFilter implements android.health.connect.TimeRangeFilter {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public java.time.Instant getEndTime() { return (java.time.Instant) megletProps.get("EndTime"); }
-    public java.time.Instant getStartTime() { return (java.time.Instant) megletProps.get("StartTime"); }
-    public boolean isBounded() { return (megletProps.get("Bounded") instanceof Boolean ? (Boolean) megletProps.get("Bounded") : false); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public java.time.Instant getEndTime() { return (java.time.Instant) meglerProps.get("EndTime"); }
+    public java.time.Instant getStartTime() { return (java.time.Instant) meglerProps.get("StartTime"); }
+    public boolean isBounded() { return (meglerProps.get("Bounded") instanceof Boolean ? (Boolean) meglerProps.get("Bounded") : false); }
     protected TimeInstantRangeFilter() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.health.connect.TimeInstantRangeFilter build() { android.health.connect.TimeInstantRangeFilter x = new android.health.connect.TimeInstantRangeFilter(); x.megletProps.putAll(megletProps); return x; }
-        public android.health.connect.TimeInstantRangeFilter.Builder setEndTime(java.time.Instant p0) { megletProps.put("EndTime", p0); return this; }
-        public android.health.connect.TimeInstantRangeFilter.Builder setStartTime(java.time.Instant p0) { megletProps.put("StartTime", p0); return this; }
+        public android.health.connect.TimeInstantRangeFilter build() { android.health.connect.TimeInstantRangeFilter x = new android.health.connect.TimeInstantRangeFilter(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.health.connect.TimeInstantRangeFilter.Builder setEndTime(java.time.Instant p0) { meglerProps.put("EndTime", p0); return this; }
+        public android.health.connect.TimeInstantRangeFilter.Builder setStartTime(java.time.Instant p0) { meglerProps.put("StartTime", p0); return this; }
     }
 }

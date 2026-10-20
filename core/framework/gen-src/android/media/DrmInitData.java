@@ -3,13 +3,13 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class DrmInitData {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public abstract android.media.DrmInitData.SchemeInitData get(java.util.UUID p0);
     public android.media.DrmInitData.SchemeInitData getSchemeInitDataAt(int p0) { return null; }
-    public int getSchemeInitDataCount() { return (megletProps.get("SchemeInitDataCount") instanceof Integer ? (Integer) megletProps.get("SchemeInitDataCount") : 0); }
+    public int getSchemeInitDataCount() { return (meglerProps.get("SchemeInitDataCount") instanceof Integer ? (Integer) meglerProps.get("SchemeInitDataCount") : 0); }
     protected DrmInitData() {}
     public static final class SchemeInitData {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static java.util.UUID UUID_NIL;
         public byte[] data;
         public java.lang.String mimeType;

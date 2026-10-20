@@ -3,22 +3,22 @@ package android.adservices.adselection;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AdSelectionFromOutcomesConfig implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public java.util.List getAdSelectionIds() { return (megletProps.get("AdSelectionIds") != null ? (java.util.List) megletProps.get("AdSelectionIds") : new java.util.ArrayList()); }
-    public android.net.Uri getSelectionLogicUri() { return (android.net.Uri) megletProps.get("SelectionLogicUri"); }
-    public android.adservices.common.AdSelectionSignals getSelectionSignals() { return (android.adservices.common.AdSelectionSignals) megletProps.get("SelectionSignals"); }
-    public android.adservices.common.AdTechIdentifier getSeller() { return (android.adservices.common.AdTechIdentifier) megletProps.get("Seller"); }
+    public java.util.List getAdSelectionIds() { return (meglerProps.get("AdSelectionIds") != null ? (java.util.List) meglerProps.get("AdSelectionIds") : new java.util.ArrayList()); }
+    public android.net.Uri getSelectionLogicUri() { return (android.net.Uri) meglerProps.get("SelectionLogicUri"); }
+    public android.adservices.common.AdSelectionSignals getSelectionSignals() { return (android.adservices.common.AdSelectionSignals) meglerProps.get("SelectionSignals"); }
+    public android.adservices.common.AdTechIdentifier getSeller() { return (android.adservices.common.AdTechIdentifier) meglerProps.get("Seller"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected AdSelectionFromOutcomesConfig() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.adservices.adselection.AdSelectionFromOutcomesConfig build() { android.adservices.adselection.AdSelectionFromOutcomesConfig x = new android.adservices.adselection.AdSelectionFromOutcomesConfig(); x.megletProps.putAll(megletProps); return x; }
-        public android.adservices.adselection.AdSelectionFromOutcomesConfig.Builder setAdSelectionIds(java.util.List p0) { megletProps.put("AdSelectionIds", p0); return this; }
-        public android.adservices.adselection.AdSelectionFromOutcomesConfig.Builder setSelectionLogicUri(android.net.Uri p0) { megletProps.put("SelectionLogicUri", p0); return this; }
-        public android.adservices.adselection.AdSelectionFromOutcomesConfig.Builder setSelectionSignals(android.adservices.common.AdSelectionSignals p0) { megletProps.put("SelectionSignals", p0); return this; }
-        public android.adservices.adselection.AdSelectionFromOutcomesConfig.Builder setSeller(android.adservices.common.AdTechIdentifier p0) { megletProps.put("Seller", p0); return this; }
+        public android.adservices.adselection.AdSelectionFromOutcomesConfig build() { android.adservices.adselection.AdSelectionFromOutcomesConfig x = new android.adservices.adselection.AdSelectionFromOutcomesConfig(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.adservices.adselection.AdSelectionFromOutcomesConfig.Builder setAdSelectionIds(java.util.List p0) { meglerProps.put("AdSelectionIds", p0); return this; }
+        public android.adservices.adselection.AdSelectionFromOutcomesConfig.Builder setSelectionLogicUri(android.net.Uri p0) { meglerProps.put("SelectionLogicUri", p0); return this; }
+        public android.adservices.adselection.AdSelectionFromOutcomesConfig.Builder setSelectionSignals(android.adservices.common.AdSelectionSignals p0) { meglerProps.put("SelectionSignals", p0); return this; }
+        public android.adservices.adselection.AdSelectionFromOutcomesConfig.Builder setSeller(android.adservices.common.AdTechIdentifier p0) { meglerProps.put("Seller", p0); return this; }
     }
 }

@@ -3,7 +3,7 @@ package android.app.slice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SliceMetrics {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public SliceMetrics(android.content.Context p0, android.net.Uri p1) {}
     public void logHidden() {}
     public void logTouch(int p0, android.net.Uri p1) {}

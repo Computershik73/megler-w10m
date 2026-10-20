@@ -3,11 +3,11 @@ package android.credentials;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CreateCredentialResponse implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public CreateCredentialResponse(android.os.Bundle p0) {}
     public int describeContents() { return 0; }
-    public android.os.Bundle getData() { return (android.os.Bundle) megletProps.get("Data"); }
+    public android.os.Bundle getData() { return (android.os.Bundle) meglerProps.get("Data"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     CreateCredentialResponse() { this((android.os.Bundle) null); }
 }

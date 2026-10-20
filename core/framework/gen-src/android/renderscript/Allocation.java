@@ -3,7 +3,7 @@ package android.renderscript;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Allocation extends android.renderscript.BaseObj {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int USAGE_GRAPHICS_CONSTANTS = 8;
     public static final int USAGE_GRAPHICS_RENDER_TARGET = 16;
     public static final int USAGE_GRAPHICS_TEXTURE = 2;
@@ -86,24 +86,24 @@ public class Allocation extends android.renderscript.BaseObj {
     public void destroy() {}
     public void finalize() {}
     public void generateMipmaps() {}
-    public java.nio.ByteBuffer getByteBuffer() { return (java.nio.ByteBuffer) megletProps.get("ByteBuffer"); }
-    public int getBytesSize() { return (megletProps.get("BytesSize") instanceof Integer ? (Integer) megletProps.get("BytesSize") : 0); }
-    public android.renderscript.Element getElement() { return (android.renderscript.Element) megletProps.get("Element"); }
-    public android.renderscript.Allocation.MipmapControl getMipmap() { return (android.renderscript.Allocation.MipmapControl) megletProps.get("Mipmap"); }
-    public long getStride() { return (megletProps.get("Stride") instanceof Long ? (Long) megletProps.get("Stride") : 0L); }
-    public android.view.Surface getSurface() { return (android.view.Surface) megletProps.get("Surface"); }
-    public long getTimeStamp() { return (megletProps.get("TimeStamp") instanceof Long ? (Long) megletProps.get("TimeStamp") : 0L); }
-    public android.renderscript.Type getType() { return (android.renderscript.Type) megletProps.get("Type"); }
-    public int getUsage() { return (megletProps.get("Usage") instanceof Integer ? (Integer) megletProps.get("Usage") : 0); }
+    public java.nio.ByteBuffer getByteBuffer() { return (java.nio.ByteBuffer) meglerProps.get("ByteBuffer"); }
+    public int getBytesSize() { return (meglerProps.get("BytesSize") instanceof Integer ? (Integer) meglerProps.get("BytesSize") : 0); }
+    public android.renderscript.Element getElement() { return (android.renderscript.Element) meglerProps.get("Element"); }
+    public android.renderscript.Allocation.MipmapControl getMipmap() { return (android.renderscript.Allocation.MipmapControl) meglerProps.get("Mipmap"); }
+    public long getStride() { return (meglerProps.get("Stride") instanceof Long ? (Long) meglerProps.get("Stride") : 0L); }
+    public android.view.Surface getSurface() { return (android.view.Surface) meglerProps.get("Surface"); }
+    public long getTimeStamp() { return (meglerProps.get("TimeStamp") instanceof Long ? (Long) meglerProps.get("TimeStamp") : 0L); }
+    public android.renderscript.Type getType() { return (android.renderscript.Type) meglerProps.get("Type"); }
+    public int getUsage() { return (meglerProps.get("Usage") instanceof Integer ? (Integer) meglerProps.get("Usage") : 0); }
     public void ioReceive() {}
     public void ioSend() {}
     public void resize(int p0) {}
-    public void setAutoPadding(boolean p0) { megletProps.put("AutoPadding", Boolean.valueOf(p0)); }
+    public void setAutoPadding(boolean p0) { meglerProps.put("AutoPadding", Boolean.valueOf(p0)); }
     public void setFromFieldPacker(int p0, int p1, int p2, int p3, android.renderscript.FieldPacker p4) {}
     public void setFromFieldPacker(int p0, int p1, android.renderscript.FieldPacker p2) {}
     public void setFromFieldPacker(int p0, android.renderscript.FieldPacker p1) {}
-    public void setOnBufferAvailableListener(android.renderscript.Allocation.OnBufferAvailableListener p0) { megletProps.put("OnBufferAvailableListener", p0); }
-    public void setSurface(android.view.Surface p0) { megletProps.put("Surface", p0); }
+    public void setOnBufferAvailableListener(android.renderscript.Allocation.OnBufferAvailableListener p0) { meglerProps.put("OnBufferAvailableListener", p0); }
+    public void setSurface(android.view.Surface p0) { meglerProps.put("Surface", p0); }
     public void syncAll(int p0) {}
     protected Allocation() { super(); }
     public enum MipmapControl {

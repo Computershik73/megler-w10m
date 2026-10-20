@@ -3,23 +3,23 @@ package android.app.appsearch;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class StorageInfo extends android.app.appsearch.safeparcel.AbstractSafeParcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
-    public int getAliveDocumentsCount() { return (megletProps.get("AliveDocumentsCount") instanceof Integer ? (Integer) megletProps.get("AliveDocumentsCount") : 0); }
-    public int getAliveNamespacesCount() { return (megletProps.get("AliveNamespacesCount") instanceof Integer ? (Integer) megletProps.get("AliveNamespacesCount") : 0); }
-    public int getBlobsCount() { return (megletProps.get("BlobsCount") instanceof Integer ? (Integer) megletProps.get("BlobsCount") : 0); }
-    public long getBlobsSizeBytes() { return (megletProps.get("BlobsSizeBytes") instanceof Long ? (Long) megletProps.get("BlobsSizeBytes") : 0L); }
-    public long getSizeBytes() { return (megletProps.get("SizeBytes") instanceof Long ? (Long) megletProps.get("SizeBytes") : 0L); }
+    public int getAliveDocumentsCount() { return (meglerProps.get("AliveDocumentsCount") instanceof Integer ? (Integer) meglerProps.get("AliveDocumentsCount") : 0); }
+    public int getAliveNamespacesCount() { return (meglerProps.get("AliveNamespacesCount") instanceof Integer ? (Integer) meglerProps.get("AliveNamespacesCount") : 0); }
+    public int getBlobsCount() { return (meglerProps.get("BlobsCount") instanceof Integer ? (Integer) meglerProps.get("BlobsCount") : 0); }
+    public long getBlobsSizeBytes() { return (meglerProps.get("BlobsSizeBytes") instanceof Long ? (Long) meglerProps.get("BlobsSizeBytes") : 0L); }
+    public long getSizeBytes() { return (meglerProps.get("SizeBytes") instanceof Long ? (Long) meglerProps.get("SizeBytes") : 0L); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected StorageInfo() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public android.app.appsearch.StorageInfo build() { return null; }
-        public android.app.appsearch.StorageInfo.Builder setAliveDocumentsCount(int p0) { megletProps.put("AliveDocumentsCount", Integer.valueOf(p0)); return this; }
-        public android.app.appsearch.StorageInfo.Builder setAliveNamespacesCount(int p0) { megletProps.put("AliveNamespacesCount", Integer.valueOf(p0)); return this; }
-        public android.app.appsearch.StorageInfo.Builder setBlobsCount(int p0) { megletProps.put("BlobsCount", Integer.valueOf(p0)); return this; }
-        public android.app.appsearch.StorageInfo.Builder setBlobsSizeBytes(long p0) { megletProps.put("BlobsSizeBytes", Long.valueOf(p0)); return this; }
-        public android.app.appsearch.StorageInfo.Builder setSizeBytes(long p0) { megletProps.put("SizeBytes", Long.valueOf(p0)); return this; }
+        public android.app.appsearch.StorageInfo.Builder setAliveDocumentsCount(int p0) { meglerProps.put("AliveDocumentsCount", Integer.valueOf(p0)); return this; }
+        public android.app.appsearch.StorageInfo.Builder setAliveNamespacesCount(int p0) { meglerProps.put("AliveNamespacesCount", Integer.valueOf(p0)); return this; }
+        public android.app.appsearch.StorageInfo.Builder setBlobsCount(int p0) { meglerProps.put("BlobsCount", Integer.valueOf(p0)); return this; }
+        public android.app.appsearch.StorageInfo.Builder setBlobsSizeBytes(long p0) { meglerProps.put("BlobsSizeBytes", Long.valueOf(p0)); return this; }
+        public android.app.appsearch.StorageInfo.Builder setSizeBytes(long p0) { meglerProps.put("SizeBytes", Long.valueOf(p0)); return this; }
     }
 }

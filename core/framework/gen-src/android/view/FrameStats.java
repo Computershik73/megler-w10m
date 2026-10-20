@@ -3,14 +3,14 @@ package android.view;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class FrameStats {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final long UNDEFINED_TIME_NANO = -1L;
     protected long[] mFramesPresentedTimeNano;
     protected long mRefreshPeriodNano;
     public FrameStats() {}
-    public long getEndTimeNano() { return (megletProps.get("EndTimeNano") instanceof Long ? (Long) megletProps.get("EndTimeNano") : 0L); }
-    public int getFrameCount() { return (megletProps.get("FrameCount") instanceof Integer ? (Integer) megletProps.get("FrameCount") : 0); }
+    public long getEndTimeNano() { return (meglerProps.get("EndTimeNano") instanceof Long ? (Long) meglerProps.get("EndTimeNano") : 0L); }
+    public int getFrameCount() { return (meglerProps.get("FrameCount") instanceof Integer ? (Integer) meglerProps.get("FrameCount") : 0); }
     public long getFramePresentedTimeNano(int p0) { return 0L; }
-    public long getRefreshPeriodNano() { return (megletProps.get("RefreshPeriodNano") instanceof Long ? (Long) megletProps.get("RefreshPeriodNano") : 0L); }
-    public long getStartTimeNano() { return (megletProps.get("StartTimeNano") instanceof Long ? (Long) megletProps.get("StartTimeNano") : 0L); }
+    public long getRefreshPeriodNano() { return (meglerProps.get("RefreshPeriodNano") instanceof Long ? (Long) meglerProps.get("RefreshPeriodNano") : 0L); }
+    public long getStartTimeNano() { return (meglerProps.get("StartTimeNano") instanceof Long ? (Long) meglerProps.get("StartTimeNano") : 0L); }
 }

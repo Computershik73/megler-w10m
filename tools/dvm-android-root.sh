@@ -26,7 +26,7 @@
 #   etc/security/cacerts/*  the certificate authorities Android 9 trusts, which
 #                           conscrypt's trust manager reads; without them no
 #                           server's certificate is trusted
-#   framework/meglet-framework.dex
+#   framework/megler-framework.dex
 #                           the Java framework an app with an Activity runs
 #                           on, where tools/build-framework.sh has built it
 #   framework/framework-res.apk
@@ -75,11 +75,11 @@
 # Files are copied only when they are missing or older than their source, and
 # the script says what the folder holds and how large it is.
 #
-#   MEGLET_RES_LANGUAGES  the languages kept in the platform's resources
+#   MEGLER_RES_LANGUAGES  the languages kept in the platform's resources
 #                            besides the default, as aapt2 names them (en,ru)
-#   MEGLET_RES_DENSITIES  the screen densities kept (xhdpi,xxhdpi: 320 and
+#   MEGLER_RES_DENSITIES  the screen densities kept (xhdpi,xxhdpi: 320 and
 #                            480 dpi; a resource for another is scaled)
-#   MEGLET_ANDROID_SDK    an Android SDK with build-tools 29.0.3, for aapt2
+#   MEGLER_ANDROID_SDK    an Android SDK with build-tools 29.0.3, for aapt2
 #                            (the user's Documents folder)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -96,14 +96,14 @@ for name in core-oj core-libart conscrypt okhttp bouncycastle apache-xml; do put
 # Android's legacy Apache HTTP client, for the apps that get it on their class path (drivers/mg_java.c, add_shared_libraries).
 put "$A9/boot/org.apache.http.legacy.dex" "$OUT/framework"
 bash "$ROOT/tools/build-libcore-overlay.sh"
-put "$ROOT/build/libcore-overlay/meglet-libcore.dex" "$OUT/framework"
+put "$ROOT/build/libcore-overlay/megler-libcore.dex" "$OUT/framework"
 for name in core-oj core-libart; do put "$A9/system/framework/$name.jar" "$OUT/framework"; done
 RES_SRC="$A9/system/framework/framework-res.apk"
 RES_SAID="no platform resources"
 if [ "$RES" = cut ]; then
-  AAPT2="${MEGLET_ANDROID_SDK:-$USERPROFILE/Documents}/build-tools/29.0.3/aapt2.exe"
-  LANGS="${MEGLET_RES_LANGUAGES:-en,ru}"
-  DENS="${MEGLET_RES_DENSITIES:-xhdpi,xxhdpi}"
+  AAPT2="${MEGLER_ANDROID_SDK:-$USERPROFILE/Documents}/build-tools/29.0.3/aapt2.exe"
+  LANGS="${MEGLER_RES_LANGUAGES:-en,ru}"
+  DENS="${MEGLER_RES_DENSITIES:-xhdpi,xxhdpi}"
   CUT="$A9/res-cut/$LANGS-$DENS/framework-res.apk"
   if [ ! -f "$AAPT2" ]; then
     echo "  (no aapt2 at $AAPT2: the platform's resources are taken whole)"
@@ -187,8 +187,8 @@ done
 [ "$SYSLIBS" -gt 0 ] || { echo "no system libraries named in core/src/bionic/mg_bionic.c (mg_bionic_is_system_lib)" >&2; exit 1; }
 # The Java framework an app with an Activity runs on, where it has been built (tools/build-framework.sh).
 FW="no Java framework"
-if [ -f "$ROOT/build/framework/meglet-framework.dex" ]; then
-  cp -u "$ROOT/build/framework/meglet-framework.dex" "$OUT/framework/"
+if [ -f "$ROOT/build/framework/megler-framework.dex" ]; then
+  cp -u "$ROOT/build/framework/megler-framework.dex" "$OUT/framework/"
   FW="the Java framework"
 fi
 echo "${OUT#$ROOT/}: $(size "$OUT") KB in all: framework $(size "$OUT/framework") KB ($FW, $RES_SAID), lib $(size "$OUT/lib") KB ($LIBS libraries and $SYSLIBS of the system's named), $CERTS certificates, $FONTS fonts, usr $(size "$OUT/usr") KB, $WEBVIEW"

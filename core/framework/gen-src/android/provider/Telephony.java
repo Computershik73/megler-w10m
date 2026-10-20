@@ -3,7 +3,7 @@ package android.provider;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Telephony {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     protected Telephony() {}
     public interface BaseMmsColumns extends android.provider.BaseColumns {
         java.lang.String ADAPTATION_ALLOWED = "adp_a";
@@ -101,7 +101,7 @@ public final class Telephony {
         java.lang.String PUBLIC_KEY = "public_key";
     }
     public static final class CarrierId implements android.provider.BaseColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String AUTHORITY = "carrier_id";
         public static final java.lang.String CARRIER_ID = "carrier_id";
         public static final java.lang.String CARRIER_NAME = "carrier_name";
@@ -113,7 +113,7 @@ public final class Telephony {
         public static android.net.Uri getUriForSubscriptionId(int p0) { return null; }
         protected CarrierId() {}
         public static final class All implements android.provider.BaseColumns {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public static final java.lang.String APN = "apn";
             public static android.net.Uri CONTENT_URI;
             public static final java.lang.String GID1 = "gid1";
@@ -128,7 +128,7 @@ public final class Telephony {
         }
     }
     public static final class Carriers implements android.provider.BaseColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String ALWAYS_ON = "always_on";
         public static final java.lang.String APN = "apn";
         public static final java.lang.String APN_ID = "apn_id";
@@ -202,7 +202,7 @@ public final class Telephony {
         protected Carriers() {}
     }
     public static final class CellBroadcasts implements android.provider.BaseColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String AUTHORITY_LEGACY = "cellbroadcast-legacy";
         public static android.net.Uri AUTHORITY_LEGACY_URI;
         public static final java.lang.String CALL_METHOD_GET_PREFERENCE = "get_preference";
@@ -241,7 +241,7 @@ public final class Telephony {
         public static final java.lang.String SUBSCRIPTION_ID = "sub_id";
         protected CellBroadcasts() {}
         public static final class Preference {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public static final java.lang.String ENABLE_ALERT_VIBRATION_PREF = "enable_alert_vibrate";
             public static final java.lang.String ENABLE_AREA_UPDATE_INFO_PREF = "enable_area_update_info_alerts";
             public static final java.lang.String ENABLE_CMAS_AMBER_PREF = "enable_cmas_amber_alerts";
@@ -257,7 +257,7 @@ public final class Telephony {
         }
     }
     public static final class Mms implements android.provider.Telephony.BaseMmsColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.net.Uri CONTENT_URI = android.net.Uri.parse("content://mms");
         public static final java.lang.String DEFAULT_SORT_ORDER = "date DESC";
         public static java.util.regex.Pattern NAME_ADDR_EMAIL_PATTERN;
@@ -270,7 +270,7 @@ public final class Telephony {
         public static android.database.Cursor query(android.content.ContentResolver p0, java.lang.String[] p1, java.lang.String p2, java.lang.String p3) { return null; }
         protected Mms() {}
         public static final class Addr implements android.provider.BaseColumns {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public static final java.lang.String ADDRESS = "address";
             public static final java.lang.String CHARSET = "charset";
             public static final java.lang.String CONTACT_ID = "contact_id";
@@ -281,31 +281,31 @@ public final class Telephony {
             protected Addr() {}
         }
         public static final class Draft implements android.provider.Telephony.BaseMmsColumns {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public static android.net.Uri CONTENT_URI;
             public static final java.lang.String DEFAULT_SORT_ORDER = "date DESC";
             protected Draft() {}
         }
         public static final class Inbox implements android.provider.Telephony.BaseMmsColumns {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public static android.net.Uri CONTENT_URI;
             public static final java.lang.String DEFAULT_SORT_ORDER = "date DESC";
             protected Inbox() {}
         }
         public static final class Intents {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_CHANGED_ACTION = "android.intent.action.CONTENT_CHANGED";
             public static final java.lang.String DELETED_CONTENTS = "deleted_contents";
             protected Intents() {}
         }
         public static final class Outbox implements android.provider.Telephony.BaseMmsColumns {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public static android.net.Uri CONTENT_URI;
             public static final java.lang.String DEFAULT_SORT_ORDER = "date DESC";
             protected Outbox() {}
         }
         public static final class Part implements android.provider.BaseColumns {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public static final java.lang.String CHARSET = "chset";
             public static final java.lang.String CONTENT_DISPOSITION = "cd";
             public static final java.lang.String CONTENT_ID = "cid";
@@ -325,21 +325,21 @@ public final class Telephony {
             protected Part() {}
         }
         public static final class Rate {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public static android.net.Uri CONTENT_URI;
             public static final java.lang.String SENT_TIME = "sent_time";
             public static final java.lang.String SUBSCRIPTION_ID = "sub_id";
             protected Rate() {}
         }
         public static final class Sent implements android.provider.Telephony.BaseMmsColumns {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public static android.net.Uri CONTENT_URI;
             public static final java.lang.String DEFAULT_SORT_ORDER = "date DESC";
             protected Sent() {}
         }
     }
     public static final class MmsSms implements android.provider.BaseColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.net.Uri CONTENT_CONVERSATIONS_URI;
         public static android.net.Uri CONTENT_DRAFT_URI;
         public static android.net.Uri CONTENT_FILTER_BYPHONE_URI;
@@ -360,7 +360,7 @@ public final class Telephony {
         public static final java.lang.String TYPE_DISCRIMINATOR_COLUMN = "transport_type";
         protected MmsSms() {}
         public static final class PendingMessages implements android.provider.BaseColumns {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public static android.net.Uri CONTENT_URI;
             public static final java.lang.String DUE_TIME = "due_time";
             public static final java.lang.String ERROR_CODE = "err_code";
@@ -374,7 +374,7 @@ public final class Telephony {
             protected PendingMessages() {}
         }
         public static final class WordsTable {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public static final java.lang.String ID = "_id";
             public static final java.lang.String INDEXED_TEXT = "index_text";
             public static final java.lang.String SOURCE_ROW_ID = "source_id";
@@ -384,7 +384,7 @@ public final class Telephony {
         }
     }
     public static final class SatelliteDatagrams {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String COLUMN_DATAGRAM = "datagram";
         public static final java.lang.String COLUMN_UNIQUE_KEY_DATAGRAM_ID = "datagram_id";
         public static android.net.Uri CONTENT_URI;
@@ -394,7 +394,7 @@ public final class Telephony {
         protected SatelliteDatagrams() {}
     }
     public static final class ServiceStateTable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String AUTHORITY = "service-state";
         public static android.net.Uri CONTENT_URI;
         public static final java.lang.String DATA_NETWORK_TYPE = "data_network_type";
@@ -408,7 +408,7 @@ public final class Telephony {
         protected ServiceStateTable() {}
     }
     public static final class SimInfo {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int COLOR_DEFAULT = 0;
         public static final java.lang.String COLUMN_ACCESS_RULES = "access_rules";
         public static final java.lang.String COLUMN_ACCESS_RULES_FROM_CARRIER_CONFIGS = "access_rules_from_carrier_configs";
@@ -513,7 +513,7 @@ public final class Telephony {
         protected SimInfo() {}
     }
     public static final class Sms implements android.provider.BaseColumns, android.provider.Telephony.TextBasedSmsColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.net.Uri CONTENT_URI = android.net.Uri.parse("content://sms");
         public static final java.lang.String DEFAULT_SORT_ORDER = "date DESC";
         public static android.net.Uri addMessageToUri(int p0, android.content.ContentResolver p1, android.net.Uri p2, java.lang.String p3, java.lang.String p4, java.lang.String p5, java.lang.Long p6, boolean p7, boolean p8) { return null; }
@@ -529,7 +529,7 @@ public final class Telephony {
         public static boolean shouldCheckForOtp(android.content.Context p0, java.lang.String p1) { return false; }
         protected Sms() {}
         public static final class Conversations implements android.provider.BaseColumns, android.provider.Telephony.TextBasedSmsColumns {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public static android.net.Uri CONTENT_URI = android.net.Uri.parse("content://sms/conversations");
             public static final java.lang.String DEFAULT_SORT_ORDER = "date DESC";
             public static final java.lang.String MESSAGE_COUNT = "msg_count";
@@ -537,7 +537,7 @@ public final class Telephony {
             protected Conversations() {}
         }
         public static final class Draft implements android.provider.BaseColumns, android.provider.Telephony.TextBasedSmsColumns {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public static android.net.Uri CONTENT_URI = android.net.Uri.parse("content://sms/draft");
             public static final java.lang.String DEFAULT_SORT_ORDER = "date DESC";
             public static android.net.Uri addMessage(int p0, android.content.ContentResolver p1, java.lang.String p2, java.lang.String p3, java.lang.String p4, java.lang.Long p5) { return null; }
@@ -545,7 +545,7 @@ public final class Telephony {
             protected Draft() {}
         }
         public static final class Inbox implements android.provider.BaseColumns, android.provider.Telephony.TextBasedSmsColumns {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public static android.net.Uri CONTENT_URI = android.net.Uri.parse("content://sms/inbox");
             public static final java.lang.String DEFAULT_SORT_ORDER = "date DESC";
             public static android.net.Uri addMessage(int p0, android.content.ContentResolver p1, java.lang.String p2, java.lang.String p3, java.lang.String p4, java.lang.Long p5, boolean p6) { return null; }
@@ -553,7 +553,7 @@ public final class Telephony {
             protected Inbox() {}
         }
         public static final class Intents {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public static final java.lang.String ACTION_CHANGE_DEFAULT = "android.provider.Telephony.ACTION_CHANGE_DEFAULT";
             public static final java.lang.String ACTION_DEFAULT_SMS_PACKAGE_CHANGED = "android.provider.action.DEFAULT_SMS_PACKAGE_CHANGED";
             public static final java.lang.String ACTION_EXTERNAL_PROVIDER_CHANGE = "android.provider.action.EXTERNAL_PROVIDER_CHANGE";
@@ -591,7 +591,7 @@ public final class Telephony {
             protected Intents() {}
         }
         public static final class Outbox implements android.provider.BaseColumns, android.provider.Telephony.TextBasedSmsColumns {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public static android.net.Uri CONTENT_URI = android.net.Uri.parse("content://sms/outbox");
             public static final java.lang.String DEFAULT_SORT_ORDER = "date DESC";
             public static android.net.Uri addMessage(int p0, android.content.ContentResolver p1, java.lang.String p2, java.lang.String p3, java.lang.String p4, java.lang.Long p5, boolean p6, long p7) { return null; }
@@ -599,7 +599,7 @@ public final class Telephony {
             protected Outbox() {}
         }
         public static final class Sent implements android.provider.BaseColumns, android.provider.Telephony.TextBasedSmsColumns {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public static android.net.Uri CONTENT_URI = android.net.Uri.parse("content://sms/sent");
             public static final java.lang.String DEFAULT_SORT_ORDER = "date DESC";
             public static android.net.Uri addMessage(int p0, android.content.ContentResolver p1, java.lang.String p2, java.lang.String p3, java.lang.String p4, java.lang.Long p5) { return null; }
@@ -654,7 +654,7 @@ public final class Telephony {
         java.lang.String TYPE = "type";
     }
     public static final class Threads implements android.provider.Telephony.ThreadsColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int BROADCAST_THREAD = 1;
         public static int COMMON_THREAD;
         public static android.net.Uri CONTENT_URI = android.net.Uri.parse("content://mms-sms/conversations");

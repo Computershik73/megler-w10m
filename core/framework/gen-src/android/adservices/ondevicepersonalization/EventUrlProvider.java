@@ -3,7 +3,7 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class EventUrlProvider {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public EventUrlProvider(android.adservices.ondevicepersonalization.aidl.IDataAccessService p0) {}
     public android.net.Uri createEventTrackingUrlWithRedirect(android.os.PersistableBundle p0, android.net.Uri p1) { return null; }
     public android.net.Uri createEventTrackingUrlWithResponse(android.os.PersistableBundle p0, byte[] p1, java.lang.String p2) { return null; }

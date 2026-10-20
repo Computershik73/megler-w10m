@@ -3,7 +3,7 @@ package android.adservices.customaudience;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class TestCustomAudienceManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public void overrideCustomAudienceRemoteInfo(android.adservices.customaudience.AddCustomAudienceOverrideRequest p0, java.util.concurrent.Executor p1, android.os.OutcomeReceiver p2) {}
     public void removeCustomAudienceRemoteInfoOverride(android.adservices.customaudience.RemoveCustomAudienceOverrideRequest p0, java.util.concurrent.Executor p1, android.os.OutcomeReceiver p2) {}
     public void resetAllCustomAudienceOverrides(java.util.concurrent.Executor p0, android.os.OutcomeReceiver p1) {}

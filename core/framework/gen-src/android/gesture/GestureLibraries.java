@@ -3,7 +3,7 @@ package android.gesture;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GestureLibraries {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.gesture.GestureLibrary fromFile(java.io.File p0) { return null; }
     public static android.gesture.GestureLibrary fromFile(java.lang.String p0) { return null; }
     public static android.gesture.GestureLibrary fromFileDescriptor(android.os.ParcelFileDescriptor p0) { return null; }

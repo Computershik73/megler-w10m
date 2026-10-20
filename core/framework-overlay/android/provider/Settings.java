@@ -1,5 +1,5 @@
 // Overlay of core/framework/src/android/provider/Settings.java (tools/build-framework.sh).
-// It differs in megletGet: a setting not in the table asked for is looked for where Android keeps it now -- one of System's
+// It differs in meglerGet: a setting not in the table asked for is looked for where Android keeps it now -- one of System's
 // in Secure and then Global, one of Secure's in Global -- as Android's System.getString does for MOVED_TO_SECURE and
 // MOVED_TO_GLOBAL, and Secure's for its MOVED_TO_GLOBAL (with a line in the log there; the value all the same). The
 // rest is the original's, unchanged.
@@ -13,7 +13,7 @@ package android.provider;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Settings {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_ACCESSIBILITY_COLOR_CONTRAST_SETTINGS = "android.settings.ACCESSIBILITY_COLOR_CONTRAST_SETTINGS";
     public static final java.lang.String ACTION_ACCESSIBILITY_COLOR_MOTION_SETTINGS = "android.settings.ACCESSIBILITY_COLOR_MOTION_SETTINGS";
     public static final java.lang.String ACTION_ACCESSIBILITY_DETAILS_SETTINGS = "android.settings.ACCESSIBILITY_DETAILS_SETTINGS";
@@ -303,7 +303,7 @@ public final class Settings {
     public static boolean isInSystemServer() { return false; }
     public static void setInSystemServer() {}
     public static final class Bookmarks implements android.provider.BaseColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.net.Uri CONTENT_URI = android.net.Uri.parse("content://settings/bookmarks");
         public static final java.lang.String FOLDER = "folder";
         public static final java.lang.String ID = "_id";
@@ -318,7 +318,7 @@ public final class Settings {
         public static java.lang.CharSequence getTitle(android.content.Context p0, android.database.Cursor p1) { return null; }
     }
     public static final class Config extends android.provider.Settings.NameValueTable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.net.Uri CONTENT_URI = android.net.Uri.parse("content://settings/config");
         public static final int SYNC_DISABLED_MODE_NONE = 0;
         public static final int SYNC_DISABLED_MODE_PERSISTENT = 1;
@@ -342,7 +342,7 @@ public final class Settings {
         protected Config() { super(); }
     }
     public static final class Global extends android.provider.Settings.NameValueTable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String ACTIVITY_MANAGER_CONSTANTS = "activity_manager_constants";
         public static final java.lang.String ACTIVITY_STARTS_LOGGING_ENABLED = "activity_starts_logging_enabled";
         public static final java.lang.String ADAPTIVE_BATTERY_MANAGEMENT_ENABLED = "adaptive_battery_management_enabled";
@@ -952,23 +952,23 @@ public final class Settings {
         public static final java.lang.String ZRAM_ENABLED = "zram_enabled";
         public Global() { super(); }
         public static void clearProviderForTest() {}
-        public static float getFloat(android.content.ContentResolver p0, java.lang.String p1) throws android.provider.Settings.SettingNotFoundException { String v = megletGet("global", p1); if (v == null) throw new SettingNotFoundException(p1); try { return Float.parseFloat(v); } catch (NumberFormatException e) { throw new SettingNotFoundException(p1); } }
-        public static float getFloat(android.content.ContentResolver p0, java.lang.String p1, float p2) { String v = megletGet("global", p1); try { return v == null ? p2 : Float.parseFloat(v); } catch (NumberFormatException e) { return p2; } }
-        public static int getInt(android.content.ContentResolver p0, java.lang.String p1) throws android.provider.Settings.SettingNotFoundException { String v = megletGet("global", p1); if (v == null) throw new SettingNotFoundException(p1); try { return Integer.parseInt(v); } catch (NumberFormatException e) { throw new SettingNotFoundException(p1); } }
-        public static int getInt(android.content.ContentResolver p0, java.lang.String p1, int p2) { String v = megletGet("global", p1); try { return v == null ? p2 : Integer.parseInt(v); } catch (NumberFormatException e) { return p2; } }
-        public static long getLong(android.content.ContentResolver p0, java.lang.String p1) throws android.provider.Settings.SettingNotFoundException { String v = megletGet("global", p1); if (v == null) throw new SettingNotFoundException(p1); try { return Long.parseLong(v); } catch (NumberFormatException e) { throw new SettingNotFoundException(p1); } }
-        public static long getLong(android.content.ContentResolver p0, java.lang.String p1, long p2) { String v = megletGet("global", p1); try { return v == null ? p2 : Long.parseLong(v); } catch (NumberFormatException e) { return p2; } }
+        public static float getFloat(android.content.ContentResolver p0, java.lang.String p1) throws android.provider.Settings.SettingNotFoundException { String v = meglerGet("global", p1); if (v == null) throw new SettingNotFoundException(p1); try { return Float.parseFloat(v); } catch (NumberFormatException e) { throw new SettingNotFoundException(p1); } }
+        public static float getFloat(android.content.ContentResolver p0, java.lang.String p1, float p2) { String v = meglerGet("global", p1); try { return v == null ? p2 : Float.parseFloat(v); } catch (NumberFormatException e) { return p2; } }
+        public static int getInt(android.content.ContentResolver p0, java.lang.String p1) throws android.provider.Settings.SettingNotFoundException { String v = meglerGet("global", p1); if (v == null) throw new SettingNotFoundException(p1); try { return Integer.parseInt(v); } catch (NumberFormatException e) { throw new SettingNotFoundException(p1); } }
+        public static int getInt(android.content.ContentResolver p0, java.lang.String p1, int p2) { String v = meglerGet("global", p1); try { return v == null ? p2 : Integer.parseInt(v); } catch (NumberFormatException e) { return p2; } }
+        public static long getLong(android.content.ContentResolver p0, java.lang.String p1) throws android.provider.Settings.SettingNotFoundException { String v = meglerGet("global", p1); if (v == null) throw new SettingNotFoundException(p1); try { return Long.parseLong(v); } catch (NumberFormatException e) { throw new SettingNotFoundException(p1); } }
+        public static long getLong(android.content.ContentResolver p0, java.lang.String p1, long p2) { String v = meglerGet("global", p1); try { return v == null ? p2 : Long.parseLong(v); } catch (NumberFormatException e) { return p2; } }
         public static void getMovedToSecureSettings(java.util.Set p0) {}
         public static void getMovedToSystemSettings(java.util.Set p0) {}
         public static void getPublicSettings(java.util.Set p0, java.util.Set p1, android.util.ArrayMap p2) {}
-        public static java.lang.String getString(android.content.ContentResolver p0, java.lang.String p1) { return megletGet("global", p1); }
+        public static java.lang.String getString(android.content.ContentResolver p0, java.lang.String p1) { return meglerGet("global", p1); }
         public static java.lang.String getStringForUser(android.content.ContentResolver p0, java.lang.String p1, int p2) { return null; }
         public static android.net.Uri getUriFor(java.lang.String p0) { return android.net.Uri.parse("content://settings/" + "global" + "/" + p0); }
         public static boolean isValidZenMode(int p0) { return false; }
-        public static boolean putFloat(android.content.ContentResolver p0, java.lang.String p1, float p2) { return megletPut("global", p1, String.valueOf(p2)); }
-        public static boolean putInt(android.content.ContentResolver p0, java.lang.String p1, int p2) { return megletPut("global", p1, String.valueOf(p2)); }
-        public static boolean putLong(android.content.ContentResolver p0, java.lang.String p1, long p2) { return megletPut("global", p1, String.valueOf(p2)); }
-        public static boolean putString(android.content.ContentResolver p0, java.lang.String p1, java.lang.String p2) { return megletPut("global", p1, String.valueOf(p2)); }
+        public static boolean putFloat(android.content.ContentResolver p0, java.lang.String p1, float p2) { return meglerPut("global", p1, String.valueOf(p2)); }
+        public static boolean putInt(android.content.ContentResolver p0, java.lang.String p1, int p2) { return meglerPut("global", p1, String.valueOf(p2)); }
+        public static boolean putLong(android.content.ContentResolver p0, java.lang.String p1, long p2) { return meglerPut("global", p1, String.valueOf(p2)); }
+        public static boolean putString(android.content.ContentResolver p0, java.lang.String p1, java.lang.String p2) { return meglerPut("global", p1, String.valueOf(p2)); }
         public static boolean putString(android.content.ContentResolver p0, java.lang.String p1, java.lang.String p2, java.lang.String p3, boolean p4) { return false; }
         public static boolean putString(android.content.ContentResolver p0, java.lang.String p1, java.lang.String p2, java.lang.String p3, boolean p4, boolean p5) { return false; }
         public static boolean putStringForUser(android.content.ContentResolver p0, java.lang.String p1, java.lang.String p2, int p3) { return false; }
@@ -977,7 +977,7 @@ public final class Settings {
         public static void resetToDefaultsAsUser(android.content.ContentResolver p0, java.lang.String p1, int p2, int p3) {}
         public static java.lang.String zenModeToString(int p0) { return null; }
         public static final class Wearable extends android.provider.Settings.NameValueTable {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public static final java.lang.String ACCESSIBILITY_VIBRATION_WATCH_ENABLED = "a11y_vibration_watch_enabled";
             public static final java.lang.String ACCESSIBILITY_VIBRATION_WATCH_SPEED = "vibration_speed";
             public static final int ACCESSIBILITY_VIBRATION_WATCH_SPEED_FAST = 3;
@@ -1161,7 +1161,7 @@ public final class Settings {
         }
     }
     public static class NameValueTable implements android.provider.BaseColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String IS_PRESERVED_IN_RESTORE = "is_preserved_in_restore";
         public static final java.lang.String NAME = "name";
         public static final java.lang.String VALUE = "value";
@@ -1170,7 +1170,7 @@ public final class Settings {
         protected static boolean putString(android.content.ContentResolver p0, android.net.Uri p1, java.lang.String p2, java.lang.String p3) { return false; }
     }
     public static final class Panel {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String ACTION_INTERNET_CONNECTIVITY = "android.settings.panel.action.INTERNET_CONNECTIVITY";
         public static final java.lang.String ACTION_NFC = "android.settings.panel.action.NFC";
         public static final java.lang.String ACTION_VOLUME = "android.settings.panel.action.VOLUME";
@@ -1178,7 +1178,7 @@ public final class Settings {
         protected Panel() {}
     }
     public static final class Secure extends android.provider.Settings.NameValueTable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String AAPM_USB_DATA_PROTECTION = "aapm_usb_data_protection";
         public static final java.lang.String ACCESSIBILITY_ALLOW_DIAGONAL_SCROLLING = "accessibility_allow_diagonal_scrolling";
         public static final java.lang.String ACCESSIBILITY_AUTOCLICK_CURSOR_AREA_SIZE = "accessibility_autoclick_cursor_area_size";
@@ -1824,32 +1824,32 @@ public final class Settings {
         public Secure() { super(); }
         public static void clearProviderForTest() {}
         public static void getCloneToManagedProfileSettings(java.util.Set p0) {}
-        public static float getFloat(android.content.ContentResolver p0, java.lang.String p1) throws android.provider.Settings.SettingNotFoundException { String v = megletGet("secure", p1); if (v == null) throw new SettingNotFoundException(p1); try { return Float.parseFloat(v); } catch (NumberFormatException e) { throw new SettingNotFoundException(p1); } }
-        public static float getFloat(android.content.ContentResolver p0, java.lang.String p1, float p2) { String v = megletGet("secure", p1); try { return v == null ? p2 : Float.parseFloat(v); } catch (NumberFormatException e) { return p2; } }
+        public static float getFloat(android.content.ContentResolver p0, java.lang.String p1) throws android.provider.Settings.SettingNotFoundException { String v = meglerGet("secure", p1); if (v == null) throw new SettingNotFoundException(p1); try { return Float.parseFloat(v); } catch (NumberFormatException e) { throw new SettingNotFoundException(p1); } }
+        public static float getFloat(android.content.ContentResolver p0, java.lang.String p1, float p2) { String v = meglerGet("secure", p1); try { return v == null ? p2 : Float.parseFloat(v); } catch (NumberFormatException e) { return p2; } }
         public static float getFloatForUser(android.content.ContentResolver p0, java.lang.String p1, float p2, int p3) { return 0f; }
         public static float getFloatForUser(android.content.ContentResolver p0, java.lang.String p1, int p2) { return 0f; }
-        public static int getInt(android.content.ContentResolver p0, java.lang.String p1) throws android.provider.Settings.SettingNotFoundException { String v = megletGet("secure", p1); if (v == null) throw new SettingNotFoundException(p1); try { return Integer.parseInt(v); } catch (NumberFormatException e) { throw new SettingNotFoundException(p1); } }
-        public static int getInt(android.content.ContentResolver p0, java.lang.String p1, int p2) { String v = megletGet("secure", p1); try { return v == null ? p2 : Integer.parseInt(v); } catch (NumberFormatException e) { return p2; } }
+        public static int getInt(android.content.ContentResolver p0, java.lang.String p1) throws android.provider.Settings.SettingNotFoundException { String v = meglerGet("secure", p1); if (v == null) throw new SettingNotFoundException(p1); try { return Integer.parseInt(v); } catch (NumberFormatException e) { throw new SettingNotFoundException(p1); } }
+        public static int getInt(android.content.ContentResolver p0, java.lang.String p1, int p2) { String v = meglerGet("secure", p1); try { return v == null ? p2 : Integer.parseInt(v); } catch (NumberFormatException e) { return p2; } }
         public static int getIntForUser(android.content.ContentResolver p0, java.lang.String p1, int p2) { return 0; }
         public static int getIntForUser(android.content.ContentResolver p0, java.lang.String p1, int p2, int p3) { return 0; }
-        public static long getLong(android.content.ContentResolver p0, java.lang.String p1) throws android.provider.Settings.SettingNotFoundException { String v = megletGet("secure", p1); if (v == null) throw new SettingNotFoundException(p1); try { return Long.parseLong(v); } catch (NumberFormatException e) { throw new SettingNotFoundException(p1); } }
-        public static long getLong(android.content.ContentResolver p0, java.lang.String p1, long p2) { String v = megletGet("secure", p1); try { return v == null ? p2 : Long.parseLong(v); } catch (NumberFormatException e) { return p2; } }
+        public static long getLong(android.content.ContentResolver p0, java.lang.String p1) throws android.provider.Settings.SettingNotFoundException { String v = meglerGet("secure", p1); if (v == null) throw new SettingNotFoundException(p1); try { return Long.parseLong(v); } catch (NumberFormatException e) { throw new SettingNotFoundException(p1); } }
+        public static long getLong(android.content.ContentResolver p0, java.lang.String p1, long p2) { String v = meglerGet("secure", p1); try { return v == null ? p2 : Long.parseLong(v); } catch (NumberFormatException e) { return p2; } }
         public static long getLongForUser(android.content.ContentResolver p0, java.lang.String p1, int p2) { return 0L; }
         public static long getLongForUser(android.content.ContentResolver p0, java.lang.String p1, long p2, int p3) { return 0L; }
         public static void getMovedToGlobalSettings(java.util.Set p0) {}
         public static void getMovedToSystemSettings(java.util.Set p0) {}
         public static void getPublicSettings(java.util.Set p0, java.util.Set p1, android.util.ArrayMap p2) {}
-        public static java.lang.String getString(android.content.ContentResolver p0, java.lang.String p1) { return megletGet("secure", p1); }
+        public static java.lang.String getString(android.content.ContentResolver p0, java.lang.String p1) { return meglerGet("secure", p1); }
         public static java.lang.String getStringForUser(android.content.ContentResolver p0, java.lang.String p1, int p2) { return null; }
         public static android.net.Uri getUriFor(java.lang.String p0) { return android.net.Uri.parse("content://settings/" + "secure" + "/" + p0); }
         public static boolean isLocationProviderEnabled(android.content.ContentResolver p0, java.lang.String p1) { return false; }
-        public static boolean putFloat(android.content.ContentResolver p0, java.lang.String p1, float p2) { return megletPut("secure", p1, String.valueOf(p2)); }
+        public static boolean putFloat(android.content.ContentResolver p0, java.lang.String p1, float p2) { return meglerPut("secure", p1, String.valueOf(p2)); }
         public static boolean putFloatForUser(android.content.ContentResolver p0, java.lang.String p1, float p2, int p3) { return false; }
-        public static boolean putInt(android.content.ContentResolver p0, java.lang.String p1, int p2) { return megletPut("secure", p1, String.valueOf(p2)); }
+        public static boolean putInt(android.content.ContentResolver p0, java.lang.String p1, int p2) { return meglerPut("secure", p1, String.valueOf(p2)); }
         public static boolean putIntForUser(android.content.ContentResolver p0, java.lang.String p1, int p2, int p3) { return false; }
-        public static boolean putLong(android.content.ContentResolver p0, java.lang.String p1, long p2) { return megletPut("secure", p1, String.valueOf(p2)); }
+        public static boolean putLong(android.content.ContentResolver p0, java.lang.String p1, long p2) { return meglerPut("secure", p1, String.valueOf(p2)); }
         public static boolean putLongForUser(android.content.ContentResolver p0, java.lang.String p1, long p2, int p3) { return false; }
-        public static boolean putString(android.content.ContentResolver p0, java.lang.String p1, java.lang.String p2) { return megletPut("secure", p1, String.valueOf(p2)); }
+        public static boolean putString(android.content.ContentResolver p0, java.lang.String p1, java.lang.String p2) { return meglerPut("secure", p1, String.valueOf(p2)); }
         public static boolean putString(android.content.ContentResolver p0, java.lang.String p1, java.lang.String p2, java.lang.String p3, boolean p4) { return false; }
         public static boolean putString(android.content.ContentResolver p0, java.lang.String p1, java.lang.String p2, boolean p3) { return false; }
         public static boolean putStringForUser(android.content.ContentResolver p0, java.lang.String p1, java.lang.String p2, int p3) { return false; }
@@ -1859,11 +1859,11 @@ public final class Settings {
         public static void setLocationProviderEnabled(android.content.ContentResolver p0, java.lang.String p1, boolean p2) {}
     }
     public static class SettingNotFoundException extends android.util.AndroidException {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public SettingNotFoundException(java.lang.String p0) { super(p0); }
     }
     public static final class System extends android.provider.Settings.NameValueTable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String ACCELEROMETER_ROTATION = "accelerometer_rotation";
         public static final java.lang.String ACCELEROMETER_ROTATION_ANGLES = "accelerometer_rotation_angles";
         public static final java.lang.String ACCESSIBILITY_FORCE_INVERT_COLOR_OVERRIDE_PACKAGES_TO_DISABLE = "accessibility_force_invert_color_override_packages_to_disable";
@@ -2104,16 +2104,16 @@ public final class Settings {
         public static void getCloneFromParentOnValueSettings(java.util.Map p0) {}
         public static void getCloneToManagedProfileSettings(java.util.Set p0) {}
         public static void getConfiguration(android.content.ContentResolver p0, android.content.res.Configuration p1) {}
-        public static float getFloat(android.content.ContentResolver p0, java.lang.String p1) throws android.provider.Settings.SettingNotFoundException { String v = megletGet("system", p1); if (v == null) throw new SettingNotFoundException(p1); try { return Float.parseFloat(v); } catch (NumberFormatException e) { throw new SettingNotFoundException(p1); } }
-        public static float getFloat(android.content.ContentResolver p0, java.lang.String p1, float p2) { String v = megletGet("system", p1); try { return v == null ? p2 : Float.parseFloat(v); } catch (NumberFormatException e) { return p2; } }
+        public static float getFloat(android.content.ContentResolver p0, java.lang.String p1) throws android.provider.Settings.SettingNotFoundException { String v = meglerGet("system", p1); if (v == null) throw new SettingNotFoundException(p1); try { return Float.parseFloat(v); } catch (NumberFormatException e) { throw new SettingNotFoundException(p1); } }
+        public static float getFloat(android.content.ContentResolver p0, java.lang.String p1, float p2) { String v = meglerGet("system", p1); try { return v == null ? p2 : Float.parseFloat(v); } catch (NumberFormatException e) { return p2; } }
         public static float getFloatForUser(android.content.ContentResolver p0, java.lang.String p1, float p2, int p3) { return 0f; }
         public static float getFloatForUser(android.content.ContentResolver p0, java.lang.String p1, int p2) { return 0f; }
-        public static int getInt(android.content.ContentResolver p0, java.lang.String p1) throws android.provider.Settings.SettingNotFoundException { String v = megletGet("system", p1); if (v == null) throw new SettingNotFoundException(p1); try { return Integer.parseInt(v); } catch (NumberFormatException e) { throw new SettingNotFoundException(p1); } }
-        public static int getInt(android.content.ContentResolver p0, java.lang.String p1, int p2) { String v = megletGet("system", p1); try { return v == null ? p2 : Integer.parseInt(v); } catch (NumberFormatException e) { return p2; } }
+        public static int getInt(android.content.ContentResolver p0, java.lang.String p1) throws android.provider.Settings.SettingNotFoundException { String v = meglerGet("system", p1); if (v == null) throw new SettingNotFoundException(p1); try { return Integer.parseInt(v); } catch (NumberFormatException e) { throw new SettingNotFoundException(p1); } }
+        public static int getInt(android.content.ContentResolver p0, java.lang.String p1, int p2) { String v = meglerGet("system", p1); try { return v == null ? p2 : Integer.parseInt(v); } catch (NumberFormatException e) { return p2; } }
         public static int getIntForUser(android.content.ContentResolver p0, java.lang.String p1, int p2) { return 0; }
         public static int getIntForUser(android.content.ContentResolver p0, java.lang.String p1, int p2, int p3) { return 0; }
-        public static long getLong(android.content.ContentResolver p0, java.lang.String p1) throws android.provider.Settings.SettingNotFoundException { String v = megletGet("system", p1); if (v == null) throw new SettingNotFoundException(p1); try { return Long.parseLong(v); } catch (NumberFormatException e) { throw new SettingNotFoundException(p1); } }
-        public static long getLong(android.content.ContentResolver p0, java.lang.String p1, long p2) { String v = megletGet("system", p1); try { return v == null ? p2 : Long.parseLong(v); } catch (NumberFormatException e) { return p2; } }
+        public static long getLong(android.content.ContentResolver p0, java.lang.String p1) throws android.provider.Settings.SettingNotFoundException { String v = meglerGet("system", p1); if (v == null) throw new SettingNotFoundException(p1); try { return Long.parseLong(v); } catch (NumberFormatException e) { throw new SettingNotFoundException(p1); } }
+        public static long getLong(android.content.ContentResolver p0, java.lang.String p1, long p2) { String v = meglerGet("system", p1); try { return v == null ? p2 : Long.parseLong(v); } catch (NumberFormatException e) { return p2; } }
         public static long getLongForUser(android.content.ContentResolver p0, java.lang.String p1, int p2) { return 0L; }
         public static long getLongForUser(android.content.ContentResolver p0, java.lang.String p1, long p2, int p3) { return 0L; }
         public static void getMovedToGlobalSettings(java.util.Set p0) {}
@@ -2122,19 +2122,19 @@ public final class Settings {
         public static void getPublicSettings(java.util.Set p0, java.util.Set p1, android.util.ArrayMap p2) {}
         public static boolean getShowGTalkServiceStatus(android.content.ContentResolver p0) { return false; }
         public static boolean getShowGTalkServiceStatusForUser(android.content.ContentResolver p0, int p1) { return false; }
-        public static java.lang.String getString(android.content.ContentResolver p0, java.lang.String p1) { return megletGet("system", p1); }
+        public static java.lang.String getString(android.content.ContentResolver p0, java.lang.String p1) { return meglerGet("system", p1); }
         public static java.lang.String getStringForUser(android.content.ContentResolver p0, java.lang.String p1, int p2) { return null; }
         public static android.net.Uri getUriFor(java.lang.String p0) { return android.net.Uri.parse("content://settings/" + "system" + "/" + p0); }
         public static boolean hasInterestingConfigurationChanges(int p0) { return false; }
         public static boolean putConfiguration(android.content.ContentResolver p0, android.content.res.Configuration p1) { return false; }
         public static boolean putConfigurationForUser(android.content.ContentResolver p0, android.content.res.Configuration p1, int p2) { return false; }
-        public static boolean putFloat(android.content.ContentResolver p0, java.lang.String p1, float p2) { return megletPut("system", p1, String.valueOf(p2)); }
+        public static boolean putFloat(android.content.ContentResolver p0, java.lang.String p1, float p2) { return meglerPut("system", p1, String.valueOf(p2)); }
         public static boolean putFloatForUser(android.content.ContentResolver p0, java.lang.String p1, float p2, int p3) { return false; }
-        public static boolean putInt(android.content.ContentResolver p0, java.lang.String p1, int p2) { return megletPut("system", p1, String.valueOf(p2)); }
+        public static boolean putInt(android.content.ContentResolver p0, java.lang.String p1, int p2) { return meglerPut("system", p1, String.valueOf(p2)); }
         public static boolean putIntForUser(android.content.ContentResolver p0, java.lang.String p1, int p2, int p3) { return false; }
-        public static boolean putLong(android.content.ContentResolver p0, java.lang.String p1, long p2) { return megletPut("system", p1, String.valueOf(p2)); }
+        public static boolean putLong(android.content.ContentResolver p0, java.lang.String p1, long p2) { return meglerPut("system", p1, String.valueOf(p2)); }
         public static boolean putLongForUser(android.content.ContentResolver p0, java.lang.String p1, long p2, int p3) { return false; }
-        public static boolean putString(android.content.ContentResolver p0, java.lang.String p1, java.lang.String p2) { return megletPut("system", p1, String.valueOf(p2)); }
+        public static boolean putString(android.content.ContentResolver p0, java.lang.String p1, java.lang.String p2) { return meglerPut("system", p1, String.valueOf(p2)); }
         public static boolean putString(android.content.ContentResolver p0, java.lang.String p1, java.lang.String p2, boolean p3) { return false; }
         public static boolean putString(android.content.ContentResolver p0, java.lang.String p1, java.lang.String p2, boolean p3, boolean p4) { return false; }
         public static boolean putStringForUser(android.content.ContentResolver p0, java.lang.String p1, java.lang.String p2, int p3) { return false; }
@@ -2147,7 +2147,7 @@ public final class Settings {
     // ---- the settings, as the phone would answer them: written values kept, ANDROID_ID one per app, kept in its data
     private static final java.util.HashMap<String, String> sValues = new java.util.HashMap<>();
     private static boolean sLoaded;
-    private static void megletDefaults() {
+    private static void meglerDefaults() {
         String[][] d = {
             { "system", "screen_brightness", "128" }, { "system", "screen_brightness_mode", "1" }, { "system", "font_scale", "1.0" },
             { "system", "accelerometer_rotation", "1" }, { "system", "haptic_feedback_enabled", "1" }, { "system", "sound_effects_enabled", "1" },
@@ -2155,7 +2155,7 @@ public final class Settings {
             { "system", "dtmf_tone", "1" }, { "system", "user_rotation", "0" }, { "system", "show_password", "1" },
             { "global", "auto_time", "1" }, { "global", "auto_time_zone", "1" }, { "global", "adb_enabled", "0" },
             { "global", "development_settings_enabled", "0" }, { "global", "airplane_mode_on", "0" }, { "global", "animator_duration_scale", "1.0" },
-            { "global", "transition_animation_scale", "1.0" }, { "global", "window_animation_scale", "1.0" }, { "global", "device_name", "Meglet" },
+            { "global", "transition_animation_scale", "1.0" }, { "global", "window_animation_scale", "1.0" }, { "global", "device_name", "Megler" },
             { "global", "always_finish_activities", "0" }, { "global", "stay_on_while_plugged_in", "0" }, { "global", "wifi_on", "1" },
             { "global", "bluetooth_on", "0" }, { "global", "data_roaming", "0" }, { "global", "install_non_market_apps", "1" },
             { "global", "mobile_data", "1" }, { "global", "boot_count", "1" }, { "global", "zen_mode", "0" },
@@ -2163,13 +2163,13 @@ public final class Settings {
             { "secure", "location_mode", "3" }, { "secure", "default_input_method", "com.android.inputmethod.latin/.LatinIME" },
             { "secure", "enabled_input_methods", "com.android.inputmethod.latin/.LatinIME" }, { "secure", "install_non_market_apps", "1" },
             { "secure", "accessibility_display_magnification_enabled", "0" }, { "secure", "high_text_contrast_enabled", "0" },
-            { "secure", "skip_first_use_hints", "1" }, { "secure", "user_setup_complete", "1" }, { "secure", "bluetooth_name", "Meglet" },
+            { "secure", "skip_first_use_hints", "1" }, { "secure", "user_setup_complete", "1" }, { "secure", "bluetooth_name", "Megler" },
         };
         for (String[] e : d) sValues.put(e[0] + "/" + e[1], e[2]);
-        sValues.put("secure/android_id", megletAndroidId());
+        sValues.put("secure/android_id", meglerAndroidId());
     }
-    private static String megletAndroidId() {
-        java.io.File f = new java.io.File(meglet.Native.dataDir(), ".meglet_android_id");
+    private static String meglerAndroidId() {
+        java.io.File f = new java.io.File(megler.Native.dataDir(), ".megler_android_id");
         try {
             if (f.isFile()) { String s = new String(java.nio.file.Files.readAllBytes(f.toPath()), "UTF-8").trim(); if (s.length() == 16) return s; }
         } catch (java.io.IOException e) {}
@@ -2177,16 +2177,16 @@ public final class Settings {
         try (java.io.FileOutputStream o = new java.io.FileOutputStream(f)) { o.write(id.getBytes("UTF-8")); } catch (java.io.IOException e) {}
         return id;
     }
-    static synchronized String megletGet(String table, String name) {
-        if (!sLoaded) { sLoaded = true; megletDefaults(); }
+    static synchronized String meglerGet(String table, String name) {
+        if (!sLoaded) { sLoaded = true; meglerDefaults(); }
         String v = sValues.get(table + "/" + name);
         // A setting moved from System to Secure or Global, or from Secure to Global: its value where it is now.
         if (v == null && "system".equals(table)) { v = sValues.get("secure/" + name); if (v == null) v = sValues.get("global/" + name); }
         else if (v == null && "secure".equals(table)) v = sValues.get("global/" + name);
         return v;
     }
-    static synchronized boolean megletPut(String table, String name, String value) {
-        if (!sLoaded) { sLoaded = true; megletDefaults(); }
+    static synchronized boolean meglerPut(String table, String name, String value) {
+        if (!sLoaded) { sLoaded = true; meglerDefaults(); }
         sValues.put(table + "/" + name, value);
         return true;
     }

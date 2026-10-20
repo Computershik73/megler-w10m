@@ -3,7 +3,7 @@ package android.adservices.common;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AdSelectionSignals implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static android.adservices.common.AdSelectionSignals EMPTY;
     public static android.adservices.common.AdSelectionSignals fromString(java.lang.String p0) { return new AdSelectionSignals(); }
@@ -11,7 +11,7 @@ public final class AdSelectionSignals implements android.os.Parcelable {
     public boolean containsAdCost() { return false; }
     public boolean containsDataVersion() { return false; }
     public int describeContents() { return 0; }
-    public int getSizeInBytes() { return (megletProps.get("SizeInBytes") instanceof Integer ? (Integer) megletProps.get("SizeInBytes") : 0); }
+    public int getSizeInBytes() { return (meglerProps.get("SizeInBytes") instanceof Integer ? (Integer) meglerProps.get("SizeInBytes") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected AdSelectionSignals() {}
 }

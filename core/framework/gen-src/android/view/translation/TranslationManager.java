@@ -3,7 +3,7 @@ package android.view.translation;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TranslationManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String EXTRA_CAPABILITIES = "translation_capabilities";
     public static final int STATUS_SYNC_CALL_FAIL = 2;
     public static final int STATUS_SYNC_CALL_SUCCESS = 1;
@@ -15,9 +15,9 @@ public final class TranslationManager {
     public void createOnDeviceTranslator(android.view.translation.TranslationContext p0, java.util.concurrent.Executor p1, java.util.function.Consumer p2) {}
     public android.view.translation.Translator createTranslator(android.view.translation.TranslationContext p0) { return null; }
     public java.util.Set getOnDeviceTranslationCapabilities(int p0, int p1) { return new java.util.HashSet(); }
-    public android.app.PendingIntent getOnDeviceTranslationSettingsActivityIntent() { return (android.app.PendingIntent) megletProps.get("OnDeviceTranslationSettingsActivityIntent"); }
+    public android.app.PendingIntent getOnDeviceTranslationSettingsActivityIntent() { return (android.app.PendingIntent) meglerProps.get("OnDeviceTranslationSettingsActivityIntent"); }
     public java.util.Set getTranslationCapabilities(int p0, int p1) { return new java.util.HashSet(); }
-    public android.app.PendingIntent getTranslationSettingsActivityIntent() { return (android.app.PendingIntent) megletProps.get("TranslationSettingsActivityIntent"); }
+    public android.app.PendingIntent getTranslationSettingsActivityIntent() { return (android.app.PendingIntent) meglerProps.get("TranslationSettingsActivityIntent"); }
     public void removeOnDeviceTranslationCapabilityUpdateListener(int p0, int p1, android.app.PendingIntent p2) {}
     public void removeOnDeviceTranslationCapabilityUpdateListener(java.util.function.Consumer p0) {}
     public void removeTranslationCapabilityUpdateListener(int p0, int p1, android.app.PendingIntent p2) {}

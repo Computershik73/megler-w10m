@@ -3,8 +3,8 @@ package android.media.metrics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class Event {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public android.os.Bundle getMetricsBundle() { return (android.os.Bundle) megletProps.get("MetricsBundle"); }
-    public long getTimeSinceCreatedMillis() { return (megletProps.get("TimeSinceCreatedMillis") instanceof Long ? (Long) megletProps.get("TimeSinceCreatedMillis") : 0L); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public android.os.Bundle getMetricsBundle() { return (android.os.Bundle) meglerProps.get("MetricsBundle"); }
+    public long getTimeSinceCreatedMillis() { return (meglerProps.get("TimeSinceCreatedMillis") instanceof Long ? (Long) meglerProps.get("TimeSinceCreatedMillis") : 0L); }
     protected Event() {}
 }

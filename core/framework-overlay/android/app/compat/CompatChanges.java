@@ -21,7 +21,7 @@ public final class CompatChanges {
     };
 
     public static boolean isChangeEnabled(long changeId) {
-        for (long[] c : ENABLED_SINCE) if (c[0] == changeId) return meglet.Manifest.targetSdk >= c[1];
+        for (long[] c : ENABLED_SINCE) if (c[0] == changeId) return megler.Manifest.targetSdk >= c[1];
         return true;
     }
 

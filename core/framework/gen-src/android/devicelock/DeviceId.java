@@ -3,11 +3,11 @@ package android.devicelock;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DeviceId {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int DEVICE_ID_TYPE_IMEI = 0;
     public static final int DEVICE_ID_TYPE_MEID = 1;
     public static final int DEVICE_ID_TYPE_SERIAL_NUMBER = 2;
-    public java.lang.String getId() { return (java.lang.String) megletProps.get("Id"); }
-    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
+    public java.lang.String getId() { return (java.lang.String) meglerProps.get("Id"); }
+    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
     protected DeviceId() {}
 }

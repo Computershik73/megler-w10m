@@ -3,7 +3,7 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class ForegroundServiceTypeException extends android.app.ServiceStartNotAllowedException {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ForegroundServiceTypeException(java.lang.String p0) { super(); }
     ForegroundServiceTypeException() { this((java.lang.String) null); }
 }

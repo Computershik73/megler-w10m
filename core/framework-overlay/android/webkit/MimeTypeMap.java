@@ -1,5 +1,5 @@
 // Overlay of core/framework/src/android/webkit/MimeTypeMap.java (tools/build-framework.sh).
-// It differs in one method, megletInstallDefault, which named libcore.content.type.MimeMap: a class of Android 10's libcore
+// It differs in one method, meglerInstallDefault, which named libcore.content.type.MimeMap: a class of Android 10's libcore
 // that the Android 9 one this port runs on does not have. Everything else is the original's, unchanged.
 package android.webkit;
 
@@ -38,7 +38,7 @@ public class MimeTypeMap {
      * libcore.net.MimeUtils keeps a table of its own that nothing can add to, and URLConnection.guessContentTypeFromName
      * reads that. So there is nothing to install here.
      */
-    public static void megletInstallDefault() {}
+    public static void meglerInstallDefault() {}
     public static MimeTypeMap getSingleton() { return sMimeTypeMap; }
     public static String getFileExtensionFromUrl(String url) {
         if (url == null || url.isEmpty()) return "";

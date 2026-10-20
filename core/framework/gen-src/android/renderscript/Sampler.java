@@ -3,7 +3,7 @@ package android.renderscript;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Sampler extends android.renderscript.BaseObj {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.renderscript.Sampler CLAMP_LINEAR(android.renderscript.RenderScript p0) { return new Sampler(); }
     public static android.renderscript.Sampler CLAMP_LINEAR_MIP_LINEAR(android.renderscript.RenderScript p0) { return new Sampler(); }
     public static android.renderscript.Sampler CLAMP_NEAREST(android.renderscript.RenderScript p0) { return new Sampler(); }
@@ -13,21 +13,21 @@ public class Sampler extends android.renderscript.BaseObj {
     public static android.renderscript.Sampler WRAP_LINEAR(android.renderscript.RenderScript p0) { return new Sampler(); }
     public static android.renderscript.Sampler WRAP_LINEAR_MIP_LINEAR(android.renderscript.RenderScript p0) { return new Sampler(); }
     public static android.renderscript.Sampler WRAP_NEAREST(android.renderscript.RenderScript p0) { return new Sampler(); }
-    public float getAnisotropy() { return (megletProps.get("Anisotropy") instanceof Float ? (Float) megletProps.get("Anisotropy") : 0f); }
-    public android.renderscript.Sampler.Value getMagnification() { return (android.renderscript.Sampler.Value) megletProps.get("Magnification"); }
-    public android.renderscript.Sampler.Value getMinification() { return (android.renderscript.Sampler.Value) megletProps.get("Minification"); }
-    public android.renderscript.Sampler.Value getWrapS() { return (android.renderscript.Sampler.Value) megletProps.get("WrapS"); }
-    public android.renderscript.Sampler.Value getWrapT() { return (android.renderscript.Sampler.Value) megletProps.get("WrapT"); }
+    public float getAnisotropy() { return (meglerProps.get("Anisotropy") instanceof Float ? (Float) meglerProps.get("Anisotropy") : 0f); }
+    public android.renderscript.Sampler.Value getMagnification() { return (android.renderscript.Sampler.Value) meglerProps.get("Magnification"); }
+    public android.renderscript.Sampler.Value getMinification() { return (android.renderscript.Sampler.Value) meglerProps.get("Minification"); }
+    public android.renderscript.Sampler.Value getWrapS() { return (android.renderscript.Sampler.Value) meglerProps.get("WrapS"); }
+    public android.renderscript.Sampler.Value getWrapT() { return (android.renderscript.Sampler.Value) meglerProps.get("WrapT"); }
     protected Sampler() { super(); }
     public static class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.renderscript.RenderScript p0) {}
         public android.renderscript.Sampler create() { return new android.renderscript.Sampler(); }
-        public void setAnisotropy(float p0) { megletProps.put("Anisotropy", Float.valueOf(p0)); }
-        public void setMagnification(android.renderscript.Sampler.Value p0) { megletProps.put("Magnification", p0); }
-        public void setMinification(android.renderscript.Sampler.Value p0) { megletProps.put("Minification", p0); }
-        public void setWrapS(android.renderscript.Sampler.Value p0) { megletProps.put("WrapS", p0); }
-        public void setWrapT(android.renderscript.Sampler.Value p0) { megletProps.put("WrapT", p0); }
+        public void setAnisotropy(float p0) { meglerProps.put("Anisotropy", Float.valueOf(p0)); }
+        public void setMagnification(android.renderscript.Sampler.Value p0) { meglerProps.put("Magnification", p0); }
+        public void setMinification(android.renderscript.Sampler.Value p0) { meglerProps.put("Minification", p0); }
+        public void setWrapS(android.renderscript.Sampler.Value p0) { meglerProps.put("WrapS", p0); }
+        public void setWrapT(android.renderscript.Sampler.Value p0) { meglerProps.put("WrapT", p0); }
         Builder() { this((android.renderscript.RenderScript) null); }
     }
     public enum Value {

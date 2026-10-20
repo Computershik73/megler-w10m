@@ -3,21 +3,21 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MenstruationFlowRecord extends android.health.connect.datatypes.InstantRecord {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public int getFlow() { return (megletProps.get("Flow") instanceof Integer ? (Integer) megletProps.get("Flow") : 0); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public int getFlow() { return (meglerProps.get("Flow") instanceof Integer ? (Integer) meglerProps.get("Flow") : 0); }
     public android.health.connect.internal.datatypes.MenstruationFlowRecordInternal toRecordInternal() { return null; }
     protected MenstruationFlowRecord() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.health.connect.datatypes.Metadata p0, java.time.Instant p1, int p2) {}
-        public android.health.connect.datatypes.MenstruationFlowRecord build() { android.health.connect.datatypes.MenstruationFlowRecord x = new android.health.connect.datatypes.MenstruationFlowRecord(); x.megletProps.putAll(megletProps); return x; }
+        public android.health.connect.datatypes.MenstruationFlowRecord build() { android.health.connect.datatypes.MenstruationFlowRecord x = new android.health.connect.datatypes.MenstruationFlowRecord(); x.meglerProps.putAll(meglerProps); return x; }
         public android.health.connect.datatypes.MenstruationFlowRecord buildWithoutValidation() { return null; }
         public android.health.connect.datatypes.MenstruationFlowRecord.Builder clearZoneOffset() { return this; }
-        public android.health.connect.datatypes.MenstruationFlowRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { megletProps.put("ZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.MenstruationFlowRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("ZoneOffset", p0); return this; }
         Builder() { this((android.health.connect.datatypes.Metadata) null, (java.time.Instant) null, (int) 0); }
     }
     public static final class MenstruationFlowType {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int FLOW_HEAVY = 3;
         public static final int FLOW_LIGHT = 1;
         public static final int FLOW_MEDIUM = 2;

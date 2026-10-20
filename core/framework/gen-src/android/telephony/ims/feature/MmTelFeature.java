@@ -3,7 +3,7 @@ package android.telephony.ims.feature;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class MmTelFeature extends android.telephony.ims.feature.ImsFeature {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int AUDIO_HANDLER_ANDROID = 0;
     public static final int AUDIO_HANDLER_BASEBAND = 1;
     public static final int EPS_FALLBACK_REASON_INVALID = -1;
@@ -30,12 +30,12 @@ public abstract class MmTelFeature extends android.telephony.ims.feature.ImsFeat
     public void clearMediaThreshold(int p0) {}
     public android.telephony.ims.ImsCallProfile createCallProfile(int p0, int p1) { return null; }
     public android.telephony.ims.stub.ImsCallSessionImplBase createCallSession(android.telephony.ims.ImsCallProfile p0) { return null; }
-    public android.telephony.ims.aidl.IImsMmTelFeature getBinder() { return (android.telephony.ims.aidl.IImsMmTelFeature) megletProps.get("Binder"); }
-    public android.telephony.ims.stub.ImsEcbmImplBase getEcbm() { return (android.telephony.ims.stub.ImsEcbmImplBase) megletProps.get("Ecbm"); }
-    public android.telephony.ims.stub.ImsSmsImplBase getImsSmsImpl() { return (android.telephony.ims.stub.ImsSmsImplBase) megletProps.get("ImsSmsImpl"); }
-    public android.telephony.ims.stub.ImsMultiEndpointImplBase getMultiEndpoint() { return (android.telephony.ims.stub.ImsMultiEndpointImplBase) megletProps.get("MultiEndpoint"); }
-    public android.telephony.ims.stub.ImsSmsImplBase getSmsImplementation() { return (android.telephony.ims.stub.ImsSmsImplBase) megletProps.get("SmsImplementation"); }
-    public android.telephony.ims.stub.ImsUtImplBase getUt() { return (android.telephony.ims.stub.ImsUtImplBase) megletProps.get("Ut"); }
+    public android.telephony.ims.aidl.IImsMmTelFeature getBinder() { return (android.telephony.ims.aidl.IImsMmTelFeature) meglerProps.get("Binder"); }
+    public android.telephony.ims.stub.ImsEcbmImplBase getEcbm() { return (android.telephony.ims.stub.ImsEcbmImplBase) meglerProps.get("Ecbm"); }
+    public android.telephony.ims.stub.ImsSmsImplBase getImsSmsImpl() { return (android.telephony.ims.stub.ImsSmsImplBase) meglerProps.get("ImsSmsImpl"); }
+    public android.telephony.ims.stub.ImsMultiEndpointImplBase getMultiEndpoint() { return (android.telephony.ims.stub.ImsMultiEndpointImplBase) meglerProps.get("MultiEndpoint"); }
+    public android.telephony.ims.stub.ImsSmsImplBase getSmsImplementation() { return (android.telephony.ims.stub.ImsSmsImplBase) meglerProps.get("SmsImplementation"); }
+    public android.telephony.ims.stub.ImsUtImplBase getUt() { return (android.telephony.ims.stub.ImsUtImplBase) meglerProps.get("Ut"); }
     public void modifyImsTrafficSession(int p0, android.telephony.ims.feature.ImsTrafficSessionCallback p1) {}
     public void notifyCapabilitiesStatusChanged(android.telephony.ims.feature.MmTelFeature.MmTelCapabilities p0) {}
     public android.telephony.ims.ImsCallSessionListener notifyIncomingCall(android.telephony.ims.stub.ImsCallSessionImplBase p0, java.lang.String p1, android.os.Bundle p2) { return null; }
@@ -52,22 +52,22 @@ public abstract class MmTelFeature extends android.telephony.ims.feature.ImsFeat
     public boolean queryCapabilityConfiguration(int p0, int p1) { return false; }
     public android.telephony.ims.feature.MmTelFeature.MmTelCapabilities queryCapabilityStatus() { return null; }
     public android.telephony.ims.MediaQualityStatus queryMediaQualityStatus(int p0) { return null; }
-    public void setCallAudioHandler(int p0) { megletProps.put("CallAudioHandler", Integer.valueOf(p0)); }
-    public void setDefaultExecutor(java.util.concurrent.Executor p0) { megletProps.put("DefaultExecutor", p0); }
+    public void setCallAudioHandler(int p0) { meglerProps.put("CallAudioHandler", Integer.valueOf(p0)); }
+    public void setDefaultExecutor(java.util.concurrent.Executor p0) { meglerProps.put("DefaultExecutor", p0); }
     public void setMediaThreshold(int p0, android.telephony.ims.MediaThreshold p1) {}
-    public void setTerminalBasedCallWaitingStatus(boolean p0) { megletProps.put("TerminalBasedCallWaitingStatus", Boolean.valueOf(p0)); }
+    public void setTerminalBasedCallWaitingStatus(boolean p0) { meglerProps.put("TerminalBasedCallWaitingStatus", Boolean.valueOf(p0)); }
     public void setUiTtyMode(int p0, android.os.Message p1) {}
     public int shouldProcessCall(java.lang.String[] p0) { return 0; }
     public void startImsTrafficSession(int p0, int p1, int p2, java.util.concurrent.Executor p3, android.telephony.ims.feature.ImsTrafficSessionCallback p4) {}
     public void stopImsTrafficSession(android.telephony.ims.feature.ImsTrafficSessionCallback p0) {}
     public void triggerEpsFallback(int p0) {}
     public static class ImsTrafficSessionCallbackWrapper {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int INVALID_TOKEN = -1;
         protected ImsTrafficSessionCallbackWrapper() {}
     }
     public static abstract class Listener extends android.telephony.ims.aidl.IImsMmTelListener.Stub {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Listener() { super(); }
         public void onAudioModeIsVoipChanged(int p0) {}
         public void onMediaQualityStatusChanged(android.telephony.ims.MediaQualityStatus p0) {}
@@ -79,7 +79,7 @@ public abstract class MmTelFeature extends android.telephony.ims.feature.ImsFeat
         public void onVoiceMessageCountUpdate(int p0) {}
     }
     public static abstract class MmTelCapabilities extends android.telephony.ims.feature.ImsFeature.Capabilities {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int CAPABILITY_TYPE_CALL_COMPOSER = 16;
         public static final int CAPABILITY_TYPE_CALL_COMPOSER_BUSINESS_ONLY = 32;
         public static final int CAPABILITY_TYPE_MAX = 33;

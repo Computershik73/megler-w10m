@@ -3,17 +3,17 @@ package android.se.omapi;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SEService {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_SECURE_ELEMENT_STATE_CHANGED = "android.se.omapi.action.SECURE_ELEMENT_STATE_CHANGED";
     public static final java.lang.String EXTRA_READER_NAME = "android.se.omapi.extra.READER_NAME";
     public static final java.lang.String EXTRA_READER_STATE = "android.se.omapi.extra.READER_STATE";
     public static final int IO_ERROR = 1;
     public static final int NO_SUCH_ELEMENT_ERROR = 2;
     public SEService(android.content.Context p0, java.util.concurrent.Executor p1, android.se.omapi.SEService.OnConnectedListener p2) {}
-    public android.se.omapi.Reader[] getReaders() { return (android.se.omapi.Reader[]) megletProps.get("Readers"); }
+    public android.se.omapi.Reader[] getReaders() { return (android.se.omapi.Reader[]) meglerProps.get("Readers"); }
     public android.se.omapi.Reader getUiccReader(int p0) { return null; }
-    public java.lang.String getVersion() { return (java.lang.String) megletProps.get("Version"); }
-    public boolean isConnected() { return (megletProps.get("Connected") instanceof Boolean ? (Boolean) megletProps.get("Connected") : false); }
+    public java.lang.String getVersion() { return (java.lang.String) meglerProps.get("Version"); }
+    public boolean isConnected() { return (meglerProps.get("Connected") instanceof Boolean ? (Boolean) meglerProps.get("Connected") : false); }
     public void shutdown() {}
     SEService() { this((android.content.Context) null, (java.util.concurrent.Executor) null, (android.se.omapi.SEService.OnConnectedListener) null); }
     public interface OnConnectedListener {

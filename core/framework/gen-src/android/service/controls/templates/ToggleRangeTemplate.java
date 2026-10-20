@@ -3,12 +3,12 @@ package android.service.controls.templates;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ToggleRangeTemplate extends android.service.controls.templates.ControlTemplate {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ToggleRangeTemplate(java.lang.String p0, android.service.controls.templates.ControlButton p1, android.service.controls.templates.RangeTemplate p2) { super(); }
     public ToggleRangeTemplate(java.lang.String p0, boolean p1, java.lang.CharSequence p2, android.service.controls.templates.RangeTemplate p3) { super(); }
-    public java.lang.CharSequence getActionDescription() { return (java.lang.CharSequence) megletProps.get("ActionDescription"); }
-    public android.service.controls.templates.RangeTemplate getRange() { return (android.service.controls.templates.RangeTemplate) megletProps.get("Range"); }
-    public int getTemplateType() { return (megletProps.get("TemplateType") instanceof Integer ? (Integer) megletProps.get("TemplateType") : 0); }
-    public boolean isChecked() { return (megletProps.get("Checked") instanceof Boolean ? (Boolean) megletProps.get("Checked") : false); }
+    public java.lang.CharSequence getActionDescription() { return (java.lang.CharSequence) meglerProps.get("ActionDescription"); }
+    public android.service.controls.templates.RangeTemplate getRange() { return (android.service.controls.templates.RangeTemplate) meglerProps.get("Range"); }
+    public int getTemplateType() { return (meglerProps.get("TemplateType") instanceof Integer ? (Integer) meglerProps.get("TemplateType") : 0); }
+    public boolean isChecked() { return (meglerProps.get("Checked") instanceof Boolean ? (Boolean) meglerProps.get("Checked") : false); }
     ToggleRangeTemplate() { this((java.lang.String) null, (android.service.controls.templates.ControlButton) null, (android.service.controls.templates.RangeTemplate) null); }
 }

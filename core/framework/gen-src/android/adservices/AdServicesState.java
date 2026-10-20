@@ -3,7 +3,7 @@ package android.adservices;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AdServicesState {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static boolean isAdServicesStateEnabled() { return false; }
     protected AdServicesState() {}
 }

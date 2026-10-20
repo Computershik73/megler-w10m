@@ -3,13 +3,13 @@ package android.app.admin;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DnsEvent extends android.app.admin.NetworkEvent implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public DnsEvent(java.lang.String p0, java.lang.String[] p1, int p2, java.lang.String p3, long p4) { super(); }
     public int describeContents() { return 0; }
-    public java.lang.String getHostname() { return (java.lang.String) megletProps.get("Hostname"); }
-    public java.util.List getInetAddresses() { return (megletProps.get("InetAddresses") != null ? (java.util.List) megletProps.get("InetAddresses") : new java.util.ArrayList()); }
-    public int getTotalResolvedAddressCount() { return (megletProps.get("TotalResolvedAddressCount") instanceof Integer ? (Integer) megletProps.get("TotalResolvedAddressCount") : 0); }
+    public java.lang.String getHostname() { return (java.lang.String) meglerProps.get("Hostname"); }
+    public java.util.List getInetAddresses() { return (meglerProps.get("InetAddresses") != null ? (java.util.List) meglerProps.get("InetAddresses") : new java.util.ArrayList()); }
+    public int getTotalResolvedAddressCount() { return (meglerProps.get("TotalResolvedAddressCount") instanceof Integer ? (Integer) meglerProps.get("TotalResolvedAddressCount") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     DnsEvent() { this((java.lang.String) null, (java.lang.String[]) null, (int) 0, (java.lang.String) null, (long) 0L); }
 }

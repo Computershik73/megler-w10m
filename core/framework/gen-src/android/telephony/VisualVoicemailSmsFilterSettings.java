@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class VisualVoicemailSmsFilterSettings implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String DEFAULT_CLIENT_PREFIX = "//VVM";
     public static final int DEFAULT_DESTINATION_PORT = -1;
@@ -20,12 +20,12 @@ public final class VisualVoicemailSmsFilterSettings implements android.os.Parcel
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected VisualVoicemailSmsFilterSettings() {}
     public static class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.telephony.VisualVoicemailSmsFilterSettings build() { android.telephony.VisualVoicemailSmsFilterSettings x = new android.telephony.VisualVoicemailSmsFilterSettings(); x.megletProps.putAll(megletProps); return x; }
-        public android.telephony.VisualVoicemailSmsFilterSettings.Builder setClientPrefix(java.lang.String p0) { megletProps.put("ClientPrefix", p0); return this; }
-        public android.telephony.VisualVoicemailSmsFilterSettings.Builder setDestinationPort(int p0) { megletProps.put("DestinationPort", Integer.valueOf(p0)); return this; }
-        public android.telephony.VisualVoicemailSmsFilterSettings.Builder setOriginatingNumbers(java.util.List p0) { megletProps.put("OriginatingNumbers", p0); return this; }
-        public android.telephony.VisualVoicemailSmsFilterSettings.Builder setPackageName(java.lang.String p0) { megletProps.put("PackageName", p0); return this; }
+        public android.telephony.VisualVoicemailSmsFilterSettings build() { android.telephony.VisualVoicemailSmsFilterSettings x = new android.telephony.VisualVoicemailSmsFilterSettings(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.telephony.VisualVoicemailSmsFilterSettings.Builder setClientPrefix(java.lang.String p0) { meglerProps.put("ClientPrefix", p0); return this; }
+        public android.telephony.VisualVoicemailSmsFilterSettings.Builder setDestinationPort(int p0) { meglerProps.put("DestinationPort", Integer.valueOf(p0)); return this; }
+        public android.telephony.VisualVoicemailSmsFilterSettings.Builder setOriginatingNumbers(java.util.List p0) { meglerProps.put("OriginatingNumbers", p0); return this; }
+        public android.telephony.VisualVoicemailSmsFilterSettings.Builder setPackageName(java.lang.String p0) { meglerProps.put("PackageName", p0); return this; }
     }
 }

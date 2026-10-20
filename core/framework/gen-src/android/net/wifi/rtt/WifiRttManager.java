@@ -3,7 +3,7 @@ package android.net.wifi.rtt;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class WifiRttManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_WIFI_RTT_STATE_CHANGED = "android.net.wifi.rtt.action.WIFI_RTT_STATE_CHANGED";
     public static final java.lang.String CHARACTERISTICS_KEY_BOOLEAN_LCI = "key_lci";
     public static final java.lang.String CHARACTERISTICS_KEY_BOOLEAN_LCR = "key_lcr";
@@ -15,8 +15,8 @@ public class WifiRttManager {
     public static final java.lang.String CHARACTERISTICS_KEY_INT_MAX_SUPPORTED_SECURE_HE_LTF_PROTO_VERSION = "key_max_supported_secure_he_ltf_proto_ver";
     public WifiRttManager(android.content.Context p0, android.net.wifi.rtt.IWifiRttManager p1) {}
     public void cancelRanging(android.os.WorkSource p0) {}
-    public android.os.Bundle getRttCharacteristics() { return (android.os.Bundle) megletProps.get("RttCharacteristics"); }
-    public boolean isAvailable() { return (megletProps.get("Available") instanceof Boolean ? (Boolean) megletProps.get("Available") : false); }
+    public android.os.Bundle getRttCharacteristics() { return (android.os.Bundle) meglerProps.get("RttCharacteristics"); }
+    public boolean isAvailable() { return (meglerProps.get("Available") instanceof Boolean ? (Boolean) meglerProps.get("Available") : false); }
     public void startRanging(android.net.wifi.rtt.RangingRequest p0, java.util.concurrent.Executor p1, android.net.wifi.rtt.RangingResultCallback p2) {}
     public void startRanging(android.os.WorkSource p0, android.net.wifi.rtt.RangingRequest p1, java.util.concurrent.Executor p2, android.net.wifi.rtt.RangingResultCallback p3) {}
     WifiRttManager() { this((android.content.Context) null, (android.net.wifi.rtt.IWifiRttManager) null); }

@@ -3,7 +3,7 @@ package android.telephony.ims;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ProvisioningManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_RCS_SINGLE_REGISTRATION_CAPABILITY_UPDATE = "android.telephony.ims.action.RCS_SINGLE_REGISTRATION_CAPABILITY_UPDATE";
     public static final java.lang.String EXTRA_STATUS = "android.telephony.ims.extra.STATUS";
     public static final java.lang.String EXTRA_SUBSCRIPTION_ID = "android.telephony.ims.extra.SUBSCRIPTION_ID";
@@ -97,7 +97,7 @@ public class ProvisioningManager {
     public boolean getRcsProvisioningStatusForCapability(int p0, int p1) { return false; }
     public boolean isProvisioningRequiredForCapability(int p0, int p1) { return false; }
     public boolean isRcsProvisioningRequiredForCapability(int p0, int p1) { return false; }
-    public boolean isRcsVolteSingleRegistrationCapable() { return (megletProps.get("RcsVolteSingleRegistrationCapable") instanceof Boolean ? (Boolean) megletProps.get("RcsVolteSingleRegistrationCapable") : false); }
+    public boolean isRcsVolteSingleRegistrationCapable() { return (meglerProps.get("RcsVolteSingleRegistrationCapable") instanceof Boolean ? (Boolean) meglerProps.get("RcsVolteSingleRegistrationCapable") : false); }
     public void notifyRcsAutoConfigurationReceived(byte[] p0, boolean p1) {}
     public void registerFeatureProvisioningChangedCallback(java.util.concurrent.Executor p0, android.telephony.ims.ProvisioningManager.FeatureProvisioningCallback p1) {}
     public void registerProvisioningChangedCallback(java.util.concurrent.Executor p0, android.telephony.ims.ProvisioningManager.Callback p1) {}
@@ -105,7 +105,7 @@ public class ProvisioningManager {
     public int setProvisioningIntValue(int p0, int p1) { return 0; }
     public void setProvisioningStatusForCapability(int p0, int p1, boolean p2) {}
     public int setProvisioningStringValue(int p0, java.lang.String p1) { return 0; }
-    public void setRcsClientConfiguration(android.telephony.ims.RcsClientConfiguration p0) { megletProps.put("RcsClientConfiguration", p0); }
+    public void setRcsClientConfiguration(android.telephony.ims.RcsClientConfiguration p0) { meglerProps.put("RcsClientConfiguration", p0); }
     public void setRcsProvisioningStatusForCapability(int p0, int p1, boolean p2) {}
     public void setRcsProvisioningStatusForCapability(int p0, boolean p1) {}
     public void triggerRcsReconfiguration() {}
@@ -114,30 +114,30 @@ public class ProvisioningManager {
     public void unregisterRcsProvisioningCallback(android.telephony.ims.ProvisioningManager.RcsProvisioningCallback p0) {}
     ProvisioningManager() { this((int) 0); }
     public static class Callback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Callback() {}
-        public android.telephony.ims.aidl.IImsConfigCallback getBinder() { return (android.telephony.ims.aidl.IImsConfigCallback) megletProps.get("Binder"); }
+        public android.telephony.ims.aidl.IImsConfigCallback getBinder() { return (android.telephony.ims.aidl.IImsConfigCallback) meglerProps.get("Binder"); }
         public void onProvisioningIntChanged(int p0, int p1) {}
         public void onProvisioningStringChanged(int p0, java.lang.String p1) {}
-        public void setExecutor(java.util.concurrent.Executor p0) { megletProps.put("Executor", p0); }
+        public void setExecutor(java.util.concurrent.Executor p0) { meglerProps.put("Executor", p0); }
     }
     public static abstract class FeatureProvisioningCallback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public FeatureProvisioningCallback() {}
-        public android.telephony.ims.aidl.IFeatureProvisioningCallback getBinder() { return (android.telephony.ims.aidl.IFeatureProvisioningCallback) megletProps.get("Binder"); }
+        public android.telephony.ims.aidl.IFeatureProvisioningCallback getBinder() { return (android.telephony.ims.aidl.IFeatureProvisioningCallback) meglerProps.get("Binder"); }
         public abstract void onFeatureProvisioningChanged(int p0, int p1, boolean p2);
         public abstract void onRcsFeatureProvisioningChanged(int p0, int p1, boolean p2);
-        public void setExecutor(java.util.concurrent.Executor p0) { megletProps.put("Executor", p0); }
+        public void setExecutor(java.util.concurrent.Executor p0) { meglerProps.put("Executor", p0); }
     }
     public static class RcsProvisioningCallback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public RcsProvisioningCallback() {}
-        public android.telephony.ims.aidl.IRcsConfigCallback getBinder() { return (android.telephony.ims.aidl.IRcsConfigCallback) megletProps.get("Binder"); }
+        public android.telephony.ims.aidl.IRcsConfigCallback getBinder() { return (android.telephony.ims.aidl.IRcsConfigCallback) meglerProps.get("Binder"); }
         public void onAutoConfigurationErrorReceived(int p0, java.lang.String p1) {}
         public void onConfigurationChanged(byte[] p0) {}
         public void onConfigurationReset() {}
         public void onPreProvisioningReceived(byte[] p0) {}
         public void onRemoved() {}
-        public void setExecutor(java.util.concurrent.Executor p0) { megletProps.put("Executor", p0); }
+        public void setExecutor(java.util.concurrent.Executor p0) { meglerProps.put("Executor", p0); }
     }
 }

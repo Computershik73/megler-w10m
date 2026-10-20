@@ -3,7 +3,7 @@ package android.service.controls.templates;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class ControlTemplate {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.service.controls.templates.ControlTemplate NO_TEMPLATE;
     public static final int TYPE_ERROR = -1;
     public static final int TYPE_NO_TEMPLATE = 0;
@@ -15,7 +15,7 @@ public abstract class ControlTemplate {
     public static final int TYPE_TOGGLE_RANGE = 6;
     public static android.service.controls.templates.ControlTemplate getErrorTemplate() { return null; }
     public static android.service.controls.templates.ControlTemplate getNoTemplateObject() { return null; }
-    public java.lang.String getTemplateId() { return (java.lang.String) megletProps.get("TemplateId"); }
+    public java.lang.String getTemplateId() { return (java.lang.String) meglerProps.get("TemplateId"); }
     public abstract int getTemplateType();
     public void prepareTemplateForBinder(android.content.Context p0) {}
     protected ControlTemplate() {}

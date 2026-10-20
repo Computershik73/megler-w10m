@@ -3,14 +3,14 @@ package android.provider;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SimPhonebookContract {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String AUTHORITY = "com.android.simphonebook";
     public static android.net.Uri AUTHORITY_URI;
     public static final java.lang.String SUBSCRIPTION_ID_PATH_SEGMENT = "subid";
     public static java.lang.String getEfUriPath(int p0) { return null; }
     protected SimPhonebookContract() {}
     public static final class ElementaryFiles {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/sim-elementary-file";
         public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/sim-elementary-file";
         public static android.net.Uri CONTENT_URI;
@@ -33,7 +33,7 @@ public final class SimPhonebookContract {
         protected ElementaryFiles() {}
     }
     public static final class SimRecords {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/sim-contact_v2";
         public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/sim-contact_v2";
         public static final java.lang.String ELEMENTARY_FILE_TYPE = "elementary_file_type";

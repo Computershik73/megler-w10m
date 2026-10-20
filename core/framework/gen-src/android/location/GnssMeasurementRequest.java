@@ -3,24 +3,24 @@ package android.location;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GnssMeasurementRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int PASSIVE_INTERVAL = 2147483647;
     public int describeContents() { return 0; }
-    public int getIntervalMillis() { return (megletProps.get("IntervalMillis") instanceof Integer ? (Integer) megletProps.get("IntervalMillis") : 0); }
-    public android.os.WorkSource getWorkSource() { return (android.os.WorkSource) megletProps.get("WorkSource"); }
-    public boolean isCorrelationVectorOutputsEnabled() { return (megletProps.get("CorrelationVectorOutputsEnabled") instanceof Boolean ? (Boolean) megletProps.get("CorrelationVectorOutputsEnabled") : false); }
-    public boolean isFullTracking() { return (megletProps.get("FullTracking") instanceof Boolean ? (Boolean) megletProps.get("FullTracking") : false); }
+    public int getIntervalMillis() { return (meglerProps.get("IntervalMillis") instanceof Integer ? (Integer) meglerProps.get("IntervalMillis") : 0); }
+    public android.os.WorkSource getWorkSource() { return (android.os.WorkSource) meglerProps.get("WorkSource"); }
+    public boolean isCorrelationVectorOutputsEnabled() { return (meglerProps.get("CorrelationVectorOutputsEnabled") instanceof Boolean ? (Boolean) meglerProps.get("CorrelationVectorOutputsEnabled") : false); }
+    public boolean isFullTracking() { return (meglerProps.get("FullTracking") instanceof Boolean ? (Boolean) meglerProps.get("FullTracking") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected GnssMeasurementRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.location.GnssMeasurementRequest p0) {}
-        public android.location.GnssMeasurementRequest build() { android.location.GnssMeasurementRequest x = new android.location.GnssMeasurementRequest(); x.megletProps.putAll(megletProps); return x; }
-        public android.location.GnssMeasurementRequest.Builder setCorrelationVectorOutputsEnabled(boolean p0) { megletProps.put("CorrelationVectorOutputsEnabled", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssMeasurementRequest.Builder setFullTracking(boolean p0) { megletProps.put("FullTracking", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssMeasurementRequest.Builder setIntervalMillis(int p0) { megletProps.put("IntervalMillis", Integer.valueOf(p0)); return this; }
-        public android.location.GnssMeasurementRequest.Builder setWorkSource(android.os.WorkSource p0) { megletProps.put("WorkSource", p0); return this; }
+        public android.location.GnssMeasurementRequest build() { android.location.GnssMeasurementRequest x = new android.location.GnssMeasurementRequest(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.location.GnssMeasurementRequest.Builder setCorrelationVectorOutputsEnabled(boolean p0) { meglerProps.put("CorrelationVectorOutputsEnabled", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssMeasurementRequest.Builder setFullTracking(boolean p0) { meglerProps.put("FullTracking", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssMeasurementRequest.Builder setIntervalMillis(int p0) { meglerProps.put("IntervalMillis", Integer.valueOf(p0)); return this; }
+        public android.location.GnssMeasurementRequest.Builder setWorkSource(android.os.WorkSource p0) { meglerProps.put("WorkSource", p0); return this; }
     }
 }

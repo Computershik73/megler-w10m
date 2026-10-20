@@ -3,12 +3,12 @@ package android.view.inputmethod;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class InlineSuggestionsResponse implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public InlineSuggestionsResponse(java.util.List p0) {}
     public static android.view.inputmethod.InlineSuggestionsResponse newInlineSuggestionsResponse(java.util.List p0) { return new InlineSuggestionsResponse(); }
     public int describeContents() { return 0; }
-    public java.util.List getInlineSuggestions() { return (megletProps.get("InlineSuggestions") != null ? (java.util.List) megletProps.get("InlineSuggestions") : new java.util.ArrayList()); }
+    public java.util.List getInlineSuggestions() { return (meglerProps.get("InlineSuggestions") != null ? (java.util.List) meglerProps.get("InlineSuggestions") : new java.util.ArrayList()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     InlineSuggestionsResponse() { this((java.util.List) null); }
 }

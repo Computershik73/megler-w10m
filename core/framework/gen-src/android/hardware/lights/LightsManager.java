@@ -3,7 +3,7 @@ package android.hardware.lights;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class LightsManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int LIGHT_TYPE_MICROPHONE = 8;
     public LightsManager() {}
     public abstract android.hardware.lights.LightState getLightState(android.hardware.lights.Light p0);
@@ -11,10 +11,10 @@ public abstract class LightsManager {
     public abstract android.hardware.lights.LightsManager.LightsSession openSession();
     public abstract android.hardware.lights.LightsManager.LightsSession openSession(int p0);
     public static abstract class LightsSession implements java.lang.AutoCloseable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public LightsSession() {}
         public abstract void close();
-        public android.os.IBinder getToken() { return (android.os.IBinder) megletProps.get("Token"); }
+        public android.os.IBinder getToken() { return (android.os.IBinder) meglerProps.get("Token"); }
         public abstract void requestLights(android.hardware.lights.LightsRequest p0);
     }
 }

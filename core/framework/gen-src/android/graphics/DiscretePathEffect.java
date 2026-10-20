@@ -3,7 +3,7 @@ package android.graphics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DiscretePathEffect extends android.graphics.PathEffect {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public DiscretePathEffect(float p0, float p1) { super(); }
     DiscretePathEffect() { this((float) 0f, (float) 0f); }
 }

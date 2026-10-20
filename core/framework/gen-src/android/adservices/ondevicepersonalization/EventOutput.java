@@ -3,13 +3,13 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class EventOutput {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public android.adservices.ondevicepersonalization.EventLogRecord getEventLogRecord() { return (android.adservices.ondevicepersonalization.EventLogRecord) megletProps.get("EventLogRecord"); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public android.adservices.ondevicepersonalization.EventLogRecord getEventLogRecord() { return (android.adservices.ondevicepersonalization.EventLogRecord) meglerProps.get("EventLogRecord"); }
     protected EventOutput() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.adservices.ondevicepersonalization.EventOutput build() { android.adservices.ondevicepersonalization.EventOutput x = new android.adservices.ondevicepersonalization.EventOutput(); x.megletProps.putAll(megletProps); return x; }
-        public android.adservices.ondevicepersonalization.EventOutput.Builder setEventLogRecord(android.adservices.ondevicepersonalization.EventLogRecord p0) { megletProps.put("EventLogRecord", p0); return this; }
+        public android.adservices.ondevicepersonalization.EventOutput build() { android.adservices.ondevicepersonalization.EventOutput x = new android.adservices.ondevicepersonalization.EventOutput(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.adservices.ondevicepersonalization.EventOutput.Builder setEventLogRecord(android.adservices.ondevicepersonalization.EventLogRecord p0) { meglerProps.put("EventLogRecord", p0); return this; }
     }
 }

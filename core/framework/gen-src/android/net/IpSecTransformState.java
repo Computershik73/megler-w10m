@@ -3,27 +3,27 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class IpSecTransformState implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public IpSecTransformState(android.os.Parcel p0) {}
     public int describeContents() { return 0; }
-    public long getByteCount() { return (megletProps.get("ByteCount") instanceof Long ? (Long) megletProps.get("ByteCount") : 0L); }
-    public long getPacketCount() { return (megletProps.get("PacketCount") instanceof Long ? (Long) megletProps.get("PacketCount") : 0L); }
-    public byte[] getReplayBitmap() { return (byte[]) megletProps.get("ReplayBitmap"); }
-    public long getRxHighestSequenceNumber() { return (megletProps.get("RxHighestSequenceNumber") instanceof Long ? (Long) megletProps.get("RxHighestSequenceNumber") : 0L); }
-    public long getTimestampMillis() { return (megletProps.get("TimestampMillis") instanceof Long ? (Long) megletProps.get("TimestampMillis") : 0L); }
-    public long getTxHighestSequenceNumber() { return (megletProps.get("TxHighestSequenceNumber") instanceof Long ? (Long) megletProps.get("TxHighestSequenceNumber") : 0L); }
+    public long getByteCount() { return (meglerProps.get("ByteCount") instanceof Long ? (Long) meglerProps.get("ByteCount") : 0L); }
+    public long getPacketCount() { return (meglerProps.get("PacketCount") instanceof Long ? (Long) meglerProps.get("PacketCount") : 0L); }
+    public byte[] getReplayBitmap() { return (byte[]) meglerProps.get("ReplayBitmap"); }
+    public long getRxHighestSequenceNumber() { return (meglerProps.get("RxHighestSequenceNumber") instanceof Long ? (Long) meglerProps.get("RxHighestSequenceNumber") : 0L); }
+    public long getTimestampMillis() { return (meglerProps.get("TimestampMillis") instanceof Long ? (Long) meglerProps.get("TimestampMillis") : 0L); }
+    public long getTxHighestSequenceNumber() { return (meglerProps.get("TxHighestSequenceNumber") instanceof Long ? (Long) meglerProps.get("TxHighestSequenceNumber") : 0L); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     IpSecTransformState() { this((android.os.Parcel) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.net.IpSecTransformState build() { android.net.IpSecTransformState x = new android.net.IpSecTransformState(); x.megletProps.putAll(megletProps); return x; }
-        public android.net.IpSecTransformState.Builder setByteCount(long p0) { megletProps.put("ByteCount", Long.valueOf(p0)); return this; }
-        public android.net.IpSecTransformState.Builder setPacketCount(long p0) { megletProps.put("PacketCount", Long.valueOf(p0)); return this; }
-        public android.net.IpSecTransformState.Builder setReplayBitmap(byte[] p0) { megletProps.put("ReplayBitmap", p0); return this; }
-        public android.net.IpSecTransformState.Builder setRxHighestSequenceNumber(long p0) { megletProps.put("RxHighestSequenceNumber", Long.valueOf(p0)); return this; }
-        public android.net.IpSecTransformState.Builder setTimestampMillis(long p0) { megletProps.put("TimestampMillis", Long.valueOf(p0)); return this; }
-        public android.net.IpSecTransformState.Builder setTxHighestSequenceNumber(long p0) { megletProps.put("TxHighestSequenceNumber", Long.valueOf(p0)); return this; }
+        public android.net.IpSecTransformState build() { android.net.IpSecTransformState x = new android.net.IpSecTransformState(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.net.IpSecTransformState.Builder setByteCount(long p0) { meglerProps.put("ByteCount", Long.valueOf(p0)); return this; }
+        public android.net.IpSecTransformState.Builder setPacketCount(long p0) { meglerProps.put("PacketCount", Long.valueOf(p0)); return this; }
+        public android.net.IpSecTransformState.Builder setReplayBitmap(byte[] p0) { meglerProps.put("ReplayBitmap", p0); return this; }
+        public android.net.IpSecTransformState.Builder setRxHighestSequenceNumber(long p0) { meglerProps.put("RxHighestSequenceNumber", Long.valueOf(p0)); return this; }
+        public android.net.IpSecTransformState.Builder setTimestampMillis(long p0) { meglerProps.put("TimestampMillis", Long.valueOf(p0)); return this; }
+        public android.net.IpSecTransformState.Builder setTxHighestSequenceNumber(long p0) { meglerProps.put("TxHighestSequenceNumber", Long.valueOf(p0)); return this; }
     }
 }

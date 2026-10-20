@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AudioDescriptor implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int STANDARD_EDID = 1;
     public static final int STANDARD_NONE = 0;
@@ -11,9 +11,9 @@ public class AudioDescriptor implements android.os.Parcelable {
     public static final int STANDARD_VSADB = 3;
     public AudioDescriptor(int p0, int p1, byte[] p2) {}
     public int describeContents() { return 0; }
-    public byte[] getDescriptor() { return (byte[]) megletProps.get("Descriptor"); }
-    public int getEncapsulationType() { return (megletProps.get("EncapsulationType") instanceof Integer ? (Integer) megletProps.get("EncapsulationType") : 0); }
-    public int getStandard() { return (megletProps.get("Standard") instanceof Integer ? (Integer) megletProps.get("Standard") : 0); }
+    public byte[] getDescriptor() { return (byte[]) meglerProps.get("Descriptor"); }
+    public int getEncapsulationType() { return (meglerProps.get("EncapsulationType") instanceof Integer ? (Integer) meglerProps.get("EncapsulationType") : 0); }
+    public int getStandard() { return (meglerProps.get("Standard") instanceof Integer ? (Integer) meglerProps.get("Standard") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     AudioDescriptor() { this((int) 0, (int) 0, (byte[]) null); }
 }

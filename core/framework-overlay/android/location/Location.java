@@ -1,6 +1,6 @@
 // Overlay of core/framework/gen-src/android/location/Location.java (tools/build-framework.sh).
 // It differs in being a location: the original is the generated stub, whose copy constructor, set(), has*(), distances and
-// parcel did nothing, so a fix handed to an app (meglet/LocationService.java) lost all but what a getter could read back. Here,
+// parcel did nothing, so a fix handed to an app (megler/LocationService.java) lost all but what a getter could read back. Here,
 // as Android's: each field with whether it is there, copied, compared, parcelled; distanceBetween, distanceTo and bearingTo
 // on the WGS 84 ellipsoid (Vincenty's inverse formula, as Android computes them); convert() both ways. Every member of the
 // stub is here, with Android's behaviour.

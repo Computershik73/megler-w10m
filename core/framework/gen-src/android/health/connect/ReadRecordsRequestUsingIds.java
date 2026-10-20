@@ -3,16 +3,16 @@ package android.health.connect;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ReadRecordsRequestUsingIds extends android.health.connect.ReadRecordsRequest {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public java.util.List getRecordIdFilters() { return (megletProps.get("RecordIdFilters") != null ? (java.util.List) megletProps.get("RecordIdFilters") : new java.util.ArrayList()); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public java.util.List getRecordIdFilters() { return (meglerProps.get("RecordIdFilters") != null ? (java.util.List) meglerProps.get("RecordIdFilters") : new java.util.ArrayList()); }
     public android.health.connect.aidl.ReadRecordsRequestParcel toReadRecordsRequestParcel() { return null; }
     protected ReadRecordsRequestUsingIds() { super((java.lang.Class) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(java.lang.Class p0) {}
         public android.health.connect.ReadRecordsRequestUsingIds.Builder addClientRecordId(java.lang.String p0) { return this; }
         public android.health.connect.ReadRecordsRequestUsingIds.Builder addId(java.lang.String p0) { return this; }
-        public android.health.connect.ReadRecordsRequestUsingIds build() { android.health.connect.ReadRecordsRequestUsingIds x = new android.health.connect.ReadRecordsRequestUsingIds(); x.megletProps.putAll(megletProps); return x; }
+        public android.health.connect.ReadRecordsRequestUsingIds build() { android.health.connect.ReadRecordsRequestUsingIds x = new android.health.connect.ReadRecordsRequestUsingIds(); x.meglerProps.putAll(meglerProps); return x; }
         Builder() { this((java.lang.Class) null); }
     }
 }

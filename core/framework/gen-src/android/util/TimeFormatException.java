@@ -3,7 +3,7 @@ package android.util;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class TimeFormatException extends java.lang.RuntimeException {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public TimeFormatException(java.lang.String p0) { super(); }
     TimeFormatException() { this((java.lang.String) null); }
 }

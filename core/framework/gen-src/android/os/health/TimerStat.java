@@ -3,15 +3,15 @@ package android.os.health;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TimerStat implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public TimerStat() {}
     public TimerStat(int p0, long p1) {}
     public TimerStat(android.os.Parcel p0) {}
     public int describeContents() { return 0; }
-    public int getCount() { return (megletProps.get("Count") instanceof Integer ? (Integer) megletProps.get("Count") : 0); }
-    public long getTime() { return (megletProps.get("Time") instanceof Long ? (Long) megletProps.get("Time") : 0L); }
-    public void setCount(int p0) { megletProps.put("Count", Integer.valueOf(p0)); }
-    public void setTime(long p0) { megletProps.put("Time", Long.valueOf(p0)); }
+    public int getCount() { return (meglerProps.get("Count") instanceof Integer ? (Integer) meglerProps.get("Count") : 0); }
+    public long getTime() { return (meglerProps.get("Time") instanceof Long ? (Long) meglerProps.get("Time") : 0L); }
+    public void setCount(int p0) { meglerProps.put("Count", Integer.valueOf(p0)); }
+    public void setTime(long p0) { meglerProps.put("Time", Long.valueOf(p0)); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
 }

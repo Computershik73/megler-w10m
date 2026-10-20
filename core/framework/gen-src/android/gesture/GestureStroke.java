@@ -3,7 +3,7 @@ package android.gesture;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class GestureStroke {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public android.graphics.RectF boundingBox;
     public float length;
     public float[] points;
@@ -11,7 +11,7 @@ public class GestureStroke {
     public void clearPath() {}
     public java.lang.Object clone() { return null; }
     public android.gesture.OrientedBoundingBox computeOrientedBoundingBox() { return null; }
-    public android.graphics.Path getPath() { return (android.graphics.Path) megletProps.get("Path"); }
+    public android.graphics.Path getPath() { return (android.graphics.Path) meglerProps.get("Path"); }
     public android.graphics.Path toPath(float p0, float p1, int p2) { return null; }
     GestureStroke() { this((java.util.ArrayList) null); }
 }

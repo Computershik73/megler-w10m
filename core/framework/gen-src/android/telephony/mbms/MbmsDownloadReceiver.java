@@ -3,7 +3,7 @@ package android.telephony.mbms;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MbmsDownloadReceiver extends android.content.BroadcastReceiver {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String DOWNLOAD_TOKEN_SUFFIX = ".download_token";
     public static final java.lang.String MBMS_FILE_PROVIDER_META_DATA_KEY = "mbms-file-provider-authority";
     public static final int RESULT_APP_NOTIFICATION_ERROR = 6;

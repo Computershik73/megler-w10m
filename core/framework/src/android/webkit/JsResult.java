@@ -9,6 +9,6 @@ public class JsResult {
     public final void cancel() { mResult = false; wakeUp(); }
     public final void confirm() { mResult = true; wakeUp(); }
     public final boolean getResult() { return mResult; }
-    final boolean megletDone() { return mDone; }
+    final boolean meglerDone() { return mDone; }
     private void wakeUp() { if (mDone) return; mDone = true; if (mReceiver != null) mReceiver.onJsResultComplete(this); }
 }

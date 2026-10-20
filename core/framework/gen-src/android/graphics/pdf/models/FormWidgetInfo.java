@@ -3,7 +3,7 @@ package android.graphics.pdf.models;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class FormWidgetInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int WIDGET_TYPE_CHECKBOX = 2;
     public static final int WIDGET_TYPE_COMBOBOX = 4;
@@ -15,31 +15,31 @@ public final class FormWidgetInfo implements android.os.Parcelable {
     public static int WIDGET_TYPE_UNKNOWN;
     public FormWidgetInfo(int p0, int p1, android.graphics.Rect p2, boolean p3, java.lang.String p4, java.lang.String p5, boolean p6, boolean p7, boolean p8, int p9, float p10, java.util.List p11) {}
     public int describeContents() { return 0; }
-    public java.lang.String getAccessibilityLabel() { return (java.lang.String) megletProps.get("AccessibilityLabel"); }
-    public float getFontSize() { return (megletProps.get("FontSize") instanceof Float ? (Float) megletProps.get("FontSize") : 0f); }
-    public java.util.List getListItems() { return (megletProps.get("ListItems") != null ? (java.util.List) megletProps.get("ListItems") : new java.util.ArrayList()); }
-    public int getMaxLength() { return (megletProps.get("MaxLength") instanceof Integer ? (Integer) megletProps.get("MaxLength") : 0); }
-    public java.lang.String getTextValue() { return (java.lang.String) megletProps.get("TextValue"); }
-    public int getWidgetIndex() { return (megletProps.get("WidgetIndex") instanceof Integer ? (Integer) megletProps.get("WidgetIndex") : 0); }
-    public android.graphics.Rect getWidgetRect() { return (android.graphics.Rect) megletProps.get("WidgetRect"); }
-    public int getWidgetType() { return (megletProps.get("WidgetType") instanceof Integer ? (Integer) megletProps.get("WidgetType") : 0); }
-    public boolean isEditableText() { return (megletProps.get("EditableText") instanceof Boolean ? (Boolean) megletProps.get("EditableText") : false); }
-    public boolean isMultiLineText() { return (megletProps.get("MultiLineText") instanceof Boolean ? (Boolean) megletProps.get("MultiLineText") : false); }
-    public boolean isMultiSelect() { return (megletProps.get("MultiSelect") instanceof Boolean ? (Boolean) megletProps.get("MultiSelect") : false); }
-    public boolean isReadOnly() { return (megletProps.get("ReadOnly") instanceof Boolean ? (Boolean) megletProps.get("ReadOnly") : false); }
+    public java.lang.String getAccessibilityLabel() { return (java.lang.String) meglerProps.get("AccessibilityLabel"); }
+    public float getFontSize() { return (meglerProps.get("FontSize") instanceof Float ? (Float) meglerProps.get("FontSize") : 0f); }
+    public java.util.List getListItems() { return (meglerProps.get("ListItems") != null ? (java.util.List) meglerProps.get("ListItems") : new java.util.ArrayList()); }
+    public int getMaxLength() { return (meglerProps.get("MaxLength") instanceof Integer ? (Integer) meglerProps.get("MaxLength") : 0); }
+    public java.lang.String getTextValue() { return (java.lang.String) meglerProps.get("TextValue"); }
+    public int getWidgetIndex() { return (meglerProps.get("WidgetIndex") instanceof Integer ? (Integer) meglerProps.get("WidgetIndex") : 0); }
+    public android.graphics.Rect getWidgetRect() { return (android.graphics.Rect) meglerProps.get("WidgetRect"); }
+    public int getWidgetType() { return (meglerProps.get("WidgetType") instanceof Integer ? (Integer) meglerProps.get("WidgetType") : 0); }
+    public boolean isEditableText() { return (meglerProps.get("EditableText") instanceof Boolean ? (Boolean) meglerProps.get("EditableText") : false); }
+    public boolean isMultiLineText() { return (meglerProps.get("MultiLineText") instanceof Boolean ? (Boolean) meglerProps.get("MultiLineText") : false); }
+    public boolean isMultiSelect() { return (meglerProps.get("MultiSelect") instanceof Boolean ? (Boolean) meglerProps.get("MultiSelect") : false); }
+    public boolean isReadOnly() { return (meglerProps.get("ReadOnly") instanceof Boolean ? (Boolean) meglerProps.get("ReadOnly") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     FormWidgetInfo() { this((int) 0, (int) 0, (android.graphics.Rect) null, (boolean) false, (java.lang.String) null, (java.lang.String) null, (boolean) false, (boolean) false, (boolean) false, (int) 0, (float) 0f, (java.util.List) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(int p0, int p1, android.graphics.Rect p2, java.lang.String p3, java.lang.String p4) {}
-        public android.graphics.pdf.models.FormWidgetInfo build() { android.graphics.pdf.models.FormWidgetInfo x = new android.graphics.pdf.models.FormWidgetInfo(); x.megletProps.putAll(megletProps); return x; }
-        public android.graphics.pdf.models.FormWidgetInfo.Builder setEditableText(boolean p0) { megletProps.put("EditableText", Boolean.valueOf(p0)); return this; }
-        public android.graphics.pdf.models.FormWidgetInfo.Builder setFontSize(float p0) { megletProps.put("FontSize", Float.valueOf(p0)); return this; }
-        public android.graphics.pdf.models.FormWidgetInfo.Builder setListItems(java.util.List p0) { megletProps.put("ListItems", p0); return this; }
-        public android.graphics.pdf.models.FormWidgetInfo.Builder setMaxLength(int p0) { megletProps.put("MaxLength", Integer.valueOf(p0)); return this; }
-        public android.graphics.pdf.models.FormWidgetInfo.Builder setMultiLineText(boolean p0) { megletProps.put("MultiLineText", Boolean.valueOf(p0)); return this; }
-        public android.graphics.pdf.models.FormWidgetInfo.Builder setMultiSelect(boolean p0) { megletProps.put("MultiSelect", Boolean.valueOf(p0)); return this; }
-        public android.graphics.pdf.models.FormWidgetInfo.Builder setReadOnly(boolean p0) { megletProps.put("ReadOnly", Boolean.valueOf(p0)); return this; }
+        public android.graphics.pdf.models.FormWidgetInfo build() { android.graphics.pdf.models.FormWidgetInfo x = new android.graphics.pdf.models.FormWidgetInfo(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.graphics.pdf.models.FormWidgetInfo.Builder setEditableText(boolean p0) { meglerProps.put("EditableText", Boolean.valueOf(p0)); return this; }
+        public android.graphics.pdf.models.FormWidgetInfo.Builder setFontSize(float p0) { meglerProps.put("FontSize", Float.valueOf(p0)); return this; }
+        public android.graphics.pdf.models.FormWidgetInfo.Builder setListItems(java.util.List p0) { meglerProps.put("ListItems", p0); return this; }
+        public android.graphics.pdf.models.FormWidgetInfo.Builder setMaxLength(int p0) { meglerProps.put("MaxLength", Integer.valueOf(p0)); return this; }
+        public android.graphics.pdf.models.FormWidgetInfo.Builder setMultiLineText(boolean p0) { meglerProps.put("MultiLineText", Boolean.valueOf(p0)); return this; }
+        public android.graphics.pdf.models.FormWidgetInfo.Builder setMultiSelect(boolean p0) { meglerProps.put("MultiSelect", Boolean.valueOf(p0)); return this; }
+        public android.graphics.pdf.models.FormWidgetInfo.Builder setReadOnly(boolean p0) { meglerProps.put("ReadOnly", Boolean.valueOf(p0)); return this; }
         Builder() { this((int) 0, (int) 0, (android.graphics.Rect) null, (java.lang.String) null, (java.lang.String) null); }
     }
 }

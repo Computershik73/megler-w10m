@@ -3,12 +3,12 @@ package android.service.controls.templates;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ThumbnailTemplate extends android.service.controls.templates.ControlTemplate {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ThumbnailTemplate(java.lang.String p0, boolean p1, android.graphics.drawable.Icon p2, java.lang.CharSequence p3) { super(); }
-    public java.lang.CharSequence getContentDescription() { return (java.lang.CharSequence) megletProps.get("ContentDescription"); }
-    public int getTemplateType() { return (megletProps.get("TemplateType") instanceof Integer ? (Integer) megletProps.get("TemplateType") : 0); }
-    public android.graphics.drawable.Icon getThumbnail() { return (android.graphics.drawable.Icon) megletProps.get("Thumbnail"); }
-    public boolean isActive() { return (megletProps.get("Active") instanceof Boolean ? (Boolean) megletProps.get("Active") : false); }
+    public java.lang.CharSequence getContentDescription() { return (java.lang.CharSequence) meglerProps.get("ContentDescription"); }
+    public int getTemplateType() { return (meglerProps.get("TemplateType") instanceof Integer ? (Integer) meglerProps.get("TemplateType") : 0); }
+    public android.graphics.drawable.Icon getThumbnail() { return (android.graphics.drawable.Icon) meglerProps.get("Thumbnail"); }
+    public boolean isActive() { return (meglerProps.get("Active") instanceof Boolean ? (Boolean) meglerProps.get("Active") : false); }
     public void prepareTemplateForBinder(android.content.Context p0) {}
     ThumbnailTemplate() { this((java.lang.String) null, (boolean) false, (android.graphics.drawable.Icon) null, (java.lang.CharSequence) null); }
 }

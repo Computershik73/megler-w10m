@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AudioPlaybackConfiguration implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String EXTRA_PLAYER_EVENT_CHANNEL_MASK = "android.media.extra.PLAYER_EVENT_CHANNEL_MASK";
     public static final java.lang.String EXTRA_PLAYER_EVENT_MUTE = "android.media.extra.PLAYER_EVENT_MUTE";
@@ -49,32 +49,32 @@ public final class AudioPlaybackConfiguration implements android.os.Parcelable {
     public static java.lang.String toLogFriendlyPlayerType(int p0) { return null; }
     public int describeContents() { return 0; }
     public void dump(java.io.PrintWriter p0) {}
-    public android.media.AudioAttributes getAudioAttributes() { return (android.media.AudioAttributes) megletProps.get("AudioAttributes"); }
-    public android.media.AudioDeviceInfo getAudioDeviceInfo() { return (android.media.AudioDeviceInfo) megletProps.get("AudioDeviceInfo"); }
-    public java.util.List getAudioDeviceInfos() { return (megletProps.get("AudioDeviceInfos") != null ? (java.util.List) megletProps.get("AudioDeviceInfos") : new java.util.ArrayList()); }
-    public int getChannelMask() { return (megletProps.get("ChannelMask") instanceof Integer ? (Integer) megletProps.get("ChannelMask") : 0); }
-    public int getClientPid() { return (megletProps.get("ClientPid") instanceof Integer ? (Integer) megletProps.get("ClientPid") : 0); }
-    public int getClientUid() { return (megletProps.get("ClientUid") instanceof Integer ? (Integer) megletProps.get("ClientUid") : 0); }
-    public int getMutedBy() { return (megletProps.get("MutedBy") instanceof Integer ? (Integer) megletProps.get("MutedBy") : 0); }
-    public int getPlayerInterfaceId() { return (megletProps.get("PlayerInterfaceId") instanceof Integer ? (Integer) megletProps.get("PlayerInterfaceId") : 0); }
-    public android.media.PlayerProxy getPlayerProxy() { return (android.media.PlayerProxy) megletProps.get("PlayerProxy"); }
-    public int getPlayerState() { return (megletProps.get("PlayerState") instanceof Integer ? (Integer) megletProps.get("PlayerState") : 0); }
-    public int getPlayerType() { return (megletProps.get("PlayerType") instanceof Integer ? (Integer) megletProps.get("PlayerType") : 0); }
-    public int getSampleRate() { return (megletProps.get("SampleRate") instanceof Integer ? (Integer) megletProps.get("SampleRate") : 0); }
-    public int getSessionId() { return (megletProps.get("SessionId") instanceof Integer ? (Integer) megletProps.get("SessionId") : 0); }
+    public android.media.AudioAttributes getAudioAttributes() { return (android.media.AudioAttributes) meglerProps.get("AudioAttributes"); }
+    public android.media.AudioDeviceInfo getAudioDeviceInfo() { return (android.media.AudioDeviceInfo) meglerProps.get("AudioDeviceInfo"); }
+    public java.util.List getAudioDeviceInfos() { return (meglerProps.get("AudioDeviceInfos") != null ? (java.util.List) meglerProps.get("AudioDeviceInfos") : new java.util.ArrayList()); }
+    public int getChannelMask() { return (meglerProps.get("ChannelMask") instanceof Integer ? (Integer) meglerProps.get("ChannelMask") : 0); }
+    public int getClientPid() { return (meglerProps.get("ClientPid") instanceof Integer ? (Integer) meglerProps.get("ClientPid") : 0); }
+    public int getClientUid() { return (meglerProps.get("ClientUid") instanceof Integer ? (Integer) meglerProps.get("ClientUid") : 0); }
+    public int getMutedBy() { return (meglerProps.get("MutedBy") instanceof Integer ? (Integer) meglerProps.get("MutedBy") : 0); }
+    public int getPlayerInterfaceId() { return (meglerProps.get("PlayerInterfaceId") instanceof Integer ? (Integer) meglerProps.get("PlayerInterfaceId") : 0); }
+    public android.media.PlayerProxy getPlayerProxy() { return (android.media.PlayerProxy) meglerProps.get("PlayerProxy"); }
+    public int getPlayerState() { return (meglerProps.get("PlayerState") instanceof Integer ? (Integer) meglerProps.get("PlayerState") : 0); }
+    public int getPlayerType() { return (meglerProps.get("PlayerType") instanceof Integer ? (Integer) meglerProps.get("PlayerType") : 0); }
+    public int getSampleRate() { return (meglerProps.get("SampleRate") instanceof Integer ? (Integer) meglerProps.get("SampleRate") : 0); }
+    public int getSessionId() { return (meglerProps.get("SessionId") instanceof Integer ? (Integer) meglerProps.get("SessionId") : 0); }
     public boolean handleAudioAttributesEvent(android.media.AudioAttributes p0) { return false; }
     public boolean handleFormatEvent(android.media.AudioPlaybackConfiguration.FormatInfo p0) { return false; }
     public boolean handleMutedEvent(int p0) { return false; }
     public boolean handleSessionIdEvent(int p0) { return false; }
     public boolean handleStateEvent(int p0, int[] p1) { return false; }
     public void init() {}
-    public boolean isActive() { return (megletProps.get("Active") instanceof Boolean ? (Boolean) megletProps.get("Active") : false); }
-    public boolean isMuted() { return (megletProps.get("Muted") instanceof Boolean ? (Boolean) megletProps.get("Muted") : false); }
-    public boolean isSpatialized() { return (megletProps.get("Spatialized") instanceof Boolean ? (Boolean) megletProps.get("Spatialized") : false); }
+    public boolean isActive() { return (meglerProps.get("Active") instanceof Boolean ? (Boolean) meglerProps.get("Active") : false); }
+    public boolean isMuted() { return (meglerProps.get("Muted") instanceof Boolean ? (Boolean) meglerProps.get("Muted") : false); }
+    public boolean isSpatialized() { return (meglerProps.get("Spatialized") instanceof Boolean ? (Boolean) meglerProps.get("Spatialized") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     AudioPlaybackConfiguration() { this((android.media.PlayerBase.PlayerIdCard) null, (int) 0, (int) 0, (int) 0); }
     public static final class FormatInfo implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public FormatInfo(boolean p0, int p1, int p2) {}
         public int describeContents() { return 0; }

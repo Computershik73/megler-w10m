@@ -3,7 +3,7 @@ package android.nfc.cardemulation;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class OffHostApduService extends android.app.Service {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String SERVICE_INTERFACE = "android.nfc.cardemulation.action.OFF_HOST_APDU_SERVICE";
     public static final java.lang.String SERVICE_META_DATA = "android.nfc.cardemulation.off_host_apdu_service";
     public OffHostApduService() { super(); }

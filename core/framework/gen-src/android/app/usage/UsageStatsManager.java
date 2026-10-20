@@ -3,7 +3,7 @@ package android.app.usage;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class UsageStatsManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String EXTRA_EVENT_ACTION = "android.app.usage.extra.EVENT_ACTION";
     public static final java.lang.String EXTRA_EVENT_CATEGORY = "android.app.usage.extra.EVENT_CATEGORY";
     public static final java.lang.String EXTRA_OBSERVER_ID = "android.app.usage.extra.OBSERVER_ID";
@@ -65,14 +65,14 @@ public final class UsageStatsManager {
     public void clearBroadcastResponseStats(java.lang.String p0, long p1) {}
     public void forceUsageSourceSettingRead() {}
     public int getAppMinStandbyBucket(java.lang.String p0) { return 0; }
-    public int getAppStandbyBucket() { return (megletProps.get("AppStandbyBucket") instanceof Integer ? (Integer) megletProps.get("AppStandbyBucket") : 0); }
+    public int getAppStandbyBucket() { return (meglerProps.get("AppStandbyBucket") instanceof Integer ? (Integer) meglerProps.get("AppStandbyBucket") : 0); }
     public int getAppStandbyBucket(java.lang.String p0) { return 0; }
-    public java.util.Map getAppStandbyBuckets() { return (megletProps.get("AppStandbyBuckets") != null ? (java.util.Map) megletProps.get("AppStandbyBuckets") : new java.util.HashMap()); }
+    public java.util.Map getAppStandbyBuckets() { return (meglerProps.get("AppStandbyBuckets") != null ? (java.util.Map) meglerProps.get("AppStandbyBuckets") : new java.util.HashMap()); }
     public java.lang.String getAppStandbyConstant(java.lang.String p0) { return null; }
     public long getLastTimeAnyComponentUsed(java.lang.String p0) { return 0L; }
-    public int getUsageSource() { return (megletProps.get("UsageSource") instanceof Integer ? (Integer) megletProps.get("UsageSource") : 0); }
+    public int getUsageSource() { return (meglerProps.get("UsageSource") instanceof Integer ? (Integer) meglerProps.get("UsageSource") : 0); }
     public boolean isAppInactive(java.lang.String p0) { return false; }
-    public boolean isAppStandbyEnabled() { return (megletProps.get("AppStandbyEnabled") instanceof Boolean ? (Boolean) megletProps.get("AppStandbyEnabled") : false); }
+    public boolean isAppStandbyEnabled() { return (meglerProps.get("AppStandbyEnabled") instanceof Boolean ? (Boolean) meglerProps.get("AppStandbyEnabled") : false); }
     public boolean isPackageExemptedFromBroadcastResponseStats(java.lang.String p0) { return false; }
     public void onCarrierPrivilegedAppsChanged() {}
     public java.util.Map queryAndAggregateUsageStats(long p0, long p1) { return new java.util.HashMap(); }
@@ -94,9 +94,9 @@ public final class UsageStatsManager {
     public void reportUserInteraction(java.lang.String p0, int p1, android.os.PersistableBundle p2) {}
     public void setAppInactive(java.lang.String p0, boolean p1) {}
     public void setAppStandbyBucket(java.lang.String p0, int p1) {}
-    public void setAppStandbyBuckets(java.util.Map p0) { megletProps.put("AppStandbyBuckets", p0); }
+    public void setAppStandbyBuckets(java.util.Map p0) { meglerProps.put("AppStandbyBuckets", p0); }
     public void setEstimatedLaunchTimeMillis(java.lang.String p0, long p1) {}
-    public void setEstimatedLaunchTimesMillis(java.util.Map p0) { megletProps.put("EstimatedLaunchTimesMillis", p0); }
+    public void setEstimatedLaunchTimesMillis(java.util.Map p0) { meglerProps.put("EstimatedLaunchTimesMillis", p0); }
     public void unregisterAppUsageLimitObserver(int p0) {}
     public void unregisterAppUsageObserver(int p0) {}
     public void unregisterUsageSessionObserver(int p0) {}

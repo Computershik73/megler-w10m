@@ -3,7 +3,7 @@ package android.telephony.mbms;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class StreamingService implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int BROADCAST_METHOD = 1;
     public static final int REASON_BY_USER_REQUEST = 1;
     public static final int REASON_END_OF_SESSION = 2;
@@ -18,8 +18,8 @@ public class StreamingService implements java.lang.AutoCloseable {
     public static final int UNICAST_METHOD = 2;
     public StreamingService(int p0, android.telephony.mbms.vendor.IMbmsStreamingService p1, android.telephony.MbmsStreamingSession p2, android.telephony.mbms.StreamingServiceInfo p3, android.telephony.mbms.InternalStreamingServiceCallback p4) {}
     public void close() {}
-    public android.telephony.mbms.InternalStreamingServiceCallback getCallback() { return (android.telephony.mbms.InternalStreamingServiceCallback) megletProps.get("Callback"); }
-    public android.telephony.mbms.StreamingServiceInfo getInfo() { return (android.telephony.mbms.StreamingServiceInfo) megletProps.get("Info"); }
-    public android.net.Uri getPlaybackUri() { return (android.net.Uri) megletProps.get("PlaybackUri"); }
+    public android.telephony.mbms.InternalStreamingServiceCallback getCallback() { return (android.telephony.mbms.InternalStreamingServiceCallback) meglerProps.get("Callback"); }
+    public android.telephony.mbms.StreamingServiceInfo getInfo() { return (android.telephony.mbms.StreamingServiceInfo) meglerProps.get("Info"); }
+    public android.net.Uri getPlaybackUri() { return (android.net.Uri) meglerProps.get("PlaybackUri"); }
     StreamingService() { this((int) 0, (android.telephony.mbms.vendor.IMbmsStreamingService) null, (android.telephony.MbmsStreamingSession) null, (android.telephony.mbms.StreamingServiceInfo) null, (android.telephony.mbms.InternalStreamingServiceCallback) null); }
 }

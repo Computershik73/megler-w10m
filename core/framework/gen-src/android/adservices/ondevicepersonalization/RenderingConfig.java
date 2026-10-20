@@ -3,17 +3,17 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class RenderingConfig implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public java.util.List getKeys() { return (megletProps.get("Keys") != null ? (java.util.List) megletProps.get("Keys") : new java.util.ArrayList()); }
+    public java.util.List getKeys() { return (meglerProps.get("Keys") != null ? (java.util.List) meglerProps.get("Keys") : new java.util.ArrayList()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected RenderingConfig() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public android.adservices.ondevicepersonalization.RenderingConfig.Builder addKey(java.lang.String p0) { return this; }
-        public android.adservices.ondevicepersonalization.RenderingConfig build() { android.adservices.ondevicepersonalization.RenderingConfig x = new android.adservices.ondevicepersonalization.RenderingConfig(); x.megletProps.putAll(megletProps); return x; }
-        public android.adservices.ondevicepersonalization.RenderingConfig.Builder setKeys(java.util.List p0) { megletProps.put("Keys", p0); return this; }
+        public android.adservices.ondevicepersonalization.RenderingConfig build() { android.adservices.ondevicepersonalization.RenderingConfig x = new android.adservices.ondevicepersonalization.RenderingConfig(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.adservices.ondevicepersonalization.RenderingConfig.Builder setKeys(java.util.List p0) { meglerProps.put("Keys", p0); return this; }
     }
 }

@@ -3,12 +3,12 @@ package android.adservices.customaudience;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class CustomAudienceManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String CUSTOM_AUDIENCE_SERVICE = "custom_audience_service";
     public CustomAudienceManager(android.content.Context p0) {}
     public static android.adservices.customaudience.CustomAudienceManager get(android.content.Context p0) { return new CustomAudienceManager(); }
     public void fetchAndJoinCustomAudience(android.adservices.customaudience.FetchAndJoinCustomAudienceRequest p0, java.util.concurrent.Executor p1, android.os.OutcomeReceiver p2) {}
-    public android.adservices.customaudience.TestCustomAudienceManager getTestCustomAudienceManager() { return (android.adservices.customaudience.TestCustomAudienceManager) megletProps.get("TestCustomAudienceManager"); }
+    public android.adservices.customaudience.TestCustomAudienceManager getTestCustomAudienceManager() { return (android.adservices.customaudience.TestCustomAudienceManager) meglerProps.get("TestCustomAudienceManager"); }
     public android.adservices.customaudience.CustomAudienceManager initialize(android.content.Context p0) { return this; }
     public void joinCustomAudience(android.adservices.customaudience.JoinCustomAudienceRequest p0, java.util.concurrent.Executor p1, android.os.OutcomeReceiver p2) {}
     public void leaveCustomAudience(android.adservices.customaudience.LeaveCustomAudienceRequest p0, java.util.concurrent.Executor p1, android.os.OutcomeReceiver p2) {}

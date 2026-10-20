@@ -3,14 +3,14 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MailTo {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String MAILTO_SCHEME = "mailto:";
     public static boolean isMailTo(java.lang.String p0) { return false; }
     public static android.net.MailTo parse(java.lang.String p0) { return new MailTo(); }
-    public java.lang.String getBody() { return (java.lang.String) megletProps.get("Body"); }
-    public java.lang.String getCc() { return (java.lang.String) megletProps.get("Cc"); }
-    public java.util.Map getHeaders() { return (megletProps.get("Headers") != null ? (java.util.Map) megletProps.get("Headers") : new java.util.HashMap()); }
-    public java.lang.String getSubject() { return (java.lang.String) megletProps.get("Subject"); }
-    public java.lang.String getTo() { return (java.lang.String) megletProps.get("To"); }
+    public java.lang.String getBody() { return (java.lang.String) meglerProps.get("Body"); }
+    public java.lang.String getCc() { return (java.lang.String) meglerProps.get("Cc"); }
+    public java.util.Map getHeaders() { return (meglerProps.get("Headers") != null ? (java.util.Map) meglerProps.get("Headers") : new java.util.HashMap()); }
+    public java.lang.String getSubject() { return (java.lang.String) meglerProps.get("Subject"); }
+    public java.lang.String getTo() { return (java.lang.String) meglerProps.get("To"); }
     protected MailTo() {}
 }

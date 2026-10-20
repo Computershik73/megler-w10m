@@ -20,7 +20,7 @@ public abstract class PreferenceFragment extends Fragment implements PreferenceM
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         mManager = new PreferenceManager(getActivity(), 100);
-        mManager.megletSetTreeClickListener(this);
+        mManager.meglerSetTreeClickListener(this);
     }
     @Override public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle state) {
         mList = new ListView(getActivity());
@@ -29,12 +29,12 @@ public abstract class PreferenceFragment extends Fragment implements PreferenceM
         return mList;
     }
     @Override public void onActivityCreated(Bundle state) { super.onActivityCreated(state); bind(); }
-    @Override public void onStop() { super.onStop(); if (mManager != null) mManager.megletActivityStop(); }
+    @Override public void onStop() { super.onStop(); if (mManager != null) mManager.meglerActivityStop(); }
     @Override public void onDestroyView() { mList = null; super.onDestroyView(); }
 
     public PreferenceManager getPreferenceManager() { return mManager; }
-    public void setPreferenceScreen(PreferenceScreen s) { if (manager().megletSetScreen(s) && s != null) bind(); }
-    public PreferenceScreen getPreferenceScreen() { return manager().megletScreen(); }
+    public void setPreferenceScreen(PreferenceScreen s) { if (manager().meglerSetScreen(s) && s != null) bind(); }
+    public PreferenceScreen getPreferenceScreen() { return manager().meglerScreen(); }
     public void addPreferencesFromResource(int resId) { setPreferenceScreen(manager().inflateFromResource(getActivity(), resId, getPreferenceScreen())); }
     public void addPreferencesFromIntent(android.content.Intent intent) {}
     public Preference findPreference(CharSequence key) { return manager().findPreference(key); }
@@ -46,7 +46,7 @@ public abstract class PreferenceFragment extends Fragment implements PreferenceM
         return false;
     }
     private PreferenceManager manager() {
-        if (mManager == null) { mManager = new PreferenceManager(getActivity(), 100); mManager.megletSetTreeClickListener(this); }
+        if (mManager == null) { mManager = new PreferenceManager(getActivity(), 100); mManager.meglerSetTreeClickListener(this); }
         return mManager;
     }
     private void bind() { PreferenceScreen s = getPreferenceScreen(); if (s != null && mList != null) s.bind(mList); }

@@ -3,10 +3,10 @@ package android.health.connect.datatypes.units;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Mass implements java.lang.Comparable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.health.connect.datatypes.units.Mass fromGrams(double p0) { return new Mass(); }
     public int compareTo(android.health.connect.datatypes.units.Mass p0) { return 0; }
     public int compareTo(java.lang.Object p0) { return 0; }
-    public double getInGrams() { return (megletProps.get("InGrams") instanceof Double ? (Double) megletProps.get("InGrams") : 0d); }
+    public double getInGrams() { return (meglerProps.get("InGrams") instanceof Double ? (Double) meglerProps.get("InGrams") : 0d); }
     protected Mass() {}
 }

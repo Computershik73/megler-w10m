@@ -37,7 +37,7 @@ public class Color {
     public static float alpha(long c) { return alpha(toArgb(c)) / 255f; }
     public static boolean isSrgb(long c) { return true; }
     public static boolean isWideGamut(long c) { return false; }
-    static int[] megletInts(long[] c) { int[] o = new int[c.length]; for (int i = 0; i < c.length; i++) o[i] = toArgb(c[i]); return o; }
+    static int[] meglerInts(long[] c) { int[] o = new int[c.length]; for (int i = 0; i < c.length; i++) o[i] = toArgb(c[i]); return o; }
     public static float luminance(int c) {
         double r = lin(red(c) / 255.0), g = lin(green(c) / 255.0), b = lin(blue(c) / 255.0);
         return (float) (0.2126 * r + 0.7152 * g + 0.0722 * b);

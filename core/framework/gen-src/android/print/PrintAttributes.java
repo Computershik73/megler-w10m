@@ -3,7 +3,7 @@ package android.print;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PrintAttributes implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int COLOR_MODE_COLOR = 2;
     public static final int COLOR_MODE_MONOCHROME = 1;
     public static android.os.Parcelable.Creator CREATOR;
@@ -15,41 +15,41 @@ public final class PrintAttributes implements android.os.Parcelable {
     public void clear() {}
     public void copyFrom(android.print.PrintAttributes p0) {}
     public int describeContents() { return 0; }
-    public int getColorMode() { return (megletProps.get("ColorMode") instanceof Integer ? (Integer) megletProps.get("ColorMode") : 0); }
-    public int getDuplexMode() { return (megletProps.get("DuplexMode") instanceof Integer ? (Integer) megletProps.get("DuplexMode") : 0); }
-    public android.print.PrintAttributes.MediaSize getMediaSize() { return (android.print.PrintAttributes.MediaSize) megletProps.get("MediaSize"); }
-    public android.print.PrintAttributes.Margins getMinMargins() { return (android.print.PrintAttributes.Margins) megletProps.get("MinMargins"); }
-    public android.print.PrintAttributes.Resolution getResolution() { return (android.print.PrintAttributes.Resolution) megletProps.get("Resolution"); }
-    public boolean isPortrait() { return (megletProps.get("Portrait") instanceof Boolean ? (Boolean) megletProps.get("Portrait") : false); }
-    public void setColorMode(int p0) { megletProps.put("ColorMode", Integer.valueOf(p0)); }
-    public void setDuplexMode(int p0) { megletProps.put("DuplexMode", Integer.valueOf(p0)); }
-    public void setMediaSize(android.print.PrintAttributes.MediaSize p0) { megletProps.put("MediaSize", p0); }
-    public void setMinMargins(android.print.PrintAttributes.Margins p0) { megletProps.put("MinMargins", p0); }
-    public void setResolution(android.print.PrintAttributes.Resolution p0) { megletProps.put("Resolution", p0); }
+    public int getColorMode() { return (meglerProps.get("ColorMode") instanceof Integer ? (Integer) meglerProps.get("ColorMode") : 0); }
+    public int getDuplexMode() { return (meglerProps.get("DuplexMode") instanceof Integer ? (Integer) meglerProps.get("DuplexMode") : 0); }
+    public android.print.PrintAttributes.MediaSize getMediaSize() { return (android.print.PrintAttributes.MediaSize) meglerProps.get("MediaSize"); }
+    public android.print.PrintAttributes.Margins getMinMargins() { return (android.print.PrintAttributes.Margins) meglerProps.get("MinMargins"); }
+    public android.print.PrintAttributes.Resolution getResolution() { return (android.print.PrintAttributes.Resolution) meglerProps.get("Resolution"); }
+    public boolean isPortrait() { return (meglerProps.get("Portrait") instanceof Boolean ? (Boolean) meglerProps.get("Portrait") : false); }
+    public void setColorMode(int p0) { meglerProps.put("ColorMode", Integer.valueOf(p0)); }
+    public void setDuplexMode(int p0) { meglerProps.put("DuplexMode", Integer.valueOf(p0)); }
+    public void setMediaSize(android.print.PrintAttributes.MediaSize p0) { meglerProps.put("MediaSize", p0); }
+    public void setMinMargins(android.print.PrintAttributes.Margins p0) { meglerProps.put("MinMargins", p0); }
+    public void setResolution(android.print.PrintAttributes.Resolution p0) { meglerProps.put("Resolution", p0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected PrintAttributes() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.print.PrintAttributes build() { android.print.PrintAttributes x = new android.print.PrintAttributes(); x.megletProps.putAll(megletProps); return x; }
-        public android.print.PrintAttributes.Builder setColorMode(int p0) { megletProps.put("ColorMode", Integer.valueOf(p0)); return this; }
-        public android.print.PrintAttributes.Builder setDuplexMode(int p0) { megletProps.put("DuplexMode", Integer.valueOf(p0)); return this; }
-        public android.print.PrintAttributes.Builder setMediaSize(android.print.PrintAttributes.MediaSize p0) { megletProps.put("MediaSize", p0); return this; }
-        public android.print.PrintAttributes.Builder setMinMargins(android.print.PrintAttributes.Margins p0) { megletProps.put("MinMargins", p0); return this; }
-        public android.print.PrintAttributes.Builder setResolution(android.print.PrintAttributes.Resolution p0) { megletProps.put("Resolution", p0); return this; }
+        public android.print.PrintAttributes build() { android.print.PrintAttributes x = new android.print.PrintAttributes(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.print.PrintAttributes.Builder setColorMode(int p0) { meglerProps.put("ColorMode", Integer.valueOf(p0)); return this; }
+        public android.print.PrintAttributes.Builder setDuplexMode(int p0) { meglerProps.put("DuplexMode", Integer.valueOf(p0)); return this; }
+        public android.print.PrintAttributes.Builder setMediaSize(android.print.PrintAttributes.MediaSize p0) { meglerProps.put("MediaSize", p0); return this; }
+        public android.print.PrintAttributes.Builder setMinMargins(android.print.PrintAttributes.Margins p0) { meglerProps.put("MinMargins", p0); return this; }
+        public android.print.PrintAttributes.Builder setResolution(android.print.PrintAttributes.Resolution p0) { meglerProps.put("Resolution", p0); return this; }
     }
     public static final class Margins {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.print.PrintAttributes.Margins NO_MARGINS;
         public Margins(int p0, int p1, int p2, int p3) {}
-        public int getBottomMils() { return (megletProps.get("BottomMils") instanceof Integer ? (Integer) megletProps.get("BottomMils") : 0); }
-        public int getLeftMils() { return (megletProps.get("LeftMils") instanceof Integer ? (Integer) megletProps.get("LeftMils") : 0); }
-        public int getRightMils() { return (megletProps.get("RightMils") instanceof Integer ? (Integer) megletProps.get("RightMils") : 0); }
-        public int getTopMils() { return (megletProps.get("TopMils") instanceof Integer ? (Integer) megletProps.get("TopMils") : 0); }
+        public int getBottomMils() { return (meglerProps.get("BottomMils") instanceof Integer ? (Integer) meglerProps.get("BottomMils") : 0); }
+        public int getLeftMils() { return (meglerProps.get("LeftMils") instanceof Integer ? (Integer) meglerProps.get("LeftMils") : 0); }
+        public int getRightMils() { return (meglerProps.get("RightMils") instanceof Integer ? (Integer) meglerProps.get("RightMils") : 0); }
+        public int getTopMils() { return (meglerProps.get("TopMils") instanceof Integer ? (Integer) meglerProps.get("TopMils") : 0); }
         Margins() { this((int) 0, (int) 0, (int) 0, (int) 0); }
     }
     public static final class MediaSize {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.print.PrintAttributes.MediaSize ANSI_C;
         public static android.print.PrintAttributes.MediaSize ANSI_D;
         public static android.print.PrintAttributes.MediaSize ANSI_E;
@@ -155,20 +155,20 @@ public final class PrintAttributes implements android.os.Parcelable {
         public static android.print.PrintAttributes.MediaSize getStandardMediaSizeById(java.lang.String p0) { return new MediaSize(); }
         public android.print.PrintAttributes.MediaSize asLandscape() { return this; }
         public android.print.PrintAttributes.MediaSize asPortrait() { return this; }
-        public int getHeightMils() { return (megletProps.get("HeightMils") instanceof Integer ? (Integer) megletProps.get("HeightMils") : 0); }
-        public java.lang.String getId() { return (java.lang.String) megletProps.get("Id"); }
+        public int getHeightMils() { return (meglerProps.get("HeightMils") instanceof Integer ? (Integer) meglerProps.get("HeightMils") : 0); }
+        public java.lang.String getId() { return (java.lang.String) meglerProps.get("Id"); }
         public java.lang.String getLabel(android.content.pm.PackageManager p0) { return null; }
-        public int getWidthMils() { return (megletProps.get("WidthMils") instanceof Integer ? (Integer) megletProps.get("WidthMils") : 0); }
-        public boolean isPortrait() { return (megletProps.get("Portrait") instanceof Boolean ? (Boolean) megletProps.get("Portrait") : false); }
+        public int getWidthMils() { return (meglerProps.get("WidthMils") instanceof Integer ? (Integer) meglerProps.get("WidthMils") : 0); }
+        public boolean isPortrait() { return (meglerProps.get("Portrait") instanceof Boolean ? (Boolean) meglerProps.get("Portrait") : false); }
         MediaSize() { this((java.lang.String) null, (java.lang.String) null, (int) 0, (int) 0); }
     }
     public static final class Resolution {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Resolution(java.lang.String p0, java.lang.String p1, int p2, int p3) {}
-        public int getHorizontalDpi() { return (megletProps.get("HorizontalDpi") instanceof Integer ? (Integer) megletProps.get("HorizontalDpi") : 0); }
-        public java.lang.String getId() { return (java.lang.String) megletProps.get("Id"); }
-        public java.lang.String getLabel() { return (java.lang.String) megletProps.get("Label"); }
-        public int getVerticalDpi() { return (megletProps.get("VerticalDpi") instanceof Integer ? (Integer) megletProps.get("VerticalDpi") : 0); }
+        public int getHorizontalDpi() { return (meglerProps.get("HorizontalDpi") instanceof Integer ? (Integer) meglerProps.get("HorizontalDpi") : 0); }
+        public java.lang.String getId() { return (java.lang.String) meglerProps.get("Id"); }
+        public java.lang.String getLabel() { return (java.lang.String) meglerProps.get("Label"); }
+        public int getVerticalDpi() { return (meglerProps.get("VerticalDpi") instanceof Integer ? (Integer) meglerProps.get("VerticalDpi") : 0); }
         Resolution() { this((java.lang.String) null, (java.lang.String) null, (int) 0, (int) 0); }
     }
 }

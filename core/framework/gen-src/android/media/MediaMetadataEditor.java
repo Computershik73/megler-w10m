@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class MediaMetadataEditor {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int BITMAP_KEY_ARTWORK = 100;
     public static final int KEY_EDITABLE_MASK = 536870911;
     protected static android.util.SparseIntArray METADATA_KEYS_TYPE;
@@ -26,7 +26,7 @@ public abstract class MediaMetadataEditor {
     public abstract void apply();
     public void clear() {}
     public android.graphics.Bitmap getBitmap(int p0, android.graphics.Bitmap p1) { return null; }
-    public int[] getEditableKeys() { return (int[]) megletProps.get("EditableKeys"); }
+    public int[] getEditableKeys() { return (int[]) meglerProps.get("EditableKeys"); }
     public long getLong(int p0, long p1) { return 0L; }
     public java.lang.Object getObject(int p0, java.lang.Object p1) { return null; }
     public java.lang.String getString(int p0, java.lang.String p1) { return null; }

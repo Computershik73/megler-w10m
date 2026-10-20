@@ -3,14 +3,14 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AudioMetadata {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.media.AudioMetadata.Key createKey(java.lang.String p0, java.lang.Class p1) { return null; }
     public static android.media.AudioMetadataMap createMap() { return null; }
     public static android.media.AudioMetadata.BaseMap fromByteBuffer(java.nio.ByteBuffer p0) { return null; }
     public static java.nio.ByteBuffer toByteBuffer(android.media.AudioMetadata.BaseMap p0, java.nio.ByteOrder p1) { return null; }
     protected AudioMetadata() {}
     public static class BaseMap implements android.media.AudioMetadataMap {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public BaseMap() {}
         public boolean containsKey(android.media.AudioMetadata.Key p0) { return false; }
         public android.media.AudioMetadataMap dup() { return null; }
@@ -21,7 +21,7 @@ public final class AudioMetadata {
         public int size() { return 0; }
     }
     public static class Format {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.media.AudioMetadata.Key KEY_ATMOS_PRESENT;
         public static android.media.AudioMetadata.Key KEY_AUDIO_ENCODING;
         public static android.media.AudioMetadata.Key KEY_BIT_RATE;

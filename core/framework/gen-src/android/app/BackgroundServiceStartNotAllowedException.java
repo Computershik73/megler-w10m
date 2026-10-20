@@ -3,7 +3,7 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BackgroundServiceStartNotAllowedException extends android.app.ServiceStartNotAllowedException implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public BackgroundServiceStartNotAllowedException(java.lang.String p0) { super(); }
     public int describeContents() { return 0; }

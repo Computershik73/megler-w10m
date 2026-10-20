@@ -3,14 +3,14 @@ package android.view.displayhash;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class VerifiedDisplayHash implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public VerifiedDisplayHash(long p0, android.graphics.Rect p1, java.lang.String p2, byte[] p3) {}
     public int describeContents() { return 0; }
-    public android.graphics.Rect getBoundsInWindow() { return (android.graphics.Rect) megletProps.get("BoundsInWindow"); }
-    public java.lang.String getHashAlgorithm() { return (java.lang.String) megletProps.get("HashAlgorithm"); }
-    public byte[] getImageHash() { return (byte[]) megletProps.get("ImageHash"); }
-    public long getTimeMillis() { return (megletProps.get("TimeMillis") instanceof Long ? (Long) megletProps.get("TimeMillis") : 0L); }
+    public android.graphics.Rect getBoundsInWindow() { return (android.graphics.Rect) meglerProps.get("BoundsInWindow"); }
+    public java.lang.String getHashAlgorithm() { return (java.lang.String) meglerProps.get("HashAlgorithm"); }
+    public byte[] getImageHash() { return (byte[]) meglerProps.get("ImageHash"); }
+    public long getTimeMillis() { return (meglerProps.get("TimeMillis") instanceof Long ? (Long) meglerProps.get("TimeMillis") : 0L); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     VerifiedDisplayHash() { this((long) 0L, (android.graphics.Rect) null, (java.lang.String) null, (byte[]) null); }
 }

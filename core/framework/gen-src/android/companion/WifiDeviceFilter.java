@@ -3,25 +3,25 @@ package android.companion;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class WifiDeviceFilter implements android.companion.DeviceFilter {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public android.net.MacAddress getBssid() { return (android.net.MacAddress) megletProps.get("Bssid"); }
-    public android.net.MacAddress getBssidMask() { return (android.net.MacAddress) megletProps.get("BssidMask"); }
+    public android.net.MacAddress getBssid() { return (android.net.MacAddress) meglerProps.get("Bssid"); }
+    public android.net.MacAddress getBssidMask() { return (android.net.MacAddress) meglerProps.get("BssidMask"); }
     public java.lang.String getDeviceDisplayName(android.net.wifi.ScanResult p0) { return null; }
     public java.lang.String getDeviceDisplayName(android.os.Parcelable p0) { return null; }
-    public int getMediumType() { return (megletProps.get("MediumType") instanceof Integer ? (Integer) megletProps.get("MediumType") : 0); }
-    public java.util.regex.Pattern getNamePattern() { return (java.util.regex.Pattern) megletProps.get("NamePattern"); }
+    public int getMediumType() { return (meglerProps.get("MediumType") instanceof Integer ? (Integer) meglerProps.get("MediumType") : 0); }
+    public java.util.regex.Pattern getNamePattern() { return (java.util.regex.Pattern) meglerProps.get("NamePattern"); }
     public boolean matches(android.net.wifi.ScanResult p0) { return false; }
     public boolean matches(android.os.Parcelable p0) { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected WifiDeviceFilter() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.companion.WifiDeviceFilter build() { android.companion.WifiDeviceFilter x = new android.companion.WifiDeviceFilter(); x.megletProps.putAll(megletProps); return x; }
-        public android.companion.WifiDeviceFilter.Builder setBssid(android.net.MacAddress p0) { megletProps.put("Bssid", p0); return this; }
-        public android.companion.WifiDeviceFilter.Builder setBssidMask(android.net.MacAddress p0) { megletProps.put("BssidMask", p0); return this; }
-        public android.companion.WifiDeviceFilter.Builder setNamePattern(java.util.regex.Pattern p0) { megletProps.put("NamePattern", p0); return this; }
+        public android.companion.WifiDeviceFilter build() { android.companion.WifiDeviceFilter x = new android.companion.WifiDeviceFilter(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.companion.WifiDeviceFilter.Builder setBssid(android.net.MacAddress p0) { meglerProps.put("Bssid", p0); return this; }
+        public android.companion.WifiDeviceFilter.Builder setBssidMask(android.net.MacAddress p0) { meglerProps.put("BssidMask", p0); return this; }
+        public android.companion.WifiDeviceFilter.Builder setNamePattern(java.util.regex.Pattern p0) { meglerProps.put("NamePattern", p0); return this; }
     }
 }

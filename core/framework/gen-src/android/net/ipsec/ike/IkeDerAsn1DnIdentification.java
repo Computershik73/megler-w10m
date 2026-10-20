@@ -3,13 +3,13 @@ package android.net.ipsec.ike;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class IkeDerAsn1DnIdentification extends android.net.ipsec.ike.IkeIdentification {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public javax.security.auth.x500.X500Principal derAsn1Dn;
     public IkeDerAsn1DnIdentification(javax.security.auth.x500.X500Principal p0) { super((int) 0); }
     public IkeDerAsn1DnIdentification(byte[] p0) { super((int) 0); }
     public static android.net.ipsec.ike.IkeDerAsn1DnIdentification fromPersistableBundle(android.os.PersistableBundle p0) { return new IkeDerAsn1DnIdentification(); }
-    public byte[] getEncodedIdData() { return (byte[]) megletProps.get("EncodedIdData"); }
-    public java.lang.String getIdTypeString() { return (java.lang.String) megletProps.get("IdTypeString"); }
+    public byte[] getEncodedIdData() { return (byte[]) meglerProps.get("EncodedIdData"); }
+    public java.lang.String getIdTypeString() { return (java.lang.String) meglerProps.get("IdTypeString"); }
     public android.os.PersistableBundle toPersistableBundle() { return null; }
     public void validateEndCertIdOrThrow(java.security.cert.X509Certificate p0) {}
     IkeDerAsn1DnIdentification() { this((javax.security.auth.x500.X500Principal) null); }

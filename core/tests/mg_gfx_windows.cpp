@@ -1,5 +1,5 @@
-// The test program's way to the shell's drawing: meglet_gfx_host as
-// app/Meglet/player/GfxHost.cpp implements it over Direct2D, DirectWrite
+// The test program's way to the shell's drawing: megler_gfx_host as
+// app/Megler/player/GfxHost.cpp implements it over Direct2D, DirectWrite
 // and WIC, for mg_tests --gfx-windows (mg_tests_main.c), which hands it to
 // the scenes of mg_gfx_scenes.c.
 //
@@ -38,7 +38,7 @@ ID3D11Texture2D* windowTarget(void*, int width, int height) {
         g_window.texture = nullptr;
     }
     if (!g_window.texture) {
-        ID3D11Device* device = meglet::app::GfxHost::shared().device();
+        ID3D11Device* device = megler::app::GfxHost::shared().device();
         if (!device) return nullptr;
         D3D11_TEXTURE2D_DESC td = {};
         td.Width = UINT(width);
@@ -61,7 +61,7 @@ void windowShow(void*) { g_window.shown++; }
 /// What the window shows, top row first, read through a staging copy under
 /// Direct2D's lock on the device, as WindowHost uses the device's context.
 bool readWindow(std::vector<uint32_t>& out) {
-    meglet::app::GfxHost& gfx = meglet::app::GfxHost::shared();
+    megler::app::GfxHost& gfx = megler::app::GfxHost::shared();
     ID3D11Device* device = gfx.device();
     if (!device || !g_window.texture) return false;
     D3D11_TEXTURE2D_DESC td = {};
@@ -100,17 +100,17 @@ extern "C" {
 /// (GfxHost::setCopying, the way a Direct2D that refused the app's memory
 /// would be left with), 2 in memory, 3 on WARP, Direct3D's software device,
 /// which draws as a graphics processor does. The environment's
-/// MEGLET_GFX_FONTS names a folder of Android's own fonts
+/// MEGLER_GFX_FONTS names a folder of Android's own fonts
 /// (GfxHost::setFontFolder; build/android9/root/fonts), for a run with those.
-const meglet_gfx_host* mg_gfx_windows_host(void (*line)(const char* text, void* user), void* user, int way) {
-    static meglet_gfx_host host;
-    meglet::app::GfxHost& gfx = meglet::app::GfxHost::shared();
+const megler_gfx_host* mg_gfx_windows_host(void (*line)(const char* text, void* user), void* user, int way) {
+    static megler_gfx_host host;
+    megler::app::GfxHost& gfx = megler::app::GfxHost::shared();
     gfx.setLog(line, user);
     gfx.setCopying(way == 1);
-    gfx.setDrawing(way == 3   ? meglet::app::GfxHost::Drawing::warp
-                   : way == 0 ? meglet::app::GfxHost::Drawing::graphicsProcessor
-                              : meglet::app::GfxHost::Drawing::memory);
-    if (const char* fonts = std::getenv("MEGLET_GFX_FONTS")) {
+    gfx.setDrawing(way == 3   ? megler::app::GfxHost::Drawing::warp
+                   : way == 0 ? megler::app::GfxHost::Drawing::graphicsProcessor
+                              : megler::app::GfxHost::Drawing::memory);
+    if (const char* fonts = std::getenv("MEGLER_GFX_FONTS")) {
         std::wstring folder;
         for (const char* at = fonts; *at; at++) folder += wchar_t(static_cast<unsigned char>(*at));
         gfx.setFontFolder(folder.c_str());
@@ -121,7 +121,7 @@ const meglet_gfx_host* mg_gfx_windows_host(void (*line)(const char* text, void* 
 
 /// What the host did, in a line.
 void mg_gfx_windows_counts(char* out, size_t size) {
-    const meglet::app::GfxHost::Counts c = meglet::app::GfxHost::shared().counts();
+    const megler::app::GfxHost::Counts c = megler::app::GfxHost::shared().counts();
     typedef unsigned long long ull;
     int n = snprintf(out, size,
                      "%llu canvases, %llu times Direct2D began and ended drawing, %llu drawing calls put on by Direct2D and %llu by the host's own arithmetic, "
@@ -139,15 +139,15 @@ void mg_gfx_windows_counts(char* out, size_t size) {
 
 /// Whether the host draws on a graphics processor (or WARP) now.
 int mg_gfx_windows_on_gpu(void) {
-    const meglet::app::GfxHost::Counts c = meglet::app::GfxHost::shared().counts();
+    const megler::app::GfxHost::Counts c = megler::app::GfxHost::shared().counts();
     return c.gpu && !c.gpuLost;
 }
 
 /// The graphics processor's device taken as lost, for the test of what a canvas does then.
-void mg_gfx_windows_lose_device(void) { meglet::app::GfxHost::shared().loseDevice(); }
+void mg_gfx_windows_lose_device(void) { megler::app::GfxHost::shared().loseDevice(); }
 
 /// The window composed of an OpenGL ES view's frames and the views
-/// (meglet_gfx_host.gl_frame, gl_place): a second Direct3D device stands for
+/// (megler_gfx_host.gl_frame, gl_place): a second Direct3D device stands for
 /// ANGLE's, a texture of it shared by handle for a GL surface, its rows
 /// bottom first as OpenGL's are. The frame shows where the views leave a
 /// hole, the right way up, under what the views have there; a new frame is
@@ -157,8 +157,8 @@ void mg_gfx_windows_lose_device(void) { meglet::app::GfxHost::shared().loseDevic
 /// "ANGLE's" device then draws holding it and lets go of it for gl_frame, as
 /// the core does, and the shell copies holding it (without, Direct3D drops
 /// the copy and the frame is nothing). Lines to `line`; checks that failed.
-int mg_gfx_windows_check_gl(const meglet_gfx_host* h, void (*line)(const char* text, void* user), int* checks) {
-    meglet::app::GfxHost& gfx = meglet::app::GfxHost::shared();
+int mg_gfx_windows_check_gl(const megler_gfx_host* h, void (*line)(const char* text, void* user), int* checks) {
+    megler::app::GfxHost& gfx = megler::app::GfxHost::shared();
     int failed = 0;
     char text[300];
     bool keyedRun = false;
@@ -169,7 +169,7 @@ int mg_gfx_windows_check_gl(const meglet_gfx_host* h, void (*line)(const char* t
         snprintf(text, sizeof(text), "  FAIL the window composed of OpenGL ES frames and the views%s: %s", keyedRun ? " (a keyed mutex)" : "", what);
         line(text, nullptr);
     };
-    line("  the window composed on the graphics processor of an OpenGL ES view's frames and the views (meglet_gfx_host.gl_frame, gl_place)", nullptr);
+    line("  the window composed on the graphics processor of an OpenGL ES view's frames and the views (megler_gfx_host.gl_frame, gl_place)", nullptr);
     // ANGLE's device, on the adapter GfxHost's is on (a texture is shared on one adapter only, and ANGLE and the shell use the
     // phone's one), and the surface's texture: 32 x 24, its bottom half (rows 0 to 11, the picture's bottom) blue, its top yellow.
     ID3D11Device* angle = nullptr;
@@ -230,7 +230,7 @@ int mg_gfx_windows_check_gl(const meglet_gfx_host* h, void (*line)(const char* t
             if (mutex) mutex->ReleaseSync(0);
         };
         draw();
-        meglet::app::GfxHost::Window window;
+        megler::app::GfxHost::Window window;
         window.target = windowTarget;
         window.show = windowShow;
         gfx.setWindow(window);
@@ -238,19 +238,19 @@ int mg_gfx_windows_check_gl(const meglet_gfx_host* h, void (*line)(const char* t
         const int w = 64, hgt = 48;
         std::vector<uint32_t> memory(size_t(w) * hgt, 0), shown;
         void* cv = h->canvas_new(h->user, memory.data(), w, hgt, w * 4);
-        meglet_gfx_paint p = {};
+        megler_gfx_paint p = {};
         p.miter_limit = 4;
         p.text_size = 12;
         p.text_scale_x = 1;
-        p.blend = MEGLET_GFX_BLEND_SRC_OVER;
+        p.blend = MEGLER_GFX_BLEND_SRC_OVER;
         p.filter_mode = -1;
-        h->draw_color(h->user, cv, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
-        p.blend = MEGLET_GFX_BLEND_CLEAR;
+        h->draw_color(h->user, cv, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+        p.blend = MEGLER_GFX_BLEND_CLEAR;
         h->draw_rect(h->user, cv, 16, 8, 48, 32, &p, nullptr);
-        p.blend = MEGLET_GFX_BLEND_SRC_OVER;
+        p.blend = MEGLER_GFX_BLEND_SRC_OVER;
         p.color = 0x80FF0000u;
         h->draw_rect(h->user, cv, 40, 20, 48, 32, &p, nullptr);
-        const meglet::app::GfxHost::Counts before = gfx.counts();
+        const megler::app::GfxHost::Counts before = gfx.counts();
         // The frame comes before the views have been shown with the layer placed: kept, not shown.
         const int shownBefore = g_window.shown;
         check(h->gl_frame(h->user, 0, handle, fw, fh), "the first frame was not taken");
@@ -282,13 +282,13 @@ int mg_gfx_windows_check_gl(const meglet_gfx_host* h, void (*line)(const char* t
         // The layer taken away: the views alone there again, at the next showing.
         h->gl_place(h->user, 0, 0, 0, 0, 0);
         check(h->present(h->user, cv, 16, 8, 32, 24) && readWindow(shown) && shown[10 * w + 20] == 0u, "the views' hole does not show nothing once the layer is gone");
-        const meglet::app::GfxHost::Counts after = gfx.counts();
+        const megler::app::GfxHost::Counts after = gfx.counts();
         check(after.readBacks == before.readBacks, "something was read back");
         snprintf(text, sizeof(text), "    %s: %d pictures shown, %llu read-backs", keyed ? "shared with a keyed mutex" : "shared plainly", g_window.shown,
                  static_cast<unsigned long long>(after.readBacks - before.readBacks));
         line(text, nullptr);
         h->canvas_free(h->user, cv);
-        gfx.setWindow(meglet::app::GfxHost::Window());
+        gfx.setWindow(megler::app::GfxHost::Window());
         if (g_window.texture) g_window.texture->Release();
         g_window = TestWindow();
         if (mutex) mutex->Release();
@@ -301,12 +301,12 @@ int mg_gfx_windows_check_gl(const meglet_gfx_host* h, void (*line)(const char* t
 }
 
 /// The window's picture shown from its canvas without the memory
-/// (meglet_gfx_host.present), into a window of the test's own: shown with no
+/// (megler_gfx_host.present), into a window of the test's own: shown with no
 /// read-back and the memory left alone; of a part, that part alone; and,
 /// after a flush, the memory exactly the picture shown, as the core's later
 /// reader gets it. Lines to `line`; how many checks failed.
-int mg_gfx_windows_check_present(const meglet_gfx_host* h, void (*line)(const char* text, void* user), int* checks) {
-    meglet::app::GfxHost& gfx = meglet::app::GfxHost::shared();
+int mg_gfx_windows_check_present(const megler_gfx_host* h, void (*line)(const char* text, void* user), int* checks) {
+    megler::app::GfxHost& gfx = megler::app::GfxHost::shared();
     int failed = 0;
     char text[300];
     auto check = [&](bool ok, const char* what) {
@@ -316,8 +316,8 @@ int mg_gfx_windows_check_present(const meglet_gfx_host* h, void (*line)(const ch
         snprintf(text, sizeof(text), "  FAIL the window shown from its canvas: %s", what);
         line(text, nullptr);
     };
-    line("  the window's picture shown from its canvas on the graphics processor, without the memory (meglet_gfx_host.present)", nullptr);
-    meglet::app::GfxHost::Window window;
+    line("  the window's picture shown from its canvas on the graphics processor, without the memory (megler_gfx_host.present)", nullptr);
+    megler::app::GfxHost::Window window;
     window.target = windowTarget;
     window.show = windowShow;
     gfx.setWindow(window);
@@ -326,21 +326,21 @@ int mg_gfx_windows_check_present(const meglet_gfx_host* h, void (*line)(const ch
     void* cv = h->canvas_new(h->user, memory.data(), w, hgt, w * 4);
     check(cv != nullptr, "no canvas");
     if (!cv) return failed;
-    meglet_gfx_paint p = {};
+    megler_gfx_paint p = {};
     p.miter_limit = 4;
     p.text_size = 12;
     p.text_scale_x = 1;
-    p.blend = MEGLET_GFX_BLEND_SRC_OVER;
+    p.blend = MEGLER_GFX_BLEND_SRC_OVER;
     p.filter_mode = -1;
-    p.flags = MEGLET_GFX_ANTI_ALIAS;
-    h->draw_color(h->user, cv, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
+    p.flags = MEGLER_GFX_ANTI_ALIAS;
+    h->draw_color(h->user, cv, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
     p.color = 0xFFFF0000u;
     h->draw_rect(h->user, cv, 8, 8, 24, 24, &p, nullptr);
     p.color = 0x802040C0u;
     h->draw_oval(h->user, cv, 20, 20, 50, 44, &p, nullptr);
-    const meglet::app::GfxHost::Counts first = gfx.counts();
+    const megler::app::GfxHost::Counts first = gfx.counts();
     const bool whole = h->present(h->user, cv, 0, 0, w, hgt);
-    const meglet::app::GfxHost::Counts second = gfx.counts();
+    const megler::app::GfxHost::Counts second = gfx.counts();
     check(whole && g_window.shown == 1, "the whole picture was not shown");
     check(second.readBacks == first.readBacks, "showing it read the picture back");
     check(memory[10 * w + 10] == 0, "showing it wrote the memory");
@@ -363,9 +363,9 @@ int mg_gfx_windows_check_present(const meglet_gfx_host* h, void (*line)(const ch
     check(partRight, "a part shown changed the window outside the part, or not inside it");
     // The whole again, and then the memory brought up to date as the core does before it reads it: exactly the picture shown.
     check(h->present(h->user, cv, 0, 0, w, hgt) && readWindow(shown), "the whole picture was not shown again");
-    const meglet::app::GfxHost::Counts third = gfx.counts();
+    const megler::app::GfxHost::Counts third = gfx.counts();
     h->flush(h->user, cv);
-    const meglet::app::GfxHost::Counts fourth = gfx.counts();
+    const megler::app::GfxHost::Counts fourth = gfx.counts();
     check(fourth.readBacks == third.readBacks + 1 && fourth.windowReadBacks == third.windowReadBacks + 1, "the flush did not read the window's canvas back, once");
     check(shown.size() == memory.size() && !memcmp(shown.data(), memory.data(), memory.size() * 4), "after a flush the memory is not the picture shown");
     // The memory written behind the canvas's back (touched), and shown with nothing drawn since: the memory's picture.
@@ -388,14 +388,14 @@ int mg_gfx_windows_check_present(const meglet_gfx_host* h, void (*line)(const ch
         QueryPerformanceFrequency(&frequency);
         double ways[2] = {0, 0};
         if (sc) {
-            h->draw_color(h->user, sc, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
+            h->draw_color(h->user, sc, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
             h->present(h->user, sc, 0, 0, ww, wh);
             for (int way = 0; way < 2; way++) {
                 QueryPerformanceCounter(&t0);
                 for (int i = 0; i < 100; i++) {
                     h->save(h->user, sc);
-                    h->clip_rect(h->user, sc, 0, 600, float(ww), 664, MEGLET_GFX_CLIP_INTERSECT);
-                    h->draw_color(h->user, sc, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
+                    h->clip_rect(h->user, sc, 0, 600, float(ww), 664, MEGLER_GFX_CLIP_INTERSECT);
+                    h->draw_color(h->user, sc, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
                     p.color = 0xFFE0E0E0u;
                     for (int k = 0; k < 7; k++) h->draw_rect(h->user, sc, float(k * 100 + 10), 610, float(k * 100 + 90), 612, &p, nullptr);
                     p.color = 0xFF2060C0u;
@@ -415,7 +415,7 @@ int mg_gfx_windows_check_present(const meglet_gfx_host* h, void (*line)(const ch
             line(text, nullptr);
         }
     }
-    gfx.setWindow(meglet::app::GfxHost::Window());
+    gfx.setWindow(megler::app::GfxHost::Window());
     if (g_window.texture) g_window.texture->Release();
     g_window = TestWindow();
     return failed;

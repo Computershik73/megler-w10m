@@ -3,20 +3,20 @@ package android.view.textclassifier;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TextClassificationContext implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
-    public android.view.textclassifier.SystemTextClassifierMetadata getSystemTextClassifierMetadata() { return (android.view.textclassifier.SystemTextClassifierMetadata) megletProps.get("SystemTextClassifierMetadata"); }
-    public java.lang.String getWidgetType() { return (java.lang.String) megletProps.get("WidgetType"); }
-    public java.lang.String getWidgetVersion() { return (java.lang.String) megletProps.get("WidgetVersion"); }
+    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
+    public android.view.textclassifier.SystemTextClassifierMetadata getSystemTextClassifierMetadata() { return (android.view.textclassifier.SystemTextClassifierMetadata) meglerProps.get("SystemTextClassifierMetadata"); }
+    public java.lang.String getWidgetType() { return (java.lang.String) meglerProps.get("WidgetType"); }
+    public java.lang.String getWidgetVersion() { return (java.lang.String) meglerProps.get("WidgetVersion"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected TextClassificationContext() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(java.lang.String p0, java.lang.String p1) {}
-        public android.view.textclassifier.TextClassificationContext build() { android.view.textclassifier.TextClassificationContext x = new android.view.textclassifier.TextClassificationContext(); x.megletProps.putAll(megletProps); return x; }
-        public android.view.textclassifier.TextClassificationContext.Builder setWidgetVersion(java.lang.String p0) { megletProps.put("WidgetVersion", p0); return this; }
+        public android.view.textclassifier.TextClassificationContext build() { android.view.textclassifier.TextClassificationContext x = new android.view.textclassifier.TextClassificationContext(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.view.textclassifier.TextClassificationContext.Builder setWidgetVersion(java.lang.String p0) { meglerProps.put("WidgetVersion", p0); return this; }
         Builder() { this((java.lang.String) null, (java.lang.String) null); }
     }
 }

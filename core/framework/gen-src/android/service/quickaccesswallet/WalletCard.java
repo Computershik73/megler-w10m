@@ -3,33 +3,33 @@ package android.service.quickaccesswallet;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class WalletCard implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int CARD_TYPE_NON_PAYMENT = 2;
     public static final int CARD_TYPE_PAYMENT = 1;
     public static int CARD_TYPE_UNKNOWN;
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public android.graphics.drawable.Icon getCardIcon() { return (android.graphics.drawable.Icon) megletProps.get("CardIcon"); }
-    public java.lang.String getCardId() { return (java.lang.String) megletProps.get("CardId"); }
-    public android.graphics.drawable.Icon getCardImage() { return (android.graphics.drawable.Icon) megletProps.get("CardImage"); }
-    public java.lang.CharSequence getCardLabel() { return (java.lang.CharSequence) megletProps.get("CardLabel"); }
-    public java.util.List getCardLocations() { return (megletProps.get("CardLocations") != null ? (java.util.List) megletProps.get("CardLocations") : new java.util.ArrayList()); }
-    public int getCardType() { return (megletProps.get("CardType") instanceof Integer ? (Integer) megletProps.get("CardType") : 0); }
-    public java.lang.CharSequence getContentDescription() { return (java.lang.CharSequence) megletProps.get("ContentDescription"); }
-    public android.graphics.drawable.Icon getNonPaymentCardSecondaryImage() { return (android.graphics.drawable.Icon) megletProps.get("NonPaymentCardSecondaryImage"); }
-    public android.app.PendingIntent getPendingIntent() { return (android.app.PendingIntent) megletProps.get("PendingIntent"); }
+    public android.graphics.drawable.Icon getCardIcon() { return (android.graphics.drawable.Icon) meglerProps.get("CardIcon"); }
+    public java.lang.String getCardId() { return (java.lang.String) meglerProps.get("CardId"); }
+    public android.graphics.drawable.Icon getCardImage() { return (android.graphics.drawable.Icon) meglerProps.get("CardImage"); }
+    public java.lang.CharSequence getCardLabel() { return (java.lang.CharSequence) meglerProps.get("CardLabel"); }
+    public java.util.List getCardLocations() { return (meglerProps.get("CardLocations") != null ? (java.util.List) meglerProps.get("CardLocations") : new java.util.ArrayList()); }
+    public int getCardType() { return (meglerProps.get("CardType") instanceof Integer ? (Integer) meglerProps.get("CardType") : 0); }
+    public java.lang.CharSequence getContentDescription() { return (java.lang.CharSequence) meglerProps.get("ContentDescription"); }
+    public android.graphics.drawable.Icon getNonPaymentCardSecondaryImage() { return (android.graphics.drawable.Icon) meglerProps.get("NonPaymentCardSecondaryImage"); }
+    public android.app.PendingIntent getPendingIntent() { return (android.app.PendingIntent) meglerProps.get("PendingIntent"); }
     public void removeCardLocations() {}
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected WalletCard() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(java.lang.String p0, int p1, android.graphics.drawable.Icon p2, java.lang.CharSequence p3, android.app.PendingIntent p4) {}
         public Builder(java.lang.String p0, android.graphics.drawable.Icon p1, java.lang.CharSequence p2, android.app.PendingIntent p3) {}
-        public android.service.quickaccesswallet.WalletCard build() { android.service.quickaccesswallet.WalletCard x = new android.service.quickaccesswallet.WalletCard(); x.megletProps.putAll(megletProps); return x; }
-        public android.service.quickaccesswallet.WalletCard.Builder setCardIcon(android.graphics.drawable.Icon p0) { megletProps.put("CardIcon", p0); return this; }
-        public android.service.quickaccesswallet.WalletCard.Builder setCardLabel(java.lang.CharSequence p0) { megletProps.put("CardLabel", p0); return this; }
-        public android.service.quickaccesswallet.WalletCard.Builder setCardLocations(java.util.List p0) { megletProps.put("CardLocations", p0); return this; }
-        public android.service.quickaccesswallet.WalletCard.Builder setNonPaymentCardSecondaryImage(android.graphics.drawable.Icon p0) { megletProps.put("NonPaymentCardSecondaryImage", p0); return this; }
+        public android.service.quickaccesswallet.WalletCard build() { android.service.quickaccesswallet.WalletCard x = new android.service.quickaccesswallet.WalletCard(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.service.quickaccesswallet.WalletCard.Builder setCardIcon(android.graphics.drawable.Icon p0) { meglerProps.put("CardIcon", p0); return this; }
+        public android.service.quickaccesswallet.WalletCard.Builder setCardLabel(java.lang.CharSequence p0) { meglerProps.put("CardLabel", p0); return this; }
+        public android.service.quickaccesswallet.WalletCard.Builder setCardLocations(java.util.List p0) { meglerProps.put("CardLocations", p0); return this; }
+        public android.service.quickaccesswallet.WalletCard.Builder setNonPaymentCardSecondaryImage(android.graphics.drawable.Icon p0) { meglerProps.put("NonPaymentCardSecondaryImage", p0); return this; }
         Builder() { this((java.lang.String) null, (android.graphics.drawable.Icon) null, (java.lang.CharSequence) null, (android.app.PendingIntent) null); }
     }
 }

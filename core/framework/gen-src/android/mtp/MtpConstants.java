@@ -3,7 +3,7 @@ package android.mtp;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MtpConstants {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int ASSOCIATION_TYPE_GENERIC_FOLDER = 1;
     public static final int DEVICE_PROPERTY_ARTIST = 20510;
     public static final int DEVICE_PROPERTY_BATTERY_LEVEL = 20481;

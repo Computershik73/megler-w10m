@@ -3,7 +3,7 @@ package android.content.res.loader;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ResourcesProvider implements java.lang.AutoCloseable, java.io.Closeable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.content.res.loader.ResourcesProvider empty(android.content.res.loader.AssetsProvider p0) { return new ResourcesProvider(); }
     public static android.content.res.loader.ResourcesProvider loadFromApk(android.os.ParcelFileDescriptor p0) { return new ResourcesProvider(); }
     public static android.content.res.loader.ResourcesProvider loadFromApk(android.os.ParcelFileDescriptor p0, long p1, long p2, android.content.res.loader.AssetsProvider p3) { return new ResourcesProvider(); }
@@ -15,6 +15,6 @@ public class ResourcesProvider implements java.lang.AutoCloseable, java.io.Close
     public static android.content.res.loader.ResourcesProvider loadOverlay(android.content.om.OverlayInfo p0) { return new ResourcesProvider(); }
     public void close() {}
     protected void finalize() {}
-    public android.content.res.ApkAssets getApkAssets() { return (android.content.res.ApkAssets) megletProps.get("ApkAssets"); }
+    public android.content.res.ApkAssets getApkAssets() { return (android.content.res.ApkAssets) meglerProps.get("ApkAssets"); }
     protected ResourcesProvider() {}
 }

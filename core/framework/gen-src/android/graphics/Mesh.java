@@ -3,7 +3,7 @@ package android.graphics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Mesh {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int TRIANGLES = 0;
     public static final int TRIANGLE_STRIP = 1;
     public Mesh(android.graphics.MeshSpecification p0, int p1, java.nio.Buffer p2, int p3, android.graphics.RectF p4) {}

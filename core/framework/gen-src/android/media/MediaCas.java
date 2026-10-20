@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MediaCas implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int PLUGIN_STATUS_PHYSICAL_MODULE_CHANGED = 0;
     public static final int PLUGIN_STATUS_SESSION_NUMBER_CHANGED = 1;
     public static final int SCRAMBLING_MODE_AES128 = 9;
@@ -33,7 +33,7 @@ public final class MediaCas implements java.lang.AutoCloseable {
     public void close() {}
     protected void finalize() {}
     public void forceResourceLost() {}
-    public boolean isAidlHal() { return (megletProps.get("AidlHal") instanceof Boolean ? (Boolean) megletProps.get("AidlHal") : false); }
+    public boolean isAidlHal() { return (meglerProps.get("AidlHal") instanceof Boolean ? (Boolean) meglerProps.get("AidlHal") : false); }
     public android.media.MediaCas.Session openSession() { return null; }
     public android.media.MediaCas.Session openSession(int p0, int p1) { return null; }
     public void processEmm(byte[] p0) {}
@@ -42,8 +42,8 @@ public final class MediaCas implements java.lang.AutoCloseable {
     public void refreshEntitlements(int p0, byte[] p1) {}
     public void sendEvent(int p0, int p1, byte[] p2) {}
     public void setEventListener(android.media.MediaCas.EventListener p0, android.os.Handler p1) {}
-    public void setPrivateData(byte[] p0) { megletProps.put("PrivateData", p0); }
-    public void setResourceOwnershipRetention(boolean p0) { megletProps.put("ResourceOwnershipRetention", Boolean.valueOf(p0)); }
+    public void setPrivateData(byte[] p0) { meglerProps.put("PrivateData", p0); }
+    public void setResourceOwnershipRetention(boolean p0) { meglerProps.put("ResourceOwnershipRetention", Boolean.valueOf(p0)); }
     public boolean updateResourcePriority(int p0, int p1) { return false; }
     MediaCas() { this((int) 0); }
     public interface EventListener {
@@ -53,9 +53,9 @@ public final class MediaCas implements java.lang.AutoCloseable {
         default void onSessionEvent(android.media.MediaCas p0, android.media.MediaCas.Session p1, int p2, int p3, byte[] p4) {}
     }
     public static class PluginDescriptor {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
-        public int getSystemId() { return (megletProps.get("SystemId") instanceof Integer ? (Integer) megletProps.get("SystemId") : 0); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
+        public int getSystemId() { return (meglerProps.get("SystemId") instanceof Integer ? (Integer) meglerProps.get("SystemId") : 0); }
         protected PluginDescriptor() {}
     }
     public static abstract class Session implements java.lang.AutoCloseable {

@@ -3,21 +3,21 @@ package android.nfc.tech;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class NfcA extends android.nfc.tech.BasicTagTechnology {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String EXTRA_ATQA = "atqa";
     public static final java.lang.String EXTRA_SAK = "sak";
     public NfcA(android.nfc.Tag p0) { super(); }
     public static android.nfc.tech.NfcA get(android.nfc.Tag p0) { return null; }
     public void close() {}
     public void connect() {}
-    public byte[] getAtqa() { return (byte[]) megletProps.get("Atqa"); }
-    public int getMaxTransceiveLength() { return (megletProps.get("MaxTransceiveLength") instanceof Integer ? (Integer) megletProps.get("MaxTransceiveLength") : 0); }
-    public short getSak() { return (megletProps.get("Sak") instanceof Short ? (Short) megletProps.get("Sak") : (short) 0); }
-    public android.nfc.Tag getTag() { return (android.nfc.Tag) megletProps.get("Tag"); }
-    public int getTimeout() { return (megletProps.get("Timeout") instanceof Integer ? (Integer) megletProps.get("Timeout") : 0); }
-    public boolean isConnected() { return (megletProps.get("Connected") instanceof Boolean ? (Boolean) megletProps.get("Connected") : false); }
+    public byte[] getAtqa() { return (byte[]) meglerProps.get("Atqa"); }
+    public int getMaxTransceiveLength() { return (meglerProps.get("MaxTransceiveLength") instanceof Integer ? (Integer) meglerProps.get("MaxTransceiveLength") : 0); }
+    public short getSak() { return (meglerProps.get("Sak") instanceof Short ? (Short) meglerProps.get("Sak") : (short) 0); }
+    public android.nfc.Tag getTag() { return (android.nfc.Tag) meglerProps.get("Tag"); }
+    public int getTimeout() { return (meglerProps.get("Timeout") instanceof Integer ? (Integer) meglerProps.get("Timeout") : 0); }
+    public boolean isConnected() { return (meglerProps.get("Connected") instanceof Boolean ? (Boolean) meglerProps.get("Connected") : false); }
     public void reconnect() {}
-    public void setTimeout(int p0) { megletProps.put("Timeout", Integer.valueOf(p0)); }
+    public void setTimeout(int p0) { meglerProps.put("Timeout", Integer.valueOf(p0)); }
     public byte[] transceive(byte[] p0) { return null; }
     NfcA() { this((android.nfc.Tag) null); }
 }

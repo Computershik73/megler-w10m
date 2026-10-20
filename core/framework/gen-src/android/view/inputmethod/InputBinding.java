@@ -3,15 +3,15 @@ package android.view.inputmethod;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class InputBinding implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public InputBinding(android.view.inputmethod.InputConnection p0, android.os.IBinder p1, int p2, int p3) {}
     public InputBinding(android.view.inputmethod.InputConnection p0, android.view.inputmethod.InputBinding p1) {}
     public int describeContents() { return 0; }
-    public android.view.inputmethod.InputConnection getConnection() { return (android.view.inputmethod.InputConnection) megletProps.get("Connection"); }
-    public android.os.IBinder getConnectionToken() { return (android.os.IBinder) megletProps.get("ConnectionToken"); }
-    public int getPid() { return (megletProps.get("Pid") instanceof Integer ? (Integer) megletProps.get("Pid") : 0); }
-    public int getUid() { return (megletProps.get("Uid") instanceof Integer ? (Integer) megletProps.get("Uid") : 0); }
+    public android.view.inputmethod.InputConnection getConnection() { return (android.view.inputmethod.InputConnection) meglerProps.get("Connection"); }
+    public android.os.IBinder getConnectionToken() { return (android.os.IBinder) meglerProps.get("ConnectionToken"); }
+    public int getPid() { return (meglerProps.get("Pid") instanceof Integer ? (Integer) meglerProps.get("Pid") : 0); }
+    public int getUid() { return (meglerProps.get("Uid") instanceof Integer ? (Integer) meglerProps.get("Uid") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     InputBinding() { this((android.view.inputmethod.InputConnection) null, (android.view.inputmethod.InputBinding) null); }
 }

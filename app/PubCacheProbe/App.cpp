@@ -1,6 +1,6 @@
 // A probe of the publisher cache folder (tools/build-pubcache-probe.sh, tools/pubcache-probe.py): whether two packages of
 // one publisher, each its own process, share a folder that Win32 calls reach, as a package made for each Android app would
-// need for /sdcard. Built twice, as MegletProbeA and MegletProbeB; each says what it found in LocalState\probe.log.
+// need for /sdcard. Built twice, as MeglerProbeA and MeglerProbeB; each says what it found in LocalState\probe.log.
 //
 // What each start does, in the folder "shared" both manifests declare:
 //  - says the folder's path, and the app's memory limit and use (MemoryManager);
@@ -10,7 +10,7 @@
 //  - makes sdcard\Android\data\com.example.<letter> level by level and a file in it;
 //  - opens lock.dat shared and takes a byte-range lock on it without waiting (as SQLite does), and opens excl.dat with no
 //    sharing; both are held while the process lives, so the second app to start finds them taken by the first.
-//  - connects to the phone's own Device Portal on 127.0.0.1, port 80 and port 443, with Winsock as Meglet does, and asks
+//  - connects to the phone's own Device Portal on 127.0.0.1, port 80 and port 443, with Winsock as Megler does, and asks
 //    port 80 for /api/os/info: whether an app may reach it (a packaged app's network is isolated from the loopback
 //    address unless the system lets it through), which installing packages from the phone needs.
 #include <winsock2.h>
@@ -285,7 +285,7 @@ struct Source : implements<Source, IFrameworkViewSource> {
 int __stdcall wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 {
     init_apartment();
-    std::wstring name = Package::Current().Id().Name().c_str();   // MegletProbeA or MegletProbeB
+    std::wstring name = Package::Current().Id().Name().c_str();   // MeglerProbeA or MeglerProbeB
     g_me = name.empty() ? L'?' : name.back();
     g_peer = g_me == L'A' ? L'B' : L'A';
     std::wstring log = std::wstring(ApplicationData::Current().LocalFolder().Path().c_str()) + L"\\probe.log";

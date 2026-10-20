@@ -3,38 +3,38 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MediaSession2 implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public void broadcastSessionCommand(android.media.Session2Command p0, android.os.Bundle p1) {}
     public void cancelSessionCommand(android.media.MediaSession2.ControllerInfo p0, java.lang.Object p1) {}
     public void close() {}
-    public java.util.List getConnectedControllers() { return (megletProps.get("ConnectedControllers") != null ? (java.util.List) megletProps.get("ConnectedControllers") : new java.util.ArrayList()); }
-    public java.lang.String getId() { return (java.lang.String) megletProps.get("Id"); }
-    public android.media.Session2Token getToken() { return (android.media.Session2Token) megletProps.get("Token"); }
-    public boolean isPlaybackActive() { return (megletProps.get("PlaybackActive") instanceof Boolean ? (Boolean) megletProps.get("PlaybackActive") : false); }
+    public java.util.List getConnectedControllers() { return (meglerProps.get("ConnectedControllers") != null ? (java.util.List) meglerProps.get("ConnectedControllers") : new java.util.ArrayList()); }
+    public java.lang.String getId() { return (java.lang.String) meglerProps.get("Id"); }
+    public android.media.Session2Token getToken() { return (android.media.Session2Token) meglerProps.get("Token"); }
+    public boolean isPlaybackActive() { return (meglerProps.get("PlaybackActive") instanceof Boolean ? (Boolean) meglerProps.get("PlaybackActive") : false); }
     public java.lang.Object sendSessionCommand(android.media.MediaSession2.ControllerInfo p0, android.media.Session2Command p1, android.os.Bundle p2) { return null; }
-    public void setPlaybackActive(boolean p0) { megletProps.put("PlaybackActive", Boolean.valueOf(p0)); }
+    public void setPlaybackActive(boolean p0) { meglerProps.put("PlaybackActive", Boolean.valueOf(p0)); }
     protected MediaSession2() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.content.Context p0) {}
-        public android.media.MediaSession2 build() { android.media.MediaSession2 x = new android.media.MediaSession2(); x.megletProps.putAll(megletProps); return x; }
-        public android.media.MediaSession2.Builder setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); return this; }
-        public android.media.MediaSession2.Builder setId(java.lang.String p0) { megletProps.put("Id", p0); return this; }
-        public android.media.MediaSession2.Builder setSessionActivity(android.app.PendingIntent p0) { megletProps.put("SessionActivity", p0); return this; }
+        public android.media.MediaSession2 build() { android.media.MediaSession2 x = new android.media.MediaSession2(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.media.MediaSession2.Builder setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); return this; }
+        public android.media.MediaSession2.Builder setId(java.lang.String p0) { meglerProps.put("Id", p0); return this; }
+        public android.media.MediaSession2.Builder setSessionActivity(android.app.PendingIntent p0) { meglerProps.put("SessionActivity", p0); return this; }
         public android.media.MediaSession2.Builder setSessionCallback(java.util.concurrent.Executor p0, android.media.MediaSession2.SessionCallback p1) { return this; }
         Builder() { this((android.content.Context) null); }
     }
     public static final class ControllerInfo {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public android.os.Bundle getConnectionHints() { return (android.os.Bundle) megletProps.get("ConnectionHints"); }
-        public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
-        public android.media.session.MediaSessionManager.RemoteUserInfo getRemoteUserInfo() { return (android.media.session.MediaSessionManager.RemoteUserInfo) megletProps.get("RemoteUserInfo"); }
-        public int getUid() { return (megletProps.get("Uid") instanceof Integer ? (Integer) megletProps.get("Uid") : 0); }
-        public boolean isTrusted() { return (megletProps.get("Trusted") instanceof Boolean ? (Boolean) megletProps.get("Trusted") : false); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public android.os.Bundle getConnectionHints() { return (android.os.Bundle) meglerProps.get("ConnectionHints"); }
+        public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
+        public android.media.session.MediaSessionManager.RemoteUserInfo getRemoteUserInfo() { return (android.media.session.MediaSessionManager.RemoteUserInfo) meglerProps.get("RemoteUserInfo"); }
+        public int getUid() { return (meglerProps.get("Uid") instanceof Integer ? (Integer) meglerProps.get("Uid") : 0); }
+        public boolean isTrusted() { return (meglerProps.get("Trusted") instanceof Boolean ? (Boolean) meglerProps.get("Trusted") : false); }
         protected ControllerInfo() {}
     }
     public static abstract class SessionCallback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public SessionCallback() {}
         public void onCommandResult(android.media.MediaSession2 p0, android.media.MediaSession2.ControllerInfo p1, java.lang.Object p2, android.media.Session2Command p3, android.media.Session2Command.Result p4) {}
         public android.media.Session2CommandGroup onConnect(android.media.MediaSession2 p0, android.media.MediaSession2.ControllerInfo p1) { return null; }

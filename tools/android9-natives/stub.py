@@ -4,7 +4,7 @@
 
 A linker needs a library to link against only to learn which names it defines
 and to write its DT_NEEDED entry; what is at those names does not matter,
-because at run time the names are bound by whoever loads the result (Meglet's
+because at run time the names are bound by whoever loads the result (Megler's
 own linker and the layer behind it). tools/android9-natives.sh links against
 such stubs where no real library exists to link against:
 

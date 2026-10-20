@@ -3,7 +3,7 @@ package android.speech.tts;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class TextToSpeech {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_TTS_QUEUE_PROCESSING_COMPLETED = "android.speech.tts.TTS_QUEUE_PROCESSING_COMPLETED";
     public static final int ERROR = -1;
     public static final int ERROR_INVALID_REQUEST = -8;
@@ -36,18 +36,18 @@ public class TextToSpeech {
     public int addSpeech(java.lang.String p0, java.lang.String p1) { return 0; }
     public int addSpeech(java.lang.String p0, java.lang.String p1, int p2) { return 0; }
     public boolean areDefaultsEnforced() { return false; }
-    public java.util.Set getAvailableLanguages() { return (megletProps.get("AvailableLanguages") != null ? (java.util.Set) megletProps.get("AvailableLanguages") : new java.util.HashSet()); }
-    public java.lang.String getCurrentEngine() { return (java.lang.String) megletProps.get("CurrentEngine"); }
-    public java.lang.String getDefaultEngine() { return (java.lang.String) megletProps.get("DefaultEngine"); }
-    public java.util.Locale getDefaultLanguage() { return (java.util.Locale) megletProps.get("DefaultLanguage"); }
-    public android.speech.tts.Voice getDefaultVoice() { return (android.speech.tts.Voice) megletProps.get("DefaultVoice"); }
-    public java.util.List getEngines() { return (megletProps.get("Engines") != null ? (java.util.List) megletProps.get("Engines") : new java.util.ArrayList()); }
+    public java.util.Set getAvailableLanguages() { return (meglerProps.get("AvailableLanguages") != null ? (java.util.Set) meglerProps.get("AvailableLanguages") : new java.util.HashSet()); }
+    public java.lang.String getCurrentEngine() { return (java.lang.String) meglerProps.get("CurrentEngine"); }
+    public java.lang.String getDefaultEngine() { return (java.lang.String) meglerProps.get("DefaultEngine"); }
+    public java.util.Locale getDefaultLanguage() { return (java.util.Locale) meglerProps.get("DefaultLanguage"); }
+    public android.speech.tts.Voice getDefaultVoice() { return (android.speech.tts.Voice) meglerProps.get("DefaultVoice"); }
+    public java.util.List getEngines() { return (meglerProps.get("Engines") != null ? (java.util.List) meglerProps.get("Engines") : new java.util.ArrayList()); }
     public java.util.Set getFeatures(java.util.Locale p0) { return new java.util.HashSet(); }
-    public java.util.Locale getLanguage() { return (java.util.Locale) megletProps.get("Language"); }
-    public android.speech.tts.Voice getVoice() { return (android.speech.tts.Voice) megletProps.get("Voice"); }
-    public java.util.Set getVoices() { return (megletProps.get("Voices") != null ? (java.util.Set) megletProps.get("Voices") : new java.util.HashSet()); }
+    public java.util.Locale getLanguage() { return (java.util.Locale) meglerProps.get("Language"); }
+    public android.speech.tts.Voice getVoice() { return (android.speech.tts.Voice) meglerProps.get("Voice"); }
+    public java.util.Set getVoices() { return (meglerProps.get("Voices") != null ? (java.util.Set) meglerProps.get("Voices") : new java.util.HashSet()); }
     public int isLanguageAvailable(java.util.Locale p0) { return 0; }
-    public boolean isSpeaking() { return (megletProps.get("Speaking") instanceof Boolean ? (Boolean) megletProps.get("Speaking") : false); }
+    public boolean isSpeaking() { return (meglerProps.get("Speaking") instanceof Boolean ? (Boolean) meglerProps.get("Speaking") : false); }
     public int playEarcon(java.lang.String p0, int p1, android.os.Bundle p2, java.lang.String p3) { return 0; }
     public int playEarcon(java.lang.String p0, int p1, java.util.HashMap p2) { return 0; }
     public int playSilence(long p0, int p1, java.util.HashMap p2) { return 0; }
@@ -69,7 +69,7 @@ public class TextToSpeech {
     public int synthesizeToFile(java.lang.String p0, java.util.HashMap p1, java.lang.String p2) { return 0; }
     TextToSpeech() { this((android.content.Context) null, (android.speech.tts.TextToSpeech.OnInitListener) null); }
     public static class Engine {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String ACTION_CHECK_TTS_DATA = "android.speech.tts.engine.CHECK_TTS_DATA";
         public static final java.lang.String ACTION_GET_SAMPLE_TEXT = "android.speech.tts.engine.GET_SAMPLE_TEXT";
         public static final java.lang.String ACTION_INSTALL_TTS_DATA = "android.speech.tts.engine.INSTALL_TTS_DATA";
@@ -118,7 +118,7 @@ public class TextToSpeech {
         Engine() { this((android.speech.tts.TextToSpeech) null); }
     }
     public static class EngineInfo {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public int icon;
         public java.lang.String label;
         public java.lang.String name;

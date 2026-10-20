@@ -3,7 +3,7 @@ package android.security.keystore;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class KeyExpiredException extends java.security.InvalidKeyException {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public KeyExpiredException() { super(); }
     public KeyExpiredException(java.lang.String p0) { super(); }
     public KeyExpiredException(java.lang.String p0, java.lang.Throwable p1) { super(); }

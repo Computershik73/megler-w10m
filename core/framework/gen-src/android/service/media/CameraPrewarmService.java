@@ -3,7 +3,7 @@ package android.service.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class CameraPrewarmService extends android.app.Service {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_PREWARM = "android.service.media.CameraPrewarmService.ACTION_PREWARM";
     public static final int MSG_CAMERA_FIRED = 1;
     public CameraPrewarmService() { super(); }

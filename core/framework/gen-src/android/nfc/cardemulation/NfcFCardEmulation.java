@@ -3,14 +3,14 @@ package android.nfc.cardemulation;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class NfcFCardEmulation {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.nfc.cardemulation.NfcFCardEmulation getInstance(android.nfc.NfcAdapter p0) { return new NfcFCardEmulation(); }
     public static boolean isValidNfcid2(java.lang.String p0) { return false; }
     public static boolean isValidSystemCode(java.lang.String p0) { return false; }
     public boolean disableService(android.app.Activity p0) { return false; }
     public boolean enableService(android.app.Activity p0, android.content.ComponentName p1) { return false; }
-    public int getMaxNumOfRegisterableSystemCodes() { return (megletProps.get("MaxNumOfRegisterableSystemCodes") instanceof Integer ? (Integer) megletProps.get("MaxNumOfRegisterableSystemCodes") : 0); }
-    public java.util.List getNfcFServices() { return (megletProps.get("NfcFServices") != null ? (java.util.List) megletProps.get("NfcFServices") : new java.util.ArrayList()); }
+    public int getMaxNumOfRegisterableSystemCodes() { return (meglerProps.get("MaxNumOfRegisterableSystemCodes") instanceof Integer ? (Integer) meglerProps.get("MaxNumOfRegisterableSystemCodes") : 0); }
+    public java.util.List getNfcFServices() { return (meglerProps.get("NfcFServices") != null ? (java.util.List) meglerProps.get("NfcFServices") : new java.util.ArrayList()); }
     public java.lang.String getNfcid2ForService(android.content.ComponentName p0) { return null; }
     public java.lang.String getSystemCodeForService(android.content.ComponentName p0) { return null; }
     public boolean registerSystemCodeForService(android.content.ComponentName p0, java.lang.String p1) { return false; }

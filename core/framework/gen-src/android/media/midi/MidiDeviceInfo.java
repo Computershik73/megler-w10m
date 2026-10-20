@@ -3,7 +3,7 @@ package android.media.midi;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MidiDeviceInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String PROPERTY_ALSA_CARD = "alsa_card";
     public static final java.lang.String PROPERTY_ALSA_DEVICE = "alsa_device";
@@ -28,23 +28,23 @@ public final class MidiDeviceInfo implements android.os.Parcelable {
     public static final int TYPE_VIRTUAL = 2;
     public MidiDeviceInfo(int p0, int p1, int p2, int p3, java.lang.String[] p4, java.lang.String[] p5, android.os.Bundle p6, boolean p7, int p8) {}
     public int describeContents() { return 0; }
-    public int getDefaultProtocol() { return (megletProps.get("DefaultProtocol") instanceof Integer ? (Integer) megletProps.get("DefaultProtocol") : 0); }
-    public int getId() { return (megletProps.get("Id") instanceof Integer ? (Integer) megletProps.get("Id") : 0); }
-    public int getInputPortCount() { return (megletProps.get("InputPortCount") instanceof Integer ? (Integer) megletProps.get("InputPortCount") : 0); }
-    public int getOutputPortCount() { return (megletProps.get("OutputPortCount") instanceof Integer ? (Integer) megletProps.get("OutputPortCount") : 0); }
-    public android.media.midi.MidiDeviceInfo.PortInfo[] getPorts() { return (android.media.midi.MidiDeviceInfo.PortInfo[]) megletProps.get("Ports"); }
-    public android.os.Bundle getProperties() { return (android.os.Bundle) megletProps.get("Properties"); }
-    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
-    public boolean isPrivate() { return (megletProps.get("Private") instanceof Boolean ? (Boolean) megletProps.get("Private") : false); }
+    public int getDefaultProtocol() { return (meglerProps.get("DefaultProtocol") instanceof Integer ? (Integer) meglerProps.get("DefaultProtocol") : 0); }
+    public int getId() { return (meglerProps.get("Id") instanceof Integer ? (Integer) meglerProps.get("Id") : 0); }
+    public int getInputPortCount() { return (meglerProps.get("InputPortCount") instanceof Integer ? (Integer) meglerProps.get("InputPortCount") : 0); }
+    public int getOutputPortCount() { return (meglerProps.get("OutputPortCount") instanceof Integer ? (Integer) meglerProps.get("OutputPortCount") : 0); }
+    public android.media.midi.MidiDeviceInfo.PortInfo[] getPorts() { return (android.media.midi.MidiDeviceInfo.PortInfo[]) meglerProps.get("Ports"); }
+    public android.os.Bundle getProperties() { return (android.os.Bundle) meglerProps.get("Properties"); }
+    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
+    public boolean isPrivate() { return (meglerProps.get("Private") instanceof Boolean ? (Boolean) meglerProps.get("Private") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     MidiDeviceInfo() { this((int) 0, (int) 0, (int) 0, (int) 0, (java.lang.String[]) null, (java.lang.String[]) null, (android.os.Bundle) null, (boolean) false, (int) 0); }
     public static final class PortInfo {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int TYPE_INPUT = 1;
         public static final int TYPE_OUTPUT = 2;
-        public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
-        public int getPortNumber() { return (megletProps.get("PortNumber") instanceof Integer ? (Integer) megletProps.get("PortNumber") : 0); }
-        public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
+        public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
+        public int getPortNumber() { return (meglerProps.get("PortNumber") instanceof Integer ? (Integer) meglerProps.get("PortNumber") : 0); }
+        public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
         protected PortInfo() {}
     }
 }

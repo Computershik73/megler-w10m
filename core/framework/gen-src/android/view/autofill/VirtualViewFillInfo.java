@@ -3,13 +3,13 @@ package android.view.autofill;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class VirtualViewFillInfo {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public java.lang.String[] getAutofillHints() { return (java.lang.String[]) megletProps.get("AutofillHints"); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public java.lang.String[] getAutofillHints() { return (java.lang.String[]) meglerProps.get("AutofillHints"); }
     protected VirtualViewFillInfo() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.view.autofill.VirtualViewFillInfo build() { android.view.autofill.VirtualViewFillInfo x = new android.view.autofill.VirtualViewFillInfo(); x.megletProps.putAll(megletProps); return x; }
-        public android.view.autofill.VirtualViewFillInfo.Builder setAutofillHints(java.lang.String[] p0) { megletProps.put("AutofillHints", p0); return this; }
+        public android.view.autofill.VirtualViewFillInfo build() { android.view.autofill.VirtualViewFillInfo x = new android.view.autofill.VirtualViewFillInfo(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.view.autofill.VirtualViewFillInfo.Builder setAutofillHints(java.lang.String[] p0) { meglerProps.put("AutofillHints", p0); return this; }
     }
 }

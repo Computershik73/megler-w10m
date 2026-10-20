@@ -1,6 +1,6 @@
 /*
- * Decoders for Java apps' android.media.MediaCodec: meglet.MediaCodecNative's natives, which the framework's MediaCodec
- * decodes through. The decoding proper is the shell's (meglet_codec_host in meglet.h: Media Foundation's decoder transforms on a phone). What
+ * Decoders for Java apps' android.media.MediaCodec: megler.MediaCodecNative's natives, which the framework's MediaCodec
+ * decodes through. The decoding proper is the shell's (megler_codec_host in megler.h: Media Foundation's decoder transforms on a phone). What
  * is here is everything between what an app may hand MediaCodec and the one form the shell is given:
  *
  * - Pictures (H.264, H.265). MediaCodec is fed access units with start codes, and the parameter sets either in the
@@ -10,7 +10,7 @@
  *   sets are kept, and the first unit after a start or a flush gets them in front of its slices when it does not
  *   carry them itself: a decoder that starts afresh needs them before its first slice.
  * - Display order. MediaCodec hands pictures out in display order. A shell's decoder that gives them in decode order
- *   says how far out they can be (meglet_codec_host.reorder): that many are held here, sorted by time, and the earliest
+ *   says how far out they can be (megler_codec_host.reorder): that many are held here, sorted by time, and the earliest
  *   goes on when one more comes; at the end of the stream all of them go. A decoder that said it gives them in order
  *   and then does not is caught at its first picture out of place, and pictures are held back from then on.
  * - Sound (AAC, MP3). One packet per queued buffer. AAC's AudioSpecificConfig comes as csd-0 or in a codec-specific
@@ -35,9 +35,9 @@
 enum { FLAG_CONFIG = 2, FLAG_EOS = 4 };
 
 /* The shell's decoders: set when the app starts, before any of its code runs. */
-static meglet_codec_host g_host;
+static megler_codec_host g_host;
 
-void mg_java_media_set_host(const meglet_codec_host *host)
+void mg_java_media_set_host(const megler_codec_host *host)
 {
     if (host) g_host = *host;
     else memset(&g_host, 0, sizeof(g_host));
@@ -45,7 +45,7 @@ void mg_java_media_set_host(const meglet_codec_host *host)
 
 static const char *kind_name(int kind)
 {
-    return kind == MEGLET_CODEC_H264 ? "H.264" : kind == MEGLET_CODEC_H265 ? "H.265" : kind == MEGLET_CODEC_AAC ? "AAC" : kind == MEGLET_CODEC_MP3 ? "MP3" : "?";
+    return kind == MEGLER_CODEC_H264 ? "H.264" : kind == MEGLER_CODEC_H265 ? "H.265" : kind == MEGLER_CODEC_AAC ? "AAC" : kind == MEGLER_CODEC_MP3 ? "MP3" : "?";
 }
 
 /* MIME types are compared as Android compares them, without regard to case. */
@@ -59,10 +59,10 @@ static bool same_type(const char *a, const char *b)
 static int kind_of(const char *mime)
 {
     if (!mime) return 0;
-    if (same_type(mime, "video/avc")) return MEGLET_CODEC_H264;
-    if (same_type(mime, "video/hevc")) return MEGLET_CODEC_H265;
-    if (same_type(mime, "audio/mp4a-latm")) return MEGLET_CODEC_AAC;
-    if (same_type(mime, "audio/mpeg")) return MEGLET_CODEC_MP3;
+    if (same_type(mime, "video/avc")) return MEGLER_CODEC_H264;
+    if (same_type(mime, "video/hevc")) return MEGLER_CODEC_H265;
+    if (same_type(mime, "audio/mp4a-latm")) return MEGLER_CODEC_AAC;
+    if (same_type(mime, "audio/mpeg")) return MEGLER_CODEC_MP3;
     return 0;
 }
 
@@ -95,7 +95,7 @@ static void blob_free(blob *b)
 
 struct mg_mframe {
     void *picture;                     /* the shell's */
-    meglet_codec_picture p;
+    megler_codec_picture p;
     struct mg_mframe *next;
 };
 
@@ -116,7 +116,7 @@ struct mg_mcodec {
     mg_mframe *sorted, *ready, **ready_tail;
     i32 nsorted;
     /*
-     * How many are held back besides what the shell says (meglet_codec_host.reorder): learnt when a picture comes out earlier
+     * How many are held back besides what the shell says (megler_codec_host.reorder): learnt when a picture comes out earlier
      * than one already gone on, since the last flush, the time of which is `gone`.
      */
     i32 learnt;
@@ -163,14 +163,14 @@ static void pull_pictures(mg_mcodec *c, bool all)
     i32 keep;
     for (;;) {
         mg_mframe *f, **p;
-        meglet_codec_picture pic;
+        megler_codec_picture pic;
         void *h;
         if (!c->dec || !g_host.pull_picture) break;
         memset(&pic, 0, sizeof(pic));
         h = g_host.pull_picture(g_host.user, c->dec, &pic);
         if (!h) break;
-        if (pic.width <= 0 || pic.height <= 0 || !pic.data || (pic.format == MEGLET_CODEC_NV12 && !pic.chroma) ||
-            (pic.format != MEGLET_CODEC_NV12 && pic.format != MEGLET_CODEC_RGBA)) {
+        if (pic.width <= 0 || pic.height <= 0 || !pic.data || (pic.format == MEGLER_CODEC_NV12 && !pic.chroma) ||
+            (pic.format != MEGLER_CODEC_NV12 && pic.format != MEGLER_CODEC_RGBA)) {
             if (g_host.release_picture) g_host.release_picture(g_host.user, h);
             c->failed++;
             mg_warn("media codec: the shell's %s decoder gave a picture that cannot be shown (format %d, %dx%d)", kind_name(c->kind), pic.format, pic.width,
@@ -192,7 +192,7 @@ static void pull_pictures(mg_mcodec *c, bool all)
         *p = f;
         c->nsorted++;
         if (!c->pictures++) mg_info("media codec: the first %s picture, %dx%d %s, at %lld ms", kind_name(c->kind), pic.width, pic.height,
-                                   pic.format == MEGLET_CODEC_NV12 ? "NV12" : "RGBA", (long long)(pic.time_us / 1000));
+                                   pic.format == MEGLER_CODEC_NV12 ? "NV12" : "RGBA", (long long)(pic.time_us / 1000));
     }
     keep = all ? 0 : g_host.reorder + c->learnt;
     while (c->nsorted > keep) {
@@ -207,7 +207,7 @@ static void pull_pictures(mg_mcodec *c, bool all)
     }
 }
 
-static int nal_type(const mg_mcodec *c, const u8 *n) { return c->kind == MEGLET_CODEC_H264 ? (n[0] & 0x1f) : ((n[0] >> 1) & 0x3f); }
+static int nal_type(const mg_mcodec *c, const u8 *n) { return c->kind == MEGLER_CODEC_H264 ? (n[0] & 0x1f) : ((n[0] >> 1) & 0x3f); }
 
 static bool starts_with_code(const u8 *d, size_t n) { return n >= 3 && !d[0] && !d[1] && (d[2] == 1 || (n >= 4 && !d[2] && d[3] == 1)); }
 
@@ -219,7 +219,7 @@ static bool each_record_nal(mg_mcodec *c, const u8 *d, size_t n, nal_fn fn, void
     size_t i;
     int arrays, a, k;
     if (n < 7 || d[0] != 1) return false;
-    if (c->kind == MEGLET_CODEC_H264) {
+    if (c->kind == MEGLER_CODEC_H264) {
         int sps = d[5] & 0x1f;
         for (i = 6, k = 0; k < sps; k++) {
             size_t len;
@@ -302,7 +302,7 @@ static void take_nal(mg_mcodec *c, const u8 *nal, size_t n, void *arg)
     int t;
     if (!n) return;
     t = nal_type(c, nal);
-    if (c->kind == MEGLET_CODEC_H264) {
+    if (c->kind == MEGLER_CODEC_H264) {
         if (t == 9) return;
         if (t == 7) {
             blob_set(&c->sps, nal, n);
@@ -334,16 +334,16 @@ static void take_nal(mg_mcodec *c, const u8 *nal, size_t n, void *arg)
 /* The parameter sets known, in Annex-B, after what `out` holds. */
 static void put_params(mg_mcodec *c, blob *out)
 {
-    if (c->kind == MEGLET_CODEC_H265 && c->vps.n) put_nal(out, c->vps.d, c->vps.n);
+    if (c->kind == MEGLER_CODEC_H265 && c->vps.n) put_nal(out, c->vps.d, c->vps.n);
     if (c->sps.n) put_nal(out, c->sps.d, c->sps.n);
     if (c->pps.n) put_nal(out, c->pps.d, c->pps.n);
 }
 
-static int params_needed(const mg_mcodec *c) { return c->kind == MEGLET_CODEC_H265 ? HAS_VPS | HAS_SPS | HAS_PPS : HAS_SPS | HAS_PPS; }
+static int params_needed(const mg_mcodec *c) { return c->kind == MEGLER_CODEC_H265 ? HAS_VPS | HAS_SPS | HAS_PPS : HAS_SPS | HAS_PPS; }
 
 static bool video_open(mg_mcodec *c)
 {
-    meglet_codec_format f;
+    megler_codec_format f;
     blob config;
     if (c->dec) return true;
     if (!g_host.open) return false;
@@ -477,13 +477,13 @@ static bool mp3_header(const u8 *d, size_t n, i32 *rate, i32 *channels)
 /* A decoder for this rate and channels (and AAC's configuration), the old one closed. */
 static bool audio_open(mg_mcodec *c, i32 rate, i32 channels)
 {
-    meglet_codec_format f;
+    megler_codec_format f;
     if (c->dec && g_host.close) g_host.close(g_host.user, c->dec);
     c->dec = NULL;
     if (!g_host.open) return false;
     if (rate <= 0) rate = 44100;
     if (channels <= 0) channels = 2;
-    if (c->kind == MEGLET_CODEC_AAC) {
+    if (c->kind == MEGLER_CODEC_AAC) {
         i32 r = 0, ch = 0;
         if (!c->asc.n) asc_make(&c->asc, 2, rate, channels);
         if (asc_parse(c->asc.d, c->asc.n, &r, &ch)) {
@@ -494,7 +494,7 @@ static bool audio_open(mg_mcodec *c, i32 rate, i32 channels)
     memset(&f, 0, sizeof(f));
     f.sample_rate = rate;
     f.channels = channels;
-    if (c->kind == MEGLET_CODEC_AAC) {
+    if (c->kind == MEGLER_CODEC_AAC) {
         f.config = c->asc.d;
         f.config_size = c->asc.n;
     }
@@ -508,7 +508,7 @@ static bool audio_open(mg_mcodec *c, i32 rate, i32 channels)
 
 static void audio_decode(mg_mcodec *c, const u8 *d, size_t n, i64 time_us, i32 flags)
 {
-    if (c->kind == MEGLET_CODEC_AAC) {
+    if (c->kind == MEGLER_CODEC_AAC) {
         size_t header, frame;
         if (flags & FLAG_CONFIG) {
             /* An AudioSpecificConfig of the app's: a decoder for it, unless it is the one there is. */
@@ -568,7 +568,7 @@ mg_mcodec *mg_mcodec_create(const char *mime)
     return c;
 }
 
-static bool is_video(const mg_mcodec *c) { return c->kind == MEGLET_CODEC_H264 || c->kind == MEGLET_CODEC_H265; }
+static bool is_video(const mg_mcodec *c) { return c->kind == MEGLER_CODEC_H264 || c->kind == MEGLER_CODEC_H265; }
 
 bool mg_mcodec_configure(mg_mcodec *c, i32 width, i32 height, i32 rate, i32 channels, const u8 *const csd[3], const size_t csd_size[3])
 {
@@ -587,7 +587,7 @@ bool mg_mcodec_configure(mg_mcodec *c, i32 width, i32 height, i32 rate, i32 chan
     } else {
         c->asked_rate = rate;
         c->asked_channels = channels;
-        if (c->kind == MEGLET_CODEC_AAC && csd[0] && csd_size[0] >= 2) {
+        if (c->kind == MEGLER_CODEC_AAC && csd[0] && csd_size[0] >= 2) {
             blob_set(&c->asc, csd[0], csd_size[0]);
             c->asc_given = true;
         }
@@ -632,7 +632,7 @@ mg_mframe *mg_mcodec_next_frame(mg_mcodec *c, i64 info[3])
 /* The next block of sound, copied to where `place` says (given its size in bytes); NULL when there is none. */
 static void *next_pcm(mg_mcodec *c, i64 info[3], void *(*place)(size_t bytes, void *arg), void *arg)
 {
-    meglet_codec_sound s;
+    megler_codec_sound s;
     void *out = NULL;
     mg_lock_acquire(&c->lock);
     memset(&s, 0, sizeof(s));
@@ -666,7 +666,7 @@ u8 *mg_mcodec_next_pcm(mg_mcodec *c, i64 info[3], size_t *bytes)
     return out;
 }
 
-const meglet_codec_picture *mg_mcodec_frame_picture(const mg_mframe *f) { return f ? &f->p : NULL; }
+const megler_codec_picture *mg_mcodec_frame_picture(const mg_mframe *f) { return f ? &f->p : NULL; }
 
 void mg_mcodec_free_frame(mg_mframe *f) { frame_free(f); }
 
@@ -725,9 +725,9 @@ static inline void put_bgra(u8 *d, const u8 *clip, i32 l, i32 r, i32 g, i32 b)
     memcpy(d, &px, 4);
 }
 
-static void nv12_to_bgra(const meglet_codec_picture *p, u8 *dst, i32 w, i32 h, i32 stride)
+static void nv12_to_bgra(const megler_codec_picture *p, u8 *dst, i32 w, i32 h, i32 stride)
 {
-    bool b709 = p->matrix == MEGLET_CODEC_BT709 || (p->matrix != MEGLET_CODEC_BT601 && p->height >= 720);
+    bool b709 = p->matrix == MEGLER_CODEC_BT709 || (p->matrix != MEGLER_CODEC_BT601 && p->height >= 720);
     i32 ky, rv, gu, gv, bu, y0, i, x, y;
     i32 lt[256], rt[256], gut[256], gvt[256], bt[256];
     u8 clip[1024];
@@ -764,13 +764,13 @@ static void nv12_to_bgra(const meglet_codec_picture *p, u8 *dst, i32 w, i32 h, i
     }
 }
 
-bool mg_mcodec_render(const meglet_codec_picture *p, void *bgra, i32 width, i32 height, i32 stride)
+bool mg_mcodec_render(const megler_codec_picture *p, void *bgra, i32 width, i32 height, i32 stride)
 {
     i32 w, h, x, y;
     if (!p || !bgra || width <= 0 || height <= 0) return false;
     w = width < p->width ? width : p->width;
     h = height < p->height ? height : p->height;
-    if (p->format == MEGLET_CODEC_RGBA) {
+    if (p->format == MEGLER_CODEC_RGBA) {
         for (y = 0; y < h; y++) {
             const u8 *s = p->data + (size_t)y * (size_t)p->stride;
             u8 *d = (u8 *)bgra + (size_t)y * (size_t)stride;
@@ -868,17 +868,17 @@ N(Media_destroy) { mg_mcodec_destroy(CODEC); }
 N(Media_size) { c->ret.i = mg_mcodec_size(CODEC); }
 
 static const mg_jhle k_media[] = {
-    { "meglet/MediaCodecNative", "supported", NULL, Media_supported },
-    { "meglet/MediaCodecNative", "create", NULL, Media_create },
-    { "meglet/MediaCodecNative", "configure", NULL, Media_configure },
-    { "meglet/MediaCodecNative", "decode", NULL, Media_decode },
-    { "meglet/MediaCodecNative", "nextFrame", NULL, Media_nextFrame },
-    { "meglet/MediaCodecNative", "nextPcm", NULL, Media_nextPcm },
-    { "meglet/MediaCodecNative", "renderFrame", NULL, Media_renderFrame },
-    { "meglet/MediaCodecNative", "freeFrame", NULL, Media_freeFrame },
-    { "meglet/MediaCodecNative", "flush", NULL, Media_flush },
-    { "meglet/MediaCodecNative", "destroy", NULL, Media_destroy },
-    { "meglet/MediaCodecNative", "size", NULL, Media_size },
+    { "megler/MediaCodecNative", "supported", NULL, Media_supported },
+    { "megler/MediaCodecNative", "create", NULL, Media_create },
+    { "megler/MediaCodecNative", "configure", NULL, Media_configure },
+    { "megler/MediaCodecNative", "decode", NULL, Media_decode },
+    { "megler/MediaCodecNative", "nextFrame", NULL, Media_nextFrame },
+    { "megler/MediaCodecNative", "nextPcm", NULL, Media_nextPcm },
+    { "megler/MediaCodecNative", "renderFrame", NULL, Media_renderFrame },
+    { "megler/MediaCodecNative", "freeFrame", NULL, Media_freeFrame },
+    { "megler/MediaCodecNative", "flush", NULL, Media_flush },
+    { "megler/MediaCodecNative", "destroy", NULL, Media_destroy },
+    { "megler/MediaCodecNative", "size", NULL, Media_size },
     { NULL, NULL, NULL, NULL },
 };
 

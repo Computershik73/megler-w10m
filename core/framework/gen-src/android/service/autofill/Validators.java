@@ -3,7 +3,7 @@ package android.service.autofill;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Validators {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.service.autofill.Validator and(android.service.autofill.Validator[] p0) { return null; }
     public static android.service.autofill.Validator not(android.service.autofill.Validator p0) { return null; }
     public static android.service.autofill.Validator or(android.service.autofill.Validator[] p0) { return null; }

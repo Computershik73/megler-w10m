@@ -3,15 +3,15 @@ package android.view;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ScrollCaptureTarget {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ScrollCaptureTarget(android.view.View p0, android.graphics.Rect p1, android.graphics.Point p2, android.view.ScrollCaptureCallback p3) {}
-    public android.view.ScrollCaptureCallback getCallback() { return (android.view.ScrollCaptureCallback) megletProps.get("Callback"); }
-    public android.view.View getContainingView() { return (android.view.View) megletProps.get("ContainingView"); }
-    public int getHint() { return (megletProps.get("Hint") instanceof Integer ? (Integer) megletProps.get("Hint") : 0); }
-    public android.graphics.Rect getLocalVisibleRect() { return (android.graphics.Rect) megletProps.get("LocalVisibleRect"); }
-    public android.graphics.Point getPositionInWindow() { return (android.graphics.Point) megletProps.get("PositionInWindow"); }
-    public android.graphics.Rect getScrollBounds() { return (android.graphics.Rect) megletProps.get("ScrollBounds"); }
-    public void setScrollBounds(android.graphics.Rect p0) { megletProps.put("ScrollBounds", p0); }
+    public android.view.ScrollCaptureCallback getCallback() { return (android.view.ScrollCaptureCallback) meglerProps.get("Callback"); }
+    public android.view.View getContainingView() { return (android.view.View) meglerProps.get("ContainingView"); }
+    public int getHint() { return (meglerProps.get("Hint") instanceof Integer ? (Integer) meglerProps.get("Hint") : 0); }
+    public android.graphics.Rect getLocalVisibleRect() { return (android.graphics.Rect) meglerProps.get("LocalVisibleRect"); }
+    public android.graphics.Point getPositionInWindow() { return (android.graphics.Point) meglerProps.get("PositionInWindow"); }
+    public android.graphics.Rect getScrollBounds() { return (android.graphics.Rect) meglerProps.get("ScrollBounds"); }
+    public void setScrollBounds(android.graphics.Rect p0) { meglerProps.put("ScrollBounds", p0); }
     public void updatePositionInWindow() {}
     ScrollCaptureTarget() { this((android.view.View) null, (android.graphics.Rect) null, (android.graphics.Point) null, (android.view.ScrollCaptureCallback) null); }
 }

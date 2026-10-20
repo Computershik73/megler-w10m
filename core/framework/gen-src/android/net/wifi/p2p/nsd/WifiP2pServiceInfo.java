@@ -3,7 +3,7 @@ package android.net.wifi.p2p.nsd;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class WifiP2pServiceInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int SERVICE_TYPE_ALL = 0;
     public static final int SERVICE_TYPE_BONJOUR = 1;
@@ -13,10 +13,10 @@ public class WifiP2pServiceInfo implements android.os.Parcelable {
     public WifiP2pServiceInfo(android.net.wifi.p2p.nsd.WifiP2pUsdBasedServiceConfig p0) {}
     protected WifiP2pServiceInfo(java.util.List p0) {}
     public int describeContents() { return 0; }
-    public java.util.List getSupplicantQueryList() { return (megletProps.get("SupplicantQueryList") != null ? (java.util.List) megletProps.get("SupplicantQueryList") : new java.util.ArrayList()); }
-    public int getUsdSessionId() { return (megletProps.get("UsdSessionId") instanceof Integer ? (Integer) megletProps.get("UsdSessionId") : 0); }
-    public android.net.wifi.p2p.nsd.WifiP2pUsdBasedServiceConfig getWifiP2pUsdBasedServiceConfig() { return (android.net.wifi.p2p.nsd.WifiP2pUsdBasedServiceConfig) megletProps.get("WifiP2pUsdBasedServiceConfig"); }
-    public void setUsdSessionId(int p0) { megletProps.put("UsdSessionId", Integer.valueOf(p0)); }
+    public java.util.List getSupplicantQueryList() { return (meglerProps.get("SupplicantQueryList") != null ? (java.util.List) meglerProps.get("SupplicantQueryList") : new java.util.ArrayList()); }
+    public int getUsdSessionId() { return (meglerProps.get("UsdSessionId") instanceof Integer ? (Integer) meglerProps.get("UsdSessionId") : 0); }
+    public android.net.wifi.p2p.nsd.WifiP2pUsdBasedServiceConfig getWifiP2pUsdBasedServiceConfig() { return (android.net.wifi.p2p.nsd.WifiP2pUsdBasedServiceConfig) meglerProps.get("WifiP2pUsdBasedServiceConfig"); }
+    public void setUsdSessionId(int p0) { meglerProps.put("UsdSessionId", Integer.valueOf(p0)); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     WifiP2pServiceInfo() { this((android.net.wifi.p2p.nsd.WifiP2pUsdBasedServiceConfig) null); }
 }

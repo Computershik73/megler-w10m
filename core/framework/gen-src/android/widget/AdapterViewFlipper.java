@@ -3,22 +3,22 @@ package android.widget;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AdapterViewFlipper extends android.widget.AdapterViewAnimator {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public AdapterViewFlipper(android.content.Context p0) { super(p0); }
     public AdapterViewFlipper(android.content.Context p0, android.util.AttributeSet p1) { super(p0, p1); }
     public AdapterViewFlipper(android.content.Context p0, android.util.AttributeSet p1, int p2) { super(p0, p1, p2); }
     public AdapterViewFlipper(android.content.Context p0, android.util.AttributeSet p1, int p2, int p3) { super(p0, p1, p2, p3); }
     public void fyiWillBeAdvancedByHostKThx() {}
-    public java.lang.CharSequence getAccessibilityClassName() { return (java.lang.CharSequence) megletProps.get("AccessibilityClassName"); }
-    public int getFlipInterval() { return (megletProps.get("FlipInterval") instanceof Integer ? (Integer) megletProps.get("FlipInterval") : 0); }
-    public boolean isAutoStart() { return (megletProps.get("AutoStart") instanceof Boolean ? (Boolean) megletProps.get("AutoStart") : false); }
-    public boolean isFlipping() { return (megletProps.get("Flipping") instanceof Boolean ? (Boolean) megletProps.get("Flipping") : false); }
+    public java.lang.CharSequence getAccessibilityClassName() { return (java.lang.CharSequence) meglerProps.get("AccessibilityClassName"); }
+    public int getFlipInterval() { return (meglerProps.get("FlipInterval") instanceof Integer ? (Integer) meglerProps.get("FlipInterval") : 0); }
+    public boolean isAutoStart() { return (meglerProps.get("AutoStart") instanceof Boolean ? (Boolean) meglerProps.get("AutoStart") : false); }
+    public boolean isFlipping() { return (meglerProps.get("Flipping") instanceof Boolean ? (Boolean) meglerProps.get("Flipping") : false); }
     public void onAttachedToWindow() {}
     public void onDetachedFromWindow() {}
     public void onWindowVisibilityChanged(int p0) {}
-    public void setAdapter(android.widget.Adapter p0) { megletProps.put("Adapter", p0); }
-    public void setAutoStart(boolean p0) { megletProps.put("AutoStart", Boolean.valueOf(p0)); }
-    public void setFlipInterval(int p0) { megletProps.put("FlipInterval", Integer.valueOf(p0)); }
+    public void setAdapter(android.widget.Adapter p0) { meglerProps.put("Adapter", p0); }
+    public void setAutoStart(boolean p0) { meglerProps.put("AutoStart", Boolean.valueOf(p0)); }
+    public void setFlipInterval(int p0) { meglerProps.put("FlipInterval", Integer.valueOf(p0)); }
     public void showNext() {}
     public void showPrevious() {}
     public void startFlipping() {}

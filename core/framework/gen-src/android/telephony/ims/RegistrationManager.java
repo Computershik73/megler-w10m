@@ -20,9 +20,9 @@ public interface RegistrationManager {
     void registerImsRegistrationCallback(java.util.concurrent.Executor p0, android.telephony.ims.RegistrationManager.RegistrationCallback p1);
     void unregisterImsRegistrationCallback(android.telephony.ims.RegistrationManager.RegistrationCallback p0);
     public static class RegistrationCallback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public RegistrationCallback() {}
-        public android.telephony.ims.aidl.IImsRegistrationCallback getBinder() { return (android.telephony.ims.aidl.IImsRegistrationCallback) megletProps.get("Binder"); }
+        public android.telephony.ims.aidl.IImsRegistrationCallback getBinder() { return (android.telephony.ims.aidl.IImsRegistrationCallback) meglerProps.get("Binder"); }
         public void onRegistered(int p0) {}
         public void onRegistered(android.telephony.ims.ImsRegistrationAttributes p0) {}
         public void onRegistering(int p0) {}
@@ -33,6 +33,6 @@ public interface RegistrationManager {
         public void onUnregistered(android.telephony.ims.ImsReasonInfo p0, int p1, int p2) {}
         public void onUnregistered(android.telephony.ims.ImsReasonInfo p0, int p1, int p2, int p3) {}
         public void onUnregistered(android.telephony.ims.ImsReasonInfo p0, android.telephony.ims.SipDetails p1) {}
-        public void setExecutor(java.util.concurrent.Executor p0) { megletProps.put("Executor", p0); }
+        public void setExecutor(java.util.concurrent.Executor p0) { meglerProps.put("Executor", p0); }
     }
 }

@@ -3,16 +3,16 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ListFragment extends android.app.Fragment {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ListFragment() { super(); }
-    public android.widget.ListAdapter getListAdapter() { return (android.widget.ListAdapter) megletProps.get("ListAdapter"); }
-    public android.widget.ListView getListView() { return (android.widget.ListView) megletProps.get("ListView"); }
-    public long getSelectedItemId() { return (megletProps.get("SelectedItemId") instanceof Long ? (Long) megletProps.get("SelectedItemId") : 0L); }
-    public int getSelectedItemPosition() { return (megletProps.get("SelectedItemPosition") instanceof Integer ? (Integer) megletProps.get("SelectedItemPosition") : 0); }
+    public android.widget.ListAdapter getListAdapter() { return (android.widget.ListAdapter) meglerProps.get("ListAdapter"); }
+    public android.widget.ListView getListView() { return (android.widget.ListView) meglerProps.get("ListView"); }
+    public long getSelectedItemId() { return (meglerProps.get("SelectedItemId") instanceof Long ? (Long) meglerProps.get("SelectedItemId") : 0L); }
+    public int getSelectedItemPosition() { return (meglerProps.get("SelectedItemPosition") instanceof Integer ? (Integer) meglerProps.get("SelectedItemPosition") : 0); }
     public void onListItemClick(android.widget.ListView p0, android.view.View p1, int p2, long p3) {}
-    public void setEmptyText(java.lang.CharSequence p0) { megletProps.put("EmptyText", p0); }
-    public void setListAdapter(android.widget.ListAdapter p0) { megletProps.put("ListAdapter", p0); }
-    public void setListShown(boolean p0) { megletProps.put("ListShown", Boolean.valueOf(p0)); }
-    public void setListShownNoAnimation(boolean p0) { megletProps.put("ListShownNoAnimation", Boolean.valueOf(p0)); }
-    public void setSelection(int p0) { megletProps.put("Selection", Integer.valueOf(p0)); }
+    public void setEmptyText(java.lang.CharSequence p0) { meglerProps.put("EmptyText", p0); }
+    public void setListAdapter(android.widget.ListAdapter p0) { meglerProps.put("ListAdapter", p0); }
+    public void setListShown(boolean p0) { meglerProps.put("ListShown", Boolean.valueOf(p0)); }
+    public void setListShownNoAnimation(boolean p0) { meglerProps.put("ListShownNoAnimation", Boolean.valueOf(p0)); }
+    public void setSelection(int p0) { meglerProps.put("Selection", Integer.valueOf(p0)); }
 }

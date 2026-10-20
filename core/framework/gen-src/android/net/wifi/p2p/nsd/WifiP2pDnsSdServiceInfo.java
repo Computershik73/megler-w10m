@@ -3,7 +3,7 @@ package android.net.wifi.p2p.nsd;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class WifiP2pDnsSdServiceInfo extends android.net.wifi.p2p.nsd.WifiP2pServiceInfo {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int DNS_TYPE_PTR = 12;
     public static final int DNS_TYPE_TXT = 16;
     public static final int VERSION_1 = 1;

@@ -3,7 +3,7 @@ package android.content;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class RestrictionsManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_PERMISSION_RESPONSE_RECEIVED = "android.content.action.PERMISSION_RESPONSE_RECEIVED";
     public static final java.lang.String ACTION_REQUEST_LOCAL_APPROVAL = "android.content.action.REQUEST_LOCAL_APPROVAL";
     public static final java.lang.String ACTION_REQUEST_PERMISSION = "android.content.action.REQUEST_PERMISSION";
@@ -37,8 +37,8 @@ public class RestrictionsManager {
     public RestrictionsManager(android.content.Context p0, android.content.IRestrictionsManager p1) {}
     public static android.os.Bundle convertRestrictionsToBundle(java.util.List p0) { return null; }
     public android.content.Intent createLocalApprovalIntent() { return null; }
-    public android.os.Bundle getApplicationRestrictions() { return (android.os.Bundle) megletProps.get("ApplicationRestrictions"); }
-    public java.util.List getApplicationRestrictionsPerAdmin() { return (megletProps.get("ApplicationRestrictionsPerAdmin") != null ? (java.util.List) megletProps.get("ApplicationRestrictionsPerAdmin") : new java.util.ArrayList()); }
+    public android.os.Bundle getApplicationRestrictions() { return (android.os.Bundle) meglerProps.get("ApplicationRestrictions"); }
+    public java.util.List getApplicationRestrictionsPerAdmin() { return (meglerProps.get("ApplicationRestrictionsPerAdmin") != null ? (java.util.List) meglerProps.get("ApplicationRestrictionsPerAdmin") : new java.util.ArrayList()); }
     public java.util.List getManifestRestrictions(java.lang.String p0) { return new java.util.ArrayList(); }
     public boolean hasRestrictionsProvider() { return false; }
     public void notifyPermissionResponse(java.lang.String p0, android.os.PersistableBundle p1) {}

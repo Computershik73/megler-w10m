@@ -3,7 +3,7 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SSLSessionCache {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public SSLSessionCache(android.content.Context p0) {}
     public SSLSessionCache(java.io.File p0) {}
     public SSLSessionCache(java.lang.Object p0) {}

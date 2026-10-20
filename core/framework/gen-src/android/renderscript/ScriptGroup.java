@@ -3,7 +3,7 @@ package android.renderscript;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ScriptGroup extends android.renderscript.BaseObj {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public void destroy() {}
     public void execute() {}
     public java.lang.Object[] execute(java.lang.Object[] p0) { return null; }
@@ -11,12 +11,12 @@ public final class ScriptGroup extends android.renderscript.BaseObj {
     public void setOutput(android.renderscript.Script.KernelID p0, android.renderscript.Allocation p1) {}
     protected ScriptGroup() { super(); }
     public static final class Binding {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Binding(android.renderscript.Script.FieldID p0, java.lang.Object p1) {}
         Binding() { this((android.renderscript.Script.FieldID) null, (java.lang.Object) null); }
     }
     public static final class Builder2 {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder2(android.renderscript.RenderScript p0) {}
         public android.renderscript.ScriptGroup.Input addInput() { return null; }
         public android.renderscript.ScriptGroup.Closure addInvoke(android.renderscript.Script.InvokeID p0, java.lang.Object[] p1) { return null; }
@@ -25,7 +25,7 @@ public final class ScriptGroup extends android.renderscript.BaseObj {
         Builder2() { this((android.renderscript.RenderScript) null); }
     }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.renderscript.RenderScript p0) {}
         public android.renderscript.ScriptGroup.Builder addConnection(android.renderscript.Type p0, android.renderscript.Script.KernelID p1, android.renderscript.Script.FieldID p2) { return this; }
         public android.renderscript.ScriptGroup.Builder addConnection(android.renderscript.Type p0, android.renderscript.Script.KernelID p1, android.renderscript.Script.KernelID p2) { return this; }
@@ -34,19 +34,19 @@ public final class ScriptGroup extends android.renderscript.BaseObj {
         Builder() { this((android.renderscript.RenderScript) null); }
     }
     public static final class Closure extends android.renderscript.BaseObj {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public void destroy() {}
         public void finalize() {}
         public android.renderscript.ScriptGroup.Future getGlobal(android.renderscript.Script.FieldID p0) { return null; }
-        public android.renderscript.ScriptGroup.Future getReturn() { return (android.renderscript.ScriptGroup.Future) megletProps.get("Return"); }
+        public android.renderscript.ScriptGroup.Future getReturn() { return (android.renderscript.ScriptGroup.Future) meglerProps.get("Return"); }
         protected Closure() { super(); }
     }
     public static final class Future {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         protected Future() {}
     }
     public static final class Input {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         protected Input() {}
     }
 }

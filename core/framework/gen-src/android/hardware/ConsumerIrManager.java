@@ -3,17 +3,17 @@ package android.hardware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ConsumerIrManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ConsumerIrManager(android.content.Context p0) {}
-    public android.hardware.ConsumerIrManager.CarrierFrequencyRange[] getCarrierFrequencies() { return (android.hardware.ConsumerIrManager.CarrierFrequencyRange[]) megletProps.get("CarrierFrequencies"); }
+    public android.hardware.ConsumerIrManager.CarrierFrequencyRange[] getCarrierFrequencies() { return (android.hardware.ConsumerIrManager.CarrierFrequencyRange[]) meglerProps.get("CarrierFrequencies"); }
     public boolean hasIrEmitter() { return false; }
     public void transmit(int p0, int[] p1) {}
     ConsumerIrManager() { this((android.content.Context) null); }
     public static final class CarrierFrequencyRange {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public CarrierFrequencyRange(android.hardware.ConsumerIrManager p0, int p1, int p2) {}
-        public int getMaxFrequency() { return (megletProps.get("MaxFrequency") instanceof Integer ? (Integer) megletProps.get("MaxFrequency") : 0); }
-        public int getMinFrequency() { return (megletProps.get("MinFrequency") instanceof Integer ? (Integer) megletProps.get("MinFrequency") : 0); }
+        public int getMaxFrequency() { return (meglerProps.get("MaxFrequency") instanceof Integer ? (Integer) meglerProps.get("MaxFrequency") : 0); }
+        public int getMinFrequency() { return (meglerProps.get("MinFrequency") instanceof Integer ? (Integer) meglerProps.get("MinFrequency") : 0); }
         CarrierFrequencyRange() { this((android.hardware.ConsumerIrManager) null, (int) 0, (int) 0); }
     }
 }

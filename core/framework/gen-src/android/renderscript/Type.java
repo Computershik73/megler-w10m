@@ -3,32 +3,32 @@ package android.renderscript;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Type extends android.renderscript.BaseObj {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.renderscript.Type createX(android.renderscript.RenderScript p0, android.renderscript.Element p1, int p2) { return new Type(); }
     public static android.renderscript.Type createXY(android.renderscript.RenderScript p0, android.renderscript.Element p1, int p2, int p3) { return new Type(); }
     public static android.renderscript.Type createXYZ(android.renderscript.RenderScript p0, android.renderscript.Element p1, int p2, int p3, int p4) { return new Type(); }
     public int getArray(int p0) { return 0; }
-    public int getArrayCount() { return (megletProps.get("ArrayCount") instanceof Integer ? (Integer) megletProps.get("ArrayCount") : 0); }
-    public int getCount() { return (megletProps.get("Count") instanceof Integer ? (Integer) megletProps.get("Count") : 0); }
-    public android.renderscript.Element getElement() { return (android.renderscript.Element) megletProps.get("Element"); }
-    public int getX() { return (megletProps.get("X") instanceof Integer ? (Integer) megletProps.get("X") : 0); }
-    public int getY() { return (megletProps.get("Y") instanceof Integer ? (Integer) megletProps.get("Y") : 0); }
-    public int getYuv() { return (megletProps.get("Yuv") instanceof Integer ? (Integer) megletProps.get("Yuv") : 0); }
-    public int getZ() { return (megletProps.get("Z") instanceof Integer ? (Integer) megletProps.get("Z") : 0); }
+    public int getArrayCount() { return (meglerProps.get("ArrayCount") instanceof Integer ? (Integer) meglerProps.get("ArrayCount") : 0); }
+    public int getCount() { return (meglerProps.get("Count") instanceof Integer ? (Integer) meglerProps.get("Count") : 0); }
+    public android.renderscript.Element getElement() { return (android.renderscript.Element) meglerProps.get("Element"); }
+    public int getX() { return (meglerProps.get("X") instanceof Integer ? (Integer) meglerProps.get("X") : 0); }
+    public int getY() { return (meglerProps.get("Y") instanceof Integer ? (Integer) meglerProps.get("Y") : 0); }
+    public int getYuv() { return (meglerProps.get("Yuv") instanceof Integer ? (Integer) meglerProps.get("Yuv") : 0); }
+    public int getZ() { return (meglerProps.get("Z") instanceof Integer ? (Integer) meglerProps.get("Z") : 0); }
     public boolean hasFaces() { return false; }
     public boolean hasMipmaps() { return false; }
     protected Type() { super(); }
     public static class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.renderscript.RenderScript p0, android.renderscript.Element p1) {}
         public android.renderscript.Type create() { return new android.renderscript.Type(); }
         public android.renderscript.Type.Builder setArray(int p0, int p1) { return this; }
-        public android.renderscript.Type.Builder setFaces(boolean p0) { megletProps.put("Faces", Boolean.valueOf(p0)); return this; }
-        public android.renderscript.Type.Builder setMipmaps(boolean p0) { megletProps.put("Mipmaps", Boolean.valueOf(p0)); return this; }
-        public android.renderscript.Type.Builder setX(int p0) { megletProps.put("X", Integer.valueOf(p0)); return this; }
-        public android.renderscript.Type.Builder setY(int p0) { megletProps.put("Y", Integer.valueOf(p0)); return this; }
-        public android.renderscript.Type.Builder setYuvFormat(int p0) { megletProps.put("YuvFormat", Integer.valueOf(p0)); return this; }
-        public android.renderscript.Type.Builder setZ(int p0) { megletProps.put("Z", Integer.valueOf(p0)); return this; }
+        public android.renderscript.Type.Builder setFaces(boolean p0) { meglerProps.put("Faces", Boolean.valueOf(p0)); return this; }
+        public android.renderscript.Type.Builder setMipmaps(boolean p0) { meglerProps.put("Mipmaps", Boolean.valueOf(p0)); return this; }
+        public android.renderscript.Type.Builder setX(int p0) { meglerProps.put("X", Integer.valueOf(p0)); return this; }
+        public android.renderscript.Type.Builder setY(int p0) { meglerProps.put("Y", Integer.valueOf(p0)); return this; }
+        public android.renderscript.Type.Builder setYuvFormat(int p0) { meglerProps.put("YuvFormat", Integer.valueOf(p0)); return this; }
+        public android.renderscript.Type.Builder setZ(int p0) { meglerProps.put("Z", Integer.valueOf(p0)); return this; }
         Builder() { this((android.renderscript.RenderScript) null, (android.renderscript.Element) null); }
     }
     public enum CubemapFace {

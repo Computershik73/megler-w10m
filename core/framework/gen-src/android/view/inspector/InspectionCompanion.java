@@ -6,7 +6,7 @@ public interface InspectionCompanion {
     void mapProperties(android.view.inspector.PropertyMapper p0);
     void readProperties(java.lang.Object p0, android.view.inspector.PropertyReader p1);
     public static class UninitializedPropertyMapException extends java.lang.RuntimeException {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public UninitializedPropertyMapException() { super(); }
     }
 }

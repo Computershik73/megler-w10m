@@ -3,15 +3,15 @@ package android.net.wifi.aware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ServiceDiscoveryInfo {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ServiceDiscoveryInfo(android.net.wifi.aware.PeerHandle p0, int p1, byte[] p2, java.util.List p3, byte[] p4, java.lang.String p5, android.net.wifi.aware.AwarePairingConfig p6, android.net.wifi.OuiKeyedData[] p7) {}
-    public java.util.List getMatchFilters() { return (megletProps.get("MatchFilters") != null ? (java.util.List) megletProps.get("MatchFilters") : new java.util.ArrayList()); }
-    public java.lang.String getPairedAlias() { return (java.lang.String) megletProps.get("PairedAlias"); }
-    public android.net.wifi.aware.AwarePairingConfig getPairingConfig() { return (android.net.wifi.aware.AwarePairingConfig) megletProps.get("PairingConfig"); }
-    public int getPeerCipherSuite() { return (megletProps.get("PeerCipherSuite") instanceof Integer ? (Integer) megletProps.get("PeerCipherSuite") : 0); }
-    public android.net.wifi.aware.PeerHandle getPeerHandle() { return (android.net.wifi.aware.PeerHandle) megletProps.get("PeerHandle"); }
-    public byte[] getScid() { return (byte[]) megletProps.get("Scid"); }
-    public byte[] getServiceSpecificInfo() { return (byte[]) megletProps.get("ServiceSpecificInfo"); }
-    public java.util.List getVendorData() { return (megletProps.get("VendorData") != null ? (java.util.List) megletProps.get("VendorData") : new java.util.ArrayList()); }
+    public java.util.List getMatchFilters() { return (meglerProps.get("MatchFilters") != null ? (java.util.List) meglerProps.get("MatchFilters") : new java.util.ArrayList()); }
+    public java.lang.String getPairedAlias() { return (java.lang.String) meglerProps.get("PairedAlias"); }
+    public android.net.wifi.aware.AwarePairingConfig getPairingConfig() { return (android.net.wifi.aware.AwarePairingConfig) meglerProps.get("PairingConfig"); }
+    public int getPeerCipherSuite() { return (meglerProps.get("PeerCipherSuite") instanceof Integer ? (Integer) meglerProps.get("PeerCipherSuite") : 0); }
+    public android.net.wifi.aware.PeerHandle getPeerHandle() { return (android.net.wifi.aware.PeerHandle) meglerProps.get("PeerHandle"); }
+    public byte[] getScid() { return (byte[]) meglerProps.get("Scid"); }
+    public byte[] getServiceSpecificInfo() { return (byte[]) meglerProps.get("ServiceSpecificInfo"); }
+    public java.util.List getVendorData() { return (meglerProps.get("VendorData") != null ? (java.util.List) meglerProps.get("VendorData") : new java.util.ArrayList()); }
     ServiceDiscoveryInfo() { this((android.net.wifi.aware.PeerHandle) null, (int) 0, (byte[]) null, (java.util.List) null, (byte[]) null, (java.lang.String) null, (android.net.wifi.aware.AwarePairingConfig) null, (android.net.wifi.OuiKeyedData[]) null); }
 }

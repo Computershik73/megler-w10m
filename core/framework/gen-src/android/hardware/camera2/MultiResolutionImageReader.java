@@ -3,16 +3,16 @@ package android.hardware.camera2;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MultiResolutionImageReader implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public MultiResolutionImageReader(java.util.Collection p0, int p1, int p2) {}
     public MultiResolutionImageReader(java.util.Collection p0, int p1, int p2, long p3) {}
     public void close() {}
     protected void finalize() {}
     public void flush() {}
     public void flushOther(android.media.ImageReader p0) {}
-    public android.media.ImageReader[] getReaders() { return (android.media.ImageReader[]) megletProps.get("Readers"); }
+    public android.media.ImageReader[] getReaders() { return (android.media.ImageReader[]) meglerProps.get("Readers"); }
     public android.hardware.camera2.params.MultiResolutionStreamInfo getStreamInfoForImageReader(android.media.ImageReader p0) { return null; }
-    public android.view.Surface getSurface() { return (android.view.Surface) megletProps.get("Surface"); }
+    public android.view.Surface getSurface() { return (android.view.Surface) meglerProps.get("Surface"); }
     public android.view.Surface getSurface(android.util.Size p0, java.lang.String p1) { return null; }
     public void setOnImageAvailableListener(android.media.ImageReader.OnImageAvailableListener p0, java.util.concurrent.Executor p1) {}
     MultiResolutionImageReader() { this((java.util.Collection) null, (int) 0, (int) 0); }

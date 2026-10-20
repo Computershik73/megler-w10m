@@ -20,7 +20,7 @@ public interface PropertyReader {
     void readResourceId(int p0, int p1);
     void readShort(int p0, short p1);
     public static class PropertyTypeMismatchException extends java.lang.RuntimeException {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public PropertyTypeMismatchException(int p0, java.lang.String p1, java.lang.String p2) { super(); }
         public PropertyTypeMismatchException(int p0, java.lang.String p1, java.lang.String p2, java.lang.String p3) { super(); }
         PropertyTypeMismatchException() { this((int) 0, (java.lang.String) null, (java.lang.String) null); }

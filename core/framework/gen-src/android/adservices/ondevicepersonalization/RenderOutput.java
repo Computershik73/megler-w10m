@@ -3,17 +3,17 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class RenderOutput {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public java.lang.String getContent() { return (java.lang.String) megletProps.get("Content"); }
-    public java.lang.String getTemplateId() { return (java.lang.String) megletProps.get("TemplateId"); }
-    public android.os.PersistableBundle getTemplateParams() { return (android.os.PersistableBundle) megletProps.get("TemplateParams"); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public java.lang.String getContent() { return (java.lang.String) meglerProps.get("Content"); }
+    public java.lang.String getTemplateId() { return (java.lang.String) meglerProps.get("TemplateId"); }
+    public android.os.PersistableBundle getTemplateParams() { return (android.os.PersistableBundle) meglerProps.get("TemplateParams"); }
     protected RenderOutput() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.adservices.ondevicepersonalization.RenderOutput build() { android.adservices.ondevicepersonalization.RenderOutput x = new android.adservices.ondevicepersonalization.RenderOutput(); x.megletProps.putAll(megletProps); return x; }
-        public android.adservices.ondevicepersonalization.RenderOutput.Builder setContent(java.lang.String p0) { megletProps.put("Content", p0); return this; }
-        public android.adservices.ondevicepersonalization.RenderOutput.Builder setTemplateId(java.lang.String p0) { megletProps.put("TemplateId", p0); return this; }
-        public android.adservices.ondevicepersonalization.RenderOutput.Builder setTemplateParams(android.os.PersistableBundle p0) { megletProps.put("TemplateParams", p0); return this; }
+        public android.adservices.ondevicepersonalization.RenderOutput build() { android.adservices.ondevicepersonalization.RenderOutput x = new android.adservices.ondevicepersonalization.RenderOutput(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.adservices.ondevicepersonalization.RenderOutput.Builder setContent(java.lang.String p0) { meglerProps.put("Content", p0); return this; }
+        public android.adservices.ondevicepersonalization.RenderOutput.Builder setTemplateId(java.lang.String p0) { meglerProps.put("TemplateId", p0); return this; }
+        public android.adservices.ondevicepersonalization.RenderOutput.Builder setTemplateParams(android.os.PersistableBundle p0) { meglerProps.put("TemplateParams", p0); return this; }
     }
 }

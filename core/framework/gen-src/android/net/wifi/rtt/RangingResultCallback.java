@@ -3,7 +3,7 @@ package android.net.wifi.rtt;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class RangingResultCallback {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int STATUS_CODE_FAIL = 1;
     public static final int STATUS_CODE_FAIL_RTT_NOT_AVAILABLE = 2;
     public RangingResultCallback() {}

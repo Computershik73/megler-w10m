@@ -1,5 +1,5 @@
 #!/bin/bash
-# Has Meglet's own linker load what tools/android9-natives.sh built, under qemu-arm,
+# Has Megler's own linker load what tools/android9-natives.sh built, under qemu-arm,
 # and has a small guest library call into it.
 #
 #   tools/android9-natives/loadtest.sh        (from Git Bash)
@@ -10,7 +10,7 @@
 # entries and thread-pointer reads, and runs the libraries' constructors
 # (DT_INIT_ARRAY). It does not call JNI_OnLoad: there is no Java runtime in
 # that mode. Nothing under core/ is touched or built here: the program is the
-# one tools/build-tests.sh arm last made (~/meglet-build/mg_tests in WSL),
+# one tools/build-tests.sh arm last made (~/megler-build/mg_tests in WSL),
 # copied before it is run so that a build going on meanwhile cannot change it
 # under qemu, and the output says when it was built. Run tools/build-tests.sh
 # arm --no-run first to try the layer as it is now.
@@ -30,10 +30,10 @@
 # Output: build/android9/lib/report/loadtest.txt (all of it) and a summary
 # here; `report.py loadtest` holds it against what the files themselves say.
 #
-#   MEGLET_NDK, MEGLET_NDK_HOST   as for tools/android9-natives.sh
-#   MEGLET_WSL_BUILD       the WSL folder tools/build-tests.sh arm built mg_tests in (~/meglet-build); the
+#   MEGLER_NDK, MEGLER_NDK_HOST   as for tools/android9-natives.sh
+#   MEGLER_WSL_BUILD       the WSL folder tools/build-tests.sh arm built mg_tests in (~/megler-build); the
 #                             libraries are copied next to it, into <that folder>-natives
-#   MEGLET_QEMU_CPU             the processor qemu-arm is to be (cortex-a7: ARMv7-A with NEON, VFPv4 and integer
+#   MEGLER_QEMU_CPU             the processor qemu-arm is to be (cortex-a7: ARMv7-A with NEON, VFPv4 and integer
 #                             divide, what the ARMv7 Windows phones have; cortex-a8 has neither VFPv4 nor divide).
 #                             An instruction the processor does not have ends the run with an illegal instruction.
 set -euo pipefail
@@ -45,15 +45,15 @@ WORK=build/android9/obj/loadtest
 STUBS=build/android9/obj/stubs
 UNSTRIPPED=build/android9/obj/unstripped
 SHIM=tools/android9-natives
-NDK="${MEGLET_NDK:-/c/Users/User/Documents/android-ndk-r21e}"
-HOST="${MEGLET_NDK_HOST:-windows-x86_64}"
+NDK="${MEGLER_NDK:-/c/Users/User/Documents/android-ndk-r21e}"
+HOST="${MEGLER_NDK_HOST:-windows-x86_64}"
 EXE=""; case "$HOST" in windows-*) EXE=".exe" ;; esac
 CC="$NDK/toolchains/llvm/prebuilt/$HOST/bin/clang$EXE"
 LIBS=(libcrypto.so libjavacore.so libopenjdk.so libjavacrypto.so libnatives_probe.so)
-WB="${MEGLET_WSL_BUILD:-}"
-[ -n "$WB" ] || WB='~/meglet-build'
+WB="${MEGLER_WSL_BUILD:-}"
+[ -n "$WB" ] || WB='~/megler-build'
 WB="\$HOME${WB#\~}"
-CPU="${MEGLET_QEMU_CPU:-cortex-a7}"
+CPU="${MEGLER_QEMU_CPU:-cortex-a7}"
 mkdir -p "$OUT" "$WORK"
 WROOT="/mnt/${ROOT:1:1}${ROOT:2}"
 for l in libjavacore.so libopenjdk.so libicuuc.so libicui18n.so libexpat.so libjavacrypto.so; do

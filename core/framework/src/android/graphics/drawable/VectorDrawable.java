@@ -105,18 +105,18 @@ public class VectorDrawable extends Drawable {
     private static int applyAlpha(int c, float a) { return (c & 0xFFFFFF) | (Math.round((c >>> 24) * Math.max(0, Math.min(1, a))) << 24); }
 
     /** From <vector> (the parser on it): its groups, paths and clip paths. */
-    public static VectorDrawable megletInflate(Resources r, XmlPullParser p, Resources.Theme t, AttributeSet set) throws Exception {
+    public static VectorDrawable meglerInflate(Resources r, XmlPullParser p, Resources.Theme t, AttributeSet set) throws Exception {
         VectorDrawable v = new VectorDrawable();
-        TypedArray a = t != null ? t.obtainStyledAttributes(set, meglet.S.VectorDrawable, 0, 0) : r.obtainAttributes(set, meglet.S.VectorDrawable);
-        v.mW = a.getDimensionPixelSize(meglet.S.VectorDrawable_width, 0);
-        v.mH = a.getDimensionPixelSize(meglet.S.VectorDrawable_height, 0);
-        v.mVw = a.getFloat(meglet.S.VectorDrawable_viewportWidth, v.mW);
-        v.mVh = a.getFloat(meglet.S.VectorDrawable_viewportHeight, v.mH);
-        v.mTint = a.getColorStateList(meglet.S.VectorDrawable_tint);
-        int tm = a.getInt(meglet.S.VectorDrawable_tintMode, -1);
+        TypedArray a = t != null ? t.obtainStyledAttributes(set, megler.S.VectorDrawable, 0, 0) : r.obtainAttributes(set, megler.S.VectorDrawable);
+        v.mW = a.getDimensionPixelSize(megler.S.VectorDrawable_width, 0);
+        v.mH = a.getDimensionPixelSize(megler.S.VectorDrawable_height, 0);
+        v.mVw = a.getFloat(megler.S.VectorDrawable_viewportWidth, v.mW);
+        v.mVh = a.getFloat(megler.S.VectorDrawable_viewportHeight, v.mH);
+        v.mTint = a.getColorStateList(megler.S.VectorDrawable_tint);
+        int tm = a.getInt(megler.S.VectorDrawable_tintMode, -1);
         if (tm == 3) v.mTintMode = PorterDuff.Mode.SRC_OVER; else if (tm == 9) v.mTintMode = PorterDuff.Mode.SRC_ATOP; else if (tm == 14) v.mTintMode = PorterDuff.Mode.MULTIPLY; else if (tm == 15) v.mTintMode = PorterDuff.Mode.SCREEN;
-        v.mAlpha = Math.round(a.getFloat(meglet.S.VectorDrawable_alpha, 1) * 255);
-        v.mMirror = a.getBoolean(meglet.S.VectorDrawable_autoMirrored, false);
+        v.mAlpha = Math.round(a.getFloat(megler.S.VectorDrawable_alpha, 1) * 255);
+        v.mMirror = a.getBoolean(megler.S.VectorDrawable_autoMirrored, false);
         a.recycle();
         ArrayList<Group> stack = new ArrayList<>();
         stack.add(v.mRoot);
@@ -127,39 +127,39 @@ public class VectorDrawable extends Drawable {
                 AttributeSet s = android.util.Xml.asAttributeSet(p);
                 String n = p.getName();
                 if ("group".equals(n)) {
-                    TypedArray g = obtain(r, t, s, meglet.S.VectorDrawableGroup);
+                    TypedArray g = obtain(r, t, s, megler.S.VectorDrawableGroup);
                     Group gr = new Group();
-                    gr.rotate = g.getFloat(meglet.S.VectorDrawableGroup_rotation, 0); gr.px = g.getFloat(meglet.S.VectorDrawableGroup_pivotX, 0); gr.py = g.getFloat(meglet.S.VectorDrawableGroup_pivotY, 0);
-                    gr.sx = g.getFloat(meglet.S.VectorDrawableGroup_scaleX, 1); gr.sy = g.getFloat(meglet.S.VectorDrawableGroup_scaleY, 1);
-                    gr.tx = g.getFloat(meglet.S.VectorDrawableGroup_translateX, 0); gr.ty = g.getFloat(meglet.S.VectorDrawableGroup_translateY, 0);
-                    gr.name = g.getString(meglet.S.VectorDrawableGroup_name);
+                    gr.rotate = g.getFloat(megler.S.VectorDrawableGroup_rotation, 0); gr.px = g.getFloat(megler.S.VectorDrawableGroup_pivotX, 0); gr.py = g.getFloat(megler.S.VectorDrawableGroup_pivotY, 0);
+                    gr.sx = g.getFloat(megler.S.VectorDrawableGroup_scaleX, 1); gr.sy = g.getFloat(megler.S.VectorDrawableGroup_scaleY, 1);
+                    gr.tx = g.getFloat(megler.S.VectorDrawableGroup_translateX, 0); gr.ty = g.getFloat(megler.S.VectorDrawableGroup_translateY, 0);
+                    gr.name = g.getString(megler.S.VectorDrawableGroup_name);
                     g.recycle();
                     top.kids.add(gr);
                     stack.add(gr);
                 } else if ("path".equals(n)) {
-                    TypedArray g = obtain(r, t, s, meglet.S.VectorDrawablePath);
+                    TypedArray g = obtain(r, t, s, megler.S.VectorDrawablePath);
                     PathNode pn = new PathNode();
-                    pn.name = g.getString(meglet.S.VectorDrawablePath_name);
-                    pn.path = meglet.PathData.parse(g.getString(meglet.S.VectorDrawablePath_pathData));
-                    pn.fill = colorOrNull(r, g, meglet.S.VectorDrawablePath_fillColor, t);
-                    pn.stroke = colorOrNull(r, g, meglet.S.VectorDrawablePath_strokeColor, t);
-                    pn.fillShader = gradientOrNull(r, g, meglet.S.VectorDrawablePath_fillColor, t);
-                    pn.strokeShader = gradientOrNull(r, g, meglet.S.VectorDrawablePath_strokeColor, t);
-                    pn.fillAlpha = g.getFloat(meglet.S.VectorDrawablePath_fillAlpha, 1); pn.strokeAlpha = g.getFloat(meglet.S.VectorDrawablePath_strokeAlpha, 1);
-                    pn.strokeWidth = g.getFloat(meglet.S.VectorDrawablePath_strokeWidth, 0);
-                    pn.miter = g.getFloat(meglet.S.VectorDrawablePath_strokeMiterLimit, 4);
-                    int cap = g.getInt(meglet.S.VectorDrawablePath_strokeLineCap, 0), join = g.getInt(meglet.S.VectorDrawablePath_strokeLineJoin, 0);
+                    pn.name = g.getString(megler.S.VectorDrawablePath_name);
+                    pn.path = megler.PathData.parse(g.getString(megler.S.VectorDrawablePath_pathData));
+                    pn.fill = colorOrNull(r, g, megler.S.VectorDrawablePath_fillColor, t);
+                    pn.stroke = colorOrNull(r, g, megler.S.VectorDrawablePath_strokeColor, t);
+                    pn.fillShader = gradientOrNull(r, g, megler.S.VectorDrawablePath_fillColor, t);
+                    pn.strokeShader = gradientOrNull(r, g, megler.S.VectorDrawablePath_strokeColor, t);
+                    pn.fillAlpha = g.getFloat(megler.S.VectorDrawablePath_fillAlpha, 1); pn.strokeAlpha = g.getFloat(megler.S.VectorDrawablePath_strokeAlpha, 1);
+                    pn.strokeWidth = g.getFloat(megler.S.VectorDrawablePath_strokeWidth, 0);
+                    pn.miter = g.getFloat(megler.S.VectorDrawablePath_strokeMiterLimit, 4);
+                    int cap = g.getInt(megler.S.VectorDrawablePath_strokeLineCap, 0), join = g.getInt(megler.S.VectorDrawablePath_strokeLineJoin, 0);
                     pn.cap = cap == 1 ? Paint.Cap.ROUND : cap == 2 ? Paint.Cap.SQUARE : Paint.Cap.BUTT;
                     pn.join = join == 1 ? Paint.Join.ROUND : join == 2 ? Paint.Join.BEVEL : Paint.Join.MITER;
-                    pn.trimStart = g.getFloat(meglet.S.VectorDrawablePath_trimPathStart, 0); pn.trimEnd = g.getFloat(meglet.S.VectorDrawablePath_trimPathEnd, 1);
-                    pn.evenOdd = g.getInt(meglet.S.VectorDrawablePath_fillType, 0) == 1;
+                    pn.trimStart = g.getFloat(megler.S.VectorDrawablePath_trimPathStart, 0); pn.trimEnd = g.getFloat(megler.S.VectorDrawablePath_trimPathEnd, 1);
+                    pn.evenOdd = g.getInt(megler.S.VectorDrawablePath_fillType, 0) == 1;
                     g.recycle();
                     top.kids.add(pn);
                 } else if ("clip-path".equals(n)) {
-                    TypedArray g = obtain(r, t, s, meglet.S.VectorDrawableClipPath);
+                    TypedArray g = obtain(r, t, s, megler.S.VectorDrawableClipPath);
                     PathNode pn = new PathNode();
                     pn.clip = true;
-                    pn.path = meglet.PathData.parse(g.getString(meglet.S.VectorDrawableClipPath_pathData));
+                    pn.path = megler.PathData.parse(g.getString(megler.S.VectorDrawableClipPath_pathData));
                     g.recycle();
                     top.kids.add(pn);
                 }
@@ -174,7 +174,7 @@ public class VectorDrawable extends Drawable {
         if (v.type >= android.util.TypedValue.TYPE_FIRST_INT && v.type <= android.util.TypedValue.TYPE_LAST_INT) return ColorStateList.valueOf(v.data);
         if (v.type == android.util.TypedValue.TYPE_STRING && v.string != null && v.string.toString().endsWith(".xml")) {
             try {
-                android.content.res.XmlResourceParser x = r.megletXml(v.string.toString(), v.resourceId);
+                android.content.res.XmlResourceParser x = r.meglerXml(v.string.toString(), v.resourceId);
                 int e; while ((e = x.next()) != XmlPullParser.START_TAG && e != XmlPullParser.END_DOCUMENT) {}
                 if ("gradient".equals(x.getName())) return null;
             } catch (Exception e) { return null; }
@@ -187,7 +187,7 @@ public class VectorDrawable extends Drawable {
         android.util.TypedValue v = a.peekValue(i);
         if (v == null || v.type != android.util.TypedValue.TYPE_STRING || v.string == null || !v.string.toString().endsWith(".xml")) return null;
         try {
-            android.content.res.XmlResourceParser x = r.megletXml(v.string.toString(), v.resourceId);
+            android.content.res.XmlResourceParser x = r.meglerXml(v.string.toString(), v.resourceId);
             int e; while ((e = x.next()) != XmlPullParser.START_TAG && e != XmlPullParser.END_DOCUMENT) {}
             if (!"gradient".equals(x.getName())) return null;
             int[] attrs = { android.R.attr.startColor, android.R.attr.endColor, android.R.attr.type, android.R.attr.centerColor, android.R.attr.gradientRadius,

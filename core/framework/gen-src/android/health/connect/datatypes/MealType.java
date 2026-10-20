@@ -3,7 +3,7 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MealType {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int MEAL_TYPE_BREAKFAST = 1;
     public static final int MEAL_TYPE_DINNER = 3;
     public static final int MEAL_TYPE_LUNCH = 2;

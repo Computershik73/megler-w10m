@@ -3,19 +3,19 @@ package android.view.textservice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SpellCheckerInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public SpellCheckerInfo(android.content.Context p0, android.content.pm.ResolveInfo p1) {}
     public SpellCheckerInfo(android.os.Parcel p0) {}
     public int describeContents() { return 0; }
     public void dump(java.io.PrintWriter p0, java.lang.String p1) {}
-    public android.content.ComponentName getComponent() { return (android.content.ComponentName) megletProps.get("Component"); }
-    public java.lang.String getId() { return (java.lang.String) megletProps.get("Id"); }
-    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
-    public android.content.pm.ServiceInfo getServiceInfo() { return (android.content.pm.ServiceInfo) megletProps.get("ServiceInfo"); }
-    public java.lang.String getSettingsActivity() { return (java.lang.String) megletProps.get("SettingsActivity"); }
+    public android.content.ComponentName getComponent() { return (android.content.ComponentName) meglerProps.get("Component"); }
+    public java.lang.String getId() { return (java.lang.String) meglerProps.get("Id"); }
+    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
+    public android.content.pm.ServiceInfo getServiceInfo() { return (android.content.pm.ServiceInfo) meglerProps.get("ServiceInfo"); }
+    public java.lang.String getSettingsActivity() { return (java.lang.String) meglerProps.get("SettingsActivity"); }
     public android.view.textservice.SpellCheckerSubtype getSubtypeAt(int p0) { return null; }
-    public int getSubtypeCount() { return (megletProps.get("SubtypeCount") instanceof Integer ? (Integer) megletProps.get("SubtypeCount") : 0); }
+    public int getSubtypeCount() { return (meglerProps.get("SubtypeCount") instanceof Integer ? (Integer) meglerProps.get("SubtypeCount") : 0); }
     public android.graphics.drawable.Drawable loadIcon(android.content.pm.PackageManager p0) { return null; }
     public java.lang.CharSequence loadLabel(android.content.pm.PackageManager p0) { return null; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}

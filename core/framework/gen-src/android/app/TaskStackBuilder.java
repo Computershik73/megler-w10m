@@ -3,7 +3,7 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class TaskStackBuilder {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.app.TaskStackBuilder create(android.content.Context p0) { return new TaskStackBuilder(); }
     public android.app.TaskStackBuilder addNextIntent(android.content.Intent p0) { return this; }
     public android.app.TaskStackBuilder addNextIntentWithParentStack(android.content.Intent p0) { return this; }
@@ -11,8 +11,8 @@ public class TaskStackBuilder {
     public android.app.TaskStackBuilder addParentStack(android.content.ComponentName p0) { return this; }
     public android.app.TaskStackBuilder addParentStack(java.lang.Class p0) { return this; }
     public android.content.Intent editIntentAt(int p0) { return null; }
-    public int getIntentCount() { return (megletProps.get("IntentCount") instanceof Integer ? (Integer) megletProps.get("IntentCount") : 0); }
-    public android.content.Intent[] getIntents() { return (android.content.Intent[]) megletProps.get("Intents"); }
+    public int getIntentCount() { return (meglerProps.get("IntentCount") instanceof Integer ? (Integer) meglerProps.get("IntentCount") : 0); }
+    public android.content.Intent[] getIntents() { return (android.content.Intent[]) meglerProps.get("Intents"); }
     public android.app.PendingIntent getPendingIntent(int p0, int p1) { return null; }
     public android.app.PendingIntent getPendingIntent(int p0, int p1, android.os.Bundle p2) { return null; }
     public android.app.PendingIntent getPendingIntent(int p0, int p1, android.os.Bundle p2, android.os.UserHandle p3) { return null; }

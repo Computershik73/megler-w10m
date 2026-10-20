@@ -3,36 +3,36 @@ package android.view.translation;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TranslationResponse implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int TRANSLATION_STATUS_CONTEXT_UNSUPPORTED = 2;
     public static final int TRANSLATION_STATUS_SUCCESS = 0;
     public static final int TRANSLATION_STATUS_UNKNOWN_ERROR = 1;
     public static java.lang.String translationStatusToString(int p0) { return null; }
     public int describeContents() { return 0; }
-    public android.util.SparseArray getTranslationResponseValues() { return (android.util.SparseArray) megletProps.get("TranslationResponseValues"); }
-    public int getTranslationStatus() { return (megletProps.get("TranslationStatus") instanceof Integer ? (Integer) megletProps.get("TranslationStatus") : 0); }
-    public android.util.SparseArray getViewTranslationResponses() { return (android.util.SparseArray) megletProps.get("ViewTranslationResponses"); }
-    public boolean isFinalResponse() { return (megletProps.get("FinalResponse") instanceof Boolean ? (Boolean) megletProps.get("FinalResponse") : false); }
+    public android.util.SparseArray getTranslationResponseValues() { return (android.util.SparseArray) meglerProps.get("TranslationResponseValues"); }
+    public int getTranslationStatus() { return (meglerProps.get("TranslationStatus") instanceof Integer ? (Integer) meglerProps.get("TranslationStatus") : 0); }
+    public android.util.SparseArray getViewTranslationResponses() { return (android.util.SparseArray) meglerProps.get("ViewTranslationResponses"); }
+    public boolean isFinalResponse() { return (meglerProps.get("FinalResponse") instanceof Boolean ? (Boolean) meglerProps.get("FinalResponse") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected TranslationResponse() {}
     public static abstract class BaseBuilder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public android.view.translation.TranslationResponse.Builder setTranslationResponseValue(int p0, android.view.translation.TranslationResponseValue p1) { return null; }
         public abstract android.view.translation.TranslationResponse.Builder setTranslationStatus(int p0);
         public android.view.translation.TranslationResponse.Builder setViewTranslationResponse(int p0, android.view.translation.ViewTranslationResponse p1) { return null; }
         protected BaseBuilder() {}
     }
     public static final class Builder extends android.view.translation.TranslationResponse.BaseBuilder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(int p0) { super(); }
-        public android.view.translation.TranslationResponse build() { android.view.translation.TranslationResponse x = new android.view.translation.TranslationResponse(); x.megletProps.putAll(megletProps); return x; }
-        public android.view.translation.TranslationResponse.Builder setFinalResponse(boolean p0) { megletProps.put("FinalResponse", Boolean.valueOf(p0)); return this; }
+        public android.view.translation.TranslationResponse build() { android.view.translation.TranslationResponse x = new android.view.translation.TranslationResponse(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.view.translation.TranslationResponse.Builder setFinalResponse(boolean p0) { meglerProps.put("FinalResponse", Boolean.valueOf(p0)); return this; }
         public android.view.translation.TranslationResponse.Builder setTranslationResponseValue(int p0, android.view.translation.TranslationResponseValue p1) { return this; }
-        public android.view.translation.TranslationResponse.Builder setTranslationResponseValues(android.util.SparseArray p0) { megletProps.put("TranslationResponseValues", p0); return this; }
-        public android.view.translation.TranslationResponse.Builder setTranslationStatus(int p0) { megletProps.put("TranslationStatus", Integer.valueOf(p0)); return this; }
+        public android.view.translation.TranslationResponse.Builder setTranslationResponseValues(android.util.SparseArray p0) { meglerProps.put("TranslationResponseValues", p0); return this; }
+        public android.view.translation.TranslationResponse.Builder setTranslationStatus(int p0) { meglerProps.put("TranslationStatus", Integer.valueOf(p0)); return this; }
         public android.view.translation.TranslationResponse.Builder setViewTranslationResponse(int p0, android.view.translation.ViewTranslationResponse p1) { return this; }
-        public android.view.translation.TranslationResponse.Builder setViewTranslationResponses(android.util.SparseArray p0) { megletProps.put("ViewTranslationResponses", p0); return this; }
+        public android.view.translation.TranslationResponse.Builder setViewTranslationResponses(android.util.SparseArray p0) { meglerProps.put("ViewTranslationResponses", p0); return this; }
         Builder() { this((int) 0); }
     }
 }

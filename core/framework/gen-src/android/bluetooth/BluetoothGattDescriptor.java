@@ -3,7 +3,7 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class BluetoothGattDescriptor implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static byte[] DISABLE_NOTIFICATION_VALUE;
     public static byte[] ENABLE_INDICATION_VALUE;
@@ -24,12 +24,12 @@ public class BluetoothGattDescriptor implements android.os.Parcelable {
     public BluetoothGattDescriptor(java.util.UUID p0, int p1) {}
     public BluetoothGattDescriptor(java.util.UUID p0, int p1, int p2) {}
     public int describeContents() { return 0; }
-    public android.bluetooth.BluetoothGattCharacteristic getCharacteristic() { return (android.bluetooth.BluetoothGattCharacteristic) megletProps.get("Characteristic"); }
-    public int getInstanceId() { return (megletProps.get("InstanceId") instanceof Integer ? (Integer) megletProps.get("InstanceId") : 0); }
-    public int getPermissions() { return (megletProps.get("Permissions") instanceof Integer ? (Integer) megletProps.get("Permissions") : 0); }
-    public java.util.UUID getUuid() { return (java.util.UUID) megletProps.get("Uuid"); }
-    public byte[] getValue() { return (byte[]) megletProps.get("Value"); }
-    public void setInstanceId(int p0) { megletProps.put("InstanceId", Integer.valueOf(p0)); }
+    public android.bluetooth.BluetoothGattCharacteristic getCharacteristic() { return (android.bluetooth.BluetoothGattCharacteristic) meglerProps.get("Characteristic"); }
+    public int getInstanceId() { return (meglerProps.get("InstanceId") instanceof Integer ? (Integer) meglerProps.get("InstanceId") : 0); }
+    public int getPermissions() { return (meglerProps.get("Permissions") instanceof Integer ? (Integer) meglerProps.get("Permissions") : 0); }
+    public java.util.UUID getUuid() { return (java.util.UUID) meglerProps.get("Uuid"); }
+    public byte[] getValue() { return (byte[]) meglerProps.get("Value"); }
+    public void setInstanceId(int p0) { meglerProps.put("InstanceId", Integer.valueOf(p0)); }
     public boolean setValue(byte[] p0) { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     BluetoothGattDescriptor() { this((java.util.UUID) null, (int) 0); }

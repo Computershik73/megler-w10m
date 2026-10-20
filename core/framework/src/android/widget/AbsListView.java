@@ -77,16 +77,16 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Fi
         mTouchSlop = vc.getScaledTouchSlop(); mMinVelocity = vc.getScaledMinimumFlingVelocity(); mMaxVelocity = vc.getScaledMaximumFlingVelocity();
         mScroller = new OverScroller(c);
         mEdgeGlowTop = new EdgeEffect(c); mEdgeGlowBottom = new EdgeEffect(c);
-        TypedArray a = c.obtainStyledAttributes(attrs, meglet.S.AbsListView, s, r);
+        TypedArray a = c.obtainStyledAttributes(attrs, megler.S.AbsListView, s, r);
         Drawable sel = null;
-        try { sel = a.getDrawable(meglet.S.AbsListView_listSelector); } catch (RuntimeException e) {}
+        try { sel = a.getDrawable(megler.S.AbsListView_listSelector); } catch (RuntimeException e) {}
         if (sel != null) setSelector(sel);
-        mDrawSelectorOnTop = a.getBoolean(meglet.S.AbsListView_drawSelectorOnTop, false);
-        setStackFromBottom(a.getBoolean(meglet.S.AbsListView_stackFromBottom, false));
-        setTranscriptMode(a.getInt(meglet.S.AbsListView_transcriptMode, TRANSCRIPT_MODE_DISABLED));
-        setCacheColorHint(a.getColor(meglet.S.AbsListView_cacheColorHint, 0));
-        setChoiceMode(a.getInt(meglet.S.AbsListView_choiceMode, CHOICE_MODE_NONE));
-        mTextFilterEnabled = a.getBoolean(meglet.S.AbsListView_textFilterEnabled, false);
+        mDrawSelectorOnTop = a.getBoolean(megler.S.AbsListView_drawSelectorOnTop, false);
+        setStackFromBottom(a.getBoolean(megler.S.AbsListView_stackFromBottom, false));
+        setTranscriptMode(a.getInt(megler.S.AbsListView_transcriptMode, TRANSCRIPT_MODE_DISABLED));
+        setCacheColorHint(a.getColor(megler.S.AbsListView_cacheColorHint, 0));
+        setChoiceMode(a.getInt(megler.S.AbsListView_choiceMode, CHOICE_MODE_NONE));
+        mTextFilterEnabled = a.getBoolean(megler.S.AbsListView_textFilterEnabled, false);
         a.recycle();
     }
     // ---- adapter
@@ -330,7 +330,7 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Fi
         return false;
     }
     void offsetChildrenTopAndBottom(int offset) { final int count = getChildCount(); for (int i = 0; i < count; i++) getChildAt(i).offsetTopAndBottom(offset); }
-    void detachViewsFromParent(int start, int count) { for (int i = start + count - 1; i >= start; i--) { View v = getChildAt(i); detachViewFromParent(i); if (v.isAttachedToWindow()) v.megletDetach(); } }
+    void detachViewsFromParent(int start, int count) { for (int i = start + count - 1; i >= start; i--) { View v = getChildAt(i); detachViewFromParent(i); if (v.isAttachedToWindow()) v.meglerDetach(); } }
     public void scrollListBy(int y) { trackMotionScroll(-y, -y); }
     public boolean canScrollList(int direction) {
         final int childCount = getChildCount();
@@ -351,9 +351,9 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Fi
         if (child != null) {
             int target = offset >= 0 ? offset + mListPadding.top : (child.getTop() < mListPadding.top ? mListPadding.top : child.getBottom() > getHeight() - mListPadding.bottom ? getHeight() - mListPadding.bottom - child.getHeight() : child.getTop());
             smoothScrollBy(child.getTop() - target, 250);
-        } else setSelectionFromTopMeglet(position, Math.max(0, offset));
+        } else setSelectionFromTopMegler(position, Math.max(0, offset));
     }
-    void setSelectionFromTopMeglet(int position, int y) { if (mAdapter == null) return; mFirstPosition = Math.max(0, Math.min(position, mItemCount - 1)); mSyncTop = y; mNeedSync = true; requestLayout(); }
+    void setSelectionFromTopMegler(int position, int y) { if (mAdapter == null) return; mFirstPosition = Math.max(0, Math.min(position, mItemCount - 1)); mSyncTop = y; mNeedSync = true; requestLayout(); }
     private int mFlingLastY;
     private final Runnable mFlingRunnable = new Runnable() {
         @Override public void run() {
@@ -545,7 +545,7 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Fi
     @Override protected int computeVerticalScrollExtent() { final int count = getChildCount(); return count > 0 ? count * 100 : 0; }
     @Override protected int computeVerticalScrollOffset() { final int firstPosition = mFirstPosition, childCount = getChildCount(); if (firstPosition >= 0 && childCount > 0) { final View view = getChildAt(0); final int top = view.getTop(); int height = view.getHeight(); if (height > 0) return Math.max(firstPosition * 100 - (top * 100) / height, 0); } return 0; }
     @Override protected int computeVerticalScrollRange() { return Math.max(mItemCount * 100, 0); }
-    public void setSelectionFromTop(int position, int y) { setSelectionFromTopMeglet(position, y); }
+    public void setSelectionFromTop(int position, int y) { setSelectionFromTopMegler(position, y); }
     @Override public CharSequence getAccessibilityClassName() { return AbsListView.class.getName(); }
 
     /** Views off screen, by type, for adapters' convertView. */
@@ -585,7 +585,7 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Fi
         void reclaimScrapViews(List<View> views) { if (mScrapViews != null) for (ArrayList<View> l : mScrapViews) views.addAll(l); }
     }
     // ---- generated by tools/compat/fillmembers.py: the platform's members this class does not write (signatures only)
-    private final java.util.HashMap<String, Object> megletFill = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerFill = new java.util.HashMap<>();
     public void afterTextChanged(android.text.Editable p0) {}
     public void beforeTextChanged(java.lang.CharSequence p0, int p1, int p2, int p3) {}
     public int getBottomEdgeEffectColor() { return 0; }
@@ -601,7 +601,7 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Fi
     protected void internalSetPadding(int p0, int p1, int p2, int p3) {}
     public void invalidateViews() {}
     protected boolean isPaddingOffsetRequired() { return false; }
-    public boolean isSelectedChildViewEnabled() { return (megletFill.get("SelectedChildViewEnabled") instanceof Boolean ? (Boolean) megletFill.get("SelectedChildViewEnabled") : false); }
+    public boolean isSelectedChildViewEnabled() { return (meglerFill.get("SelectedChildViewEnabled") instanceof Boolean ? (Boolean) meglerFill.get("SelectedChildViewEnabled") : false); }
     protected boolean isVerticalScrollBarHidden() { return false; }
     protected void onDisplayHint(int p0) {}
     public void onFilterComplete(int p0) {}
@@ -621,12 +621,12 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Fi
     public java.lang.Runnable setRemoteViewsAdapterAsync(android.content.Intent p0) { return null; }
     public void setRemoteViewsInteractionHandler(android.widget.RemoteViews.InteractionHandler p0) {}
     public void setScrollIndicators(android.view.View p0, android.view.View p1) {}
-    public void setSelectedChildViewEnabled(boolean p0) { megletFill.put("SelectedChildViewEnabled", Boolean.valueOf(p0)); }
+    public void setSelectedChildViewEnabled(boolean p0) { meglerFill.put("SelectedChildViewEnabled", Boolean.valueOf(p0)); }
     public boolean shouldDrawSelector() { return false; }
     // ---- end of generated members
     // ---- generated by tools/compat/genstubs.py: the platform's nested classes this class does not write
     public static final class InspectionCompanion implements android.view.inspector.InspectionCompanion {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public InspectionCompanion() {}
         public void mapProperties(android.view.inspector.PropertyMapper p0) {}
         public void readProperties(android.widget.AbsListView p0, android.view.inspector.PropertyReader p1) {}

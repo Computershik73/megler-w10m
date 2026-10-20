@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PhysicalChannelConfig implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int BAND_UNKNOWN = 0;
     public static final int CELL_BANDWIDTH_UNKNOWN = 0;
     public static final int CHANNEL_NUMBER_UNKNOWN = 2147483647;
@@ -16,34 +16,34 @@ public final class PhysicalChannelConfig implements android.os.Parcelable {
     public static final int PHYSICAL_CELL_ID_UNKNOWN = -1;
     public android.telephony.PhysicalChannelConfig createLocationInfoSanitizedCopy() { return this; }
     public int describeContents() { return 0; }
-    public int getBand() { return (megletProps.get("Band") instanceof Integer ? (Integer) megletProps.get("Band") : 0); }
-    public int getCellBandwidthDownlinkKhz() { return (megletProps.get("CellBandwidthDownlinkKhz") instanceof Integer ? (Integer) megletProps.get("CellBandwidthDownlinkKhz") : 0); }
-    public int getCellBandwidthUplinkKhz() { return (megletProps.get("CellBandwidthUplinkKhz") instanceof Integer ? (Integer) megletProps.get("CellBandwidthUplinkKhz") : 0); }
-    public int getConnectionStatus() { return (megletProps.get("ConnectionStatus") instanceof Integer ? (Integer) megletProps.get("ConnectionStatus") : 0); }
-    public int[] getContextIds() { return (int[]) megletProps.get("ContextIds"); }
-    public int getDownlinkChannelNumber() { return (megletProps.get("DownlinkChannelNumber") instanceof Integer ? (Integer) megletProps.get("DownlinkChannelNumber") : 0); }
-    public int getDownlinkFrequencyKhz() { return (megletProps.get("DownlinkFrequencyKhz") instanceof Integer ? (Integer) megletProps.get("DownlinkFrequencyKhz") : 0); }
-    public int getFrequencyRange() { return (megletProps.get("FrequencyRange") instanceof Integer ? (Integer) megletProps.get("FrequencyRange") : 0); }
-    public int getNetworkType() { return (megletProps.get("NetworkType") instanceof Integer ? (Integer) megletProps.get("NetworkType") : 0); }
-    public int getPhysicalCellId() { return (megletProps.get("PhysicalCellId") instanceof Integer ? (Integer) megletProps.get("PhysicalCellId") : 0); }
-    public int getUplinkChannelNumber() { return (megletProps.get("UplinkChannelNumber") instanceof Integer ? (Integer) megletProps.get("UplinkChannelNumber") : 0); }
-    public int getUplinkFrequencyKhz() { return (megletProps.get("UplinkFrequencyKhz") instanceof Integer ? (Integer) megletProps.get("UplinkFrequencyKhz") : 0); }
+    public int getBand() { return (meglerProps.get("Band") instanceof Integer ? (Integer) meglerProps.get("Band") : 0); }
+    public int getCellBandwidthDownlinkKhz() { return (meglerProps.get("CellBandwidthDownlinkKhz") instanceof Integer ? (Integer) meglerProps.get("CellBandwidthDownlinkKhz") : 0); }
+    public int getCellBandwidthUplinkKhz() { return (meglerProps.get("CellBandwidthUplinkKhz") instanceof Integer ? (Integer) meglerProps.get("CellBandwidthUplinkKhz") : 0); }
+    public int getConnectionStatus() { return (meglerProps.get("ConnectionStatus") instanceof Integer ? (Integer) meglerProps.get("ConnectionStatus") : 0); }
+    public int[] getContextIds() { return (int[]) meglerProps.get("ContextIds"); }
+    public int getDownlinkChannelNumber() { return (meglerProps.get("DownlinkChannelNumber") instanceof Integer ? (Integer) meglerProps.get("DownlinkChannelNumber") : 0); }
+    public int getDownlinkFrequencyKhz() { return (meglerProps.get("DownlinkFrequencyKhz") instanceof Integer ? (Integer) meglerProps.get("DownlinkFrequencyKhz") : 0); }
+    public int getFrequencyRange() { return (meglerProps.get("FrequencyRange") instanceof Integer ? (Integer) meglerProps.get("FrequencyRange") : 0); }
+    public int getNetworkType() { return (meglerProps.get("NetworkType") instanceof Integer ? (Integer) meglerProps.get("NetworkType") : 0); }
+    public int getPhysicalCellId() { return (meglerProps.get("PhysicalCellId") instanceof Integer ? (Integer) meglerProps.get("PhysicalCellId") : 0); }
+    public int getUplinkChannelNumber() { return (meglerProps.get("UplinkChannelNumber") instanceof Integer ? (Integer) meglerProps.get("UplinkChannelNumber") : 0); }
+    public int getUplinkFrequencyKhz() { return (meglerProps.get("UplinkFrequencyKhz") instanceof Integer ? (Integer) meglerProps.get("UplinkFrequencyKhz") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected PhysicalChannelConfig() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.telephony.PhysicalChannelConfig p0) {}
-        public android.telephony.PhysicalChannelConfig build() { android.telephony.PhysicalChannelConfig x = new android.telephony.PhysicalChannelConfig(); x.megletProps.putAll(megletProps); return x; }
-        public android.telephony.PhysicalChannelConfig.Builder setBand(int p0) { megletProps.put("Band", Integer.valueOf(p0)); return this; }
-        public android.telephony.PhysicalChannelConfig.Builder setCellBandwidthDownlinkKhz(int p0) { megletProps.put("CellBandwidthDownlinkKhz", Integer.valueOf(p0)); return this; }
-        public android.telephony.PhysicalChannelConfig.Builder setCellBandwidthUplinkKhz(int p0) { megletProps.put("CellBandwidthUplinkKhz", Integer.valueOf(p0)); return this; }
-        public android.telephony.PhysicalChannelConfig.Builder setCellConnectionStatus(int p0) { megletProps.put("CellConnectionStatus", Integer.valueOf(p0)); return this; }
-        public android.telephony.PhysicalChannelConfig.Builder setContextIds(int[] p0) { megletProps.put("ContextIds", p0); return this; }
-        public android.telephony.PhysicalChannelConfig.Builder setDownlinkChannelNumber(int p0) { megletProps.put("DownlinkChannelNumber", Integer.valueOf(p0)); return this; }
-        public android.telephony.PhysicalChannelConfig.Builder setFrequencyRange(int p0) { megletProps.put("FrequencyRange", Integer.valueOf(p0)); return this; }
-        public android.telephony.PhysicalChannelConfig.Builder setNetworkType(int p0) { megletProps.put("NetworkType", Integer.valueOf(p0)); return this; }
-        public android.telephony.PhysicalChannelConfig.Builder setPhysicalCellId(int p0) { megletProps.put("PhysicalCellId", Integer.valueOf(p0)); return this; }
-        public android.telephony.PhysicalChannelConfig.Builder setUplinkChannelNumber(int p0) { megletProps.put("UplinkChannelNumber", Integer.valueOf(p0)); return this; }
+        public android.telephony.PhysicalChannelConfig build() { android.telephony.PhysicalChannelConfig x = new android.telephony.PhysicalChannelConfig(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.telephony.PhysicalChannelConfig.Builder setBand(int p0) { meglerProps.put("Band", Integer.valueOf(p0)); return this; }
+        public android.telephony.PhysicalChannelConfig.Builder setCellBandwidthDownlinkKhz(int p0) { meglerProps.put("CellBandwidthDownlinkKhz", Integer.valueOf(p0)); return this; }
+        public android.telephony.PhysicalChannelConfig.Builder setCellBandwidthUplinkKhz(int p0) { meglerProps.put("CellBandwidthUplinkKhz", Integer.valueOf(p0)); return this; }
+        public android.telephony.PhysicalChannelConfig.Builder setCellConnectionStatus(int p0) { meglerProps.put("CellConnectionStatus", Integer.valueOf(p0)); return this; }
+        public android.telephony.PhysicalChannelConfig.Builder setContextIds(int[] p0) { meglerProps.put("ContextIds", p0); return this; }
+        public android.telephony.PhysicalChannelConfig.Builder setDownlinkChannelNumber(int p0) { meglerProps.put("DownlinkChannelNumber", Integer.valueOf(p0)); return this; }
+        public android.telephony.PhysicalChannelConfig.Builder setFrequencyRange(int p0) { meglerProps.put("FrequencyRange", Integer.valueOf(p0)); return this; }
+        public android.telephony.PhysicalChannelConfig.Builder setNetworkType(int p0) { meglerProps.put("NetworkType", Integer.valueOf(p0)); return this; }
+        public android.telephony.PhysicalChannelConfig.Builder setPhysicalCellId(int p0) { meglerProps.put("PhysicalCellId", Integer.valueOf(p0)); return this; }
+        public android.telephony.PhysicalChannelConfig.Builder setUplinkChannelNumber(int p0) { meglerProps.put("UplinkChannelNumber", Integer.valueOf(p0)); return this; }
     }
 }

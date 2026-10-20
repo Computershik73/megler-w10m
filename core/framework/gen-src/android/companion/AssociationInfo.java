@@ -3,61 +3,61 @@ package android.companion;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AssociationInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String METADATA_TIMESTAMP = "_timestamp_";
     public boolean belongsToPackage(int p0, java.lang.String p1) { return false; }
     public int describeContents() { return 0; }
-    public android.companion.AssociatedDevice getAssociatedDevice() { return (android.companion.AssociatedDevice) megletProps.get("AssociatedDevice"); }
-    public android.graphics.drawable.Icon getDeviceIcon() { return (android.graphics.drawable.Icon) megletProps.get("DeviceIcon"); }
-    public android.companion.DeviceId getDeviceId() { return (android.companion.DeviceId) megletProps.get("DeviceId"); }
-    public android.net.MacAddress getDeviceMacAddress() { return (android.net.MacAddress) megletProps.get("DeviceMacAddress"); }
-    public java.lang.String getDeviceMacAddressAsString() { return (java.lang.String) megletProps.get("DeviceMacAddressAsString"); }
-    public java.lang.String getDeviceProfile() { return (java.lang.String) megletProps.get("DeviceProfile"); }
-    public java.lang.CharSequence getDisplayName() { return (java.lang.CharSequence) megletProps.get("DisplayName"); }
-    public int getId() { return (megletProps.get("Id") instanceof Integer ? (Integer) megletProps.get("Id") : 0); }
-    public long getLastTimeConnectedMs() { return (megletProps.get("LastTimeConnectedMs") instanceof Long ? (Long) megletProps.get("LastTimeConnectedMs") : 0L); }
-    public android.os.PersistableBundle getMetadata() { return (android.os.PersistableBundle) megletProps.get("Metadata"); }
+    public android.companion.AssociatedDevice getAssociatedDevice() { return (android.companion.AssociatedDevice) meglerProps.get("AssociatedDevice"); }
+    public android.graphics.drawable.Icon getDeviceIcon() { return (android.graphics.drawable.Icon) meglerProps.get("DeviceIcon"); }
+    public android.companion.DeviceId getDeviceId() { return (android.companion.DeviceId) meglerProps.get("DeviceId"); }
+    public android.net.MacAddress getDeviceMacAddress() { return (android.net.MacAddress) meglerProps.get("DeviceMacAddress"); }
+    public java.lang.String getDeviceMacAddressAsString() { return (java.lang.String) meglerProps.get("DeviceMacAddressAsString"); }
+    public java.lang.String getDeviceProfile() { return (java.lang.String) meglerProps.get("DeviceProfile"); }
+    public java.lang.CharSequence getDisplayName() { return (java.lang.CharSequence) meglerProps.get("DisplayName"); }
+    public int getId() { return (meglerProps.get("Id") instanceof Integer ? (Integer) meglerProps.get("Id") : 0); }
+    public long getLastTimeConnectedMs() { return (meglerProps.get("LastTimeConnectedMs") instanceof Long ? (Long) meglerProps.get("LastTimeConnectedMs") : 0L); }
+    public android.os.PersistableBundle getMetadata() { return (android.os.PersistableBundle) meglerProps.get("Metadata"); }
     public android.os.PersistableBundle getMetadata(java.lang.String p0) { return null; }
-    public long getMetadataTimestamp() { return (megletProps.get("MetadataTimestamp") instanceof Long ? (Long) megletProps.get("MetadataTimestamp") : 0L); }
-    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
-    public java.util.List getPackagesToNotify() { return (megletProps.get("PackagesToNotify") != null ? (java.util.List) megletProps.get("PackagesToNotify") : new java.util.ArrayList()); }
-    public int getSystemDataSyncFlags() { return (megletProps.get("SystemDataSyncFlags") instanceof Integer ? (Integer) megletProps.get("SystemDataSyncFlags") : 0); }
-    public long getTimeApprovedMs() { return (megletProps.get("TimeApprovedMs") instanceof Long ? (Long) megletProps.get("TimeApprovedMs") : 0L); }
-    public int getTransportFlags() { return (megletProps.get("TransportFlags") instanceof Integer ? (Integer) megletProps.get("TransportFlags") : 0); }
-    public int getUserId() { return (megletProps.get("UserId") instanceof Integer ? (Integer) megletProps.get("UserId") : 0); }
-    public boolean isActive() { return (megletProps.get("Active") instanceof Boolean ? (Boolean) megletProps.get("Active") : false); }
+    public long getMetadataTimestamp() { return (meglerProps.get("MetadataTimestamp") instanceof Long ? (Long) meglerProps.get("MetadataTimestamp") : 0L); }
+    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
+    public java.util.List getPackagesToNotify() { return (meglerProps.get("PackagesToNotify") != null ? (java.util.List) meglerProps.get("PackagesToNotify") : new java.util.ArrayList()); }
+    public int getSystemDataSyncFlags() { return (meglerProps.get("SystemDataSyncFlags") instanceof Integer ? (Integer) meglerProps.get("SystemDataSyncFlags") : 0); }
+    public long getTimeApprovedMs() { return (meglerProps.get("TimeApprovedMs") instanceof Long ? (Long) meglerProps.get("TimeApprovedMs") : 0L); }
+    public int getTransportFlags() { return (meglerProps.get("TransportFlags") instanceof Integer ? (Integer) meglerProps.get("TransportFlags") : 0); }
+    public int getUserId() { return (meglerProps.get("UserId") instanceof Integer ? (Integer) meglerProps.get("UserId") : 0); }
+    public boolean isActive() { return (meglerProps.get("Active") instanceof Boolean ? (Boolean) meglerProps.get("Active") : false); }
     public boolean isLinkedTo(java.lang.String p0) { return false; }
-    public boolean isNotifyOnDeviceNearby() { return (megletProps.get("NotifyOnDeviceNearby") instanceof Boolean ? (Boolean) megletProps.get("NotifyOnDeviceNearby") : false); }
-    public boolean isPending() { return (megletProps.get("Pending") instanceof Boolean ? (Boolean) megletProps.get("Pending") : false); }
-    public boolean isRevoked() { return (megletProps.get("Revoked") instanceof Boolean ? (Boolean) megletProps.get("Revoked") : false); }
-    public boolean isSelfManaged() { return (megletProps.get("SelfManaged") instanceof Boolean ? (Boolean) megletProps.get("SelfManaged") : false); }
+    public boolean isNotifyOnDeviceNearby() { return (meglerProps.get("NotifyOnDeviceNearby") instanceof Boolean ? (Boolean) meglerProps.get("NotifyOnDeviceNearby") : false); }
+    public boolean isPending() { return (meglerProps.get("Pending") instanceof Boolean ? (Boolean) meglerProps.get("Pending") : false); }
+    public boolean isRevoked() { return (meglerProps.get("Revoked") instanceof Boolean ? (Boolean) meglerProps.get("Revoked") : false); }
+    public boolean isSelfManaged() { return (meglerProps.get("SelfManaged") instanceof Boolean ? (Boolean) meglerProps.get("SelfManaged") : false); }
     public boolean shouldBindWhenPresent() { return false; }
     public java.lang.String toShortString() { return null; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected AssociationInfo() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(int p0, int p1, java.lang.String p2) {}
         public Builder(int p0, int p1, java.lang.String p2, android.companion.AssociationInfo p3) {}
         public Builder(android.companion.AssociationInfo p0) {}
-        public android.companion.AssociationInfo build() { android.companion.AssociationInfo x = new android.companion.AssociationInfo(); x.megletProps.putAll(megletProps); return x; }
-        public android.companion.AssociationInfo.Builder setAssociatedDevice(android.companion.AssociatedDevice p0) { megletProps.put("AssociatedDevice", p0); return this; }
-        public android.companion.AssociationInfo.Builder setDeviceIcon(android.graphics.drawable.Icon p0) { megletProps.put("DeviceIcon", p0); return this; }
-        public android.companion.AssociationInfo.Builder setDeviceId(android.companion.DeviceId p0) { megletProps.put("DeviceId", p0); return this; }
-        public android.companion.AssociationInfo.Builder setDeviceMacAddress(android.net.MacAddress p0) { megletProps.put("DeviceMacAddress", p0); return this; }
-        public android.companion.AssociationInfo.Builder setDeviceProfile(java.lang.String p0) { megletProps.put("DeviceProfile", p0); return this; }
-        public android.companion.AssociationInfo.Builder setDisplayName(java.lang.CharSequence p0) { megletProps.put("DisplayName", p0); return this; }
-        public android.companion.AssociationInfo.Builder setLastTimeConnected(long p0) { megletProps.put("LastTimeConnected", Long.valueOf(p0)); return this; }
-        public android.companion.AssociationInfo.Builder setMetadata(android.os.PersistableBundle p0) { megletProps.put("Metadata", p0); return this; }
-        public android.companion.AssociationInfo.Builder setNotifyOnDeviceNearby(boolean p0) { megletProps.put("NotifyOnDeviceNearby", Boolean.valueOf(p0)); return this; }
-        public android.companion.AssociationInfo.Builder setPackagesToNotify(java.util.List p0) { megletProps.put("PackagesToNotify", p0); return this; }
-        public android.companion.AssociationInfo.Builder setPending(boolean p0) { megletProps.put("Pending", Boolean.valueOf(p0)); return this; }
-        public android.companion.AssociationInfo.Builder setRevoked(boolean p0) { megletProps.put("Revoked", Boolean.valueOf(p0)); return this; }
-        public android.companion.AssociationInfo.Builder setSelfManaged(boolean p0) { megletProps.put("SelfManaged", Boolean.valueOf(p0)); return this; }
-        public android.companion.AssociationInfo.Builder setSystemDataSyncFlags(int p0) { megletProps.put("SystemDataSyncFlags", Integer.valueOf(p0)); return this; }
-        public android.companion.AssociationInfo.Builder setTimeApproved(long p0) { megletProps.put("TimeApproved", Long.valueOf(p0)); return this; }
-        public android.companion.AssociationInfo.Builder setTransportFlags(int p0) { megletProps.put("TransportFlags", Integer.valueOf(p0)); return this; }
+        public android.companion.AssociationInfo build() { android.companion.AssociationInfo x = new android.companion.AssociationInfo(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.companion.AssociationInfo.Builder setAssociatedDevice(android.companion.AssociatedDevice p0) { meglerProps.put("AssociatedDevice", p0); return this; }
+        public android.companion.AssociationInfo.Builder setDeviceIcon(android.graphics.drawable.Icon p0) { meglerProps.put("DeviceIcon", p0); return this; }
+        public android.companion.AssociationInfo.Builder setDeviceId(android.companion.DeviceId p0) { meglerProps.put("DeviceId", p0); return this; }
+        public android.companion.AssociationInfo.Builder setDeviceMacAddress(android.net.MacAddress p0) { meglerProps.put("DeviceMacAddress", p0); return this; }
+        public android.companion.AssociationInfo.Builder setDeviceProfile(java.lang.String p0) { meglerProps.put("DeviceProfile", p0); return this; }
+        public android.companion.AssociationInfo.Builder setDisplayName(java.lang.CharSequence p0) { meglerProps.put("DisplayName", p0); return this; }
+        public android.companion.AssociationInfo.Builder setLastTimeConnected(long p0) { meglerProps.put("LastTimeConnected", Long.valueOf(p0)); return this; }
+        public android.companion.AssociationInfo.Builder setMetadata(android.os.PersistableBundle p0) { meglerProps.put("Metadata", p0); return this; }
+        public android.companion.AssociationInfo.Builder setNotifyOnDeviceNearby(boolean p0) { meglerProps.put("NotifyOnDeviceNearby", Boolean.valueOf(p0)); return this; }
+        public android.companion.AssociationInfo.Builder setPackagesToNotify(java.util.List p0) { meglerProps.put("PackagesToNotify", p0); return this; }
+        public android.companion.AssociationInfo.Builder setPending(boolean p0) { meglerProps.put("Pending", Boolean.valueOf(p0)); return this; }
+        public android.companion.AssociationInfo.Builder setRevoked(boolean p0) { meglerProps.put("Revoked", Boolean.valueOf(p0)); return this; }
+        public android.companion.AssociationInfo.Builder setSelfManaged(boolean p0) { meglerProps.put("SelfManaged", Boolean.valueOf(p0)); return this; }
+        public android.companion.AssociationInfo.Builder setSystemDataSyncFlags(int p0) { meglerProps.put("SystemDataSyncFlags", Integer.valueOf(p0)); return this; }
+        public android.companion.AssociationInfo.Builder setTimeApproved(long p0) { meglerProps.put("TimeApproved", Long.valueOf(p0)); return this; }
+        public android.companion.AssociationInfo.Builder setTransportFlags(int p0) { meglerProps.put("TransportFlags", Integer.valueOf(p0)); return this; }
         Builder() { this((android.companion.AssociationInfo) null); }
     }
 }

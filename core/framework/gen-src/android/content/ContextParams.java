@@ -3,22 +3,22 @@ package android.content;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ContextParams {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.content.ContextParams EMPTY;
-    public java.lang.String getAttributionTag() { return (java.lang.String) megletProps.get("AttributionTag"); }
-    public android.content.AttributionSource getNextAttributionSource() { return (android.content.AttributionSource) megletProps.get("NextAttributionSource"); }
-    public java.util.Set getRenouncedPermissions() { return (megletProps.get("RenouncedPermissions") != null ? (java.util.Set) megletProps.get("RenouncedPermissions") : new java.util.HashSet()); }
+    public java.lang.String getAttributionTag() { return (java.lang.String) meglerProps.get("AttributionTag"); }
+    public android.content.AttributionSource getNextAttributionSource() { return (android.content.AttributionSource) meglerProps.get("NextAttributionSource"); }
+    public java.util.Set getRenouncedPermissions() { return (meglerProps.get("RenouncedPermissions") != null ? (java.util.Set) meglerProps.get("RenouncedPermissions") : new java.util.HashSet()); }
     public boolean isRenouncedPermission(java.lang.String p0) { return false; }
     public boolean shouldRegisterAttributionSource() { return false; }
     protected ContextParams() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.content.ContextParams p0) {}
-        public android.content.ContextParams build() { android.content.ContextParams x = new android.content.ContextParams(); x.megletProps.putAll(megletProps); return x; }
-        public android.content.ContextParams.Builder setAttributionTag(java.lang.String p0) { megletProps.put("AttributionTag", p0); return this; }
-        public android.content.ContextParams.Builder setNextAttributionSource(android.content.AttributionSource p0) { megletProps.put("NextAttributionSource", p0); return this; }
-        public android.content.ContextParams.Builder setRenouncedPermissions(java.util.Set p0) { megletProps.put("RenouncedPermissions", p0); return this; }
-        public android.content.ContextParams.Builder setShouldRegisterAttributionSource(boolean p0) { megletProps.put("ShouldRegisterAttributionSource", Boolean.valueOf(p0)); return this; }
+        public android.content.ContextParams build() { android.content.ContextParams x = new android.content.ContextParams(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.content.ContextParams.Builder setAttributionTag(java.lang.String p0) { meglerProps.put("AttributionTag", p0); return this; }
+        public android.content.ContextParams.Builder setNextAttributionSource(android.content.AttributionSource p0) { meglerProps.put("NextAttributionSource", p0); return this; }
+        public android.content.ContextParams.Builder setRenouncedPermissions(java.util.Set p0) { meglerProps.put("RenouncedPermissions", p0); return this; }
+        public android.content.ContextParams.Builder setShouldRegisterAttributionSource(boolean p0) { meglerProps.put("ShouldRegisterAttributionSource", Boolean.valueOf(p0)); return this; }
     }
 }

@@ -3,7 +3,7 @@ package android.health.connect;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class HealthConnectManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_CONNECT_MATCHING_APPS = "android.health.connect.action.CONNECT_MATCHING_APPS";
     public static final java.lang.String ACTION_HEALTH_CONNECT_MIGRATION_READY = "android.health.connect.action.HEALTH_CONNECT_MIGRATION_READY";
     public static final java.lang.String ACTION_HEALTH_HOME_SETTINGS = "android.health.connect.action.HEALTH_HOME_SETTINGS";
@@ -62,8 +62,8 @@ public class HealthConnectManager {
     public void getMatchingApps(java.util.Set p0, java.lang.String p1, java.util.concurrent.Executor p2, android.os.OutcomeReceiver p3) {}
     public void getMedicalDataSources(android.health.connect.GetMedicalDataSourcesRequest p0, java.util.concurrent.Executor p1, android.os.OutcomeReceiver p2) {}
     public void getMedicalDataSources(java.util.List p0, java.util.concurrent.Executor p1, android.os.OutcomeReceiver p2) {}
-    public int getRecordRetentionPeriodInDays() { return (megletProps.get("RecordRetentionPeriodInDays") instanceof Integer ? (Integer) megletProps.get("RecordRetentionPeriodInDays") : 0); }
-    public int getScheduledExportPeriodInDays() { return (megletProps.get("ScheduledExportPeriodInDays") instanceof Integer ? (Integer) megletProps.get("ScheduledExportPeriodInDays") : 0); }
+    public int getRecordRetentionPeriodInDays() { return (meglerProps.get("RecordRetentionPeriodInDays") instanceof Integer ? (Integer) meglerProps.get("RecordRetentionPeriodInDays") : 0); }
+    public int getScheduledExportPeriodInDays() { return (meglerProps.get("ScheduledExportPeriodInDays") instanceof Integer ? (Integer) meglerProps.get("ScheduledExportPeriodInDays") : 0); }
     public void getScheduledExportStatus(java.util.concurrent.Executor p0, android.os.OutcomeReceiver p1) {}
     public void grantHealthPermission(java.lang.String p0, java.lang.String p1) {}
     public void insertMinDataMigrationSdkExtensionVersion(int p0, java.util.concurrent.Executor p1, android.os.OutcomeReceiver p2) {}
@@ -85,7 +85,7 @@ public class HealthConnectManager {
     public void runImmediateExport(android.net.Uri p0, java.util.concurrent.Executor p1, android.os.OutcomeReceiver p2) {}
     public void runImport(android.net.Uri p0, java.util.concurrent.Executor p1, android.os.OutcomeReceiver p2) {}
     public void setHealthPermissionsUserFixedFlagValue(java.lang.String p0, java.util.List p1, boolean p2) {}
-    public void setLowerRateLimitsForTesting(boolean p0) { megletProps.put("LowerRateLimitsForTesting", Boolean.valueOf(p0)); }
+    public void setLowerRateLimitsForTesting(boolean p0) { meglerProps.put("LowerRateLimitsForTesting", Boolean.valueOf(p0)); }
     public void setRecordRetentionPeriodInDays(int p0, java.util.concurrent.Executor p1, android.os.OutcomeReceiver p2) {}
     public void setTrackingEnabled(java.lang.Class p0, boolean p1, java.util.concurrent.Executor p2, android.os.OutcomeReceiver p3) {}
     public void stageAllHealthConnectRemoteData(java.util.Map p0, java.util.concurrent.Executor p1, android.os.OutcomeReceiver p2) {}

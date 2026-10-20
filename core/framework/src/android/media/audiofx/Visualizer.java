@@ -3,7 +3,7 @@ package android.media.audiofx;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Visualizer {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int ALREADY_EXISTS = -2;
     public static final int ERROR = -1;
     public static final int ERROR_BAD_VALUE = -4;
@@ -20,28 +20,28 @@ public class Visualizer {
     public static final int STATE_UNINITIALIZED = 0;
     public static final int SUCCESS = 0;
     /** No audio output is captured: the visualizer is a valid, enabled-able effect that reports silence. */
-    public Visualizer(int p0) { megletProps.put("CaptureSize", 1024); megletProps.put("SamplingRate", 44100000); megletProps.put("ScalingMode", SCALING_MODE_NORMALIZED); }
+    public Visualizer(int p0) { meglerProps.put("CaptureSize", 1024); meglerProps.put("SamplingRate", 44100000); meglerProps.put("ScalingMode", SCALING_MODE_NORMALIZED); }
     public static int[] getCaptureSizeRange() { return new int[] { 128, 1024 }; }
     public static int getMaxCaptureRate() { return 20000; }
     protected void finalize() {}
-    public int getCaptureSize() { return (megletProps.get("CaptureSize") instanceof Integer ? (Integer) megletProps.get("CaptureSize") : 0); }
-    public boolean getEnabled() { return (megletProps.get("Enabled") instanceof Boolean ? (Boolean) megletProps.get("Enabled") : false); }
+    public int getCaptureSize() { return (meglerProps.get("CaptureSize") instanceof Integer ? (Integer) meglerProps.get("CaptureSize") : 0); }
+    public boolean getEnabled() { return (meglerProps.get("Enabled") instanceof Boolean ? (Boolean) meglerProps.get("Enabled") : false); }
     public int getFft(byte[] p0) { java.util.Arrays.fill(p0, (byte) 0); return SUCCESS; }
-    public int getMeasurementMode() { return (megletProps.get("MeasurementMode") instanceof Integer ? (Integer) megletProps.get("MeasurementMode") : 0); }
+    public int getMeasurementMode() { return (meglerProps.get("MeasurementMode") instanceof Integer ? (Integer) meglerProps.get("MeasurementMode") : 0); }
     public int getMeasurementPeakRms(android.media.audiofx.Visualizer.MeasurementPeakRms p0) { p0.mPeak = -9600; p0.mRms = -9600; return SUCCESS; }
-    public int getSamplingRate() { return (megletProps.get("SamplingRate") instanceof Integer ? (Integer) megletProps.get("SamplingRate") : 0); }
-    public int getScalingMode() { return (megletProps.get("ScalingMode") instanceof Integer ? (Integer) megletProps.get("ScalingMode") : 0); }
+    public int getSamplingRate() { return (meglerProps.get("SamplingRate") instanceof Integer ? (Integer) meglerProps.get("SamplingRate") : 0); }
+    public int getScalingMode() { return (meglerProps.get("ScalingMode") instanceof Integer ? (Integer) meglerProps.get("ScalingMode") : 0); }
     public int getWaveForm(byte[] p0) { java.util.Arrays.fill(p0, (byte) 0x80); return SUCCESS; }
     public void release() {}
-    public int setCaptureSize(int p0) { if (p0 < 128 || p0 > 1024 || Integer.bitCount(p0) != 1) return ERROR_BAD_VALUE; megletProps.put("CaptureSize", p0); return SUCCESS; }
+    public int setCaptureSize(int p0) { if (p0 < 128 || p0 > 1024 || Integer.bitCount(p0) != 1) return ERROR_BAD_VALUE; meglerProps.put("CaptureSize", p0); return SUCCESS; }
     public int setDataCaptureListener(android.media.audiofx.Visualizer.OnDataCaptureListener p0, int p1, boolean p2, boolean p3) { return 0; }
-    public int setEnabled(boolean p0) { megletProps.put("Enabled", p0); return SUCCESS; }
-    public int setMeasurementMode(int p0) { megletProps.put("MeasurementMode", p0); return SUCCESS; }
-    public int setScalingMode(int p0) { megletProps.put("ScalingMode", p0); return SUCCESS; }
+    public int setEnabled(boolean p0) { meglerProps.put("Enabled", p0); return SUCCESS; }
+    public int setMeasurementMode(int p0) { meglerProps.put("MeasurementMode", p0); return SUCCESS; }
+    public int setScalingMode(int p0) { meglerProps.put("ScalingMode", p0); return SUCCESS; }
     public int setServerDiedListener(android.media.audiofx.Visualizer.OnServerDiedListener p0) { return 0; }
     Visualizer() { this((int) 0); }
     public static final class MeasurementPeakRms {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public int mPeak;
         public int mRms;
         public MeasurementPeakRms() {}

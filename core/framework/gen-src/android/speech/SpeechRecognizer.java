@@ -3,7 +3,7 @@ package android.speech;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SpeechRecognizer {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String CONFIDENCE_SCORES = "confidence_scores";
     public static final java.lang.String DETECTED_LANGUAGE = "detected_language";
     public static final int ERROR_AUDIO = 3;
@@ -44,8 +44,8 @@ public class SpeechRecognizer {
     public void cancel() {}
     public void checkRecognitionSupport(android.content.Intent p0, java.util.concurrent.Executor p1, android.speech.RecognitionSupportCallback p2) {}
     public void destroy() {}
-    public void setRecognitionListener(android.speech.RecognitionListener p0) { megletProps.put("RecognitionListener", p0); }
-    public void setTemporaryOnDeviceRecognizer(android.content.ComponentName p0) { megletProps.put("TemporaryOnDeviceRecognizer", p0); }
+    public void setRecognitionListener(android.speech.RecognitionListener p0) { meglerProps.put("RecognitionListener", p0); }
+    public void setTemporaryOnDeviceRecognizer(android.content.ComponentName p0) { meglerProps.put("TemporaryOnDeviceRecognizer", p0); }
     public void startListening(android.content.Intent p0) {}
     public void stopListening() {}
     public void triggerModelDownload(android.content.Intent p0) {}

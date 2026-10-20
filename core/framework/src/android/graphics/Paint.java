@@ -1,7 +1,7 @@
 package android.graphics;
 
 /**
- * Paint keeps its state in mP, the packet meglet.Gfx reads in one go (the P_* slots in core/src/drivers/mg_java_gfx.c); the objects it is handed
+ * Paint keeps its state in mP, the packet megler.Gfx reads in one go (the P_* slots in core/src/drivers/mg_java_gfx.c); the objects it is handed
  * (typeface, shader, filters) are kept here and their native parts passed along with it.
  */
 public class Paint {
@@ -131,8 +131,8 @@ public class Paint {
         return f;
     }
     public Xfermode getXfermode() { return mXfermode; }
-    /** Meglet: the blend mode number (PorterDuff.Mode's; 3 = SRC_OVER). */
-    public int megletXfer() { return mP[P_XFER]; }
+    /** Megler: the blend mode number (PorterDuff.Mode's; 3 = SRC_OVER). */
+    public int meglerXfer() { return mP[P_XFER]; }
     public Xfermode setXfermode(Xfermode x) { mXfermode = x; mP[P_XFER] = x == null ? 3 : x.mode; return x; }
     public void setBlendMode(BlendMode m) { mP[P_XFER] = m == null ? 3 : m.n; }
     public BlendMode getBlendMode() { return null; }
@@ -174,20 +174,20 @@ public class Paint {
     public void setEndHyphenEdit(int e) {}
     public Typeface getTypeface() { return mTypeface; }
     public Typeface setTypeface(Typeface t) { mTypeface = t; return t; }
-    /** The native face and shader meglet.Gfx draws with. */
-    public long megletFace() { return mTypeface == null ? 0 : mTypeface.native_instance; }
-    public long megletShader() { return mShader == null ? 0 : mShader.megletNative(); }
+    /** The native face and shader megler.Gfx draws with. */
+    public long meglerFace() { return mTypeface == null ? 0 : mTypeface.native_instance; }
+    public long meglerShader() { return mShader == null ? 0 : mShader.meglerNative(); }
 
-    public float ascent() { meglet.Gfx.txMetrics(mP, megletFace(), mMetrics); return mMetrics[1]; }
-    public float descent() { meglet.Gfx.txMetrics(mP, megletFace(), mMetrics); return mMetrics[2]; }
+    public float ascent() { megler.Gfx.txMetrics(mP, meglerFace(), mMetrics); return mMetrics[1]; }
+    public float descent() { megler.Gfx.txMetrics(mP, meglerFace(), mMetrics); return mMetrics[2]; }
     public float getFontMetrics(FontMetrics m) {
-        float sp = meglet.Gfx.txMetrics(mP, megletFace(), mMetrics);
+        float sp = megler.Gfx.txMetrics(mP, meglerFace(), mMetrics);
         if (m != null) { m.top = mMetrics[0]; m.ascent = mMetrics[1]; m.descent = mMetrics[2]; m.bottom = mMetrics[3]; m.leading = mMetrics[4]; }
         return sp;
     }
     public FontMetrics getFontMetrics() { FontMetrics m = new FontMetrics(); getFontMetrics(m); return m; }
     public int getFontMetricsInt(FontMetricsInt m) {
-        float sp = meglet.Gfx.txMetrics(mP, megletFace(), mMetrics);
+        float sp = megler.Gfx.txMetrics(mP, meglerFace(), mMetrics);
         if (m != null) {
             m.top = (int) Math.floor(mMetrics[0]); m.ascent = Math.round(mMetrics[1]); m.descent = Math.round(mMetrics[2]);
             m.bottom = (int) Math.ceil(mMetrics[3]); m.leading = Math.round(mMetrics[4]);
@@ -197,32 +197,32 @@ public class Paint {
     public FontMetricsInt getFontMetricsInt() { FontMetricsInt m = new FontMetricsInt(); getFontMetricsInt(m); return m; }
     public float getFontSpacing() { return getFontMetrics(null); }
 
-    public float measureText(String s) { return s == null ? 0 : meglet.Gfx.txMeasure(s, 0, s.length(), mP, megletFace()); }
-    public float measureText(String s, int start, int end) { return meglet.Gfx.txMeasure(s, start, end, mP, megletFace()); }
+    public float measureText(String s) { return s == null ? 0 : megler.Gfx.txMeasure(s, 0, s.length(), mP, meglerFace()); }
+    public float measureText(String s, int start, int end) { return megler.Gfx.txMeasure(s, start, end, mP, meglerFace()); }
     public float measureText(CharSequence s, int start, int end) { return measureText(s.toString(), start, end); }
     public float measureText(char[] t, int index, int count) { return measureText(new String(t, index, count)); }
     public float getRunAdvance(CharSequence t, int start, int end, int cs, int ce, boolean rtl, int offset) { return measureText(t.toString(), start, offset); }
     public float getRunAdvance(char[] t, int start, int end, int cs, int ce, boolean rtl, int offset) { return measureText(new String(t), start, offset); }
     public int getOffsetForAdvance(CharSequence t, int start, int end, int cs, int ce, boolean rtl, float advance) {
         String s = t.toString();
-        return start + meglet.Gfx.txBreak(s, start, end, advance, mP, megletFace(), false);
+        return start + megler.Gfx.txBreak(s, start, end, advance, mP, meglerFace(), false);
     }
     public int breakText(String s, boolean forwards, float maxWidth, float[] measured) { return breakText(s, 0, s.length(), forwards, maxWidth, measured); }
     public int breakText(CharSequence s, int start, int end, boolean forwards, float maxWidth, float[] measured) {
         String str = s.toString();
-        int n = meglet.Gfx.txBreak(str, start, end, maxWidth, mP, megletFace(), false);
+        int n = megler.Gfx.txBreak(str, start, end, maxWidth, mP, meglerFace(), false);
         if (n > end - start) n = end - start;
         if (measured != null && measured.length > 0) measured[0] = measureText(str, start, start + n);
         return n;
     }
     public int breakText(char[] t, int index, int count, float maxWidth, float[] measured) { return breakText(new String(t, index, count), 0, count, true, maxWidth, measured); }
-    public int getTextWidths(String s, int start, int end, float[] widths) { meglet.Gfx.txWidths(s, start, end, mP, megletFace(), widths); return end - start; }
+    public int getTextWidths(String s, int start, int end, float[] widths) { megler.Gfx.txWidths(s, start, end, mP, meglerFace(), widths); return end - start; }
     public int getTextWidths(String s, float[] widths) { return getTextWidths(s, 0, s.length(), widths); }
     public int getTextWidths(CharSequence s, int start, int end, float[] widths) { return getTextWidths(s.toString(), start, end, widths); }
     public int getTextWidths(char[] t, int index, int count, float[] widths) { return getTextWidths(new String(t, index, count), widths); }
     public void getTextBounds(String s, int start, int end, Rect bounds) {
         int[] o = new int[4];
-        meglet.Gfx.txBounds(s, start, end, mP, megletFace(), o);
+        megler.Gfx.txBounds(s, start, end, mP, meglerFace(), o);
         bounds.set(o[0], o[1], o[2], o[3]);
     }
     public void getTextBounds(CharSequence s, int start, int end, Rect bounds) { getTextBounds(s.toString(), start, end, bounds); }
@@ -235,7 +235,7 @@ public class Paint {
     public float getStrikeThruThickness() { return getTextSize() / 18; }
     public boolean equalsForTextMeasurement(Paint o) { return java.util.Arrays.equals(mP, o.mP) && mTypeface == o.mTypeface; }
     // ---- generated by tools/compat/fillmembers.py: the platform's members this class does not write (signatures only)
-    private final java.util.HashMap<String, Object> megletFill = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerFill = new java.util.HashMap<>();
     public static final int AUTO_HINTING_TEXT_FLAG = 2048;
     public static final int BIDI_DEFAULT_LTR = 2;
     public static final int BIDI_DEFAULT_RTL = 3;
@@ -266,12 +266,12 @@ public class Paint {
     public static final int TEXT_RUN_FLAG_RIGHT_EDGE = 16384;
     public static final int VERTICAL_TEXT_FLAG = 4096;
     public int mBidiFlags;
-    public int getBidiFlags() { return (megletFill.get("BidiFlags") instanceof Integer ? (Integer) megletFill.get("BidiFlags") : 0); }
+    public int getBidiFlags() { return (meglerFill.get("BidiFlags") instanceof Integer ? (Integer) meglerFill.get("BidiFlags") : 0); }
     public void getFontMetricsForLocale(android.graphics.Paint.FontMetrics p0) {}
     public void getFontMetricsInt(java.lang.CharSequence p0, int p1, int p2, int p3, int p4, boolean p5, android.graphics.Paint.FontMetricsInt p6) {}
     public void getFontMetricsInt(char[] p0, int p1, int p2, int p3, int p4, boolean p5, android.graphics.Paint.FontMetricsInt p6) {}
     public void getFontMetricsIntForLocale(android.graphics.Paint.FontMetricsInt p0) {}
-    public java.lang.String getFontVariationOverride() { return (java.lang.String) megletFill.get("FontVariationOverride"); }
+    public java.lang.String getFontVariationOverride() { return (java.lang.String) meglerFill.get("FontVariationOverride"); }
     public long getNativeInstance() { return 0L; }
     public int getOffsetForAdvance(char[] p0, int p1, int p2, int p3, int p4, boolean p5, float p6) { return 0; }
     public float getRunCharacterAdvance(java.lang.CharSequence p0, int p1, int p2, int p3, int p4, boolean p5, int p6, float[] p7, int p8) { return 0f; }
@@ -285,16 +285,16 @@ public class Paint {
     public int getTextRunCursor(java.lang.String p0, int p1, int p2, boolean p3, int p4, int p5) { return 0; }
     public int getTextRunCursor(char[] p0, int p1, int p2, boolean p3, int p4, int p5) { return 0; }
     public boolean hasShadowLayer() { return false; }
-    public void setBidiFlags(int p0) { megletFill.put("BidiFlags", Integer.valueOf(p0)); }
+    public void setBidiFlags(int p0) { meglerFill.put("BidiFlags", Integer.valueOf(p0)); }
     public void setCompatibilityScaling(float p0) {}
-    public void setFontVariationOverride(java.lang.String p0) { megletFill.put("FontVariationOverride", p0); }
+    public void setFontVariationOverride(java.lang.String p0) { meglerFill.put("FontVariationOverride", p0); }
     // ---- end of generated members
     // ---- generated by tools/compat/genstubs.py: the platform's nested classes this class does not write
     public static final class RunInfo {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public RunInfo() {}
-        public int getClusterCount() { return (megletProps.get("ClusterCount") instanceof Integer ? (Integer) megletProps.get("ClusterCount") : 0); }
-        public void setClusterCount(int p0) { megletProps.put("ClusterCount", Integer.valueOf(p0)); }
+        public int getClusterCount() { return (meglerProps.get("ClusterCount") instanceof Integer ? (Integer) meglerProps.get("ClusterCount") : 0); }
+        public void setClusterCount(int p0) { meglerProps.put("ClusterCount", Integer.valueOf(p0)); }
     }
     // ---- end of generated nested classes
 }

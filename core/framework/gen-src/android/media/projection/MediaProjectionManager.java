@@ -3,7 +3,7 @@ package android.media.projection;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MediaProjectionManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String EXTRA_APP_TOKEN = "android.media.projection.extra.EXTRA_APP_TOKEN";
     public static final java.lang.String EXTRA_LAUNCH_COOKIE = "android.media.projection.extra.EXTRA_LAUNCH_COOKIE";
     public static final java.lang.String EXTRA_MEDIA_PROJECTION = "android.media.projection.extra.EXTRA_MEDIA_PROJECTION";
@@ -17,13 +17,13 @@ public final class MediaProjectionManager {
     public android.content.Intent createScreenCaptureIntent() { return null; }
     public android.content.Intent createScreenCaptureIntent(android.app.ActivityOptions.LaunchCookie p0) { return null; }
     public android.content.Intent createScreenCaptureIntent(android.media.projection.MediaProjectionConfig p0) { return null; }
-    public android.media.projection.MediaProjectionInfo getActiveProjectionInfo() { return (android.media.projection.MediaProjectionInfo) megletProps.get("ActiveProjectionInfo"); }
+    public android.media.projection.MediaProjectionInfo getActiveProjectionInfo() { return (android.media.projection.MediaProjectionInfo) meglerProps.get("ActiveProjectionInfo"); }
     public android.media.projection.MediaProjection getMediaProjection(int p0, android.content.Intent p1) { return null; }
     public void removeCallback(android.media.projection.MediaProjectionManager.Callback p0) {}
     public void stopActiveProjection(int p0) {}
     MediaProjectionManager() { this((android.content.Context) null); }
     public static abstract class Callback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Callback() {}
         public void onMediaProjectionEvent(android.media.projection.MediaProjectionEvent p0, android.media.projection.MediaProjectionInfo p1, android.view.ContentRecordingSession p2) {}
         public void onRecordingSessionSet(android.media.projection.MediaProjectionInfo p0, android.view.ContentRecordingSession p1) {}

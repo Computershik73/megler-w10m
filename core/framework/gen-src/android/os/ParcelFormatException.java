@@ -3,7 +3,7 @@ package android.os;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ParcelFormatException extends java.lang.RuntimeException {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ParcelFormatException() { super(); }
     public ParcelFormatException(java.lang.String p0) { super(); }
 }

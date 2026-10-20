@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../include/meglet.h"
+#include "../include/megler.h"
 #include "../src/drivers/mg_java.h"
 #include "../src/mg_base.h"
 #include "../src/host/mg_host.h"
@@ -115,7 +115,7 @@ static void take_pictures(mg_mcodec *c, const stream *s, pictures *out)
     i64 info[3];
     mg_mframe *f;
     while ((f = mg_mcodec_next_frame(c, info)) != NULL) {
-        const meglet_codec_picture *p = mg_mcodec_frame_picture(f);
+        const megler_codec_picture *p = mg_mcodec_frame_picture(f);
         int number = picture_number(info[0]), second = out->split && number >= out->split, want = 16 + 8 * (second ? number - out->split : number), x, y;
         i32 w = second ? out->split_width : s->width, h = second ? out->split_height : s->height;
         long sum = 0;
@@ -587,7 +587,7 @@ static void speed_of(const char *dir, const char *file)
         mg_mframe *f;
         mg_mcodec_decode(c, s.samples[i].data, s.samples[i].size, s.samples[i].time_us, i == s.nsamples - 1 ? 4 : 0);
         while ((f = mg_mcodec_next_frame(c, info)) != NULL) {
-            const meglet_codec_picture *p = mg_mcodec_frame_picture(f);
+            const megler_codec_picture *p = mg_mcodec_frame_picture(f);
             u64 t = mg_time_monotonic_ns();
             if (p->width <= s.width && p->height <= s.height) mg_mcodec_render(p, bgra, p->width, p->height, p->width * 4);
             render_ns += mg_time_monotonic_ns() - t;
@@ -618,7 +618,7 @@ static void speed_of_render(void)
 {
     enum { W = 1920, H = 1080 };
     u8 *nv12 = (u8 *)mg_alloc((size_t)W * H * 3 / 2), *bgra = (u8 *)mg_alloc((size_t)W * H * 4);
-    meglet_codec_picture p;
+    megler_codec_picture p;
     u64 best = (u64)-1;
     u32 seed = 1;
     size_t i;
@@ -628,7 +628,7 @@ static void speed_of_render(void)
         nv12[i] = (u8)(seed >> 16);
     }
     memset(&p, 0, sizeof(p));
-    p.format = MEGLET_CODEC_NV12;
+    p.format = MEGLER_CODEC_NV12;
     p.width = W;
     p.height = H;
     p.data = nv12;
@@ -645,7 +645,7 @@ static void speed_of_render(void)
     free(bgra);
 }
 
-int mg_codec_speed_run(const char *streams, const struct meglet_codec_host *host, mg_test_sink sink, void *user, int *checks)
+int mg_codec_speed_run(const char *streams, const struct megler_codec_host *host, mg_test_sink sink, void *user, int *checks)
 {
     g_checks = g_failed = 0;
     g_sink = sink;
@@ -661,7 +661,7 @@ int mg_codec_speed_run(const char *streams, const struct meglet_codec_host *host
     return g_failed;
 }
 
-int mg_codec_tests_h265_run(const char *streams, const struct meglet_codec_host *host, const char *how, mg_test_sink sink, void *user, int *checks)
+int mg_codec_tests_h265_run(const char *streams, const struct megler_codec_host *host, const char *how, mg_test_sink sink, void *user, int *checks)
 {
     char name[200];
     g_checks = g_failed = 0;
@@ -677,7 +677,7 @@ int mg_codec_tests_h265_run(const char *streams, const struct meglet_codec_host 
     return g_failed;
 }
 
-int mg_codec_tests_run(const char *streams, const struct meglet_codec_host *host, mg_test_sink sink, void *user, int *checks)
+int mg_codec_tests_run(const char *streams, const struct megler_codec_host *host, mg_test_sink sink, void *user, int *checks)
 {
     g_checks = g_failed = 0;
     g_sink = sink;

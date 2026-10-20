@@ -3,28 +3,28 @@ package android.net.ipsec.ike;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class IkeSessionConfiguration {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int EXTENSION_TYPE_FRAGMENTATION = 1;
     public static final int EXTENSION_TYPE_MOBIKE = 2;
-    public android.net.eap.EapInfo getEapInfo() { return (android.net.eap.EapInfo) megletProps.get("EapInfo"); }
-    public android.net.ipsec.ike.IkeSessionConnectionInfo getIkeSessionConnectionInfo() { return (android.net.ipsec.ike.IkeSessionConnectionInfo) megletProps.get("IkeSessionConnectionInfo"); }
-    public java.util.List getPcscfServers() { return (megletProps.get("PcscfServers") != null ? (java.util.List) megletProps.get("PcscfServers") : new java.util.ArrayList()); }
-    public java.lang.String getRemoteApplicationVersion() { return (java.lang.String) megletProps.get("RemoteApplicationVersion"); }
-    public java.util.List getRemoteVendorIds() { return (megletProps.get("RemoteVendorIds") != null ? (java.util.List) megletProps.get("RemoteVendorIds") : new java.util.ArrayList()); }
+    public android.net.eap.EapInfo getEapInfo() { return (android.net.eap.EapInfo) meglerProps.get("EapInfo"); }
+    public android.net.ipsec.ike.IkeSessionConnectionInfo getIkeSessionConnectionInfo() { return (android.net.ipsec.ike.IkeSessionConnectionInfo) meglerProps.get("IkeSessionConnectionInfo"); }
+    public java.util.List getPcscfServers() { return (meglerProps.get("PcscfServers") != null ? (java.util.List) meglerProps.get("PcscfServers") : new java.util.ArrayList()); }
+    public java.lang.String getRemoteApplicationVersion() { return (java.lang.String) meglerProps.get("RemoteApplicationVersion"); }
+    public java.util.List getRemoteVendorIds() { return (meglerProps.get("RemoteVendorIds") != null ? (java.util.List) meglerProps.get("RemoteVendorIds") : new java.util.ArrayList()); }
     public boolean isIkeExtensionEnabled(int p0) { return false; }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.net.ipsec.ike.IkeSessionConnectionInfo p0) {}
         public android.net.ipsec.ike.IkeSessionConfiguration.Builder addIkeExtension(int p0) { return this; }
         public android.net.ipsec.ike.IkeSessionConfiguration.Builder addPcscfServer(java.net.InetAddress p0) { return this; }
         public android.net.ipsec.ike.IkeSessionConfiguration.Builder addRemoteVendorId(byte[] p0) { return this; }
-        public android.net.ipsec.ike.IkeSessionConfiguration build() { android.net.ipsec.ike.IkeSessionConfiguration x = new android.net.ipsec.ike.IkeSessionConfiguration(); x.megletProps.putAll(megletProps); return x; }
+        public android.net.ipsec.ike.IkeSessionConfiguration build() { android.net.ipsec.ike.IkeSessionConfiguration x = new android.net.ipsec.ike.IkeSessionConfiguration(); x.meglerProps.putAll(meglerProps); return x; }
         public android.net.ipsec.ike.IkeSessionConfiguration.Builder clearIkeExtensions() { return this; }
         public android.net.ipsec.ike.IkeSessionConfiguration.Builder clearPcscfServers() { return this; }
         public android.net.ipsec.ike.IkeSessionConfiguration.Builder clearRemoteApplicationVersion() { return this; }
         public android.net.ipsec.ike.IkeSessionConfiguration.Builder clearRemoteVendorIds() { return this; }
-        public android.net.ipsec.ike.IkeSessionConfiguration.Builder setEapInfo(android.net.eap.EapInfo p0) { megletProps.put("EapInfo", p0); return this; }
-        public android.net.ipsec.ike.IkeSessionConfiguration.Builder setRemoteApplicationVersion(java.lang.String p0) { megletProps.put("RemoteApplicationVersion", p0); return this; }
+        public android.net.ipsec.ike.IkeSessionConfiguration.Builder setEapInfo(android.net.eap.EapInfo p0) { meglerProps.put("EapInfo", p0); return this; }
+        public android.net.ipsec.ike.IkeSessionConfiguration.Builder setRemoteApplicationVersion(java.lang.String p0) { meglerProps.put("RemoteApplicationVersion", p0); return this; }
         Builder() { this((android.net.ipsec.ike.IkeSessionConnectionInfo) null); }
     }
 }

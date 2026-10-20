@@ -3,19 +3,19 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CellInfoLte extends android.telephony.CellInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public CellInfoLte() { super(); }
     public CellInfoLte(int p0, boolean p1, long p2, android.telephony.CellIdentityLte p3, android.telephony.CellSignalStrengthLte p4, android.telephony.CellConfigLte p5) { super(); }
     public CellInfoLte(android.telephony.CellInfoLte p0) { super(); }
     protected static android.telephony.CellInfoLte createFromParcelBody(android.os.Parcel p0) { return new CellInfoLte(); }
     public int describeContents() { return 0; }
-    public android.telephony.CellConfigLte getCellConfig() { return (android.telephony.CellConfigLte) megletProps.get("CellConfig"); }
-    public android.telephony.CellIdentityLte getCellIdentity() { return (android.telephony.CellIdentityLte) megletProps.get("CellIdentity"); }
-    public android.telephony.CellSignalStrengthLte getCellSignalStrength() { return (android.telephony.CellSignalStrengthLte) megletProps.get("CellSignalStrength"); }
+    public android.telephony.CellConfigLte getCellConfig() { return (android.telephony.CellConfigLte) meglerProps.get("CellConfig"); }
+    public android.telephony.CellIdentityLte getCellIdentity() { return (android.telephony.CellIdentityLte) meglerProps.get("CellIdentity"); }
+    public android.telephony.CellSignalStrengthLte getCellSignalStrength() { return (android.telephony.CellSignalStrengthLte) meglerProps.get("CellSignalStrength"); }
     public android.telephony.CellInfo sanitizeLocationInfo() { return null; }
-    public void setCellConfig(android.telephony.CellConfigLte p0) { megletProps.put("CellConfig", p0); }
-    public void setCellIdentity(android.telephony.CellIdentityLte p0) { megletProps.put("CellIdentity", p0); }
-    public void setCellSignalStrength(android.telephony.CellSignalStrengthLte p0) { megletProps.put("CellSignalStrength", p0); }
+    public void setCellConfig(android.telephony.CellConfigLte p0) { meglerProps.put("CellConfig", p0); }
+    public void setCellIdentity(android.telephony.CellIdentityLte p0) { meglerProps.put("CellIdentity", p0); }
+    public void setCellSignalStrength(android.telephony.CellSignalStrengthLte p0) { meglerProps.put("CellSignalStrength", p0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
 }

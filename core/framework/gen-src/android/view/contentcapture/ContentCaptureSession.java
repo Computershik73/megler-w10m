@@ -3,7 +3,7 @@ package android.view.contentcapture;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class ContentCaptureSession implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String EXTRA_BINDER = "binder";
     public static final java.lang.String EXTRA_ENABLED_STATE = "enabled";
     public static final int FLUSH_REASON_FORCE_FLUSH = 8;
@@ -39,9 +39,9 @@ public abstract class ContentCaptureSession implements java.lang.AutoCloseable {
     public android.view.contentcapture.ContentCaptureSession createContentCaptureSession(android.view.contentcapture.ContentCaptureContext p0) { return this; }
     public void destroy() {}
     public void flush() {}
-    public android.view.contentcapture.ContentCaptureContext getContentCaptureContext() { return (android.view.contentcapture.ContentCaptureContext) megletProps.get("ContentCaptureContext"); }
-    public android.view.contentcapture.ContentCaptureSessionId getContentCaptureSessionId() { return (android.view.contentcapture.ContentCaptureSessionId) megletProps.get("ContentCaptureSessionId"); }
-    public int getId() { return (megletProps.get("Id") instanceof Integer ? (Integer) megletProps.get("Id") : 0); }
+    public android.view.contentcapture.ContentCaptureContext getContentCaptureContext() { return (android.view.contentcapture.ContentCaptureContext) meglerProps.get("ContentCaptureContext"); }
+    public android.view.contentcapture.ContentCaptureSessionId getContentCaptureSessionId() { return (android.view.contentcapture.ContentCaptureSessionId) meglerProps.get("ContentCaptureSessionId"); }
+    public int getId() { return (meglerProps.get("Id") instanceof Integer ? (Integer) meglerProps.get("Id") : 0); }
     public android.view.autofill.AutofillId newAutofillId(android.view.autofill.AutofillId p0, long p1) { return null; }
     public android.view.ViewStructure newViewStructure(android.view.View p0) { return null; }
     public android.view.ViewStructure newVirtualViewStructure(android.view.autofill.AutofillId p0, long p1) { return null; }
@@ -56,5 +56,5 @@ public abstract class ContentCaptureSession implements java.lang.AutoCloseable {
     public void notifyViewsAppeared(java.util.List p0) {}
     public void notifyViewsDisappeared(android.view.autofill.AutofillId p0, long[] p1) {}
     public abstract void notifyWindowBoundsChanged(int p0, android.graphics.Rect p1);
-    public void setContentCaptureContext(android.view.contentcapture.ContentCaptureContext p0) { megletProps.put("ContentCaptureContext", p0); }
+    public void setContentCaptureContext(android.view.contentcapture.ContentCaptureContext p0) { meglerProps.put("ContentCaptureContext", p0); }
 }

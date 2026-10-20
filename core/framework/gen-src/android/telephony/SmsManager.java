@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SmsManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int CDMA_SMS_RECORD_LENGTH = 255;
     public static final java.lang.String EXTRA_MMS_DATA = "android.telephony.extra.MMS_DATA";
     public static final java.lang.String EXTRA_MMS_HTTP_STATUS = "android.telephony.extra.MMS_HTTP_STATUS";
@@ -196,20 +196,20 @@ public final class SmsManager {
     public void downloadMultimediaMessage(android.content.Context p0, java.lang.String p1, android.net.Uri p2, android.os.Bundle p3, android.app.PendingIntent p4) {}
     public void downloadMultimediaMessage(android.content.Context p0, java.lang.String p1, android.net.Uri p2, android.os.Bundle p3, android.app.PendingIntent p4, long p5) {}
     public boolean enableCellBroadcastRange(int p0, int p1, int p2) { return false; }
-    public java.util.ArrayList getAllMessagesFromIcc() { return (megletProps.get("AllMessagesFromIcc") != null ? (java.util.ArrayList) megletProps.get("AllMessagesFromIcc") : new java.util.ArrayList()); }
-    public android.os.Bundle getCarrierConfigValues() { return (android.os.Bundle) megletProps.get("CarrierConfigValues"); }
-    public java.lang.String getImsSmsFormat() { return (java.lang.String) megletProps.get("ImsSmsFormat"); }
-    public java.util.List getMessagesFromIcc() { return (megletProps.get("MessagesFromIcc") != null ? (java.util.List) megletProps.get("MessagesFromIcc") : new java.util.ArrayList()); }
+    public java.util.ArrayList getAllMessagesFromIcc() { return (meglerProps.get("AllMessagesFromIcc") != null ? (java.util.ArrayList) meglerProps.get("AllMessagesFromIcc") : new java.util.ArrayList()); }
+    public android.os.Bundle getCarrierConfigValues() { return (android.os.Bundle) meglerProps.get("CarrierConfigValues"); }
+    public java.lang.String getImsSmsFormat() { return (java.lang.String) meglerProps.get("ImsSmsFormat"); }
+    public java.util.List getMessagesFromIcc() { return (meglerProps.get("MessagesFromIcc") != null ? (java.util.List) meglerProps.get("MessagesFromIcc") : new java.util.ArrayList()); }
     public int getPremiumSmsConsent(java.lang.String p0) { return 0; }
-    public int getSmsCapacityOnIcc() { return (megletProps.get("SmsCapacityOnIcc") instanceof Integer ? (Integer) megletProps.get("SmsCapacityOnIcc") : 0); }
+    public int getSmsCapacityOnIcc() { return (meglerProps.get("SmsCapacityOnIcc") instanceof Integer ? (Integer) meglerProps.get("SmsCapacityOnIcc") : 0); }
     public void getSmsMessagesForFinancialApp(android.os.Bundle p0, java.util.concurrent.Executor p1, android.telephony.SmsManager.FinancialSmsCallback p2) {}
-    public java.lang.String getSmscAddress() { return (java.lang.String) megletProps.get("SmscAddress"); }
-    public android.net.Uri getSmscIdentity() { return (android.net.Uri) megletProps.get("SmscIdentity"); }
-    public int getSubscriptionId() { return (megletProps.get("SubscriptionId") instanceof Integer ? (Integer) megletProps.get("SubscriptionId") : 0); }
+    public java.lang.String getSmscAddress() { return (java.lang.String) meglerProps.get("SmscAddress"); }
+    public android.net.Uri getSmscIdentity() { return (android.net.Uri) meglerProps.get("SmscIdentity"); }
+    public int getSubscriptionId() { return (meglerProps.get("SubscriptionId") instanceof Integer ? (Integer) meglerProps.get("SubscriptionId") : 0); }
     public long getWapMessageSize(java.lang.String p0) { return 0L; }
     public void injectSmsPdu(byte[] p0, java.lang.String p1, android.app.PendingIntent p2) {}
-    public boolean isImsSmsSupported() { return (megletProps.get("ImsSmsSupported") instanceof Boolean ? (Boolean) megletProps.get("ImsSmsSupported") : false); }
-    public boolean isSMSPromptEnabled() { return (megletProps.get("SMSPromptEnabled") instanceof Boolean ? (Boolean) megletProps.get("SMSPromptEnabled") : false); }
+    public boolean isImsSmsSupported() { return (meglerProps.get("ImsSmsSupported") instanceof Boolean ? (Boolean) meglerProps.get("ImsSmsSupported") : false); }
+    public boolean isSMSPromptEnabled() { return (meglerProps.get("SMSPromptEnabled") instanceof Boolean ? (Boolean) meglerProps.get("SMSPromptEnabled") : false); }
     public void resetAllCellBroadcastRanges() {}
     public void sendDataMessage(java.lang.String p0, java.lang.String p1, short p2, byte[] p3, android.app.PendingIntent p4, android.app.PendingIntent p5) {}
     public void sendMultimediaMessage(android.content.Context p0, android.net.Uri p1, java.lang.String p2, android.os.Bundle p3, android.app.PendingIntent p4) {}
@@ -225,11 +225,11 @@ public final class SmsManager {
     public void sendTextMessageWithoutPersisting(java.lang.String p0, java.lang.String p1, java.lang.String p2, android.app.PendingIntent p3, android.app.PendingIntent p4) {}
     public void setPremiumSmsConsent(java.lang.String p0, int p1) {}
     public boolean setSmscAddress(java.lang.String p0) { return false; }
-    public void setStorageMonitorMemoryStatusOverride(boolean p0) { megletProps.put("StorageMonitorMemoryStatusOverride", Boolean.valueOf(p0)); }
+    public void setStorageMonitorMemoryStatusOverride(boolean p0) { meglerProps.put("StorageMonitorMemoryStatusOverride", Boolean.valueOf(p0)); }
     public boolean updateMessageOnIcc(int p0, int p1, byte[] p2) { return false; }
     protected SmsManager() {}
     public static abstract class FinancialSmsCallback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public FinancialSmsCallback() {}
         public abstract void onFinancialSmsMessages(android.database.CursorWindow p0);
     }

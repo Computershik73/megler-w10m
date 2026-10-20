@@ -153,12 +153,12 @@ public final class StrictMode {
         void onVmViolation(android.os.strictmode.Violation p0);
     }
     public static class Span {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         protected Span() {}
         public void finish() {}
     }
     public static final class ViolationInfo implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public java.lang.String broadcastIntentAction;
         public int durationMillis;
@@ -171,9 +171,9 @@ public final class StrictMode {
         public ViolationInfo(android.os.Parcel p0, boolean p1) {}
         public int describeContents() { return 0; }
         public void dump(android.util.Printer p0, java.lang.String p1) {}
-        public java.lang.String getStackTrace() { return (java.lang.String) megletProps.get("StackTrace"); }
-        public java.lang.Class getViolationClass() { return (java.lang.Class) megletProps.get("ViolationClass"); }
-        public java.lang.String getViolationDetails() { return (java.lang.String) megletProps.get("ViolationDetails"); }
+        public java.lang.String getStackTrace() { return (java.lang.String) meglerProps.get("StackTrace"); }
+        public java.lang.Class getViolationClass() { return (java.lang.Class) meglerProps.get("ViolationClass"); }
+        public java.lang.String getViolationDetails() { return (java.lang.String) meglerProps.get("ViolationDetails"); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         ViolationInfo() { this((android.os.Parcel) null); }
     }

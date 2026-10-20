@@ -3,12 +3,12 @@ package android.os;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ParcelUuid implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public ParcelUuid(java.util.UUID p0) {}
     public static android.os.ParcelUuid fromString(java.lang.String p0) { return new ParcelUuid(); }
     public int describeContents() { return 0; }
-    public java.util.UUID getUuid() { return (java.util.UUID) megletProps.get("Uuid"); }
+    public java.util.UUID getUuid() { return (java.util.UUID) meglerProps.get("Uuid"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     ParcelUuid() { this((java.util.UUID) null); }
 }

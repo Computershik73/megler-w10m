@@ -1,5 +1,5 @@
 /*
- * Sound for Java apps: meglet.Audio's natives, which the framework's AudioTrack, MediaPlayer and SoundPool play through.
+ * Sound for Java apps: megler.Audio's natives, which the framework's AudioTrack, MediaPlayer and SoundPool play through.
  *
  * - A track (AudioTrack; the music MediaPlayer decodes and writes) is a written stream of the mixer (mg_pcm_*,
  *   ndk/mg_aaudio.c): 16-bit PCM at the track's own rate and channels, 100 ms of it waiting at most, a blocking
@@ -9,7 +9,7 @@
  *   -1 for ever).
  * - A decoder (MediaPlayer, SoundPool's loading) reads a file the app has in memory or behind a descriptor:
  *   Ogg Vorbis through stb_vorbis (Windows has no Vorbis decoder), WAV (PCM, 8 to 32 bits, or float) read here, and
- *   anything else (MP3, AAC and M4A, FLAC, WMA) through the shell's decoder (meglet_media_host: Media Foundation's
+ *   anything else (MP3, AAC and M4A, FLAC, WMA) through the shell's decoder (megler_media_host: Media Foundation's
  *   source reader on a phone), which wants a file: the bytes are written to one of its own under the data folder,
  *   named for what they are, and it is deleted when the decoder is closed.
  *
@@ -42,7 +42,7 @@
 #pragma GCC diagnostic pop
 #endif
 
-const char *meglet_data_dir(void);
+const char *megler_data_dir(void);
 
 #define N(name) static void name(mg_jcall *c)
 
@@ -211,9 +211,9 @@ typedef struct decoder {
     i64 frames;
 } decoder;
 
-static const meglet_media_host *media_host(void)
+static const megler_media_host *media_host(void)
 {
-    const meglet_run_config *run = mg_run_config();
+    const megler_run_config *run = mg_run_config();
     return run && run->media.open ? &run->media : NULL;
 }
 
@@ -281,9 +281,9 @@ static const char *kind_of(const u8 *d, size_t len)
 static bool open_media(decoder *d, const u8 *data, size_t len)
 {
     static volatile i32 serial;
-    const meglet_media_host *h = media_host();
-    const char *dir = meglet_data_dir();
-    meglet_media_info info;
+    const megler_media_host *h = media_host();
+    const char *dir = megler_data_dir();
+    megler_media_info info;
     char *folder;
     mg_file *out;
     int err = 0;
@@ -321,7 +321,7 @@ static bool open_media(decoder *d, const u8 *data, size_t len)
 static void dec_close(decoder *d)
 {
     int err = 0;
-    const meglet_media_host *h = media_host();
+    const megler_media_host *h = media_host();
     if (!d) return;
     if (d->ogg) stb_vorbis_close(d->ogg);
     if (d->media && h && h->close) h->close(h->user, d->media);
@@ -379,7 +379,7 @@ static i32 dec_read(decoder *d, i16 *out, i32 frames)
         return n;
     }
     if (d->media) {
-        const meglet_media_host *h = media_host();
+        const megler_media_host *h = media_host();
         i64 when = 0;
         i32 n, i;
         if (!h || !h->read_audio) return 0;
@@ -407,7 +407,7 @@ static void dec_seek(decoder *d, i64 frame)
     if (d->ogg) stb_vorbis_seek(d->ogg, (unsigned)frame);
     else if (d->wav) d->wav_pos = (u32)(frame < (i64)d->wav_frames ? frame : (i64)d->wav_frames);
     else if (d->media) {
-        const meglet_media_host *h = media_host();
+        const megler_media_host *h = media_host();
         if (h && h->seek && d->rate) h->seek(h->user, d->media, frame * 1000000 / d->rate);
     }
 }
@@ -717,33 +717,33 @@ N(Audio_pauseAll)
 }
 
 static const mg_jhle k_audio[] = {
-    { "meglet/Audio", "trackOpen", NULL, Audio_trackOpen },
-    { "meglet/Audio", "trackWrite", NULL, Audio_trackWrite },
-    { "meglet/Audio", "trackWriteBytes", NULL, Audio_trackWriteBytes },
-    { "meglet/Audio", "trackWriteFloat", NULL, Audio_trackWriteFloat },
-    { "meglet/Audio", "trackPlay", NULL, Audio_trackPlay },
-    { "meglet/Audio", "trackFlush", NULL, Audio_trackFlush },
-    { "meglet/Audio", "trackVolume", NULL, Audio_trackVolume },
-    { "meglet/Audio", "trackPosition", NULL, Audio_trackPosition },
-    { "meglet/Audio", "trackPending", NULL, Audio_trackPending },
-    { "meglet/Audio", "trackClose", NULL, Audio_trackClose },
-    { "meglet/Audio", "soundLoad", NULL, Audio_soundLoad },
-    { "meglet/Audio", "soundLoadFd", NULL, Audio_soundLoadFd },
-    { "meglet/Audio", "soundUnload", NULL, Audio_soundUnload },
-    { "meglet/Audio", "soundDuration", NULL, Audio_soundDuration },
-    { "meglet/Audio", "soundPlay", NULL, Audio_soundPlay },
-    { "meglet/Audio", "voiceStop", NULL, Audio_voiceStop },
-    { "meglet/Audio", "voicePause", NULL, Audio_voicePause },
-    { "meglet/Audio", "voiceVolume", NULL, Audio_voiceVolume },
-    { "meglet/Audio", "voiceRate", NULL, Audio_voiceRate },
-    { "meglet/Audio", "voiceLoop", NULL, Audio_voiceLoop },
-    { "meglet/Audio", "pauseAll", NULL, Audio_pauseAll },
-    { "meglet/Audio", "decOpen", NULL, Audio_decOpen },
-    { "meglet/Audio", "decOpenFd", NULL, Audio_decOpenFd },
-    { "meglet/Audio", "decInfo", NULL, Audio_decInfo },
-    { "meglet/Audio", "decRead", NULL, Audio_decRead },
-    { "meglet/Audio", "decSeek", NULL, Audio_decSeek },
-    { "meglet/Audio", "decClose", NULL, Audio_decClose },
+    { "megler/Audio", "trackOpen", NULL, Audio_trackOpen },
+    { "megler/Audio", "trackWrite", NULL, Audio_trackWrite },
+    { "megler/Audio", "trackWriteBytes", NULL, Audio_trackWriteBytes },
+    { "megler/Audio", "trackWriteFloat", NULL, Audio_trackWriteFloat },
+    { "megler/Audio", "trackPlay", NULL, Audio_trackPlay },
+    { "megler/Audio", "trackFlush", NULL, Audio_trackFlush },
+    { "megler/Audio", "trackVolume", NULL, Audio_trackVolume },
+    { "megler/Audio", "trackPosition", NULL, Audio_trackPosition },
+    { "megler/Audio", "trackPending", NULL, Audio_trackPending },
+    { "megler/Audio", "trackClose", NULL, Audio_trackClose },
+    { "megler/Audio", "soundLoad", NULL, Audio_soundLoad },
+    { "megler/Audio", "soundLoadFd", NULL, Audio_soundLoadFd },
+    { "megler/Audio", "soundUnload", NULL, Audio_soundUnload },
+    { "megler/Audio", "soundDuration", NULL, Audio_soundDuration },
+    { "megler/Audio", "soundPlay", NULL, Audio_soundPlay },
+    { "megler/Audio", "voiceStop", NULL, Audio_voiceStop },
+    { "megler/Audio", "voicePause", NULL, Audio_voicePause },
+    { "megler/Audio", "voiceVolume", NULL, Audio_voiceVolume },
+    { "megler/Audio", "voiceRate", NULL, Audio_voiceRate },
+    { "megler/Audio", "voiceLoop", NULL, Audio_voiceLoop },
+    { "megler/Audio", "pauseAll", NULL, Audio_pauseAll },
+    { "megler/Audio", "decOpen", NULL, Audio_decOpen },
+    { "megler/Audio", "decOpenFd", NULL, Audio_decOpenFd },
+    { "megler/Audio", "decInfo", NULL, Audio_decInfo },
+    { "megler/Audio", "decRead", NULL, Audio_decRead },
+    { "megler/Audio", "decSeek", NULL, Audio_decSeek },
+    { "megler/Audio", "decClose", NULL, Audio_decClose },
     { NULL, NULL, NULL, NULL },
 };
 

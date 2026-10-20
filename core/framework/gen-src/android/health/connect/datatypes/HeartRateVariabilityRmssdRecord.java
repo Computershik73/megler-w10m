@@ -3,17 +3,17 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class HeartRateVariabilityRmssdRecord extends android.health.connect.datatypes.InstantRecord {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public double getHeartRateVariabilityMillis() { return (megletProps.get("HeartRateVariabilityMillis") instanceof Double ? (Double) megletProps.get("HeartRateVariabilityMillis") : 0d); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public double getHeartRateVariabilityMillis() { return (meglerProps.get("HeartRateVariabilityMillis") instanceof Double ? (Double) meglerProps.get("HeartRateVariabilityMillis") : 0d); }
     public android.health.connect.internal.datatypes.HeartRateVariabilityRmssdRecordInternal toRecordInternal() { return null; }
     protected HeartRateVariabilityRmssdRecord() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.health.connect.datatypes.Metadata p0, java.time.Instant p1, double p2) {}
-        public android.health.connect.datatypes.HeartRateVariabilityRmssdRecord build() { android.health.connect.datatypes.HeartRateVariabilityRmssdRecord x = new android.health.connect.datatypes.HeartRateVariabilityRmssdRecord(); x.megletProps.putAll(megletProps); return x; }
+        public android.health.connect.datatypes.HeartRateVariabilityRmssdRecord build() { android.health.connect.datatypes.HeartRateVariabilityRmssdRecord x = new android.health.connect.datatypes.HeartRateVariabilityRmssdRecord(); x.meglerProps.putAll(meglerProps); return x; }
         public android.health.connect.datatypes.HeartRateVariabilityRmssdRecord buildWithoutValidation() { return null; }
         public android.health.connect.datatypes.HeartRateVariabilityRmssdRecord.Builder clearZoneOffset() { return this; }
-        public android.health.connect.datatypes.HeartRateVariabilityRmssdRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { megletProps.put("ZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.HeartRateVariabilityRmssdRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("ZoneOffset", p0); return this; }
         Builder() { this((android.health.connect.datatypes.Metadata) null, (java.time.Instant) null, (double) 0d); }
     }
 }

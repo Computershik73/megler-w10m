@@ -3,7 +3,7 @@ package android.hardware.camera2;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CameraManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String LANDSCAPE_TO_PORTRAIT_PROP = "camera.enable_landscape_to_portrait";
     public static final long OVERRIDE_CAMERA_LANDSCAPE_TO_PORTRAIT = 250678880L;
     public CameraManager(android.content.Context p0) {}
@@ -16,13 +16,13 @@ public final class CameraManager {
     public android.hardware.camera2.CameraCharacteristics getCameraCharacteristics(java.lang.String p0, boolean p1) { return null; }
     public android.hardware.camera2.CameraDevice.CameraDeviceSetup getCameraDeviceSetup(java.lang.String p0) { return null; }
     public android.hardware.camera2.CameraExtensionCharacteristics getCameraExtensionCharacteristics(java.lang.String p0) { return null; }
-    public java.lang.String[] getCameraIdList() { return (java.lang.String[]) megletProps.get("CameraIdList"); }
-    public java.lang.String[] getCameraIdListNoLazy() { return (java.lang.String[]) megletProps.get("CameraIdListNoLazy"); }
-    public android.hardware.ICameraService getCameraService() { return (android.hardware.ICameraService) megletProps.get("CameraService"); }
-    public android.content.AttributionSourceState getClientAttribution() { return (android.content.AttributionSourceState) megletProps.get("ClientAttribution"); }
+    public java.lang.String[] getCameraIdList() { return (java.lang.String[]) meglerProps.get("CameraIdList"); }
+    public java.lang.String[] getCameraIdListNoLazy() { return (java.lang.String[]) meglerProps.get("CameraIdListNoLazy"); }
+    public android.hardware.ICameraService getCameraService() { return (android.hardware.ICameraService) meglerProps.get("CameraService"); }
+    public android.content.AttributionSourceState getClientAttribution() { return (android.content.AttributionSourceState) meglerProps.get("ClientAttribution"); }
     public android.content.AttributionSourceState getClientAttribution(int p0, boolean p1) { return null; }
     public android.content.AttributionSourceState getClientAttribution(boolean p0) { return null; }
-    public java.util.Set getConcurrentCameraIds() { return (megletProps.get("ConcurrentCameraIds") != null ? (java.util.Set) megletProps.get("ConcurrentCameraIds") : new java.util.HashSet()); }
+    public java.util.Set getConcurrentCameraIds() { return (meglerProps.get("ConcurrentCameraIds") != null ? (java.util.Set) meglerProps.get("ConcurrentCameraIds") : new java.util.HashSet()); }
     public int getDevicePolicyFromContext(android.content.Context p0) { return 0; }
     public java.util.Map getPhysicalIdToCharsMap(android.hardware.camera2.CameraCharacteristics p0) { return new java.util.HashMap(); }
     public int getTorchStrengthLevel(java.lang.String p0) { return 0; }
@@ -30,7 +30,7 @@ public final class CameraManager {
     public void injectSessionParams(java.lang.String p0, android.hardware.camera2.CaptureRequest p1) {}
     public boolean isCameraDeviceSetupSupported(java.lang.String p0) { return false; }
     public boolean isCameraDeviceSharingSupported(java.lang.String p0) { return false; }
-    public boolean isCameraServiceDisabled() { return (megletProps.get("CameraServiceDisabled") instanceof Boolean ? (Boolean) megletProps.get("CameraServiceDisabled") : false); }
+    public boolean isCameraServiceDisabled() { return (meglerProps.get("CameraServiceDisabled") instanceof Boolean ? (Boolean) meglerProps.get("CameraServiceDisabled") : false); }
     public boolean isConcurrentSessionConfigurationSupported(java.util.Map p0) { return false; }
     public void openCamera(java.lang.String p0, int p1, java.util.concurrent.Executor p2, android.hardware.camera2.CameraDevice.StateCallback p3) {}
     public void openCamera(java.lang.String p0, android.hardware.camera2.CameraDevice.StateCallback p1, android.os.Handler p2) {}
@@ -50,7 +50,7 @@ public final class CameraManager {
     public void unregisterTorchCallback(android.hardware.camera2.CameraManager.TorchCallback p0) {}
     CameraManager() { this((android.content.Context) null); }
     public static abstract class AvailabilityCallback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public AvailabilityCallback() {}
         public void onCameraAccessPrioritiesChanged() {}
         public void onCameraAvailable(java.lang.String p0) {}
@@ -64,7 +64,7 @@ public final class CameraManager {
         void onDeviceStateChanged(boolean p0);
     }
     public static abstract class TorchCallback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public TorchCallback() {}
         public void onTorchModeChanged(java.lang.String p0, boolean p1) {}
         public void onTorchModeUnavailable(java.lang.String p0) {}

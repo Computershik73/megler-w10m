@@ -3,16 +3,16 @@ package android.view.inputmethod;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class InlineSuggestion implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static android.view.inputmethod.InlineSuggestion newInlineSuggestion(android.view.inputmethod.InlineSuggestionInfo p0) { return new InlineSuggestion(); }
     public int describeContents() { return 0; }
-    public android.view.inputmethod.InlineSuggestionInfo getInfo() { return (android.view.inputmethod.InlineSuggestionInfo) megletProps.get("Info"); }
-    public android.view.inputmethod.InlineSuggestion.InlineContentCallbackImpl getInlineContentCallback() { return (android.view.inputmethod.InlineSuggestion.InlineContentCallbackImpl) megletProps.get("InlineContentCallback"); }
+    public android.view.inputmethod.InlineSuggestionInfo getInfo() { return (android.view.inputmethod.InlineSuggestionInfo) meglerProps.get("Info"); }
+    public android.view.inputmethod.InlineSuggestion.InlineContentCallbackImpl getInlineContentCallback() { return (android.view.inputmethod.InlineSuggestion.InlineContentCallbackImpl) meglerProps.get("InlineContentCallback"); }
     public void inflate(android.content.Context p0, android.util.Size p1, java.util.concurrent.Executor p2, java.util.function.Consumer p3) {}
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public static final class InlineContentCallbackImpl {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public void onClick() {}
         public void onContent(android.view.SurfaceControlViewHost.SurfacePackage p0, int p1, int p2) {}
         public void onLongClick() {}

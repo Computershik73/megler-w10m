@@ -3,7 +3,7 @@ package android.media.midi;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class MidiSender {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public MidiSender() {}
     public void connect(android.media.midi.MidiReceiver p0) {}
     public void disconnect(android.media.midi.MidiReceiver p0) {}

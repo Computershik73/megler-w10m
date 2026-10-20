@@ -3,14 +3,14 @@ package android.bluetooth.le;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TransportBlock implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public TransportBlock(int p0, int p1, int p2, byte[] p3) {}
     public int describeContents() { return 0; }
-    public int getOrgId() { return (megletProps.get("OrgId") instanceof Integer ? (Integer) megletProps.get("OrgId") : 0); }
-    public int getTdsFlags() { return (megletProps.get("TdsFlags") instanceof Integer ? (Integer) megletProps.get("TdsFlags") : 0); }
-    public byte[] getTransportData() { return (byte[]) megletProps.get("TransportData"); }
-    public int getTransportDataLength() { return (megletProps.get("TransportDataLength") instanceof Integer ? (Integer) megletProps.get("TransportDataLength") : 0); }
+    public int getOrgId() { return (meglerProps.get("OrgId") instanceof Integer ? (Integer) meglerProps.get("OrgId") : 0); }
+    public int getTdsFlags() { return (meglerProps.get("TdsFlags") instanceof Integer ? (Integer) meglerProps.get("TdsFlags") : 0); }
+    public byte[] getTransportData() { return (byte[]) meglerProps.get("TransportData"); }
+    public int getTransportDataLength() { return (meglerProps.get("TransportDataLength") instanceof Integer ? (Integer) meglerProps.get("TransportDataLength") : 0); }
     public byte[] toByteArray() { return null; }
     public int totalBytes() { return 0; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}

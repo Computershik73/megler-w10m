@@ -3,7 +3,7 @@ package android.renderscript;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class RSDriverException extends android.renderscript.RSRuntimeException {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public RSDriverException(java.lang.String p0) { super(p0); }
     RSDriverException() { this((java.lang.String) null); }
 }

@@ -3,7 +3,7 @@ package android.net.wifi.aware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AwarePairingConfig implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int PAIRING_BOOTSTRAPPING_MAX = 512;
     public static final int PAIRING_BOOTSTRAPPING_NFC_READER = 256;
@@ -19,21 +19,21 @@ public final class AwarePairingConfig implements android.os.Parcelable {
     public AwarePairingConfig(boolean p0, boolean p1, boolean p2, int p3, int p4) {}
     public boolean assertValid(android.net.wifi.aware.Characteristics p0) { return false; }
     public int describeContents() { return 0; }
-    public int getBootstrappingMethods() { return (megletProps.get("BootstrappingMethods") instanceof Integer ? (Integer) megletProps.get("BootstrappingMethods") : 0); }
-    public int getSupportedCipherSuites() { return (megletProps.get("SupportedCipherSuites") instanceof Integer ? (Integer) megletProps.get("SupportedCipherSuites") : 0); }
-    public boolean isPairingCacheEnabled() { return (megletProps.get("PairingCacheEnabled") instanceof Boolean ? (Boolean) megletProps.get("PairingCacheEnabled") : false); }
-    public boolean isPairingSetupEnabled() { return (megletProps.get("PairingSetupEnabled") instanceof Boolean ? (Boolean) megletProps.get("PairingSetupEnabled") : false); }
-    public boolean isPairingVerificationEnabled() { return (megletProps.get("PairingVerificationEnabled") instanceof Boolean ? (Boolean) megletProps.get("PairingVerificationEnabled") : false); }
+    public int getBootstrappingMethods() { return (meglerProps.get("BootstrappingMethods") instanceof Integer ? (Integer) meglerProps.get("BootstrappingMethods") : 0); }
+    public int getSupportedCipherSuites() { return (meglerProps.get("SupportedCipherSuites") instanceof Integer ? (Integer) meglerProps.get("SupportedCipherSuites") : 0); }
+    public boolean isPairingCacheEnabled() { return (meglerProps.get("PairingCacheEnabled") instanceof Boolean ? (Boolean) meglerProps.get("PairingCacheEnabled") : false); }
+    public boolean isPairingSetupEnabled() { return (meglerProps.get("PairingSetupEnabled") instanceof Boolean ? (Boolean) meglerProps.get("PairingSetupEnabled") : false); }
+    public boolean isPairingVerificationEnabled() { return (meglerProps.get("PairingVerificationEnabled") instanceof Boolean ? (Boolean) meglerProps.get("PairingVerificationEnabled") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     AwarePairingConfig() { this((android.os.Parcel) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.net.wifi.aware.AwarePairingConfig build() { android.net.wifi.aware.AwarePairingConfig x = new android.net.wifi.aware.AwarePairingConfig(); x.megletProps.putAll(megletProps); return x; }
-        public android.net.wifi.aware.AwarePairingConfig.Builder setBootstrappingMethods(int p0) { megletProps.put("BootstrappingMethods", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.aware.AwarePairingConfig.Builder setPairingCacheEnabled(boolean p0) { megletProps.put("PairingCacheEnabled", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.aware.AwarePairingConfig.Builder setPairingSetupEnabled(boolean p0) { megletProps.put("PairingSetupEnabled", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.aware.AwarePairingConfig.Builder setPairingVerificationEnabled(boolean p0) { megletProps.put("PairingVerificationEnabled", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.aware.AwarePairingConfig.Builder setSupportedCipherSuites(int p0) { megletProps.put("SupportedCipherSuites", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.aware.AwarePairingConfig build() { android.net.wifi.aware.AwarePairingConfig x = new android.net.wifi.aware.AwarePairingConfig(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.net.wifi.aware.AwarePairingConfig.Builder setBootstrappingMethods(int p0) { meglerProps.put("BootstrappingMethods", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.aware.AwarePairingConfig.Builder setPairingCacheEnabled(boolean p0) { meglerProps.put("PairingCacheEnabled", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.aware.AwarePairingConfig.Builder setPairingSetupEnabled(boolean p0) { meglerProps.put("PairingSetupEnabled", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.aware.AwarePairingConfig.Builder setPairingVerificationEnabled(boolean p0) { meglerProps.put("PairingVerificationEnabled", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.aware.AwarePairingConfig.Builder setSupportedCipherSuites(int p0) { meglerProps.put("SupportedCipherSuites", Integer.valueOf(p0)); return this; }
     }
 }

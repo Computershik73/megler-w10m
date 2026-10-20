@@ -3,13 +3,13 @@ package android.app.admin;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class NetworkEvent implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public long getId() { return (megletProps.get("Id") instanceof Long ? (Long) megletProps.get("Id") : 0L); }
-    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
-    public long getTimestamp() { return (megletProps.get("Timestamp") instanceof Long ? (Long) megletProps.get("Timestamp") : 0L); }
-    public void setId(long p0) { megletProps.put("Id", Long.valueOf(p0)); }
+    public long getId() { return (meglerProps.get("Id") instanceof Long ? (Long) meglerProps.get("Id") : 0L); }
+    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
+    public long getTimestamp() { return (meglerProps.get("Timestamp") instanceof Long ? (Long) meglerProps.get("Timestamp") : 0L); }
+    public void setId(long p0) { meglerProps.put("Id", Long.valueOf(p0)); }
     public abstract void writeToParcel(android.os.Parcel p0, int p1);
     protected NetworkEvent() {}
 }

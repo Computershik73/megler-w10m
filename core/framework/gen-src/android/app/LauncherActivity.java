@@ -3,9 +3,9 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class LauncherActivity extends android.app.ListActivity {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public LauncherActivity() { super(); }
-    protected android.content.Intent getTargetIntent() { return (android.content.Intent) megletProps.get("TargetIntent"); }
+    protected android.content.Intent getTargetIntent() { return (android.content.Intent) meglerProps.get("TargetIntent"); }
     protected android.content.Intent intentForPosition(int p0) { return null; }
     protected android.app.LauncherActivity.ListItem itemForPosition(int p0) { return null; }
     public java.util.List makeListItems() { return new java.util.ArrayList(); }
@@ -15,13 +15,13 @@ public abstract class LauncherActivity extends android.app.ListActivity {
     protected void onSetContentView() {}
     protected void onSortResultList(java.util.List p0) {}
     public static class IconResizer {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public IconResizer(android.app.LauncherActivity p0) {}
         public android.graphics.drawable.Drawable createIconThumbnail(android.graphics.drawable.Drawable p0) { return null; }
         IconResizer() { this((android.app.LauncherActivity) null); }
     }
     public static class ListItem {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public java.lang.String className;
         public android.os.Bundle extras;
         public android.graphics.drawable.Drawable icon;

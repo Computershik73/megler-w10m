@@ -3,7 +3,7 @@ package android.appwidget;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AppWidgetHost {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public AppWidgetHost(android.content.Context p0, int p1) {}
     public AppWidgetHost(android.content.Context p0, int p1, android.widget.RemoteViews.InteractionHandler p2, android.os.Looper p3) {}
     public static void deleteAllHosts() {}
@@ -12,7 +12,7 @@ public class AppWidgetHost {
     public android.appwidget.AppWidgetHostView createView(android.content.Context p0, int p1, android.appwidget.AppWidgetProviderInfo p2) { return null; }
     public void deleteAppWidgetId(int p0) {}
     public void deleteHost() {}
-    public int[] getAppWidgetIds() { return (int[]) megletProps.get("AppWidgetIds"); }
+    public int[] getAppWidgetIds() { return (int[]) meglerProps.get("AppWidgetIds"); }
     public android.content.IntentSender getIntentSenderForConfigureActivity(int p0, int p1) { return null; }
     public void onAppWidgetRemoved(int p0) {}
     protected android.appwidget.AppWidgetHostView onCreateView(android.content.Context p0, int p1, android.appwidget.AppWidgetProviderInfo p2) { return null; }
@@ -22,7 +22,7 @@ public class AppWidgetHost {
     public void reportAllWidgetEvents() {}
     public void reportEventForWidget(int p0) {}
     public void setAppWidgetHidden() {}
-    public void setInteractionHandler(android.widget.RemoteViews.InteractionHandler p0) { megletProps.put("InteractionHandler", p0); }
+    public void setInteractionHandler(android.widget.RemoteViews.InteractionHandler p0) { meglerProps.put("InteractionHandler", p0); }
     public void setListener(int p0, android.appwidget.AppWidgetHost.AppWidgetHostListener p1) {}
     public void startAppWidgetConfigureActivityForResult(android.app.Activity p0, int p1, int p2, int p3, android.os.Bundle p4) {}
     public void startListening() {}

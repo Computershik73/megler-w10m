@@ -3,7 +3,7 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class LogReader {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public LogReader(android.adservices.ondevicepersonalization.aidl.IDataAccessService p0) {}
     public java.util.List getJoinedEvents(java.time.Instant p0, java.time.Instant p1) { return new java.util.ArrayList(); }
     public java.util.List getRequests(java.time.Instant p0, java.time.Instant p1) { return new java.util.ArrayList(); }

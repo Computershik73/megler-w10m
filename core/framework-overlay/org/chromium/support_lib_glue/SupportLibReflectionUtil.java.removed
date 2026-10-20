@@ -1,6 +1,6 @@
-// Meglet: the original's SupportLibReflectionUtil is not compiled (tools/build-framework.sh, "A third kind").
+// Megler: the original's SupportLibReflectionUtil is not compiled (tools/build-framework.sh, "A third kind").
 // The original put a class of this name into the framework so that androidx.webkit, which looks for it through
-// WebView.getWebViewClassLoader(), found the original's glue (android.webkit.MegletSupportLib). Here the WebView is
+// WebView.getWebViewClassLoader(), found the original's glue (android.webkit.MeglerSupportLib). Here the WebView is
 // Chromium's and its APK carries the real class of this name, Chromium's support-library glue. There is one class path
 // in this runtime, where the framework's classes come first: a framework class of this name would hide the WebView's
 // (docs/JAVA.md, "The WebView").

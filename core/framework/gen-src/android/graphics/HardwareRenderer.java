@@ -3,7 +3,7 @@ package android.graphics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class HardwareRenderer {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int CACHE_TRIM_ALL = 0;
     public static final int CACHE_TRIM_FONT = 1;
     public static final int CACHE_TRIM_RESOURCES = 2;
@@ -56,7 +56,7 @@ public class HardwareRenderer {
     public void dumpProfileInfo(java.io.FileDescriptor p0, int p1) {}
     public void fence() {}
     public void forceDrawNextFrame() {}
-    public boolean isOpaque() { return (megletProps.get("Opaque") instanceof Boolean ? (Boolean) megletProps.get("Opaque") : false); }
+    public boolean isOpaque() { return (meglerProps.get("Opaque") instanceof Boolean ? (Boolean) meglerProps.get("Opaque") : false); }
     public boolean loadSystemProperties() { return false; }
     public void notifyCallbackPending() {}
     public void notifyExpensiveFrame() {}
@@ -71,26 +71,26 @@ public class HardwareRenderer {
     public void removeObserver(long p0) {}
     public void removeObserver(android.graphics.HardwareRendererObserver p0) {}
     public void removeRenderNode(android.graphics.RenderNode p0) {}
-    protected void setASurfaceTransactionCallback(android.graphics.HardwareRenderer.ASurfaceTransactionCallback p0) { megletProps.put("ASurfaceTransactionCallback", p0); }
+    protected void setASurfaceTransactionCallback(android.graphics.HardwareRenderer.ASurfaceTransactionCallback p0) { meglerProps.put("ASurfaceTransactionCallback", p0); }
     public float setColorMode(int p0) { return 0f; }
     public void setColorMode(int p0, float p1) {}
     public void setContentDrawBounds(int p0, int p1, int p2, int p3) {}
-    public void setContentRoot(android.graphics.RenderNode p0) { megletProps.put("ContentRoot", p0); }
+    public void setContentRoot(android.graphics.RenderNode p0) { meglerProps.put("ContentRoot", p0); }
     public boolean setForceDark(int p0) { return false; }
-    public void setFrameCallback(android.graphics.HardwareRenderer.FrameDrawingCallback p0) { megletProps.put("FrameCallback", p0); }
-    public void setFrameCommitCallback(android.graphics.HardwareRenderer.FrameCommitCallback p0) { megletProps.put("FrameCommitCallback", p0); }
-    public void setFrameCompleteCallback(android.graphics.HardwareRenderer.FrameCompleteCallback p0) { megletProps.put("FrameCompleteCallback", p0); }
+    public void setFrameCallback(android.graphics.HardwareRenderer.FrameDrawingCallback p0) { meglerProps.put("FrameCallback", p0); }
+    public void setFrameCommitCallback(android.graphics.HardwareRenderer.FrameCommitCallback p0) { meglerProps.put("FrameCommitCallback", p0); }
+    public void setFrameCompleteCallback(android.graphics.HardwareRenderer.FrameCompleteCallback p0) { meglerProps.put("FrameCompleteCallback", p0); }
     public void setLightSourceAlpha(float p0, float p1) {}
     public void setLightSourceGeometry(float p0, float p1, float p2, float p3) {}
-    public void setName(java.lang.String p0) { megletProps.put("Name", p0); }
-    public void setOpaque(boolean p0) { megletProps.put("Opaque", Boolean.valueOf(p0)); }
-    public void setPictureCaptureCallback(android.graphics.HardwareRenderer.PictureCapturedCallback p0) { megletProps.put("PictureCaptureCallback", p0); }
-    protected void setPrepareSurfaceControlForWebviewCallback(android.graphics.HardwareRenderer.PrepareSurfaceControlForWebviewCallback p0) { megletProps.put("PrepareSurfaceControlForWebviewCallback", p0); }
-    public void setStopped(boolean p0) { megletProps.put("Stopped", Boolean.valueOf(p0)); }
-    public void setSurface(android.view.Surface p0) { megletProps.put("Surface", p0); }
+    public void setName(java.lang.String p0) { meglerProps.put("Name", p0); }
+    public void setOpaque(boolean p0) { meglerProps.put("Opaque", Boolean.valueOf(p0)); }
+    public void setPictureCaptureCallback(android.graphics.HardwareRenderer.PictureCapturedCallback p0) { meglerProps.put("PictureCaptureCallback", p0); }
+    protected void setPrepareSurfaceControlForWebviewCallback(android.graphics.HardwareRenderer.PrepareSurfaceControlForWebviewCallback p0) { meglerProps.put("PrepareSurfaceControlForWebviewCallback", p0); }
+    public void setStopped(boolean p0) { meglerProps.put("Stopped", Boolean.valueOf(p0)); }
+    public void setSurface(android.view.Surface p0) { meglerProps.put("Surface", p0); }
     public void setSurface(android.view.Surface p0, boolean p1) {}
     public void setSurfaceControl(android.view.SurfaceControl p0, android.graphics.BLASTBufferQueue p1) {}
-    public void setTargetHdrSdrRatio(float p0) { megletProps.put("TargetHdrSdrRatio", Float.valueOf(p0)); }
+    public void setTargetHdrSdrRatio(float p0) { meglerProps.put("TargetHdrSdrRatio", Float.valueOf(p0)); }
     public void start() {}
     public void stop() {}
     public void stopDrawing() {}
@@ -99,7 +99,7 @@ public class HardwareRenderer {
         boolean onMergeTransaction(long p0, long p1, long p2);
     }
     public static abstract class CopyRequest {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         protected android.graphics.Bitmap mDestinationBitmap;
         protected CopyRequest(android.graphics.Rect p0, android.graphics.Bitmap p1) {}
         public long getDestinationBitmap(int p0, int p1) { return 0L; }
@@ -117,11 +117,11 @@ public class HardwareRenderer {
         void onFrameDraw(long p0);
     }
     public static final class FrameRenderRequest {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public android.graphics.HardwareRenderer.FrameRenderRequest setFrameCommitCallback(java.util.concurrent.Executor p0, java.lang.Runnable p1) { return this; }
-        public void setFrameInfo(android.graphics.FrameInfo p0) { megletProps.put("FrameInfo", p0); }
-        public android.graphics.HardwareRenderer.FrameRenderRequest setVsyncTime(long p0) { megletProps.put("VsyncTime", Long.valueOf(p0)); return this; }
-        public android.graphics.HardwareRenderer.FrameRenderRequest setWaitForPresent(boolean p0) { megletProps.put("WaitForPresent", Boolean.valueOf(p0)); return this; }
+        public void setFrameInfo(android.graphics.FrameInfo p0) { meglerProps.put("FrameInfo", p0); }
+        public android.graphics.HardwareRenderer.FrameRenderRequest setVsyncTime(long p0) { meglerProps.put("VsyncTime", Long.valueOf(p0)); return this; }
+        public android.graphics.HardwareRenderer.FrameRenderRequest setWaitForPresent(boolean p0) { meglerProps.put("WaitForPresent", Boolean.valueOf(p0)); return this; }
         public int syncAndDraw() { return 0; }
         protected FrameRenderRequest() {}
     }

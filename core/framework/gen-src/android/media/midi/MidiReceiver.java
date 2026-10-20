@@ -3,11 +3,11 @@ package android.media.midi;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class MidiReceiver {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public MidiReceiver() {}
     public MidiReceiver(int p0) {}
     public void flush() {}
-    public int getMaxMessageSize() { return (megletProps.get("MaxMessageSize") instanceof Integer ? (Integer) megletProps.get("MaxMessageSize") : 0); }
+    public int getMaxMessageSize() { return (meglerProps.get("MaxMessageSize") instanceof Integer ? (Integer) meglerProps.get("MaxMessageSize") : 0); }
     public void onFlush() {}
     public abstract void onSend(byte[] p0, int p1, int p2, long p3);
     public void send(byte[] p0, int p1, int p2) {}

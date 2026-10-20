@@ -3,11 +3,11 @@ package android.health.connect;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class RecordIdFilter {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.health.connect.RecordIdFilter fromClientRecordId(java.lang.Class p0, java.lang.String p1) { return new RecordIdFilter(); }
     public static android.health.connect.RecordIdFilter fromId(java.lang.Class p0, java.lang.String p1) { return new RecordIdFilter(); }
-    public java.lang.String getClientRecordId() { return (java.lang.String) megletProps.get("ClientRecordId"); }
-    public java.lang.String getId() { return (java.lang.String) megletProps.get("Id"); }
-    public java.lang.Class getRecordType() { return (java.lang.Class) megletProps.get("RecordType"); }
+    public java.lang.String getClientRecordId() { return (java.lang.String) meglerProps.get("ClientRecordId"); }
+    public java.lang.String getId() { return (java.lang.String) meglerProps.get("Id"); }
+    public java.lang.Class getRecordType() { return (java.lang.Class) meglerProps.get("RecordType"); }
     protected RecordIdFilter() {}
 }

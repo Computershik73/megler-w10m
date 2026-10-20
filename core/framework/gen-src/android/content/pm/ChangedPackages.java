@@ -3,13 +3,13 @@ package android.content.pm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ChangedPackages implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public ChangedPackages(int p0, java.util.List p1) {}
     protected ChangedPackages(android.os.Parcel p0) {}
     public int describeContents() { return 0; }
-    public java.util.List getPackageNames() { return (megletProps.get("PackageNames") != null ? (java.util.List) megletProps.get("PackageNames") : new java.util.ArrayList()); }
-    public int getSequenceNumber() { return (megletProps.get("SequenceNumber") instanceof Integer ? (Integer) megletProps.get("SequenceNumber") : 0); }
+    public java.util.List getPackageNames() { return (meglerProps.get("PackageNames") != null ? (java.util.List) meglerProps.get("PackageNames") : new java.util.ArrayList()); }
+    public int getSequenceNumber() { return (meglerProps.get("SequenceNumber") instanceof Integer ? (Integer) meglerProps.get("SequenceNumber") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     ChangedPackages() { this((android.os.Parcel) null); }
 }

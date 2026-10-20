@@ -3,7 +3,7 @@ package android.webkit;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class WebHistoryItem implements java.lang.Cloneable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public WebHistoryItem() {}
     protected abstract android.webkit.WebHistoryItem clone();
     public abstract android.graphics.Bitmap getFavicon();

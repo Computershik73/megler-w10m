@@ -3,7 +3,7 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ApplicationStartInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int LAUNCH_MODE_SINGLE_INSTANCE = 2;
     public static final int LAUNCH_MODE_SINGLE_INSTANCE_PER_TASK = 4;
@@ -50,33 +50,33 @@ public final class ApplicationStartInfo implements android.os.Parcelable {
     public ApplicationStartInfo(android.os.Parcel p0) {}
     public void addStartupTimestamp(int p0, long p1) {}
     public int describeContents() { return 0; }
-    public int getDefiningUid() { return (megletProps.get("DefiningUid") instanceof Integer ? (Integer) megletProps.get("DefiningUid") : 0); }
-    public android.content.Intent getIntent() { return (android.content.Intent) megletProps.get("Intent"); }
-    public int getLaunchMode() { return (megletProps.get("LaunchMode") instanceof Integer ? (Integer) megletProps.get("LaunchMode") : 0); }
-    public long getMonotonicCreationTimeMs() { return (megletProps.get("MonotonicCreationTimeMs") instanceof Long ? (Long) megletProps.get("MonotonicCreationTimeMs") : 0L); }
-    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
-    public int getPackageUid() { return (megletProps.get("PackageUid") instanceof Integer ? (Integer) megletProps.get("PackageUid") : 0); }
-    public int getPid() { return (megletProps.get("Pid") instanceof Integer ? (Integer) megletProps.get("Pid") : 0); }
-    public java.lang.String getProcessName() { return (java.lang.String) megletProps.get("ProcessName"); }
-    public int getRealUid() { return (megletProps.get("RealUid") instanceof Integer ? (Integer) megletProps.get("RealUid") : 0); }
-    public int getReason() { return (megletProps.get("Reason") instanceof Integer ? (Integer) megletProps.get("Reason") : 0); }
-    public int getStartComponent() { return (megletProps.get("StartComponent") instanceof Integer ? (Integer) megletProps.get("StartComponent") : 0); }
-    public int getStartType() { return (megletProps.get("StartType") instanceof Integer ? (Integer) megletProps.get("StartType") : 0); }
-    public int getStartupState() { return (megletProps.get("StartupState") instanceof Integer ? (Integer) megletProps.get("StartupState") : 0); }
-    public java.util.Map getStartupTimestamps() { return (megletProps.get("StartupTimestamps") != null ? (java.util.Map) megletProps.get("StartupTimestamps") : new java.util.HashMap()); }
-    public void setDefiningUid(int p0) { megletProps.put("DefiningUid", Integer.valueOf(p0)); }
-    public void setForceStopped(boolean p0) { megletProps.put("ForceStopped", Boolean.valueOf(p0)); }
-    public void setIntent(android.content.Intent p0) { megletProps.put("Intent", p0); }
-    public void setLaunchMode(int p0) { megletProps.put("LaunchMode", Integer.valueOf(p0)); }
-    public void setPackageName(java.lang.String p0) { megletProps.put("PackageName", p0); }
-    public void setPackageUid(int p0) { megletProps.put("PackageUid", Integer.valueOf(p0)); }
-    public void setPid(int p0) { megletProps.put("Pid", Integer.valueOf(p0)); }
-    public void setProcessName(java.lang.String p0) { megletProps.put("ProcessName", p0); }
-    public void setRealUid(int p0) { megletProps.put("RealUid", Integer.valueOf(p0)); }
-    public void setReason(int p0) { megletProps.put("Reason", Integer.valueOf(p0)); }
-    public void setStartComponent(int p0) { megletProps.put("StartComponent", Integer.valueOf(p0)); }
-    public void setStartType(int p0) { megletProps.put("StartType", Integer.valueOf(p0)); }
-    public void setStartupState(int p0) { megletProps.put("StartupState", Integer.valueOf(p0)); }
+    public int getDefiningUid() { return (meglerProps.get("DefiningUid") instanceof Integer ? (Integer) meglerProps.get("DefiningUid") : 0); }
+    public android.content.Intent getIntent() { return (android.content.Intent) meglerProps.get("Intent"); }
+    public int getLaunchMode() { return (meglerProps.get("LaunchMode") instanceof Integer ? (Integer) meglerProps.get("LaunchMode") : 0); }
+    public long getMonotonicCreationTimeMs() { return (meglerProps.get("MonotonicCreationTimeMs") instanceof Long ? (Long) meglerProps.get("MonotonicCreationTimeMs") : 0L); }
+    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
+    public int getPackageUid() { return (meglerProps.get("PackageUid") instanceof Integer ? (Integer) meglerProps.get("PackageUid") : 0); }
+    public int getPid() { return (meglerProps.get("Pid") instanceof Integer ? (Integer) meglerProps.get("Pid") : 0); }
+    public java.lang.String getProcessName() { return (java.lang.String) meglerProps.get("ProcessName"); }
+    public int getRealUid() { return (meglerProps.get("RealUid") instanceof Integer ? (Integer) meglerProps.get("RealUid") : 0); }
+    public int getReason() { return (meglerProps.get("Reason") instanceof Integer ? (Integer) meglerProps.get("Reason") : 0); }
+    public int getStartComponent() { return (meglerProps.get("StartComponent") instanceof Integer ? (Integer) meglerProps.get("StartComponent") : 0); }
+    public int getStartType() { return (meglerProps.get("StartType") instanceof Integer ? (Integer) meglerProps.get("StartType") : 0); }
+    public int getStartupState() { return (meglerProps.get("StartupState") instanceof Integer ? (Integer) meglerProps.get("StartupState") : 0); }
+    public java.util.Map getStartupTimestamps() { return (meglerProps.get("StartupTimestamps") != null ? (java.util.Map) meglerProps.get("StartupTimestamps") : new java.util.HashMap()); }
+    public void setDefiningUid(int p0) { meglerProps.put("DefiningUid", Integer.valueOf(p0)); }
+    public void setForceStopped(boolean p0) { meglerProps.put("ForceStopped", Boolean.valueOf(p0)); }
+    public void setIntent(android.content.Intent p0) { meglerProps.put("Intent", p0); }
+    public void setLaunchMode(int p0) { meglerProps.put("LaunchMode", Integer.valueOf(p0)); }
+    public void setPackageName(java.lang.String p0) { meglerProps.put("PackageName", p0); }
+    public void setPackageUid(int p0) { meglerProps.put("PackageUid", Integer.valueOf(p0)); }
+    public void setPid(int p0) { meglerProps.put("Pid", Integer.valueOf(p0)); }
+    public void setProcessName(java.lang.String p0) { meglerProps.put("ProcessName", p0); }
+    public void setRealUid(int p0) { meglerProps.put("RealUid", Integer.valueOf(p0)); }
+    public void setReason(int p0) { meglerProps.put("Reason", Integer.valueOf(p0)); }
+    public void setStartComponent(int p0) { meglerProps.put("StartComponent", Integer.valueOf(p0)); }
+    public void setStartType(int p0) { meglerProps.put("StartType", Integer.valueOf(p0)); }
+    public void setStartupState(int p0) { meglerProps.put("StartupState", Integer.valueOf(p0)); }
     public boolean wasForceStopped() { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     ApplicationStartInfo() { this((long) 0L); }

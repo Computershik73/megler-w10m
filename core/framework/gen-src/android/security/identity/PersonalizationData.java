@@ -3,13 +3,13 @@ package android.security.identity;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class PersonalizationData {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     protected PersonalizationData() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public android.security.identity.PersonalizationData.Builder addAccessControlProfile(android.security.identity.AccessControlProfile p0) { return this; }
-        public android.security.identity.PersonalizationData build() { android.security.identity.PersonalizationData x = new android.security.identity.PersonalizationData(); x.megletProps.putAll(megletProps); return x; }
+        public android.security.identity.PersonalizationData build() { android.security.identity.PersonalizationData x = new android.security.identity.PersonalizationData(); x.meglerProps.putAll(meglerProps); return x; }
         public android.security.identity.PersonalizationData.Builder putEntry(java.lang.String p0, java.lang.String p1, java.util.Collection p2, byte[] p3) { return this; }
     }
 }

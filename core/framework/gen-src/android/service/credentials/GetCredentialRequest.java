@@ -3,12 +3,12 @@ package android.service.credentials;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GetCredentialRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public GetCredentialRequest(android.service.credentials.CallingAppInfo p0, java.util.List p1) {}
     public int describeContents() { return 0; }
-    public android.service.credentials.CallingAppInfo getCallingAppInfo() { return (android.service.credentials.CallingAppInfo) megletProps.get("CallingAppInfo"); }
-    public java.util.List getCredentialOptions() { return (megletProps.get("CredentialOptions") != null ? (java.util.List) megletProps.get("CredentialOptions") : new java.util.ArrayList()); }
+    public android.service.credentials.CallingAppInfo getCallingAppInfo() { return (android.service.credentials.CallingAppInfo) meglerProps.get("CallingAppInfo"); }
+    public java.util.List getCredentialOptions() { return (meglerProps.get("CredentialOptions") != null ? (java.util.List) meglerProps.get("CredentialOptions") : new java.util.ArrayList()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     GetCredentialRequest() { this((android.service.credentials.CallingAppInfo) null, (java.util.List) null); }
 }

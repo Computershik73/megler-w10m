@@ -3,13 +3,13 @@ package android.content;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ContentQueryMap extends java.util.Observable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ContentQueryMap(android.database.Cursor p0, java.lang.String p1, boolean p2, android.os.Handler p3) { super(); }
     public void close() {}
     protected void finalize() {}
-    public java.util.Map getRows() { return (megletProps.get("Rows") != null ? (java.util.Map) megletProps.get("Rows") : new java.util.HashMap()); }
+    public java.util.Map getRows() { return (meglerProps.get("Rows") != null ? (java.util.Map) meglerProps.get("Rows") : new java.util.HashMap()); }
     public android.content.ContentValues getValues(java.lang.String p0) { return null; }
     public void requery() {}
-    public void setKeepUpdated(boolean p0) { megletProps.put("KeepUpdated", Boolean.valueOf(p0)); }
+    public void setKeepUpdated(boolean p0) { meglerProps.put("KeepUpdated", Boolean.valueOf(p0)); }
     ContentQueryMap() { this((android.database.Cursor) null, (java.lang.String) null, (boolean) false, (android.os.Handler) null); }
 }

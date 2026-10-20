@@ -35,12 +35,12 @@ public final class Configuration implements Parcelable, Comparable<Configuration
 
     public Configuration() { unset(); }
     public Configuration(Configuration o) { setTo(o); }
-    /** Meglet: the phone's own configuration. */
-    public static Configuration megletDevice() {
+    /** Megler: the phone's own configuration. */
+    public static Configuration meglerDevice() {
         Configuration c = new Configuration();
         c.setToDefaults();
-        int w = meglet.Native.screenWidth(), h = meglet.Native.screenHeight();
-        float d = meglet.Native.density();
+        int w = megler.Native.screenWidth(), h = megler.Native.screenHeight();
+        float d = megler.Native.density();
         c.orientation = w > h ? ORIENTATION_LANDSCAPE : ORIENTATION_PORTRAIT;
         c.screenWidthDp = (int) (w / d); c.screenHeightDp = (int) (h / d); c.smallestScreenWidthDp = Math.min(c.screenWidthDp, c.screenHeightDp);
         c.densityDpi = (int) (d * 160);
@@ -49,7 +49,7 @@ public final class Configuration implements Parcelable, Comparable<Configuration
         int size = c.smallestScreenWidthDp >= 720 ? SCREENLAYOUT_SIZE_XLARGE : c.smallestScreenWidthDp >= 600 ? SCREENLAYOUT_SIZE_LARGE : SCREENLAYOUT_SIZE_NORMAL;
         boolean longScreen = Math.max(w, h) * 3 > Math.min(w, h) * 5;
         c.screenLayout = size | (longScreen ? SCREENLAYOUT_LONG_YES : SCREENLAYOUT_LONG_NO) | SCREENLAYOUT_ROUND_NO;
-        c.uiMode = UI_MODE_TYPE_NORMAL | (meglet.Native.nightMode() ? UI_MODE_NIGHT_YES : UI_MODE_NIGHT_NO);
+        c.uiMode = UI_MODE_TYPE_NORMAL | (megler.Native.nightMode() ? UI_MODE_NIGHT_YES : UI_MODE_NIGHT_NO);
         c.colorMode = COLOR_MODE_WIDE_COLOR_GAMUT_YES | COLOR_MODE_HDR_NO;
         c.setLocales(LocaleList.getDefault());
         return c;

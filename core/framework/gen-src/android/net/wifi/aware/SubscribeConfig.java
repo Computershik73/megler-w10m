@@ -3,7 +3,7 @@ package android.net.wifi.aware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SubscribeConfig implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int PERIODIC_RANGING_INTERVAL_1024TU = 1024;
     public static final int PERIODIC_RANGING_INTERVAL_128TU = 128;
@@ -36,44 +36,44 @@ public final class SubscribeConfig implements android.os.Parcelable {
     public SubscribeConfig(byte[] p0, byte[] p1, byte[] p2, int p3, int p4, boolean p5, boolean p6, int p7, boolean p8, int p9, boolean p10, int p11, android.net.wifi.aware.AwarePairingConfig p12, boolean p13, java.util.List p14, int p15, boolean p16, int p17, int p18, int p19, int p20, int p21, int p22) {}
     public void assertValid(android.net.wifi.aware.Characteristics p0, boolean p1) {}
     public int describeContents() { return 0; }
-    public int getCenterFreq0Mhz() { return (megletProps.get("CenterFreq0Mhz") instanceof Integer ? (Integer) megletProps.get("CenterFreq0Mhz") : 0); }
-    public int getCenterFreq1Mhz() { return (megletProps.get("CenterFreq1Mhz") instanceof Integer ? (Integer) megletProps.get("CenterFreq1Mhz") : 0); }
-    public int getChannelWidth() { return (megletProps.get("ChannelWidth") instanceof Integer ? (Integer) megletProps.get("ChannelWidth") : 0); }
-    public int getFrequencyMhz() { return (megletProps.get("FrequencyMhz") instanceof Integer ? (Integer) megletProps.get("FrequencyMhz") : 0); }
-    public int getInstantCommunicationBand() { return (megletProps.get("InstantCommunicationBand") instanceof Integer ? (Integer) megletProps.get("InstantCommunicationBand") : 0); }
-    public android.net.wifi.aware.AwarePairingConfig getPairingConfig() { return (android.net.wifi.aware.AwarePairingConfig) megletProps.get("PairingConfig"); }
-    public int getPeriodicRangingInterval() { return (megletProps.get("PeriodicRangingInterval") instanceof Integer ? (Integer) megletProps.get("PeriodicRangingInterval") : 0); }
-    public int getPreamble() { return (megletProps.get("Preamble") instanceof Integer ? (Integer) megletProps.get("Preamble") : 0); }
-    public int getRttBurstSize() { return (megletProps.get("RttBurstSize") instanceof Integer ? (Integer) megletProps.get("RttBurstSize") : 0); }
-    public java.util.List getVendorData() { return (megletProps.get("VendorData") != null ? (java.util.List) megletProps.get("VendorData") : new java.util.ArrayList()); }
-    public boolean isInstantCommunicationModeEnabled() { return (megletProps.get("InstantCommunicationModeEnabled") instanceof Boolean ? (Boolean) megletProps.get("InstantCommunicationModeEnabled") : false); }
-    public boolean isPeriodicRangingEnabled() { return (megletProps.get("PeriodicRangingEnabled") instanceof Boolean ? (Boolean) megletProps.get("PeriodicRangingEnabled") : false); }
-    public boolean isSuspendable() { return (megletProps.get("Suspendable") instanceof Boolean ? (Boolean) megletProps.get("Suspendable") : false); }
+    public int getCenterFreq0Mhz() { return (meglerProps.get("CenterFreq0Mhz") instanceof Integer ? (Integer) meglerProps.get("CenterFreq0Mhz") : 0); }
+    public int getCenterFreq1Mhz() { return (meglerProps.get("CenterFreq1Mhz") instanceof Integer ? (Integer) meglerProps.get("CenterFreq1Mhz") : 0); }
+    public int getChannelWidth() { return (meglerProps.get("ChannelWidth") instanceof Integer ? (Integer) meglerProps.get("ChannelWidth") : 0); }
+    public int getFrequencyMhz() { return (meglerProps.get("FrequencyMhz") instanceof Integer ? (Integer) meglerProps.get("FrequencyMhz") : 0); }
+    public int getInstantCommunicationBand() { return (meglerProps.get("InstantCommunicationBand") instanceof Integer ? (Integer) meglerProps.get("InstantCommunicationBand") : 0); }
+    public android.net.wifi.aware.AwarePairingConfig getPairingConfig() { return (android.net.wifi.aware.AwarePairingConfig) meglerProps.get("PairingConfig"); }
+    public int getPeriodicRangingInterval() { return (meglerProps.get("PeriodicRangingInterval") instanceof Integer ? (Integer) meglerProps.get("PeriodicRangingInterval") : 0); }
+    public int getPreamble() { return (meglerProps.get("Preamble") instanceof Integer ? (Integer) meglerProps.get("Preamble") : 0); }
+    public int getRttBurstSize() { return (meglerProps.get("RttBurstSize") instanceof Integer ? (Integer) meglerProps.get("RttBurstSize") : 0); }
+    public java.util.List getVendorData() { return (meglerProps.get("VendorData") != null ? (java.util.List) meglerProps.get("VendorData") : new java.util.ArrayList()); }
+    public boolean isInstantCommunicationModeEnabled() { return (meglerProps.get("InstantCommunicationModeEnabled") instanceof Boolean ? (Boolean) meglerProps.get("InstantCommunicationModeEnabled") : false); }
+    public boolean isPeriodicRangingEnabled() { return (meglerProps.get("PeriodicRangingEnabled") instanceof Boolean ? (Boolean) meglerProps.get("PeriodicRangingEnabled") : false); }
+    public boolean isSuspendable() { return (meglerProps.get("Suspendable") instanceof Boolean ? (Boolean) meglerProps.get("Suspendable") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     SubscribeConfig() { this((byte[]) null, (byte[]) null, (byte[]) null, (int) 0, (int) 0, (boolean) false, (boolean) false, (int) 0, (boolean) false, (int) 0, (boolean) false, (int) 0, (android.net.wifi.aware.AwarePairingConfig) null, (boolean) false, (java.util.List) null, (int) 0, (boolean) false, (int) 0, (int) 0, (int) 0, (int) 0, (int) 0, (int) 0); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.net.wifi.aware.SubscribeConfig build() { android.net.wifi.aware.SubscribeConfig x = new android.net.wifi.aware.SubscribeConfig(); x.megletProps.putAll(megletProps); return x; }
-        public android.net.wifi.aware.SubscribeConfig.Builder setCenterFreq0Mhz(int p0) { megletProps.put("CenterFreq0Mhz", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.aware.SubscribeConfig.Builder setCenterFreq1Mhz(int p0) { megletProps.put("CenterFreq1Mhz", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.aware.SubscribeConfig.Builder setChannelWidth(int p0) { megletProps.put("ChannelWidth", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.aware.SubscribeConfig.Builder setFrequencyMhz(int p0) { megletProps.put("FrequencyMhz", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.aware.SubscribeConfig build() { android.net.wifi.aware.SubscribeConfig x = new android.net.wifi.aware.SubscribeConfig(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.net.wifi.aware.SubscribeConfig.Builder setCenterFreq0Mhz(int p0) { meglerProps.put("CenterFreq0Mhz", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.aware.SubscribeConfig.Builder setCenterFreq1Mhz(int p0) { meglerProps.put("CenterFreq1Mhz", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.aware.SubscribeConfig.Builder setChannelWidth(int p0) { meglerProps.put("ChannelWidth", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.aware.SubscribeConfig.Builder setFrequencyMhz(int p0) { meglerProps.put("FrequencyMhz", Integer.valueOf(p0)); return this; }
         public android.net.wifi.aware.SubscribeConfig.Builder setInstantCommunicationModeEnabled(boolean p0, int p1) { return this; }
-        public android.net.wifi.aware.SubscribeConfig.Builder setMatchFilter(java.util.List p0) { megletProps.put("MatchFilter", p0); return this; }
-        public android.net.wifi.aware.SubscribeConfig.Builder setMaxDistanceMm(int p0) { megletProps.put("MaxDistanceMm", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.aware.SubscribeConfig.Builder setMinDistanceMm(int p0) { megletProps.put("MinDistanceMm", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.aware.SubscribeConfig.Builder setPairingConfig(android.net.wifi.aware.AwarePairingConfig p0) { megletProps.put("PairingConfig", p0); return this; }
-        public android.net.wifi.aware.SubscribeConfig.Builder setPeriodicRangingEnabled(boolean p0) { megletProps.put("PeriodicRangingEnabled", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.aware.SubscribeConfig.Builder setPeriodicRangingInterval(int p0) { megletProps.put("PeriodicRangingInterval", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.aware.SubscribeConfig.Builder setPreamble(int p0) { megletProps.put("Preamble", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.aware.SubscribeConfig.Builder setRttBurstSize(int p0) { megletProps.put("RttBurstSize", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.aware.SubscribeConfig.Builder setServiceName(java.lang.String p0) { megletProps.put("ServiceName", p0); return this; }
-        public android.net.wifi.aware.SubscribeConfig.Builder setServiceSpecificInfo(byte[] p0) { megletProps.put("ServiceSpecificInfo", p0); return this; }
-        public android.net.wifi.aware.SubscribeConfig.Builder setSubscribeType(int p0) { megletProps.put("SubscribeType", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.aware.SubscribeConfig.Builder setSuspendable(boolean p0) { megletProps.put("Suspendable", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.aware.SubscribeConfig.Builder setTerminateNotificationEnabled(boolean p0) { megletProps.put("TerminateNotificationEnabled", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.aware.SubscribeConfig.Builder setTtlSec(int p0) { megletProps.put("TtlSec", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.aware.SubscribeConfig.Builder setVendorData(java.util.List p0) { megletProps.put("VendorData", p0); return this; }
+        public android.net.wifi.aware.SubscribeConfig.Builder setMatchFilter(java.util.List p0) { meglerProps.put("MatchFilter", p0); return this; }
+        public android.net.wifi.aware.SubscribeConfig.Builder setMaxDistanceMm(int p0) { meglerProps.put("MaxDistanceMm", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.aware.SubscribeConfig.Builder setMinDistanceMm(int p0) { meglerProps.put("MinDistanceMm", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.aware.SubscribeConfig.Builder setPairingConfig(android.net.wifi.aware.AwarePairingConfig p0) { meglerProps.put("PairingConfig", p0); return this; }
+        public android.net.wifi.aware.SubscribeConfig.Builder setPeriodicRangingEnabled(boolean p0) { meglerProps.put("PeriodicRangingEnabled", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.aware.SubscribeConfig.Builder setPeriodicRangingInterval(int p0) { meglerProps.put("PeriodicRangingInterval", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.aware.SubscribeConfig.Builder setPreamble(int p0) { meglerProps.put("Preamble", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.aware.SubscribeConfig.Builder setRttBurstSize(int p0) { meglerProps.put("RttBurstSize", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.aware.SubscribeConfig.Builder setServiceName(java.lang.String p0) { meglerProps.put("ServiceName", p0); return this; }
+        public android.net.wifi.aware.SubscribeConfig.Builder setServiceSpecificInfo(byte[] p0) { meglerProps.put("ServiceSpecificInfo", p0); return this; }
+        public android.net.wifi.aware.SubscribeConfig.Builder setSubscribeType(int p0) { meglerProps.put("SubscribeType", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.aware.SubscribeConfig.Builder setSuspendable(boolean p0) { meglerProps.put("Suspendable", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.aware.SubscribeConfig.Builder setTerminateNotificationEnabled(boolean p0) { meglerProps.put("TerminateNotificationEnabled", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.aware.SubscribeConfig.Builder setTtlSec(int p0) { meglerProps.put("TtlSec", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.aware.SubscribeConfig.Builder setVendorData(java.util.List p0) { meglerProps.put("VendorData", p0); return this; }
     }
 }

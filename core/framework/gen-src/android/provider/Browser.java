@@ -3,7 +3,7 @@ package android.provider;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Browser {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.net.Uri BOOKMARKS_URI = android.net.Uri.parse("content://browser/bookmarks");
     public static final java.lang.String EXTRA_APPLICATION_ID = "com.android.browser.application_id";
     public static final java.lang.String EXTRA_CREATE_NEW_TAB = "create_new_tab";
@@ -45,7 +45,7 @@ public class Browser {
     public static void truncateHistory(android.content.ContentResolver p0) {}
     public static void updateVisitedHistory(android.content.ContentResolver p0, java.lang.String p1, boolean p2) {}
     public static class BookmarkColumns implements android.provider.BaseColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String BOOKMARK = "bookmark";
         public static final java.lang.String CREATED = "created";
         public static final java.lang.String DATE = "date";
@@ -59,7 +59,7 @@ public class Browser {
         public BookmarkColumns() {}
     }
     public static class SearchColumns implements android.provider.BaseColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String DATE = "date";
         public static final java.lang.String SEARCH = "search";
         public static final java.lang.String URL = "url";

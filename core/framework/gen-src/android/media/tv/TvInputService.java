@@ -3,7 +3,7 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class TvInputService extends android.app.Service {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int PRIORITY_HINT_USE_CASE_TYPE_BACKGROUND = 100;
     public static final int PRIORITY_HINT_USE_CASE_TYPE_LIVE = 400;
     public static final int PRIORITY_HINT_USE_CASE_TYPE_PLAYBACK = 300;
@@ -14,7 +14,7 @@ public abstract class TvInputService extends android.app.Service {
     public TvInputService() { super(); }
     public static boolean isNavigationKey(int p0) { return false; }
     public android.os.IBinder createExtension() { return null; }
-    public java.util.List getAvailableExtensionInterfaceNames() { return (megletProps.get("AvailableExtensionInterfaceNames") != null ? (java.util.List) megletProps.get("AvailableExtensionInterfaceNames") : new java.util.ArrayList()); }
+    public java.util.List getAvailableExtensionInterfaceNames() { return (meglerProps.get("AvailableExtensionInterfaceNames") != null ? (java.util.List) meglerProps.get("AvailableExtensionInterfaceNames") : new java.util.ArrayList()); }
     public android.os.IBinder getExtensionInterface(java.lang.String p0) { return null; }
     public java.lang.String getExtensionInterfacePermission(java.lang.String p0) { return null; }
     public android.os.IBinder onBind(android.content.Intent p0) { return null; }
@@ -29,7 +29,7 @@ public abstract class TvInputService extends android.app.Service {
     public java.lang.String onHdmiDeviceRemoved(android.hardware.hdmi.HdmiDeviceInfo p0) { return null; }
     public void onHdmiDeviceUpdated(android.hardware.hdmi.HdmiDeviceInfo p0) {}
     public static abstract class HardwareSession extends android.media.tv.TvInputService.Session {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public HardwareSession(android.content.Context p0) { super(p0); }
         public abstract java.lang.String getHardwareInputId();
         public void onHardwareVideoAvailable() {}
@@ -38,7 +38,7 @@ public abstract class TvInputService extends android.app.Service {
         HardwareSession() { this((android.content.Context) null); }
     }
     public static abstract class RecordingSession {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public RecordingSession(android.content.Context p0) {}
         public void notifyError(int p0) {}
         public void notifyRecordingStopped(android.net.Uri p0) {}
@@ -56,7 +56,7 @@ public abstract class TvInputService extends android.app.Service {
         RecordingSession() { this((android.content.Context) null); }
     }
     public static abstract class Session implements android.view.KeyEvent.Callback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Session(android.content.Context p0) {}
         public void layoutSurface(int p0, int p1, int p2, int p3) {}
         public void notifyAdBufferConsumed(android.media.tv.AdBuffer p0) {}
@@ -122,7 +122,7 @@ public abstract class TvInputService extends android.app.Service {
         public void onTvMessage(int p0, android.os.Bundle p1) {}
         public void onUnblockContent(android.media.tv.TvContentRating p0) {}
         public void sendTvInputSessionData(java.lang.String p0, android.os.Bundle p1) {}
-        public void setOverlayViewEnabled(boolean p0) { megletProps.put("OverlayViewEnabled", Boolean.valueOf(p0)); }
+        public void setOverlayViewEnabled(boolean p0) { meglerProps.put("OverlayViewEnabled", Boolean.valueOf(p0)); }
         Session() { this((android.content.Context) null); }
     }
 }

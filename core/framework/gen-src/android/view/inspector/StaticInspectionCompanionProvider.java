@@ -3,7 +3,7 @@ package android.view.inspector;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class StaticInspectionCompanionProvider implements android.view.inspector.InspectionCompanionProvider {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public StaticInspectionCompanionProvider() {}
     public android.view.inspector.InspectionCompanion provide(java.lang.Class p0) { return null; }
 }

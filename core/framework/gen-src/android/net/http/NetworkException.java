@@ -3,7 +3,7 @@ package android.net.http;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class NetworkException extends android.net.http.HttpException {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int ERROR_ADDRESS_UNREACHABLE = 9;
     public static final int ERROR_CONNECTION_CLOSED = 5;
     public static final int ERROR_CONNECTION_REFUSED = 7;

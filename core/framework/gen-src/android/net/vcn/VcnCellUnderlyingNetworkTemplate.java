@@ -3,38 +3,38 @@ package android.net.vcn;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class VcnCellUnderlyingNetworkTemplate extends android.net.vcn.VcnUnderlyingNetworkTemplate {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.net.vcn.VcnCellUnderlyingNetworkTemplate fromPersistableBundle(android.os.PersistableBundle p0) { return new VcnCellUnderlyingNetworkTemplate(); }
-    public java.util.Map getCapabilitiesMatchCriteria() { return (megletProps.get("CapabilitiesMatchCriteria") != null ? (java.util.Map) megletProps.get("CapabilitiesMatchCriteria") : new java.util.HashMap()); }
-    public int getCbs() { return (megletProps.get("Cbs") instanceof Integer ? (Integer) megletProps.get("Cbs") : 0); }
-    public int getDun() { return (megletProps.get("Dun") instanceof Integer ? (Integer) megletProps.get("Dun") : 0); }
-    public int getIms() { return (megletProps.get("Ims") instanceof Integer ? (Integer) megletProps.get("Ims") : 0); }
-    public int getInternet() { return (megletProps.get("Internet") instanceof Integer ? (Integer) megletProps.get("Internet") : 0); }
-    public int getMms() { return (megletProps.get("Mms") instanceof Integer ? (Integer) megletProps.get("Mms") : 0); }
-    public java.util.Set getOperatorPlmnIds() { return (megletProps.get("OperatorPlmnIds") != null ? (java.util.Set) megletProps.get("OperatorPlmnIds") : new java.util.HashSet()); }
-    public int getOpportunistic() { return (megletProps.get("Opportunistic") instanceof Integer ? (Integer) megletProps.get("Opportunistic") : 0); }
-    public int getRcs() { return (megletProps.get("Rcs") instanceof Integer ? (Integer) megletProps.get("Rcs") : 0); }
-    public int getRoaming() { return (megletProps.get("Roaming") instanceof Integer ? (Integer) megletProps.get("Roaming") : 0); }
-    public java.util.Set getSimSpecificCarrierIds() { return (megletProps.get("SimSpecificCarrierIds") != null ? (java.util.Set) megletProps.get("SimSpecificCarrierIds") : new java.util.HashSet()); }
+    public java.util.Map getCapabilitiesMatchCriteria() { return (meglerProps.get("CapabilitiesMatchCriteria") != null ? (java.util.Map) meglerProps.get("CapabilitiesMatchCriteria") : new java.util.HashMap()); }
+    public int getCbs() { return (meglerProps.get("Cbs") instanceof Integer ? (Integer) meglerProps.get("Cbs") : 0); }
+    public int getDun() { return (meglerProps.get("Dun") instanceof Integer ? (Integer) meglerProps.get("Dun") : 0); }
+    public int getIms() { return (meglerProps.get("Ims") instanceof Integer ? (Integer) meglerProps.get("Ims") : 0); }
+    public int getInternet() { return (meglerProps.get("Internet") instanceof Integer ? (Integer) meglerProps.get("Internet") : 0); }
+    public int getMms() { return (meglerProps.get("Mms") instanceof Integer ? (Integer) meglerProps.get("Mms") : 0); }
+    public java.util.Set getOperatorPlmnIds() { return (meglerProps.get("OperatorPlmnIds") != null ? (java.util.Set) meglerProps.get("OperatorPlmnIds") : new java.util.HashSet()); }
+    public int getOpportunistic() { return (meglerProps.get("Opportunistic") instanceof Integer ? (Integer) meglerProps.get("Opportunistic") : 0); }
+    public int getRcs() { return (meglerProps.get("Rcs") instanceof Integer ? (Integer) meglerProps.get("Rcs") : 0); }
+    public int getRoaming() { return (meglerProps.get("Roaming") instanceof Integer ? (Integer) meglerProps.get("Roaming") : 0); }
+    public java.util.Set getSimSpecificCarrierIds() { return (meglerProps.get("SimSpecificCarrierIds") != null ? (java.util.Set) meglerProps.get("SimSpecificCarrierIds") : new java.util.HashSet()); }
     public android.os.PersistableBundle toPersistableBundle() { return null; }
     public void validate() {}
     protected VcnCellUnderlyingNetworkTemplate() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.net.vcn.VcnCellUnderlyingNetworkTemplate build() { android.net.vcn.VcnCellUnderlyingNetworkTemplate x = new android.net.vcn.VcnCellUnderlyingNetworkTemplate(); x.megletProps.putAll(megletProps); return x; }
-        public android.net.vcn.VcnCellUnderlyingNetworkTemplate.Builder setCbs(int p0) { megletProps.put("Cbs", Integer.valueOf(p0)); return this; }
-        public android.net.vcn.VcnCellUnderlyingNetworkTemplate.Builder setDun(int p0) { megletProps.put("Dun", Integer.valueOf(p0)); return this; }
-        public android.net.vcn.VcnCellUnderlyingNetworkTemplate.Builder setIms(int p0) { megletProps.put("Ims", Integer.valueOf(p0)); return this; }
-        public android.net.vcn.VcnCellUnderlyingNetworkTemplate.Builder setInternet(int p0) { megletProps.put("Internet", Integer.valueOf(p0)); return this; }
-        public android.net.vcn.VcnCellUnderlyingNetworkTemplate.Builder setMetered(int p0) { megletProps.put("Metered", Integer.valueOf(p0)); return this; }
+        public android.net.vcn.VcnCellUnderlyingNetworkTemplate build() { android.net.vcn.VcnCellUnderlyingNetworkTemplate x = new android.net.vcn.VcnCellUnderlyingNetworkTemplate(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.net.vcn.VcnCellUnderlyingNetworkTemplate.Builder setCbs(int p0) { meglerProps.put("Cbs", Integer.valueOf(p0)); return this; }
+        public android.net.vcn.VcnCellUnderlyingNetworkTemplate.Builder setDun(int p0) { meglerProps.put("Dun", Integer.valueOf(p0)); return this; }
+        public android.net.vcn.VcnCellUnderlyingNetworkTemplate.Builder setIms(int p0) { meglerProps.put("Ims", Integer.valueOf(p0)); return this; }
+        public android.net.vcn.VcnCellUnderlyingNetworkTemplate.Builder setInternet(int p0) { meglerProps.put("Internet", Integer.valueOf(p0)); return this; }
+        public android.net.vcn.VcnCellUnderlyingNetworkTemplate.Builder setMetered(int p0) { meglerProps.put("Metered", Integer.valueOf(p0)); return this; }
         public android.net.vcn.VcnCellUnderlyingNetworkTemplate.Builder setMinDownstreamBandwidthKbps(int p0, int p1) { return this; }
         public android.net.vcn.VcnCellUnderlyingNetworkTemplate.Builder setMinUpstreamBandwidthKbps(int p0, int p1) { return this; }
-        public android.net.vcn.VcnCellUnderlyingNetworkTemplate.Builder setMms(int p0) { megletProps.put("Mms", Integer.valueOf(p0)); return this; }
-        public android.net.vcn.VcnCellUnderlyingNetworkTemplate.Builder setOperatorPlmnIds(java.util.Set p0) { megletProps.put("OperatorPlmnIds", p0); return this; }
-        public android.net.vcn.VcnCellUnderlyingNetworkTemplate.Builder setOpportunistic(int p0) { megletProps.put("Opportunistic", Integer.valueOf(p0)); return this; }
-        public android.net.vcn.VcnCellUnderlyingNetworkTemplate.Builder setRcs(int p0) { megletProps.put("Rcs", Integer.valueOf(p0)); return this; }
-        public android.net.vcn.VcnCellUnderlyingNetworkTemplate.Builder setRoaming(int p0) { megletProps.put("Roaming", Integer.valueOf(p0)); return this; }
-        public android.net.vcn.VcnCellUnderlyingNetworkTemplate.Builder setSimSpecificCarrierIds(java.util.Set p0) { megletProps.put("SimSpecificCarrierIds", p0); return this; }
+        public android.net.vcn.VcnCellUnderlyingNetworkTemplate.Builder setMms(int p0) { meglerProps.put("Mms", Integer.valueOf(p0)); return this; }
+        public android.net.vcn.VcnCellUnderlyingNetworkTemplate.Builder setOperatorPlmnIds(java.util.Set p0) { meglerProps.put("OperatorPlmnIds", p0); return this; }
+        public android.net.vcn.VcnCellUnderlyingNetworkTemplate.Builder setOpportunistic(int p0) { meglerProps.put("Opportunistic", Integer.valueOf(p0)); return this; }
+        public android.net.vcn.VcnCellUnderlyingNetworkTemplate.Builder setRcs(int p0) { meglerProps.put("Rcs", Integer.valueOf(p0)); return this; }
+        public android.net.vcn.VcnCellUnderlyingNetworkTemplate.Builder setRoaming(int p0) { meglerProps.put("Roaming", Integer.valueOf(p0)); return this; }
+        public android.net.vcn.VcnCellUnderlyingNetworkTemplate.Builder setSimSpecificCarrierIds(java.util.Set p0) { meglerProps.put("SimSpecificCarrierIds", p0); return this; }
     }
 }

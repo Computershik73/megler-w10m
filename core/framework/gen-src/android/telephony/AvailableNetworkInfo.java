@@ -3,27 +3,27 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AvailableNetworkInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int PRIORITY_HIGH = 1;
     public static final int PRIORITY_LOW = 3;
     public static final int PRIORITY_MED = 2;
     public AvailableNetworkInfo(int p0, int p1, java.util.List p2, java.util.List p3) {}
     public int describeContents() { return 0; }
-    public java.util.List getBands() { return (megletProps.get("Bands") != null ? (java.util.List) megletProps.get("Bands") : new java.util.ArrayList()); }
-    public java.util.List getMccMncs() { return (megletProps.get("MccMncs") != null ? (java.util.List) megletProps.get("MccMncs") : new java.util.ArrayList()); }
-    public int getPriority() { return (megletProps.get("Priority") instanceof Integer ? (Integer) megletProps.get("Priority") : 0); }
-    public java.util.List getRadioAccessSpecifiers() { return (megletProps.get("RadioAccessSpecifiers") != null ? (java.util.List) megletProps.get("RadioAccessSpecifiers") : new java.util.ArrayList()); }
-    public int getSubId() { return (megletProps.get("SubId") instanceof Integer ? (Integer) megletProps.get("SubId") : 0); }
+    public java.util.List getBands() { return (meglerProps.get("Bands") != null ? (java.util.List) meglerProps.get("Bands") : new java.util.ArrayList()); }
+    public java.util.List getMccMncs() { return (meglerProps.get("MccMncs") != null ? (java.util.List) meglerProps.get("MccMncs") : new java.util.ArrayList()); }
+    public int getPriority() { return (meglerProps.get("Priority") instanceof Integer ? (Integer) meglerProps.get("Priority") : 0); }
+    public java.util.List getRadioAccessSpecifiers() { return (meglerProps.get("RadioAccessSpecifiers") != null ? (java.util.List) meglerProps.get("RadioAccessSpecifiers") : new java.util.ArrayList()); }
+    public int getSubId() { return (meglerProps.get("SubId") instanceof Integer ? (Integer) meglerProps.get("SubId") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     AvailableNetworkInfo() { this((int) 0, (int) 0, (java.util.List) null, (java.util.List) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(int p0) {}
-        public android.telephony.AvailableNetworkInfo build() { android.telephony.AvailableNetworkInfo x = new android.telephony.AvailableNetworkInfo(); x.megletProps.putAll(megletProps); return x; }
-        public android.telephony.AvailableNetworkInfo.Builder setMccMncs(java.util.List p0) { megletProps.put("MccMncs", p0); return this; }
-        public android.telephony.AvailableNetworkInfo.Builder setPriority(int p0) { megletProps.put("Priority", Integer.valueOf(p0)); return this; }
-        public android.telephony.AvailableNetworkInfo.Builder setRadioAccessSpecifiers(java.util.List p0) { megletProps.put("RadioAccessSpecifiers", p0); return this; }
+        public android.telephony.AvailableNetworkInfo build() { android.telephony.AvailableNetworkInfo x = new android.telephony.AvailableNetworkInfo(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.telephony.AvailableNetworkInfo.Builder setMccMncs(java.util.List p0) { meglerProps.put("MccMncs", p0); return this; }
+        public android.telephony.AvailableNetworkInfo.Builder setPriority(int p0) { meglerProps.put("Priority", Integer.valueOf(p0)); return this; }
+        public android.telephony.AvailableNetworkInfo.Builder setRadioAccessSpecifiers(java.util.List p0) { meglerProps.put("RadioAccessSpecifiers", p0); return this; }
         Builder() { this((int) 0); }
     }
 }

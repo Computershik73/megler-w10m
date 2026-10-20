@@ -3,16 +3,16 @@ package android.hardware.camera2.params;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ExtensionSessionConfiguration {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ExtensionSessionConfiguration(int p0, java.util.List p1, java.util.concurrent.Executor p2, android.hardware.camera2.CameraExtensionSession.StateCallback p3) {}
     public void clearColorSpace() {}
-    public android.graphics.ColorSpace getColorSpace() { return (android.graphics.ColorSpace) megletProps.get("ColorSpace"); }
-    public java.util.concurrent.Executor getExecutor() { return (java.util.concurrent.Executor) megletProps.get("Executor"); }
-    public int getExtension() { return (megletProps.get("Extension") instanceof Integer ? (Integer) megletProps.get("Extension") : 0); }
-    public java.util.List getOutputConfigurations() { return (megletProps.get("OutputConfigurations") != null ? (java.util.List) megletProps.get("OutputConfigurations") : new java.util.ArrayList()); }
-    public android.hardware.camera2.params.OutputConfiguration getPostviewOutputConfiguration() { return (android.hardware.camera2.params.OutputConfiguration) megletProps.get("PostviewOutputConfiguration"); }
-    public android.hardware.camera2.CameraExtensionSession.StateCallback getStateCallback() { return (android.hardware.camera2.CameraExtensionSession.StateCallback) megletProps.get("StateCallback"); }
-    public void setColorSpace(android.graphics.ColorSpace.Named p0) { megletProps.put("ColorSpace", p0); }
-    public void setPostviewOutputConfiguration(android.hardware.camera2.params.OutputConfiguration p0) { megletProps.put("PostviewOutputConfiguration", p0); }
+    public android.graphics.ColorSpace getColorSpace() { return (android.graphics.ColorSpace) meglerProps.get("ColorSpace"); }
+    public java.util.concurrent.Executor getExecutor() { return (java.util.concurrent.Executor) meglerProps.get("Executor"); }
+    public int getExtension() { return (meglerProps.get("Extension") instanceof Integer ? (Integer) meglerProps.get("Extension") : 0); }
+    public java.util.List getOutputConfigurations() { return (meglerProps.get("OutputConfigurations") != null ? (java.util.List) meglerProps.get("OutputConfigurations") : new java.util.ArrayList()); }
+    public android.hardware.camera2.params.OutputConfiguration getPostviewOutputConfiguration() { return (android.hardware.camera2.params.OutputConfiguration) meglerProps.get("PostviewOutputConfiguration"); }
+    public android.hardware.camera2.CameraExtensionSession.StateCallback getStateCallback() { return (android.hardware.camera2.CameraExtensionSession.StateCallback) meglerProps.get("StateCallback"); }
+    public void setColorSpace(android.graphics.ColorSpace.Named p0) { meglerProps.put("ColorSpace", p0); }
+    public void setPostviewOutputConfiguration(android.hardware.camera2.params.OutputConfiguration p0) { meglerProps.put("PostviewOutputConfiguration", p0); }
     ExtensionSessionConfiguration() { this((int) 0, (java.util.List) null, (java.util.concurrent.Executor) null, (android.hardware.camera2.CameraExtensionSession.StateCallback) null); }
 }

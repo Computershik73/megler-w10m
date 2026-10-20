@@ -3,13 +3,13 @@ package android.speech;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AlternativeSpan implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public AlternativeSpan(int p0, int p1, java.util.List p2) {}
     public int describeContents() { return 0; }
-    public java.util.List getAlternatives() { return (megletProps.get("Alternatives") != null ? (java.util.List) megletProps.get("Alternatives") : new java.util.ArrayList()); }
-    public int getEndPosition() { return (megletProps.get("EndPosition") instanceof Integer ? (Integer) megletProps.get("EndPosition") : 0); }
-    public int getStartPosition() { return (megletProps.get("StartPosition") instanceof Integer ? (Integer) megletProps.get("StartPosition") : 0); }
+    public java.util.List getAlternatives() { return (meglerProps.get("Alternatives") != null ? (java.util.List) meglerProps.get("Alternatives") : new java.util.ArrayList()); }
+    public int getEndPosition() { return (meglerProps.get("EndPosition") instanceof Integer ? (Integer) meglerProps.get("EndPosition") : 0); }
+    public int getStartPosition() { return (meglerProps.get("StartPosition") instanceof Integer ? (Integer) meglerProps.get("StartPosition") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     AlternativeSpan() { this((int) 0, (int) 0, (java.util.List) null); }
 }

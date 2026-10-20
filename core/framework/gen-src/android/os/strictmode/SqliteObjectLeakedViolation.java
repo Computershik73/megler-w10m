@@ -3,7 +3,7 @@ package android.os.strictmode;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SqliteObjectLeakedViolation extends android.os.strictmode.Violation {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public SqliteObjectLeakedViolation(java.lang.String p0, java.lang.Throwable p1) { super(); }
     SqliteObjectLeakedViolation() { this((java.lang.String) null, (java.lang.Throwable) null); }
 }

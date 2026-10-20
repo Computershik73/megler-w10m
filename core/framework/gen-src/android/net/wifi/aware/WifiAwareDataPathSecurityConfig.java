@@ -3,24 +3,24 @@ package android.net.wifi.aware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class WifiAwareDataPathSecurityConfig implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public WifiAwareDataPathSecurityConfig(int p0, byte[] p1, byte[] p2, java.lang.String p3) {}
     public int describeContents() { return 0; }
-    public int getCipherSuite() { return (megletProps.get("CipherSuite") instanceof Integer ? (Integer) megletProps.get("CipherSuite") : 0); }
-    public byte[] getPmk() { return (byte[]) megletProps.get("Pmk"); }
-    public byte[] getPmkId() { return (byte[]) megletProps.get("PmkId"); }
-    public java.lang.String getPskPassphrase() { return (java.lang.String) megletProps.get("PskPassphrase"); }
-    public boolean isValid() { return (megletProps.get("Valid") instanceof Boolean ? (Boolean) megletProps.get("Valid") : false); }
+    public int getCipherSuite() { return (meglerProps.get("CipherSuite") instanceof Integer ? (Integer) meglerProps.get("CipherSuite") : 0); }
+    public byte[] getPmk() { return (byte[]) meglerProps.get("Pmk"); }
+    public byte[] getPmkId() { return (byte[]) meglerProps.get("PmkId"); }
+    public java.lang.String getPskPassphrase() { return (java.lang.String) meglerProps.get("PskPassphrase"); }
+    public boolean isValid() { return (meglerProps.get("Valid") instanceof Boolean ? (Boolean) meglerProps.get("Valid") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     WifiAwareDataPathSecurityConfig() { this((int) 0, (byte[]) null, (byte[]) null, (java.lang.String) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(int p0) {}
-        public android.net.wifi.aware.WifiAwareDataPathSecurityConfig build() { android.net.wifi.aware.WifiAwareDataPathSecurityConfig x = new android.net.wifi.aware.WifiAwareDataPathSecurityConfig(); x.megletProps.putAll(megletProps); return x; }
-        public android.net.wifi.aware.WifiAwareDataPathSecurityConfig.Builder setPmk(byte[] p0) { megletProps.put("Pmk", p0); return this; }
-        public android.net.wifi.aware.WifiAwareDataPathSecurityConfig.Builder setPmkId(byte[] p0) { megletProps.put("PmkId", p0); return this; }
-        public android.net.wifi.aware.WifiAwareDataPathSecurityConfig.Builder setPskPassphrase(java.lang.String p0) { megletProps.put("PskPassphrase", p0); return this; }
+        public android.net.wifi.aware.WifiAwareDataPathSecurityConfig build() { android.net.wifi.aware.WifiAwareDataPathSecurityConfig x = new android.net.wifi.aware.WifiAwareDataPathSecurityConfig(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.net.wifi.aware.WifiAwareDataPathSecurityConfig.Builder setPmk(byte[] p0) { meglerProps.put("Pmk", p0); return this; }
+        public android.net.wifi.aware.WifiAwareDataPathSecurityConfig.Builder setPmkId(byte[] p0) { meglerProps.put("PmkId", p0); return this; }
+        public android.net.wifi.aware.WifiAwareDataPathSecurityConfig.Builder setPskPassphrase(java.lang.String p0) { meglerProps.put("PskPassphrase", p0); return this; }
         Builder() { this((int) 0); }
     }
 }

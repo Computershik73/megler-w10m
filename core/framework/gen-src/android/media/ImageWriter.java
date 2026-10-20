@@ -3,32 +3,32 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ImageWriter implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.media.ImageWriter newInstance(android.view.Surface p0, int p1) { return new ImageWriter(); }
     public static android.media.ImageWriter newInstance(android.view.Surface p0, int p1, int p2) { return new ImageWriter(); }
     public static android.media.ImageWriter newInstance(android.view.Surface p0, int p1, int p2, int p3, int p4) { return new ImageWriter(); }
     public void close() {}
     public android.media.Image dequeueInputImage() { return null; }
     protected void finalize() {}
-    public int getDataSpace() { return (megletProps.get("DataSpace") instanceof Integer ? (Integer) megletProps.get("DataSpace") : 0); }
-    public int getFormat() { return (megletProps.get("Format") instanceof Integer ? (Integer) megletProps.get("Format") : 0); }
-    public int getHardwareBufferFormat() { return (megletProps.get("HardwareBufferFormat") instanceof Integer ? (Integer) megletProps.get("HardwareBufferFormat") : 0); }
-    public int getHeight() { return (megletProps.get("Height") instanceof Integer ? (Integer) megletProps.get("Height") : 0); }
-    public int getMaxImages() { return (megletProps.get("MaxImages") instanceof Integer ? (Integer) megletProps.get("MaxImages") : 0); }
-    public long getUsage() { return (megletProps.get("Usage") instanceof Long ? (Long) megletProps.get("Usage") : 0L); }
-    public int getWidth() { return (megletProps.get("Width") instanceof Integer ? (Integer) megletProps.get("Width") : 0); }
+    public int getDataSpace() { return (meglerProps.get("DataSpace") instanceof Integer ? (Integer) meglerProps.get("DataSpace") : 0); }
+    public int getFormat() { return (meglerProps.get("Format") instanceof Integer ? (Integer) meglerProps.get("Format") : 0); }
+    public int getHardwareBufferFormat() { return (meglerProps.get("HardwareBufferFormat") instanceof Integer ? (Integer) meglerProps.get("HardwareBufferFormat") : 0); }
+    public int getHeight() { return (meglerProps.get("Height") instanceof Integer ? (Integer) meglerProps.get("Height") : 0); }
+    public int getMaxImages() { return (meglerProps.get("MaxImages") instanceof Integer ? (Integer) meglerProps.get("MaxImages") : 0); }
+    public long getUsage() { return (meglerProps.get("Usage") instanceof Long ? (Long) meglerProps.get("Usage") : 0L); }
+    public int getWidth() { return (meglerProps.get("Width") instanceof Integer ? (Integer) meglerProps.get("Width") : 0); }
     public void queueInputImage(android.media.Image p0) {}
     public void setOnImageReleasedListener(android.media.ImageWriter.OnImageReleasedListener p0, android.os.Handler p1) {}
     protected ImageWriter() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.view.Surface p0) {}
-        public android.media.ImageWriter build() { android.media.ImageWriter x = new android.media.ImageWriter(); x.megletProps.putAll(megletProps); return x; }
-        public android.media.ImageWriter.Builder setDataSpace(int p0) { megletProps.put("DataSpace", Integer.valueOf(p0)); return this; }
-        public android.media.ImageWriter.Builder setHardwareBufferFormat(int p0) { megletProps.put("HardwareBufferFormat", Integer.valueOf(p0)); return this; }
-        public android.media.ImageWriter.Builder setImageFormat(int p0) { megletProps.put("ImageFormat", Integer.valueOf(p0)); return this; }
-        public android.media.ImageWriter.Builder setMaxImages(int p0) { megletProps.put("MaxImages", Integer.valueOf(p0)); return this; }
-        public android.media.ImageWriter.Builder setUsage(long p0) { megletProps.put("Usage", Long.valueOf(p0)); return this; }
+        public android.media.ImageWriter build() { android.media.ImageWriter x = new android.media.ImageWriter(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.media.ImageWriter.Builder setDataSpace(int p0) { meglerProps.put("DataSpace", Integer.valueOf(p0)); return this; }
+        public android.media.ImageWriter.Builder setHardwareBufferFormat(int p0) { meglerProps.put("HardwareBufferFormat", Integer.valueOf(p0)); return this; }
+        public android.media.ImageWriter.Builder setImageFormat(int p0) { meglerProps.put("ImageFormat", Integer.valueOf(p0)); return this; }
+        public android.media.ImageWriter.Builder setMaxImages(int p0) { meglerProps.put("MaxImages", Integer.valueOf(p0)); return this; }
+        public android.media.ImageWriter.Builder setUsage(long p0) { meglerProps.put("Usage", Long.valueOf(p0)); return this; }
         public android.media.ImageWriter.Builder setWidthAndHeight(int p0, int p1) { return this; }
         Builder() { this((android.view.Surface) null); }
     }

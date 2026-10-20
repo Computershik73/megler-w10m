@@ -3,7 +3,7 @@ package android.view.translation;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TranslationCapability implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int STATE_AVAILABLE_TO_DOWNLOAD = 1;
     public static final int STATE_DOWNLOADING = 2;
@@ -13,11 +13,11 @@ public final class TranslationCapability implements android.os.Parcelable {
     public TranslationCapability(int p0, android.view.translation.TranslationSpec p1, android.view.translation.TranslationSpec p2, boolean p3, int p4) {}
     public static java.lang.String modelStateToString(int p0) { return null; }
     public int describeContents() { return 0; }
-    public android.view.translation.TranslationSpec getSourceSpec() { return (android.view.translation.TranslationSpec) megletProps.get("SourceSpec"); }
-    public int getState() { return (megletProps.get("State") instanceof Integer ? (Integer) megletProps.get("State") : 0); }
-    public int getSupportedTranslationFlags() { return (megletProps.get("SupportedTranslationFlags") instanceof Integer ? (Integer) megletProps.get("SupportedTranslationFlags") : 0); }
-    public android.view.translation.TranslationSpec getTargetSpec() { return (android.view.translation.TranslationSpec) megletProps.get("TargetSpec"); }
-    public boolean isUiTranslationEnabled() { return (megletProps.get("UiTranslationEnabled") instanceof Boolean ? (Boolean) megletProps.get("UiTranslationEnabled") : false); }
+    public android.view.translation.TranslationSpec getSourceSpec() { return (android.view.translation.TranslationSpec) meglerProps.get("SourceSpec"); }
+    public int getState() { return (meglerProps.get("State") instanceof Integer ? (Integer) meglerProps.get("State") : 0); }
+    public int getSupportedTranslationFlags() { return (meglerProps.get("SupportedTranslationFlags") instanceof Integer ? (Integer) meglerProps.get("SupportedTranslationFlags") : 0); }
+    public android.view.translation.TranslationSpec getTargetSpec() { return (android.view.translation.TranslationSpec) meglerProps.get("TargetSpec"); }
+    public boolean isUiTranslationEnabled() { return (meglerProps.get("UiTranslationEnabled") instanceof Boolean ? (Boolean) meglerProps.get("UiTranslationEnabled") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     TranslationCapability() { this((int) 0, (android.view.translation.TranslationSpec) null, (android.view.translation.TranslationSpec) null, (boolean) false, (int) 0); }
 }

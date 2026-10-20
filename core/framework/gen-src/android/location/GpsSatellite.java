@@ -3,11 +3,11 @@ package android.location;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GpsSatellite {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public float getAzimuth() { return (megletProps.get("Azimuth") instanceof Float ? (Float) megletProps.get("Azimuth") : 0f); }
-    public float getElevation() { return (megletProps.get("Elevation") instanceof Float ? (Float) megletProps.get("Elevation") : 0f); }
-    public int getPrn() { return (megletProps.get("Prn") instanceof Integer ? (Integer) megletProps.get("Prn") : 0); }
-    public float getSnr() { return (megletProps.get("Snr") instanceof Float ? (Float) megletProps.get("Snr") : 0f); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public float getAzimuth() { return (meglerProps.get("Azimuth") instanceof Float ? (Float) meglerProps.get("Azimuth") : 0f); }
+    public float getElevation() { return (meglerProps.get("Elevation") instanceof Float ? (Float) meglerProps.get("Elevation") : 0f); }
+    public int getPrn() { return (meglerProps.get("Prn") instanceof Integer ? (Integer) meglerProps.get("Prn") : 0); }
+    public float getSnr() { return (meglerProps.get("Snr") instanceof Float ? (Float) meglerProps.get("Snr") : 0f); }
     public boolean hasAlmanac() { return false; }
     public boolean hasEphemeris() { return false; }
     public boolean usedInFix() { return false; }

@@ -3,7 +3,7 @@ package android.content;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class RestrictionEntry implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int TYPE_BOOLEAN = 1;
     public static final int TYPE_BUNDLE = 7;
@@ -23,29 +23,29 @@ public class RestrictionEntry implements android.os.Parcelable {
     public static android.content.RestrictionEntry createBundleArrayEntry(java.lang.String p0, android.content.RestrictionEntry[] p1) { return new RestrictionEntry(); }
     public static android.content.RestrictionEntry createBundleEntry(java.lang.String p0, android.content.RestrictionEntry[] p1) { return new RestrictionEntry(); }
     public int describeContents() { return 0; }
-    public java.lang.String[] getAllSelectedStrings() { return (java.lang.String[]) megletProps.get("AllSelectedStrings"); }
-    public java.lang.String[] getChoiceEntries() { return (java.lang.String[]) megletProps.get("ChoiceEntries"); }
-    public java.lang.String[] getChoiceValues() { return (java.lang.String[]) megletProps.get("ChoiceValues"); }
-    public java.lang.String getDescription() { return (java.lang.String) megletProps.get("Description"); }
-    public int getIntValue() { return (megletProps.get("IntValue") instanceof Integer ? (Integer) megletProps.get("IntValue") : 0); }
-    public java.lang.String getKey() { return (java.lang.String) megletProps.get("Key"); }
-    public android.content.RestrictionEntry[] getRestrictions() { return (android.content.RestrictionEntry[]) megletProps.get("Restrictions"); }
-    public boolean getSelectedState() { return (megletProps.get("SelectedState") instanceof Boolean ? (Boolean) megletProps.get("SelectedState") : false); }
-    public java.lang.String getSelectedString() { return (java.lang.String) megletProps.get("SelectedString"); }
-    public java.lang.String getTitle() { return (java.lang.String) megletProps.get("Title"); }
-    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
-    public void setAllSelectedStrings(java.lang.String[] p0) { megletProps.put("AllSelectedStrings", p0); }
+    public java.lang.String[] getAllSelectedStrings() { return (java.lang.String[]) meglerProps.get("AllSelectedStrings"); }
+    public java.lang.String[] getChoiceEntries() { return (java.lang.String[]) meglerProps.get("ChoiceEntries"); }
+    public java.lang.String[] getChoiceValues() { return (java.lang.String[]) meglerProps.get("ChoiceValues"); }
+    public java.lang.String getDescription() { return (java.lang.String) meglerProps.get("Description"); }
+    public int getIntValue() { return (meglerProps.get("IntValue") instanceof Integer ? (Integer) meglerProps.get("IntValue") : 0); }
+    public java.lang.String getKey() { return (java.lang.String) meglerProps.get("Key"); }
+    public android.content.RestrictionEntry[] getRestrictions() { return (android.content.RestrictionEntry[]) meglerProps.get("Restrictions"); }
+    public boolean getSelectedState() { return (meglerProps.get("SelectedState") instanceof Boolean ? (Boolean) meglerProps.get("SelectedState") : false); }
+    public java.lang.String getSelectedString() { return (java.lang.String) meglerProps.get("SelectedString"); }
+    public java.lang.String getTitle() { return (java.lang.String) meglerProps.get("Title"); }
+    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
+    public void setAllSelectedStrings(java.lang.String[] p0) { meglerProps.put("AllSelectedStrings", p0); }
     public void setChoiceEntries(android.content.Context p0, int p1) {}
-    public void setChoiceEntries(java.lang.String[] p0) { megletProps.put("ChoiceEntries", p0); }
+    public void setChoiceEntries(java.lang.String[] p0) { meglerProps.put("ChoiceEntries", p0); }
     public void setChoiceValues(android.content.Context p0, int p1) {}
-    public void setChoiceValues(java.lang.String[] p0) { megletProps.put("ChoiceValues", p0); }
-    public void setDescription(java.lang.String p0) { megletProps.put("Description", p0); }
-    public void setIntValue(int p0) { megletProps.put("IntValue", Integer.valueOf(p0)); }
-    public void setRestrictions(android.content.RestrictionEntry[] p0) { megletProps.put("Restrictions", p0); }
-    public void setSelectedState(boolean p0) { megletProps.put("SelectedState", Boolean.valueOf(p0)); }
-    public void setSelectedString(java.lang.String p0) { megletProps.put("SelectedString", p0); }
-    public void setTitle(java.lang.String p0) { megletProps.put("Title", p0); }
-    public void setType(int p0) { megletProps.put("Type", Integer.valueOf(p0)); }
+    public void setChoiceValues(java.lang.String[] p0) { meglerProps.put("ChoiceValues", p0); }
+    public void setDescription(java.lang.String p0) { meglerProps.put("Description", p0); }
+    public void setIntValue(int p0) { meglerProps.put("IntValue", Integer.valueOf(p0)); }
+    public void setRestrictions(android.content.RestrictionEntry[] p0) { meglerProps.put("Restrictions", p0); }
+    public void setSelectedState(boolean p0) { meglerProps.put("SelectedState", Boolean.valueOf(p0)); }
+    public void setSelectedString(java.lang.String p0) { meglerProps.put("SelectedString", p0); }
+    public void setTitle(java.lang.String p0) { meglerProps.put("Title", p0); }
+    public void setType(int p0) { meglerProps.put("Type", Integer.valueOf(p0)); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     RestrictionEntry() { this((android.os.Parcel) null); }
 }

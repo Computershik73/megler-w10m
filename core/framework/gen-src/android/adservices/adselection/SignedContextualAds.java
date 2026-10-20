@@ -3,23 +3,23 @@ package android.adservices.adselection;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SignedContextualAds implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public java.util.List getAdsWithBid() { return (megletProps.get("AdsWithBid") != null ? (java.util.List) megletProps.get("AdsWithBid") : new java.util.ArrayList()); }
-    public android.adservices.common.AdTechIdentifier getBuyer() { return (android.adservices.common.AdTechIdentifier) megletProps.get("Buyer"); }
-    public android.net.Uri getDecisionLogicUri() { return (android.net.Uri) megletProps.get("DecisionLogicUri"); }
-    public byte[] getSignature() { return (byte[]) megletProps.get("Signature"); }
+    public java.util.List getAdsWithBid() { return (meglerProps.get("AdsWithBid") != null ? (java.util.List) meglerProps.get("AdsWithBid") : new java.util.ArrayList()); }
+    public android.adservices.common.AdTechIdentifier getBuyer() { return (android.adservices.common.AdTechIdentifier) meglerProps.get("Buyer"); }
+    public android.net.Uri getDecisionLogicUri() { return (android.net.Uri) meglerProps.get("DecisionLogicUri"); }
+    public byte[] getSignature() { return (byte[]) meglerProps.get("Signature"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected SignedContextualAds() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.adservices.adselection.SignedContextualAds p0) {}
-        public android.adservices.adselection.SignedContextualAds build() { android.adservices.adselection.SignedContextualAds x = new android.adservices.adselection.SignedContextualAds(); x.megletProps.putAll(megletProps); return x; }
-        public android.adservices.adselection.SignedContextualAds.Builder setAdsWithBid(java.util.List p0) { megletProps.put("AdsWithBid", p0); return this; }
-        public android.adservices.adselection.SignedContextualAds.Builder setBuyer(android.adservices.common.AdTechIdentifier p0) { megletProps.put("Buyer", p0); return this; }
-        public android.adservices.adselection.SignedContextualAds.Builder setDecisionLogicUri(android.net.Uri p0) { megletProps.put("DecisionLogicUri", p0); return this; }
-        public android.adservices.adselection.SignedContextualAds.Builder setSignature(byte[] p0) { megletProps.put("Signature", p0); return this; }
+        public android.adservices.adselection.SignedContextualAds build() { android.adservices.adselection.SignedContextualAds x = new android.adservices.adselection.SignedContextualAds(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.adservices.adselection.SignedContextualAds.Builder setAdsWithBid(java.util.List p0) { meglerProps.put("AdsWithBid", p0); return this; }
+        public android.adservices.adselection.SignedContextualAds.Builder setBuyer(android.adservices.common.AdTechIdentifier p0) { meglerProps.put("Buyer", p0); return this; }
+        public android.adservices.adselection.SignedContextualAds.Builder setDecisionLogicUri(android.net.Uri p0) { meglerProps.put("DecisionLogicUri", p0); return this; }
+        public android.adservices.adselection.SignedContextualAds.Builder setSignature(byte[] p0) { meglerProps.put("Signature", p0); return this; }
     }
 }

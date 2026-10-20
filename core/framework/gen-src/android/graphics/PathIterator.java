@@ -3,7 +3,7 @@ package android.graphics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class PathIterator implements java.util.Iterator {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int VERB_CLOSE = 5;
     public static final int VERB_CONIC = 3;
     public static final int VERB_CUBIC = 4;
@@ -17,10 +17,10 @@ public class PathIterator implements java.util.Iterator {
     public int peek() { return 0; }
     protected PathIterator() {}
     public static class Segment {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public float getConicWeight() { return (megletProps.get("ConicWeight") instanceof Float ? (Float) megletProps.get("ConicWeight") : 0f); }
-        public float[] getPoints() { return (float[]) megletProps.get("Points"); }
-        public int getVerb() { return (megletProps.get("Verb") instanceof Integer ? (Integer) megletProps.get("Verb") : 0); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public float getConicWeight() { return (meglerProps.get("ConicWeight") instanceof Float ? (Float) meglerProps.get("ConicWeight") : 0f); }
+        public float[] getPoints() { return (float[]) meglerProps.get("Points"); }
+        public int getVerb() { return (meglerProps.get("Verb") instanceof Integer ? (Integer) meglerProps.get("Verb") : 0); }
         protected Segment() {}
     }
 }

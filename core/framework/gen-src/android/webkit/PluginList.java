@@ -3,11 +3,11 @@ package android.webkit;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class PluginList {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public PluginList() {}
     public void addPlugin(android.webkit.Plugin p0) {}
     public void clear() {}
-    public java.util.List getList() { return (megletProps.get("List") != null ? (java.util.List) megletProps.get("List") : new java.util.ArrayList()); }
+    public java.util.List getList() { return (meglerProps.get("List") != null ? (java.util.List) meglerProps.get("List") : new java.util.ArrayList()); }
     public void pluginClicked(android.content.Context p0, int p1) {}
     public void removePlugin(android.webkit.Plugin p0) {}
 }

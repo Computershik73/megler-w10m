@@ -3,7 +3,7 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ApplicationErrorReport implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int TYPE_ANR = 2;
     public static final int TYPE_BATTERY = 3;
@@ -27,7 +27,7 @@ public class ApplicationErrorReport implements android.os.Parcelable {
     public void readFromParcel(android.os.Parcel p0) {}
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public static class AnrInfo {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public java.lang.String activity;
         public java.lang.String cause;
         public java.lang.String info;
@@ -37,7 +37,7 @@ public class ApplicationErrorReport implements android.os.Parcelable {
         public void writeToParcel(android.os.Parcel p0, int p1) {}
     }
     public static class BatteryInfo {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public java.lang.String checkinDetails;
         public long durationMicros;
         public java.lang.String usageDetails;
@@ -48,7 +48,7 @@ public class ApplicationErrorReport implements android.os.Parcelable {
         public void writeToParcel(android.os.Parcel p0, int p1) {}
     }
     public static class CrashInfo {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public java.lang.String crashTag;
         public java.lang.String exceptionClassName;
         public java.lang.String exceptionHandlerClassName;
@@ -66,7 +66,7 @@ public class ApplicationErrorReport implements android.os.Parcelable {
         public void writeToParcel(android.os.Parcel p0, int p1) {}
     }
     public static class ParcelableCrashInfo extends android.app.ApplicationErrorReport.CrashInfo implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public ParcelableCrashInfo() { super(); }
         public ParcelableCrashInfo(android.os.Parcel p0) { super(p0); }
@@ -74,7 +74,7 @@ public class ApplicationErrorReport implements android.os.Parcelable {
         public int describeContents() { return 0; }
     }
     public static class RunningServiceInfo {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public long durationMillis;
         public java.lang.String serviceDetails;
         public RunningServiceInfo() {}

@@ -1,4 +1,4 @@
-    // Meglet: members added to the original's android.view.View (tools/build-framework.sh, "X.java.members").
+    // Megler: members added to the original's android.view.View (tools/build-framework.sh, "X.java.members").
     // Three public methods of Android's View that the original does not have. An app that calls one got a
     // NoSuchMethodError, which nothing catches: Device Info ended on getDrawingTime() the moment its second tab was touched
     // (a chart's animation asks it), and all three of the apps tried name cancelLongPress().

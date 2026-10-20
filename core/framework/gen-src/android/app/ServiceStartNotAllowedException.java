@@ -3,8 +3,8 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class ServiceStartNotAllowedException extends java.lang.IllegalStateException {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.app.ServiceStartNotAllowedException newInstance(boolean p0, java.lang.String p1) { return null; }
-    public java.lang.Throwable getCause() { return (java.lang.Throwable) megletProps.get("Cause"); }
+    public java.lang.Throwable getCause() { return (java.lang.Throwable) meglerProps.get("Cause"); }
     protected ServiceStartNotAllowedException() { super(); }
 }

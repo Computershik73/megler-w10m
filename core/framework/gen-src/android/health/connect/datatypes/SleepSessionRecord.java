@@ -3,39 +3,39 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SleepSessionRecord extends android.health.connect.datatypes.IntervalRecord {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.health.connect.datatypes.AggregationType SLEEP_DURATION_TOTAL;
-    public java.lang.CharSequence getNotes() { return (java.lang.CharSequence) megletProps.get("Notes"); }
-    public java.util.List getStages() { return (megletProps.get("Stages") != null ? (java.util.List) megletProps.get("Stages") : new java.util.ArrayList()); }
-    public java.lang.CharSequence getTitle() { return (java.lang.CharSequence) megletProps.get("Title"); }
+    public java.lang.CharSequence getNotes() { return (java.lang.CharSequence) meglerProps.get("Notes"); }
+    public java.util.List getStages() { return (meglerProps.get("Stages") != null ? (java.util.List) meglerProps.get("Stages") : new java.util.ArrayList()); }
+    public java.lang.CharSequence getTitle() { return (java.lang.CharSequence) meglerProps.get("Title"); }
     public android.health.connect.internal.datatypes.SleepSessionRecordInternal toRecordInternal() { return null; }
     protected SleepSessionRecord() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.health.connect.datatypes.Metadata p0, java.time.Instant p1, java.time.Instant p2) {}
-        public android.health.connect.datatypes.SleepSessionRecord build() { android.health.connect.datatypes.SleepSessionRecord x = new android.health.connect.datatypes.SleepSessionRecord(); x.megletProps.putAll(megletProps); return x; }
+        public android.health.connect.datatypes.SleepSessionRecord build() { android.health.connect.datatypes.SleepSessionRecord x = new android.health.connect.datatypes.SleepSessionRecord(); x.meglerProps.putAll(meglerProps); return x; }
         public android.health.connect.datatypes.SleepSessionRecord buildWithoutValidation() { return null; }
         public android.health.connect.datatypes.SleepSessionRecord.Builder clearEndZoneOffset() { return this; }
         public android.health.connect.datatypes.SleepSessionRecord.Builder clearStartZoneOffset() { return this; }
-        public android.health.connect.datatypes.SleepSessionRecord.Builder setEndZoneOffset(java.time.ZoneOffset p0) { megletProps.put("EndZoneOffset", p0); return this; }
-        public android.health.connect.datatypes.SleepSessionRecord.Builder setNotes(java.lang.CharSequence p0) { megletProps.put("Notes", p0); return this; }
-        public android.health.connect.datatypes.SleepSessionRecord.Builder setStages(java.util.List p0) { megletProps.put("Stages", p0); return this; }
-        public android.health.connect.datatypes.SleepSessionRecord.Builder setStartZoneOffset(java.time.ZoneOffset p0) { megletProps.put("StartZoneOffset", p0); return this; }
-        public android.health.connect.datatypes.SleepSessionRecord.Builder setTitle(java.lang.CharSequence p0) { megletProps.put("Title", p0); return this; }
+        public android.health.connect.datatypes.SleepSessionRecord.Builder setEndZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("EndZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.SleepSessionRecord.Builder setNotes(java.lang.CharSequence p0) { meglerProps.put("Notes", p0); return this; }
+        public android.health.connect.datatypes.SleepSessionRecord.Builder setStages(java.util.List p0) { meglerProps.put("Stages", p0); return this; }
+        public android.health.connect.datatypes.SleepSessionRecord.Builder setStartZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("StartZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.SleepSessionRecord.Builder setTitle(java.lang.CharSequence p0) { meglerProps.put("Title", p0); return this; }
         Builder() { this((android.health.connect.datatypes.Metadata) null, (java.time.Instant) null, (java.time.Instant) null); }
     }
     public static class Stage implements android.health.connect.datatypes.TimeInterval.TimeIntervalHolder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Stage(java.time.Instant p0, java.time.Instant p1, int p2) {}
-        public java.time.Instant getEndTime() { return (java.time.Instant) megletProps.get("EndTime"); }
-        public android.health.connect.datatypes.TimeInterval getInterval() { return (android.health.connect.datatypes.TimeInterval) megletProps.get("Interval"); }
-        public java.time.Instant getStartTime() { return (java.time.Instant) megletProps.get("StartTime"); }
-        public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
+        public java.time.Instant getEndTime() { return (java.time.Instant) meglerProps.get("EndTime"); }
+        public android.health.connect.datatypes.TimeInterval getInterval() { return (android.health.connect.datatypes.TimeInterval) meglerProps.get("Interval"); }
+        public java.time.Instant getStartTime() { return (java.time.Instant) meglerProps.get("StartTime"); }
+        public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
         public android.health.connect.internal.datatypes.SleepStageInternal toInternalStage() { return null; }
         Stage() { this((java.time.Instant) null, (java.time.Instant) null, (int) 0); }
     }
     public static final class StageType {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static java.util.List DURATION_EXCLUDE_TYPES;
         public static final int STAGE_TYPE_AWAKE = 1;
         public static final int STAGE_TYPE_AWAKE_IN_BED = 7;

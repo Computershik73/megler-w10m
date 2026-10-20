@@ -2,7 +2,7 @@ package android.webkit;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class ServiceWorkerWebSettings {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ServiceWorkerWebSettings() {}
     public abstract boolean getAllowContentAccess();
     public abstract boolean getAllowFileAccess();
@@ -12,7 +12,7 @@ public abstract class ServiceWorkerWebSettings {
     public abstract void setAllowFileAccess(boolean p0);
     public abstract void setBlockNetworkLoads(boolean p0);
     public abstract void setCacheMode(int p0);
-    static final class Meglet extends ServiceWorkerWebSettings {
+    static final class Megler extends ServiceWorkerWebSettings {
         public boolean getAllowContentAccess() { return false; }
         public boolean getAllowFileAccess() { return false; }
         public boolean getBlockNetworkLoads() { return false; }

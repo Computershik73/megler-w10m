@@ -10,7 +10,7 @@ static int access_fn(void *user, bool ask)
 {
     (void)user;
     (void)ask;
-    return MEGLET_LOCATION_ON;
+    return MEGLER_LOCATION_ON;
 }
 
 static bool start_fn(void *user, int interval_ms)
@@ -27,7 +27,7 @@ static void stop_fn(void *user)
     mg_atomic_add(&g_stops, 1);
 }
 
-static bool last_fn(void *user, meglet_location *fix)
+static bool last_fn(void *user, megler_location *fix)
 {
     long long now_ms = (long long)(mg_time_realtime_ns() / 1000000ull);
     (void)user;
@@ -37,16 +37,16 @@ static bool last_fn(void *user, meglet_location *fix)
     fix->accuracy_m = 12.0f;
     fix->speed_mps = 1.5f;
     fix->bearing_deg = 0.0f;
-    fix->has = MEGLET_LOCATION_HAS_ALTITUDE | MEGLET_LOCATION_HAS_SPEED | MEGLET_LOCATION_HAS_BEARING;
+    fix->has = MEGLER_LOCATION_HAS_ALTITUDE | MEGLER_LOCATION_HAS_SPEED | MEGLER_LOCATION_HAS_BEARING;
     /* A new fix each second, as a phone's satellites give one. */
     fix->time_ms = now_ms / 1000 * 1000;
-    fix->source = MEGLET_LOCATION_SATELLITES;
+    fix->source = MEGLER_LOCATION_SATELLITES;
     return true;
 }
 
-static const meglet_location_host k_host = { NULL, access_fn, start_fn, stop_fn, last_fn };
+static const megler_location_host k_host = { NULL, access_fn, start_fn, stop_fn, last_fn };
 
-const meglet_location_host *mg_location_standin(void) { return &k_host; }
+const megler_location_host *mg_location_standin(void) { return &k_host; }
 
 void mg_location_standin_counts(int *starts, int *stops)
 {

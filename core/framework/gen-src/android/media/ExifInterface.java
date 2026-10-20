@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ExifInterface {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int ORIENTATION_FLIP_HORIZONTAL = 2;
     public static final int ORIENTATION_FLIP_VERTICAL = 4;
     public static final int ORIENTATION_NORMAL = 1;
@@ -173,18 +173,18 @@ public class ExifInterface {
     public double getAttributeDouble(java.lang.String p0, double p1) { return 0d; }
     public int getAttributeInt(java.lang.String p0, int p1) { return 0; }
     public long[] getAttributeRange(java.lang.String p0) { return null; }
-    public long getDateTime() { return (megletProps.get("DateTime") instanceof Long ? (Long) megletProps.get("DateTime") : 0L); }
-    public long getDateTimeDigitized() { return (megletProps.get("DateTimeDigitized") instanceof Long ? (Long) megletProps.get("DateTimeDigitized") : 0L); }
-    public long getDateTimeOriginal() { return (megletProps.get("DateTimeOriginal") instanceof Long ? (Long) megletProps.get("DateTimeOriginal") : 0L); }
-    public long getGpsDateTime() { return (megletProps.get("GpsDateTime") instanceof Long ? (Long) megletProps.get("GpsDateTime") : 0L); }
+    public long getDateTime() { return (meglerProps.get("DateTime") instanceof Long ? (Long) meglerProps.get("DateTime") : 0L); }
+    public long getDateTimeDigitized() { return (meglerProps.get("DateTimeDigitized") instanceof Long ? (Long) meglerProps.get("DateTimeDigitized") : 0L); }
+    public long getDateTimeOriginal() { return (meglerProps.get("DateTimeOriginal") instanceof Long ? (Long) meglerProps.get("DateTimeOriginal") : 0L); }
+    public long getGpsDateTime() { return (meglerProps.get("GpsDateTime") instanceof Long ? (Long) meglerProps.get("GpsDateTime") : 0L); }
     public boolean getLatLong(float[] p0) { return false; }
-    public byte[] getThumbnail() { return (byte[]) megletProps.get("Thumbnail"); }
-    public android.graphics.Bitmap getThumbnailBitmap() { return (android.graphics.Bitmap) megletProps.get("ThumbnailBitmap"); }
-    public byte[] getThumbnailBytes() { return (byte[]) megletProps.get("ThumbnailBytes"); }
-    public long[] getThumbnailRange() { return (long[]) megletProps.get("ThumbnailRange"); }
+    public byte[] getThumbnail() { return (byte[]) meglerProps.get("Thumbnail"); }
+    public android.graphics.Bitmap getThumbnailBitmap() { return (android.graphics.Bitmap) meglerProps.get("ThumbnailBitmap"); }
+    public byte[] getThumbnailBytes() { return (byte[]) meglerProps.get("ThumbnailBytes"); }
+    public long[] getThumbnailRange() { return (long[]) meglerProps.get("ThumbnailRange"); }
     public boolean hasAttribute(java.lang.String p0) { return false; }
     public boolean hasThumbnail() { return false; }
-    public boolean isThumbnailCompressed() { return (megletProps.get("ThumbnailCompressed") instanceof Boolean ? (Boolean) megletProps.get("ThumbnailCompressed") : false); }
+    public boolean isThumbnailCompressed() { return (meglerProps.get("ThumbnailCompressed") instanceof Boolean ? (Boolean) meglerProps.get("ThumbnailCompressed") : false); }
     public void saveAttributes() {}
     public void setAttribute(java.lang.String p0, java.lang.String p1) {}
     ExifInterface() { this((java.io.File) null); }

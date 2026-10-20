@@ -3,17 +3,17 @@ package android.gesture;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class GestureStore {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int ORIENTATION_INVARIANT = 1;
     public static final int ORIENTATION_SENSITIVE = 2;
     public static final int SEQUENCE_INVARIANT = 1;
     public static final int SEQUENCE_SENSITIVE = 2;
     public GestureStore() {}
     public void addGesture(java.lang.String p0, android.gesture.Gesture p1) {}
-    public java.util.Set getGestureEntries() { return (megletProps.get("GestureEntries") != null ? (java.util.Set) megletProps.get("GestureEntries") : new java.util.HashSet()); }
+    public java.util.Set getGestureEntries() { return (meglerProps.get("GestureEntries") != null ? (java.util.Set) meglerProps.get("GestureEntries") : new java.util.HashSet()); }
     public java.util.ArrayList getGestures(java.lang.String p0) { return new java.util.ArrayList(); }
-    public int getOrientationStyle() { return (megletProps.get("OrientationStyle") instanceof Integer ? (Integer) megletProps.get("OrientationStyle") : 0); }
-    public int getSequenceType() { return (megletProps.get("SequenceType") instanceof Integer ? (Integer) megletProps.get("SequenceType") : 0); }
+    public int getOrientationStyle() { return (meglerProps.get("OrientationStyle") instanceof Integer ? (Integer) meglerProps.get("OrientationStyle") : 0); }
+    public int getSequenceType() { return (meglerProps.get("SequenceType") instanceof Integer ? (Integer) meglerProps.get("SequenceType") : 0); }
     public boolean hasChanged() { return false; }
     public void load(java.io.InputStream p0) {}
     public void load(java.io.InputStream p0, boolean p1) {}
@@ -22,6 +22,6 @@ public class GestureStore {
     public void removeGesture(java.lang.String p0, android.gesture.Gesture p1) {}
     public void save(java.io.OutputStream p0) {}
     public void save(java.io.OutputStream p0, boolean p1) {}
-    public void setOrientationStyle(int p0) { megletProps.put("OrientationStyle", Integer.valueOf(p0)); }
-    public void setSequenceType(int p0) { megletProps.put("SequenceType", Integer.valueOf(p0)); }
+    public void setOrientationStyle(int p0) { meglerProps.put("OrientationStyle", Integer.valueOf(p0)); }
+    public void setSequenceType(int p0) { meglerProps.put("SequenceType", Integer.valueOf(p0)); }
 }

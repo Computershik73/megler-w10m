@@ -3,7 +3,7 @@ package android.media.session;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PlaybackState implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final long ACTION_FAST_FORWARD = 64L;
     public static final long ACTION_PAUSE = 2L;
     public static final long ACTION_PLAY = 4L;
@@ -38,31 +38,31 @@ public final class PlaybackState implements android.os.Parcelable {
     public static final int STATE_SKIPPING_TO_QUEUE_ITEM = 11;
     public static final int STATE_STOPPED = 1;
     public int describeContents() { return 0; }
-    public long getActions() { return (megletProps.get("Actions") instanceof Long ? (Long) megletProps.get("Actions") : 0L); }
-    public long getActiveQueueItemId() { return (megletProps.get("ActiveQueueItemId") instanceof Long ? (Long) megletProps.get("ActiveQueueItemId") : 0L); }
-    public long getBufferedPosition() { return (megletProps.get("BufferedPosition") instanceof Long ? (Long) megletProps.get("BufferedPosition") : 0L); }
-    public java.util.List getCustomActions() { return (megletProps.get("CustomActions") != null ? (java.util.List) megletProps.get("CustomActions") : new java.util.ArrayList()); }
-    public java.lang.CharSequence getErrorMessage() { return (java.lang.CharSequence) megletProps.get("ErrorMessage"); }
-    public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
-    public long getLastPositionUpdateTime() { return (megletProps.get("LastPositionUpdateTime") instanceof Long ? (Long) megletProps.get("LastPositionUpdateTime") : 0L); }
-    public float getPlaybackSpeed() { return (megletProps.get("PlaybackSpeed") instanceof Float ? (Float) megletProps.get("PlaybackSpeed") : 0f); }
-    public long getPosition() { return (megletProps.get("Position") instanceof Long ? (Long) megletProps.get("Position") : 0L); }
-    public int getState() { return (megletProps.get("State") instanceof Integer ? (Integer) megletProps.get("State") : 0); }
-    public boolean isActive() { return (megletProps.get("Active") instanceof Boolean ? (Boolean) megletProps.get("Active") : false); }
+    public long getActions() { return (meglerProps.get("Actions") instanceof Long ? (Long) meglerProps.get("Actions") : 0L); }
+    public long getActiveQueueItemId() { return (meglerProps.get("ActiveQueueItemId") instanceof Long ? (Long) meglerProps.get("ActiveQueueItemId") : 0L); }
+    public long getBufferedPosition() { return (meglerProps.get("BufferedPosition") instanceof Long ? (Long) meglerProps.get("BufferedPosition") : 0L); }
+    public java.util.List getCustomActions() { return (meglerProps.get("CustomActions") != null ? (java.util.List) meglerProps.get("CustomActions") : new java.util.ArrayList()); }
+    public java.lang.CharSequence getErrorMessage() { return (java.lang.CharSequence) meglerProps.get("ErrorMessage"); }
+    public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
+    public long getLastPositionUpdateTime() { return (meglerProps.get("LastPositionUpdateTime") instanceof Long ? (Long) meglerProps.get("LastPositionUpdateTime") : 0L); }
+    public float getPlaybackSpeed() { return (meglerProps.get("PlaybackSpeed") instanceof Float ? (Float) meglerProps.get("PlaybackSpeed") : 0f); }
+    public long getPosition() { return (meglerProps.get("Position") instanceof Long ? (Long) meglerProps.get("Position") : 0L); }
+    public int getState() { return (meglerProps.get("State") instanceof Integer ? (Integer) meglerProps.get("State") : 0); }
+    public boolean isActive() { return (meglerProps.get("Active") instanceof Boolean ? (Boolean) meglerProps.get("Active") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected PlaybackState() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.media.session.PlaybackState p0) {}
         public android.media.session.PlaybackState.Builder addCustomAction(android.media.session.PlaybackState.CustomAction p0) { return this; }
         public android.media.session.PlaybackState.Builder addCustomAction(java.lang.String p0, java.lang.String p1, int p2) { return this; }
-        public android.media.session.PlaybackState build() { android.media.session.PlaybackState x = new android.media.session.PlaybackState(); x.megletProps.putAll(megletProps); return x; }
-        public android.media.session.PlaybackState.Builder setActions(long p0) { megletProps.put("Actions", Long.valueOf(p0)); return this; }
-        public android.media.session.PlaybackState.Builder setActiveQueueItemId(long p0) { megletProps.put("ActiveQueueItemId", Long.valueOf(p0)); return this; }
-        public android.media.session.PlaybackState.Builder setBufferedPosition(long p0) { megletProps.put("BufferedPosition", Long.valueOf(p0)); return this; }
-        public android.media.session.PlaybackState.Builder setErrorMessage(java.lang.CharSequence p0) { megletProps.put("ErrorMessage", p0); return this; }
-        public android.media.session.PlaybackState.Builder setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); return this; }
+        public android.media.session.PlaybackState build() { android.media.session.PlaybackState x = new android.media.session.PlaybackState(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.media.session.PlaybackState.Builder setActions(long p0) { meglerProps.put("Actions", Long.valueOf(p0)); return this; }
+        public android.media.session.PlaybackState.Builder setActiveQueueItemId(long p0) { meglerProps.put("ActiveQueueItemId", Long.valueOf(p0)); return this; }
+        public android.media.session.PlaybackState.Builder setBufferedPosition(long p0) { meglerProps.put("BufferedPosition", Long.valueOf(p0)); return this; }
+        public android.media.session.PlaybackState.Builder setErrorMessage(java.lang.CharSequence p0) { meglerProps.put("ErrorMessage", p0); return this; }
+        public android.media.session.PlaybackState.Builder setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); return this; }
         public android.media.session.PlaybackState.Builder setState(int p0, long p1, float p2) { return this; }
         public android.media.session.PlaybackState.Builder setState(int p0, long p1, float p2, long p3) { return this; }
     }

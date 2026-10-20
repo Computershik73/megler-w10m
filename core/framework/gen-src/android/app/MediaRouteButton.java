@@ -3,14 +3,14 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MediaRouteButton extends android.view.View {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public MediaRouteButton(android.content.Context p0) { super(p0); }
     public MediaRouteButton(android.content.Context p0, android.util.AttributeSet p1) { super(p0, p1); }
     public MediaRouteButton(android.content.Context p0, android.util.AttributeSet p1, int p2) { super(p0, p1, p2); }
     public MediaRouteButton(android.content.Context p0, android.util.AttributeSet p1, int p2, int p3) { super(p0, p1, p2, p3); }
-    public int getRouteTypes() { return (megletProps.get("RouteTypes") instanceof Integer ? (Integer) megletProps.get("RouteTypes") : 0); }
-    public void setExtendedSettingsClickListener(android.view.View.OnClickListener p0) { megletProps.put("ExtendedSettingsClickListener", p0); }
-    public void setRouteTypes(int p0) { megletProps.put("RouteTypes", Integer.valueOf(p0)); }
+    public int getRouteTypes() { return (meglerProps.get("RouteTypes") instanceof Integer ? (Integer) meglerProps.get("RouteTypes") : 0); }
+    public void setExtendedSettingsClickListener(android.view.View.OnClickListener p0) { meglerProps.put("ExtendedSettingsClickListener", p0); }
+    public void setRouteTypes(int p0) { meglerProps.put("RouteTypes", Integer.valueOf(p0)); }
     public void showDialog() {}
     MediaRouteButton() { this((android.content.Context) null); }
 }

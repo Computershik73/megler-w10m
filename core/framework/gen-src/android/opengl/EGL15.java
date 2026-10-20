@@ -3,7 +3,7 @@ package android.opengl;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class EGL15 {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int EGL_CL_EVENT_HANDLE = 12444;
     public static final int EGL_CONDITION_SATISFIED = 12534;
     public static final int EGL_CONTEXT_MAJOR_VERSION = 12440;

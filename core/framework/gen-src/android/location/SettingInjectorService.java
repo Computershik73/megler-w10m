@@ -3,7 +3,7 @@ package android.location;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class SettingInjectorService extends android.app.Service {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_INJECTED_SETTING_CHANGED = "android.location.InjectedSettingChanged";
     public static final java.lang.String ACTION_SERVICE_INTENT = "android.location.SettingInjectorService";
     public static final java.lang.String ATTRIBUTES_NAME = "injected-location-setting";

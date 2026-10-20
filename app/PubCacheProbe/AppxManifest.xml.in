@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   The publisher cache folder probe (App.cpp), as package @NAME@: tools/build-pubcache-probe.sh fills in the name, the
-  phone product id and the display name. Both packages have Meglet's publisher, and both declare the folder "shared".
+  phone product id and the display name. Both packages have Megler's publisher, and both declare the folder "shared".
 -->
 <Package
     xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"

@@ -3,10 +3,10 @@ package android.adservices.adid;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AdId {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ZERO_OUT = "00000000-0000-0000-0000-000000000000";
     public AdId(java.lang.String p0, boolean p1) {}
-    public java.lang.String getAdId() { return (java.lang.String) megletProps.get("AdId"); }
-    public boolean isLimitAdTrackingEnabled() { return (megletProps.get("LimitAdTrackingEnabled") instanceof Boolean ? (Boolean) megletProps.get("LimitAdTrackingEnabled") : false); }
+    public java.lang.String getAdId() { return (java.lang.String) meglerProps.get("AdId"); }
+    public boolean isLimitAdTrackingEnabled() { return (meglerProps.get("LimitAdTrackingEnabled") instanceof Boolean ? (Boolean) meglerProps.get("LimitAdTrackingEnabled") : false); }
     AdId() { this((java.lang.String) null, (boolean) false); }
 }

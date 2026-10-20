@@ -3,7 +3,7 @@ package android.widget;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ZoomButton extends android.widget.ImageButton implements android.view.View.OnLongClickListener {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ZoomButton(android.content.Context p0) { super(p0); }
     public ZoomButton(android.content.Context p0, android.util.AttributeSet p1) { super(p0, p1); }
     public ZoomButton(android.content.Context p0, android.util.AttributeSet p1, int p2) { super(p0, p1, p2); }
@@ -12,7 +12,7 @@ public class ZoomButton extends android.widget.ImageButton implements android.vi
     public boolean onKeyUp(int p0, android.view.KeyEvent p1) { return false; }
     public boolean onLongClick(android.view.View p0) { return false; }
     public boolean onTouchEvent(android.view.MotionEvent p0) { return false; }
-    public void setEnabled(boolean p0) { megletProps.put("Enabled", Boolean.valueOf(p0)); }
-    public void setZoomSpeed(long p0) { megletProps.put("ZoomSpeed", Long.valueOf(p0)); }
+    public void setEnabled(boolean p0) { meglerProps.put("Enabled", Boolean.valueOf(p0)); }
+    public void setZoomSpeed(long p0) { meglerProps.put("ZoomSpeed", Long.valueOf(p0)); }
     ZoomButton() { this((android.content.Context) null); }
 }

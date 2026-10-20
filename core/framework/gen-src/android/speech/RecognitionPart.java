@@ -3,7 +3,7 @@ package android.speech;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class RecognitionPart implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int CONFIDENCE_LEVEL_HIGH = 5;
     public static final int CONFIDENCE_LEVEL_LOW = 1;
     public static final int CONFIDENCE_LEVEL_MEDIUM = 3;
@@ -13,25 +13,25 @@ public final class RecognitionPart implements android.os.Parcelable {
     public static android.os.Parcelable.Creator CREATOR;
     public static java.lang.String confidenceLevelToString(int p0) { return null; }
     public int describeContents() { return 0; }
-    public int getConfidenceLevel() { return (megletProps.get("ConfidenceLevel") instanceof Integer ? (Integer) megletProps.get("ConfidenceLevel") : 0); }
-    public java.lang.String getFormattedText() { return (java.lang.String) megletProps.get("FormattedText"); }
-    public java.lang.String getRawText() { return (java.lang.String) megletProps.get("RawText"); }
-    public long getTimestampMillis() { return (megletProps.get("TimestampMillis") instanceof Long ? (Long) megletProps.get("TimestampMillis") : 0L); }
+    public int getConfidenceLevel() { return (meglerProps.get("ConfidenceLevel") instanceof Integer ? (Integer) meglerProps.get("ConfidenceLevel") : 0); }
+    public java.lang.String getFormattedText() { return (java.lang.String) meglerProps.get("FormattedText"); }
+    public java.lang.String getRawText() { return (java.lang.String) meglerProps.get("RawText"); }
+    public long getTimestampMillis() { return (meglerProps.get("TimestampMillis") instanceof Long ? (Long) meglerProps.get("TimestampMillis") : 0L); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected RecognitionPart() {}
     public static abstract class BaseBuilder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public android.speech.RecognitionPart.Builder setFormattedText(java.lang.String p0) { return null; }
         protected BaseBuilder() {}
     }
     public static final class Builder extends android.speech.RecognitionPart.BaseBuilder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(java.lang.String p0) { super(); }
-        public android.speech.RecognitionPart build() { android.speech.RecognitionPart x = new android.speech.RecognitionPart(); x.megletProps.putAll(megletProps); return x; }
-        public android.speech.RecognitionPart.Builder setConfidenceLevel(int p0) { megletProps.put("ConfidenceLevel", Integer.valueOf(p0)); return this; }
-        public android.speech.RecognitionPart.Builder setFormattedText(java.lang.String p0) { megletProps.put("FormattedText", p0); return this; }
-        public android.speech.RecognitionPart.Builder setRawText(java.lang.String p0) { megletProps.put("RawText", p0); return this; }
-        public android.speech.RecognitionPart.Builder setTimestampMillis(long p0) { megletProps.put("TimestampMillis", Long.valueOf(p0)); return this; }
+        public android.speech.RecognitionPart build() { android.speech.RecognitionPart x = new android.speech.RecognitionPart(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.speech.RecognitionPart.Builder setConfidenceLevel(int p0) { meglerProps.put("ConfidenceLevel", Integer.valueOf(p0)); return this; }
+        public android.speech.RecognitionPart.Builder setFormattedText(java.lang.String p0) { meglerProps.put("FormattedText", p0); return this; }
+        public android.speech.RecognitionPart.Builder setRawText(java.lang.String p0) { meglerProps.put("RawText", p0); return this; }
+        public android.speech.RecognitionPart.Builder setTimestampMillis(long p0) { meglerProps.put("TimestampMillis", Long.valueOf(p0)); return this; }
         Builder() { this((java.lang.String) null); }
     }
 }

@@ -3,7 +3,7 @@ package android.animation;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class IntArrayEvaluator implements android.animation.TypeEvaluator {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public IntArrayEvaluator() {}
     public IntArrayEvaluator(int[] p0) {}
     public java.lang.Object evaluate(float p0, java.lang.Object p1, java.lang.Object p2) { return null; }

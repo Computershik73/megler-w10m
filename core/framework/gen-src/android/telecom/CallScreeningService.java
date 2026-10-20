@@ -3,7 +3,7 @@ package android.telecom;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class CallScreeningService extends android.app.Service {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String SERVICE_INTERFACE = "android.telecom.CallScreeningService";
     public CallScreeningService() { super(); }
     public android.os.IBinder onBind(android.content.Intent p0) { return null; }
@@ -13,11 +13,11 @@ public abstract class CallScreeningService extends android.app.Service {
         protected CallResponse() {}
     }
     public static class ParcelableCallResponse implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         protected ParcelableCallResponse(android.os.Parcel p0) {}
         public int describeContents() { return 0; }
-        public int getCallComposerAttachmentsToShow() { return (megletProps.get("CallComposerAttachmentsToShow") instanceof Integer ? (Integer) megletProps.get("CallComposerAttachmentsToShow") : 0); }
+        public int getCallComposerAttachmentsToShow() { return (meglerProps.get("CallComposerAttachmentsToShow") instanceof Integer ? (Integer) meglerProps.get("CallComposerAttachmentsToShow") : 0); }
         public boolean shouldDisallowCall() { return false; }
         public boolean shouldRejectCall() { return false; }
         public boolean shouldScreenCallViaAudioProcessing() { return false; }

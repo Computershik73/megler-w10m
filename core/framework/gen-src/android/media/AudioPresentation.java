@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AudioPresentation implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int CONTENT_COMMENTARY = 5;
     public static final int CONTENT_DIALOG = 4;
     public static final int CONTENT_EMERGENCY = 6;
@@ -22,26 +22,26 @@ public final class AudioPresentation implements android.os.Parcelable {
     public static final int PRESENTATION_ID_UNKNOWN = -1;
     public static final int PROGRAM_ID_UNKNOWN = -1;
     public int describeContents() { return 0; }
-    public java.util.Map getLabels() { return (megletProps.get("Labels") != null ? (java.util.Map) megletProps.get("Labels") : new java.util.HashMap()); }
-    public java.util.Locale getLocale() { return (java.util.Locale) megletProps.get("Locale"); }
-    public int getMasteringIndication() { return (megletProps.get("MasteringIndication") instanceof Integer ? (Integer) megletProps.get("MasteringIndication") : 0); }
-    public int getPresentationId() { return (megletProps.get("PresentationId") instanceof Integer ? (Integer) megletProps.get("PresentationId") : 0); }
-    public int getProgramId() { return (megletProps.get("ProgramId") instanceof Integer ? (Integer) megletProps.get("ProgramId") : 0); }
+    public java.util.Map getLabels() { return (meglerProps.get("Labels") != null ? (java.util.Map) meglerProps.get("Labels") : new java.util.HashMap()); }
+    public java.util.Locale getLocale() { return (java.util.Locale) meglerProps.get("Locale"); }
+    public int getMasteringIndication() { return (meglerProps.get("MasteringIndication") instanceof Integer ? (Integer) meglerProps.get("MasteringIndication") : 0); }
+    public int getPresentationId() { return (meglerProps.get("PresentationId") instanceof Integer ? (Integer) meglerProps.get("PresentationId") : 0); }
+    public int getProgramId() { return (meglerProps.get("ProgramId") instanceof Integer ? (Integer) meglerProps.get("ProgramId") : 0); }
     public boolean hasAudioDescription() { return false; }
     public boolean hasDialogueEnhancement() { return false; }
     public boolean hasSpokenSubtitles() { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected AudioPresentation() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(int p0) {}
-        public android.media.AudioPresentation build() { android.media.AudioPresentation x = new android.media.AudioPresentation(); x.megletProps.putAll(megletProps); return x; }
-        public android.media.AudioPresentation.Builder setHasAudioDescription(boolean p0) { megletProps.put("HasAudioDescription", Boolean.valueOf(p0)); return this; }
-        public android.media.AudioPresentation.Builder setHasDialogueEnhancement(boolean p0) { megletProps.put("HasDialogueEnhancement", Boolean.valueOf(p0)); return this; }
-        public android.media.AudioPresentation.Builder setHasSpokenSubtitles(boolean p0) { megletProps.put("HasSpokenSubtitles", Boolean.valueOf(p0)); return this; }
-        public android.media.AudioPresentation.Builder setLabels(java.util.Map p0) { megletProps.put("Labels", p0); return this; }
-        public android.media.AudioPresentation.Builder setMasteringIndication(int p0) { megletProps.put("MasteringIndication", Integer.valueOf(p0)); return this; }
-        public android.media.AudioPresentation.Builder setProgramId(int p0) { megletProps.put("ProgramId", Integer.valueOf(p0)); return this; }
+        public android.media.AudioPresentation build() { android.media.AudioPresentation x = new android.media.AudioPresentation(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.media.AudioPresentation.Builder setHasAudioDescription(boolean p0) { meglerProps.put("HasAudioDescription", Boolean.valueOf(p0)); return this; }
+        public android.media.AudioPresentation.Builder setHasDialogueEnhancement(boolean p0) { meglerProps.put("HasDialogueEnhancement", Boolean.valueOf(p0)); return this; }
+        public android.media.AudioPresentation.Builder setHasSpokenSubtitles(boolean p0) { meglerProps.put("HasSpokenSubtitles", Boolean.valueOf(p0)); return this; }
+        public android.media.AudioPresentation.Builder setLabels(java.util.Map p0) { meglerProps.put("Labels", p0); return this; }
+        public android.media.AudioPresentation.Builder setMasteringIndication(int p0) { meglerProps.put("MasteringIndication", Integer.valueOf(p0)); return this; }
+        public android.media.AudioPresentation.Builder setProgramId(int p0) { meglerProps.put("ProgramId", Integer.valueOf(p0)); return this; }
         Builder() { this((int) 0); }
     }
 }

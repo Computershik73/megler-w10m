@@ -3,12 +3,12 @@ package android.graphics.pdf.models;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ListItem implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public ListItem(java.lang.String p0, boolean p1) {}
     public int describeContents() { return 0; }
-    public java.lang.String getLabel() { return (java.lang.String) megletProps.get("Label"); }
-    public boolean isSelected() { return (megletProps.get("Selected") instanceof Boolean ? (Boolean) megletProps.get("Selected") : false); }
+    public java.lang.String getLabel() { return (java.lang.String) meglerProps.get("Label"); }
+    public boolean isSelected() { return (meglerProps.get("Selected") instanceof Boolean ? (Boolean) meglerProps.get("Selected") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     ListItem() { this((java.lang.String) null, (boolean) false); }
 }

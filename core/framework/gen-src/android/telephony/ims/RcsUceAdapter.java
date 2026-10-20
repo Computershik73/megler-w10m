@@ -3,7 +3,7 @@ package android.telephony.ims;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class RcsUceAdapter {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int CAPABILITY_TYPE_OPTIONS_UCE = 1;
     public static final int CAPABILITY_TYPE_PRESENCE_UCE = 2;
     public static final int CAPABILITY_UPDATE_TRIGGER_ETAG_EXPIRED = 1;
@@ -39,12 +39,12 @@ public class RcsUceAdapter {
     public static final int PUBLISH_STATE_REQUEST_TIMEOUT = 5;
     public static final int PUBLISH_STATE_VOICE_PROVISION_ERROR = 3;
     public void addOnPublishStateChangedListener(java.util.concurrent.Executor p0, android.telephony.ims.RcsUceAdapter.OnPublishStateChangedListener p1) {}
-    public int getUcePublishState() { return (megletProps.get("UcePublishState") instanceof Integer ? (Integer) megletProps.get("UcePublishState") : 0); }
-    public boolean isUceSettingEnabled() { return (megletProps.get("UceSettingEnabled") instanceof Boolean ? (Boolean) megletProps.get("UceSettingEnabled") : false); }
+    public int getUcePublishState() { return (meglerProps.get("UcePublishState") instanceof Integer ? (Integer) meglerProps.get("UcePublishState") : 0); }
+    public boolean isUceSettingEnabled() { return (meglerProps.get("UceSettingEnabled") instanceof Boolean ? (Boolean) meglerProps.get("UceSettingEnabled") : false); }
     public void removeOnPublishStateChangedListener(android.telephony.ims.RcsUceAdapter.OnPublishStateChangedListener p0) {}
     public void requestAvailability(android.net.Uri p0, java.util.concurrent.Executor p1, android.telephony.ims.RcsUceAdapter.CapabilitiesCallback p2) {}
     public void requestCapabilities(java.util.Collection p0, java.util.concurrent.Executor p1, android.telephony.ims.RcsUceAdapter.CapabilitiesCallback p2) {}
-    public void setUceSettingEnabled(boolean p0) { megletProps.put("UceSettingEnabled", Boolean.valueOf(p0)); }
+    public void setUceSettingEnabled(boolean p0) { meglerProps.put("UceSettingEnabled", Boolean.valueOf(p0)); }
     protected RcsUceAdapter() {}
     public interface CapabilitiesCallback {
         void onCapabilitiesReceived(java.util.List p0);
@@ -58,9 +58,9 @@ public class RcsUceAdapter {
         default void onPublishStateChange(android.telephony.ims.PublishAttributes p0) {}
     }
     public static class PublishStateCallbackAdapter {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public PublishStateCallbackAdapter(java.util.concurrent.Executor p0, android.telephony.ims.RcsUceAdapter.OnPublishStateChangedListener p1) {}
-        public android.telephony.ims.aidl.IRcsUcePublishStateCallback getBinder() { return (android.telephony.ims.aidl.IRcsUcePublishStateCallback) megletProps.get("Binder"); }
+        public android.telephony.ims.aidl.IRcsUcePublishStateCallback getBinder() { return (android.telephony.ims.aidl.IRcsUcePublishStateCallback) meglerProps.get("Binder"); }
         PublishStateCallbackAdapter() { this((java.util.concurrent.Executor) null, (android.telephony.ims.RcsUceAdapter.OnPublishStateChangedListener) null); }
     }
 }

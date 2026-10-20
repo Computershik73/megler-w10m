@@ -3,7 +3,7 @@ package android.telephony.ims;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ImsRegistrationAttributes implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int ATTR_EPDG_OVER_CELL_INTERNET = 1;
     public static final int ATTR_REGISTRATION_TYPE_EMERGENCY = 2;
     public static final int ATTR_VIRTUAL_FOR_ANONYMOUS_EMERGENCY_CALL = 4;
@@ -13,25 +13,25 @@ public final class ImsRegistrationAttributes implements android.os.Parcelable {
     public ImsRegistrationAttributes(int p0, int p1, int p2, java.util.Set p3, android.telephony.ims.SipDetails p4, java.lang.String p5) {}
     public ImsRegistrationAttributes(android.os.Parcel p0) {}
     public int describeContents() { return 0; }
-    public int getAttributeFlags() { return (megletProps.get("AttributeFlags") instanceof Integer ? (Integer) megletProps.get("AttributeFlags") : 0); }
-    public java.util.Set getFeatureTags() { return (megletProps.get("FeatureTags") != null ? (java.util.Set) megletProps.get("FeatureTags") : new java.util.HashSet()); }
-    public boolean getFlagRegistrationTypeEmergency() { return (megletProps.get("FlagRegistrationTypeEmergency") instanceof Boolean ? (Boolean) megletProps.get("FlagRegistrationTypeEmergency") : false); }
-    public boolean getFlagVirtualRegistrationForEmergencyCall() { return (megletProps.get("FlagVirtualRegistrationForEmergencyCall") instanceof Boolean ? (Boolean) megletProps.get("FlagVirtualRegistrationForEmergencyCall") : false); }
-    public java.lang.String getPcscfAddress() { return (java.lang.String) megletProps.get("PcscfAddress"); }
-    public int getRegistrationTechnology() { return (megletProps.get("RegistrationTechnology") instanceof Integer ? (Integer) megletProps.get("RegistrationTechnology") : 0); }
-    public android.telephony.ims.SipDetails getSipDetails() { return (android.telephony.ims.SipDetails) megletProps.get("SipDetails"); }
-    public int getTransportType() { return (megletProps.get("TransportType") instanceof Integer ? (Integer) megletProps.get("TransportType") : 0); }
+    public int getAttributeFlags() { return (meglerProps.get("AttributeFlags") instanceof Integer ? (Integer) meglerProps.get("AttributeFlags") : 0); }
+    public java.util.Set getFeatureTags() { return (meglerProps.get("FeatureTags") != null ? (java.util.Set) meglerProps.get("FeatureTags") : new java.util.HashSet()); }
+    public boolean getFlagRegistrationTypeEmergency() { return (meglerProps.get("FlagRegistrationTypeEmergency") instanceof Boolean ? (Boolean) meglerProps.get("FlagRegistrationTypeEmergency") : false); }
+    public boolean getFlagVirtualRegistrationForEmergencyCall() { return (meglerProps.get("FlagVirtualRegistrationForEmergencyCall") instanceof Boolean ? (Boolean) meglerProps.get("FlagVirtualRegistrationForEmergencyCall") : false); }
+    public java.lang.String getPcscfAddress() { return (java.lang.String) meglerProps.get("PcscfAddress"); }
+    public int getRegistrationTechnology() { return (meglerProps.get("RegistrationTechnology") instanceof Integer ? (Integer) meglerProps.get("RegistrationTechnology") : 0); }
+    public android.telephony.ims.SipDetails getSipDetails() { return (android.telephony.ims.SipDetails) meglerProps.get("SipDetails"); }
+    public int getTransportType() { return (meglerProps.get("TransportType") instanceof Integer ? (Integer) meglerProps.get("TransportType") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     ImsRegistrationAttributes() { this((android.os.Parcel) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(int p0) {}
-        public android.telephony.ims.ImsRegistrationAttributes build() { android.telephony.ims.ImsRegistrationAttributes x = new android.telephony.ims.ImsRegistrationAttributes(); x.megletProps.putAll(megletProps); return x; }
-        public android.telephony.ims.ImsRegistrationAttributes.Builder setFeatureTags(java.util.Set p0) { megletProps.put("FeatureTags", p0); return this; }
+        public android.telephony.ims.ImsRegistrationAttributes build() { android.telephony.ims.ImsRegistrationAttributes x = new android.telephony.ims.ImsRegistrationAttributes(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.telephony.ims.ImsRegistrationAttributes.Builder setFeatureTags(java.util.Set p0) { meglerProps.put("FeatureTags", p0); return this; }
         public android.telephony.ims.ImsRegistrationAttributes.Builder setFlagRegistrationTypeEmergency() { return this; }
         public android.telephony.ims.ImsRegistrationAttributes.Builder setFlagVirtualRegistrationForEmergencyCall() { return this; }
-        public android.telephony.ims.ImsRegistrationAttributes.Builder setPcscfAddress(java.lang.String p0) { megletProps.put("PcscfAddress", p0); return this; }
-        public android.telephony.ims.ImsRegistrationAttributes.Builder setSipDetails(android.telephony.ims.SipDetails p0) { megletProps.put("SipDetails", p0); return this; }
+        public android.telephony.ims.ImsRegistrationAttributes.Builder setPcscfAddress(java.lang.String p0) { meglerProps.put("PcscfAddress", p0); return this; }
+        public android.telephony.ims.ImsRegistrationAttributes.Builder setSipDetails(android.telephony.ims.SipDetails p0) { meglerProps.put("SipDetails", p0); return this; }
         Builder() { this((int) 0); }
     }
 }

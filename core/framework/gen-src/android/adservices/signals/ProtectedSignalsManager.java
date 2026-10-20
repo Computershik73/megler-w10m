@@ -3,7 +3,7 @@ package android.adservices.signals;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ProtectedSignalsManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String PROTECTED_SIGNALS_SERVICE = "protected_signals_service";
     public ProtectedSignalsManager(android.content.Context p0) {}
     public static android.adservices.signals.ProtectedSignalsManager get(android.content.Context p0) { return new ProtectedSignalsManager(); }

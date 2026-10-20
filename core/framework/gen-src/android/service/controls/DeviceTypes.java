@@ -3,7 +3,7 @@ package android.service.controls;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DeviceTypes {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int TYPE_AC_HEATER = 1;
     public static final int TYPE_AC_UNIT = 2;
     public static final int TYPE_AIR_FRESHENER = 3;

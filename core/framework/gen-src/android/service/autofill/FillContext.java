@@ -3,14 +3,14 @@ package android.service.autofill;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class FillContext implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public FillContext(int p0, android.app.assist.AssistStructure p1, android.view.autofill.AutofillId p2) {}
     public int describeContents() { return 0; }
     public android.app.assist.AssistStructure.ViewNode[] findViewNodesByAutofillIds(android.view.autofill.AutofillId[] p0) { return null; }
-    public android.view.autofill.AutofillId getFocusedId() { return (android.view.autofill.AutofillId) megletProps.get("FocusedId"); }
-    public int getRequestId() { return (megletProps.get("RequestId") instanceof Integer ? (Integer) megletProps.get("RequestId") : 0); }
-    public android.app.assist.AssistStructure getStructure() { return (android.app.assist.AssistStructure) megletProps.get("Structure"); }
+    public android.view.autofill.AutofillId getFocusedId() { return (android.view.autofill.AutofillId) meglerProps.get("FocusedId"); }
+    public int getRequestId() { return (meglerProps.get("RequestId") instanceof Integer ? (Integer) meglerProps.get("RequestId") : 0); }
+    public android.app.assist.AssistStructure getStructure() { return (android.app.assist.AssistStructure) meglerProps.get("Structure"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     FillContext() { this((int) 0, (android.app.assist.AssistStructure) null, (android.view.autofill.AutofillId) null); }
 }

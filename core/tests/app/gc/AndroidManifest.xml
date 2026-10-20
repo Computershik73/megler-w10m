@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The test app for the collector (tools/build-test-app.sh): references, finalizers, threads that allocate at once, and a heap that
      must stay small while far more than it is made. Each step is a line of the log, "name ok" or "name FAILED" and why. -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="meglet.test.gc" android:versionCode="1" android:versionName="1.0">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="megler.test.gc" android:versionCode="1" android:versionName="1.0">
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />
     <application android:label="@string/app_name">
         <activity android:name=".Main" android:label="@string/app_name">

@@ -3,31 +3,31 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ExerciseSegment implements android.health.connect.datatypes.TimeInterval.TimeIntervalHolder {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public java.time.Instant getEndTime() { return (java.time.Instant) megletProps.get("EndTime"); }
-    public android.health.connect.datatypes.TimeInterval getInterval() { return (android.health.connect.datatypes.TimeInterval) megletProps.get("Interval"); }
-    public float getRateOfPerceivedExertion() { return (megletProps.get("RateOfPerceivedExertion") instanceof Float ? (Float) megletProps.get("RateOfPerceivedExertion") : 0f); }
-    public int getRepetitionsCount() { return (megletProps.get("RepetitionsCount") instanceof Integer ? (Integer) megletProps.get("RepetitionsCount") : 0); }
-    public int getSegmentType() { return (megletProps.get("SegmentType") instanceof Integer ? (Integer) megletProps.get("SegmentType") : 0); }
-    public int getSetIndex() { return (megletProps.get("SetIndex") instanceof Integer ? (Integer) megletProps.get("SetIndex") : 0); }
-    public java.time.Instant getStartTime() { return (java.time.Instant) megletProps.get("StartTime"); }
-    public android.health.connect.datatypes.units.Mass getWeight() { return (android.health.connect.datatypes.units.Mass) megletProps.get("Weight"); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public java.time.Instant getEndTime() { return (java.time.Instant) meglerProps.get("EndTime"); }
+    public android.health.connect.datatypes.TimeInterval getInterval() { return (android.health.connect.datatypes.TimeInterval) meglerProps.get("Interval"); }
+    public float getRateOfPerceivedExertion() { return (meglerProps.get("RateOfPerceivedExertion") instanceof Float ? (Float) meglerProps.get("RateOfPerceivedExertion") : 0f); }
+    public int getRepetitionsCount() { return (meglerProps.get("RepetitionsCount") instanceof Integer ? (Integer) meglerProps.get("RepetitionsCount") : 0); }
+    public int getSegmentType() { return (meglerProps.get("SegmentType") instanceof Integer ? (Integer) meglerProps.get("SegmentType") : 0); }
+    public int getSetIndex() { return (meglerProps.get("SetIndex") instanceof Integer ? (Integer) meglerProps.get("SetIndex") : 0); }
+    public java.time.Instant getStartTime() { return (java.time.Instant) meglerProps.get("StartTime"); }
+    public android.health.connect.datatypes.units.Mass getWeight() { return (android.health.connect.datatypes.units.Mass) meglerProps.get("Weight"); }
     public boolean hasRateOfPerceivedExertion() { return false; }
     public boolean hasSetIndex() { return false; }
     public android.health.connect.internal.datatypes.ExerciseSegmentInternal toSegmentInternal() { return null; }
     protected ExerciseSegment() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(java.time.Instant p0, java.time.Instant p1, int p2) {}
-        public android.health.connect.datatypes.ExerciseSegment build() { android.health.connect.datatypes.ExerciseSegment x = new android.health.connect.datatypes.ExerciseSegment(); x.megletProps.putAll(megletProps); return x; }
+        public android.health.connect.datatypes.ExerciseSegment build() { android.health.connect.datatypes.ExerciseSegment x = new android.health.connect.datatypes.ExerciseSegment(); x.meglerProps.putAll(meglerProps); return x; }
         public android.health.connect.datatypes.ExerciseSegment buildWithoutValidation() { return null; }
         public android.health.connect.datatypes.ExerciseSegment.Builder clearRateOfPerceivedExertion() { return this; }
         public android.health.connect.datatypes.ExerciseSegment.Builder clearSetIndex() { return this; }
         public android.health.connect.datatypes.ExerciseSegment.Builder clearWeight() { return this; }
-        public android.health.connect.datatypes.ExerciseSegment.Builder setRateOfPerceivedExertion(float p0) { megletProps.put("RateOfPerceivedExertion", Float.valueOf(p0)); return this; }
-        public android.health.connect.datatypes.ExerciseSegment.Builder setRepetitionsCount(int p0) { megletProps.put("RepetitionsCount", Integer.valueOf(p0)); return this; }
-        public android.health.connect.datatypes.ExerciseSegment.Builder setSetIndex(int p0) { megletProps.put("SetIndex", Integer.valueOf(p0)); return this; }
-        public android.health.connect.datatypes.ExerciseSegment.Builder setWeight(android.health.connect.datatypes.units.Mass p0) { megletProps.put("Weight", p0); return this; }
+        public android.health.connect.datatypes.ExerciseSegment.Builder setRateOfPerceivedExertion(float p0) { meglerProps.put("RateOfPerceivedExertion", Float.valueOf(p0)); return this; }
+        public android.health.connect.datatypes.ExerciseSegment.Builder setRepetitionsCount(int p0) { meglerProps.put("RepetitionsCount", Integer.valueOf(p0)); return this; }
+        public android.health.connect.datatypes.ExerciseSegment.Builder setSetIndex(int p0) { meglerProps.put("SetIndex", Integer.valueOf(p0)); return this; }
+        public android.health.connect.datatypes.ExerciseSegment.Builder setWeight(android.health.connect.datatypes.units.Mass p0) { meglerProps.put("Weight", p0); return this; }
         Builder() { this((java.time.Instant) null, (java.time.Instant) null, (int) 0); }
     }
 }

@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MediaMetadataRetriever implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int METADATA_KEY_ALBUM = 1;
     public static final int METADATA_KEY_ALBUMARTIST = 13;
     public static final int METADATA_KEY_ARTIST = 2;
@@ -55,10 +55,10 @@ public class MediaMetadataRetriever implements java.lang.AutoCloseable {
     public void close() {}
     public java.lang.String extractMetadata(int p0) { return null; }
     protected void finalize() {}
-    public byte[] getEmbeddedPicture() { return (byte[]) megletProps.get("EmbeddedPicture"); }
+    public byte[] getEmbeddedPicture() { return (byte[]) meglerProps.get("EmbeddedPicture"); }
     public android.graphics.Bitmap getFrameAtIndex(int p0) { return null; }
     public android.graphics.Bitmap getFrameAtIndex(int p0, android.media.MediaMetadataRetriever.BitmapParams p1) { return null; }
-    public android.graphics.Bitmap getFrameAtTime() { return (android.graphics.Bitmap) megletProps.get("FrameAtTime"); }
+    public android.graphics.Bitmap getFrameAtTime() { return (android.graphics.Bitmap) meglerProps.get("FrameAtTime"); }
     public android.graphics.Bitmap getFrameAtTime(long p0) { return null; }
     public android.graphics.Bitmap getFrameAtTime(long p0, int p1) { return null; }
     public android.graphics.Bitmap getFrameAtTime(long p0, int p1, android.media.MediaMetadataRetriever.BitmapParams p2) { return null; }
@@ -66,23 +66,23 @@ public class MediaMetadataRetriever implements java.lang.AutoCloseable {
     public java.util.List getFramesAtIndex(int p0, int p1, android.media.MediaMetadataRetriever.BitmapParams p2) { return new java.util.ArrayList(); }
     public android.graphics.Bitmap getImageAtIndex(int p0) { return null; }
     public android.graphics.Bitmap getImageAtIndex(int p0, android.media.MediaMetadataRetriever.BitmapParams p1) { return null; }
-    public android.graphics.Bitmap getPrimaryImage() { return (android.graphics.Bitmap) megletProps.get("PrimaryImage"); }
+    public android.graphics.Bitmap getPrimaryImage() { return (android.graphics.Bitmap) meglerProps.get("PrimaryImage"); }
     public android.graphics.Bitmap getPrimaryImage(android.media.MediaMetadataRetriever.BitmapParams p0) { return null; }
     public android.graphics.Bitmap getScaledFrameAtTime(long p0, int p1, int p2, int p3) { return null; }
     public android.graphics.Bitmap getScaledFrameAtTime(long p0, int p1, int p2, int p3, android.media.MediaMetadataRetriever.BitmapParams p4) { return null; }
     public android.graphics.Bitmap getThumbnailImageAtIndex(int p0, android.media.MediaMetadataRetriever.BitmapParams p1, int p2, int p3) { return null; }
     public void release() {}
     public void setDataSource(android.content.Context p0, android.net.Uri p1) {}
-    public void setDataSource(android.media.MediaDataSource p0) { megletProps.put("DataSource", p0); }
-    public void setDataSource(java.io.FileDescriptor p0) { megletProps.put("DataSource", p0); }
+    public void setDataSource(android.media.MediaDataSource p0) { meglerProps.put("DataSource", p0); }
+    public void setDataSource(java.io.FileDescriptor p0) { meglerProps.put("DataSource", p0); }
     public void setDataSource(java.io.FileDescriptor p0, long p1, long p2) {}
-    public void setDataSource(java.lang.String p0) { megletProps.put("DataSource", p0); }
+    public void setDataSource(java.lang.String p0) { meglerProps.put("DataSource", p0); }
     public void setDataSource(java.lang.String p0, java.util.Map p1) {}
     public static final class BitmapParams {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public BitmapParams() {}
-        public android.graphics.Bitmap.Config getActualConfig() { return (android.graphics.Bitmap.Config) megletProps.get("ActualConfig"); }
-        public android.graphics.Bitmap.Config getPreferredConfig() { return (android.graphics.Bitmap.Config) megletProps.get("PreferredConfig"); }
-        public void setPreferredConfig(android.graphics.Bitmap.Config p0) { megletProps.put("PreferredConfig", p0); }
+        public android.graphics.Bitmap.Config getActualConfig() { return (android.graphics.Bitmap.Config) meglerProps.get("ActualConfig"); }
+        public android.graphics.Bitmap.Config getPreferredConfig() { return (android.graphics.Bitmap.Config) meglerProps.get("PreferredConfig"); }
+        public void setPreferredConfig(android.graphics.Bitmap.Config p0) { meglerProps.put("PreferredConfig", p0); }
     }
 }

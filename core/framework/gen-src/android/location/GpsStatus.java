@@ -3,15 +3,15 @@ package android.location;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GpsStatus {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int GPS_EVENT_FIRST_FIX = 3;
     public static final int GPS_EVENT_SATELLITE_STATUS = 4;
     public static final int GPS_EVENT_STARTED = 1;
     public static final int GPS_EVENT_STOPPED = 2;
     public static android.location.GpsStatus create(android.location.GnssStatus p0, int p1) { return new GpsStatus(); }
-    public int getMaxSatellites() { return (megletProps.get("MaxSatellites") instanceof Integer ? (Integer) megletProps.get("MaxSatellites") : 0); }
-    public java.lang.Iterable getSatellites() { return (megletProps.get("Satellites") != null ? (java.lang.Iterable) megletProps.get("Satellites") : new java.util.ArrayList()); }
-    public int getTimeToFirstFix() { return (megletProps.get("TimeToFirstFix") instanceof Integer ? (Integer) megletProps.get("TimeToFirstFix") : 0); }
+    public int getMaxSatellites() { return (meglerProps.get("MaxSatellites") instanceof Integer ? (Integer) meglerProps.get("MaxSatellites") : 0); }
+    public java.lang.Iterable getSatellites() { return (meglerProps.get("Satellites") != null ? (java.lang.Iterable) meglerProps.get("Satellites") : new java.util.ArrayList()); }
+    public int getTimeToFirstFix() { return (meglerProps.get("TimeToFirstFix") instanceof Integer ? (Integer) meglerProps.get("TimeToFirstFix") : 0); }
     protected GpsStatus() {}
     public interface Listener {
         void onGpsStatusChanged(int p0);

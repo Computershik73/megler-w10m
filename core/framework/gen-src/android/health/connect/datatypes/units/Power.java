@@ -3,10 +3,10 @@ package android.health.connect.datatypes.units;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Power implements java.lang.Comparable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.health.connect.datatypes.units.Power fromWatts(double p0) { return new Power(); }
     public int compareTo(android.health.connect.datatypes.units.Power p0) { return 0; }
     public int compareTo(java.lang.Object p0) { return 0; }
-    public double getInWatts() { return (megletProps.get("InWatts") instanceof Double ? (Double) megletProps.get("InWatts") : 0d); }
+    public double getInWatts() { return (meglerProps.get("InWatts") instanceof Double ? (Double) meglerProps.get("InWatts") : 0d); }
     protected Power() {}
 }

@@ -3,20 +3,20 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class HydrationRecord extends android.health.connect.datatypes.IntervalRecord {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.health.connect.datatypes.AggregationType VOLUME_TOTAL;
-    public android.health.connect.datatypes.units.Volume getVolume() { return (android.health.connect.datatypes.units.Volume) megletProps.get("Volume"); }
+    public android.health.connect.datatypes.units.Volume getVolume() { return (android.health.connect.datatypes.units.Volume) meglerProps.get("Volume"); }
     public android.health.connect.internal.datatypes.HydrationRecordInternal toRecordInternal() { return null; }
     protected HydrationRecord() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.health.connect.datatypes.Metadata p0, java.time.Instant p1, java.time.Instant p2, android.health.connect.datatypes.units.Volume p3) {}
-        public android.health.connect.datatypes.HydrationRecord build() { android.health.connect.datatypes.HydrationRecord x = new android.health.connect.datatypes.HydrationRecord(); x.megletProps.putAll(megletProps); return x; }
+        public android.health.connect.datatypes.HydrationRecord build() { android.health.connect.datatypes.HydrationRecord x = new android.health.connect.datatypes.HydrationRecord(); x.meglerProps.putAll(meglerProps); return x; }
         public android.health.connect.datatypes.HydrationRecord buildWithoutValidation() { return null; }
         public android.health.connect.datatypes.HydrationRecord.Builder clearEndZoneOffset() { return this; }
         public android.health.connect.datatypes.HydrationRecord.Builder clearStartZoneOffset() { return this; }
-        public android.health.connect.datatypes.HydrationRecord.Builder setEndZoneOffset(java.time.ZoneOffset p0) { megletProps.put("EndZoneOffset", p0); return this; }
-        public android.health.connect.datatypes.HydrationRecord.Builder setStartZoneOffset(java.time.ZoneOffset p0) { megletProps.put("StartZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.HydrationRecord.Builder setEndZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("EndZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.HydrationRecord.Builder setStartZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("StartZoneOffset", p0); return this; }
         Builder() { this((android.health.connect.datatypes.Metadata) null, (java.time.Instant) null, (java.time.Instant) null, (android.health.connect.datatypes.units.Volume) null); }
     }
 }

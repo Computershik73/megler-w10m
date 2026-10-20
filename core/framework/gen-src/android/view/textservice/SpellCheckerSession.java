@@ -3,37 +3,37 @@ package android.view.textservice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SpellCheckerSession {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String SERVICE_META_DATA = "android.view.textservice.scs";
     public SpellCheckerSession(android.view.textservice.SpellCheckerInfo p0, android.view.textservice.TextServicesManager p1, android.view.textservice.SpellCheckerSession.SpellCheckerSessionListener p2, java.util.concurrent.Executor p3) {}
     public void cancel() {}
     public void close() {}
     protected void finalize() {}
     public void getSentenceSuggestions(android.view.textservice.TextInfo[] p0, int p1) {}
-    public android.view.textservice.SpellCheckerInfo getSpellChecker() { return (android.view.textservice.SpellCheckerInfo) megletProps.get("SpellChecker"); }
+    public android.view.textservice.SpellCheckerInfo getSpellChecker() { return (android.view.textservice.SpellCheckerInfo) meglerProps.get("SpellChecker"); }
     public void getSuggestions(android.view.textservice.TextInfo p0, int p1) {}
     public void getSuggestions(android.view.textservice.TextInfo[] p0, int p1, boolean p2) {}
-    public boolean isSessionDisconnected() { return (megletProps.get("SessionDisconnected") instanceof Boolean ? (Boolean) megletProps.get("SessionDisconnected") : false); }
+    public boolean isSessionDisconnected() { return (meglerProps.get("SessionDisconnected") instanceof Boolean ? (Boolean) meglerProps.get("SessionDisconnected") : false); }
     SpellCheckerSession() { this((android.view.textservice.SpellCheckerInfo) null, (android.view.textservice.TextServicesManager) null, (android.view.textservice.SpellCheckerSession.SpellCheckerSessionListener) null, (java.util.concurrent.Executor) null); }
     public interface SpellCheckerSessionListener {
         void onGetSentenceSuggestions(android.view.textservice.SentenceSuggestionsInfo[] p0);
         void onGetSuggestions(android.view.textservice.SuggestionsInfo[] p0);
     }
     public static class SpellCheckerSessionParams {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
-        public java.util.Locale getLocale() { return (java.util.Locale) megletProps.get("Locale"); }
-        public int getSupportedAttributes() { return (megletProps.get("SupportedAttributes") instanceof Integer ? (Integer) megletProps.get("SupportedAttributes") : 0); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
+        public java.util.Locale getLocale() { return (java.util.Locale) meglerProps.get("Locale"); }
+        public int getSupportedAttributes() { return (meglerProps.get("SupportedAttributes") instanceof Integer ? (Integer) meglerProps.get("SupportedAttributes") : 0); }
         public boolean shouldReferToSpellCheckerLanguageSettings() { return false; }
         protected SpellCheckerSessionParams() {}
         public static final class Builder {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public Builder() {}
-            public android.view.textservice.SpellCheckerSession.SpellCheckerSessionParams build() { android.view.textservice.SpellCheckerSession.SpellCheckerSessionParams x = new android.view.textservice.SpellCheckerSession.SpellCheckerSessionParams(); x.megletProps.putAll(megletProps); return x; }
-            public android.view.textservice.SpellCheckerSession.SpellCheckerSessionParams.Builder setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); return this; }
-            public android.view.textservice.SpellCheckerSession.SpellCheckerSessionParams.Builder setLocale(java.util.Locale p0) { megletProps.put("Locale", p0); return this; }
-            public android.view.textservice.SpellCheckerSession.SpellCheckerSessionParams.Builder setShouldReferToSpellCheckerLanguageSettings(boolean p0) { megletProps.put("ShouldReferToSpellCheckerLanguageSettings", Boolean.valueOf(p0)); return this; }
-            public android.view.textservice.SpellCheckerSession.SpellCheckerSessionParams.Builder setSupportedAttributes(int p0) { megletProps.put("SupportedAttributes", Integer.valueOf(p0)); return this; }
+            public android.view.textservice.SpellCheckerSession.SpellCheckerSessionParams build() { android.view.textservice.SpellCheckerSession.SpellCheckerSessionParams x = new android.view.textservice.SpellCheckerSession.SpellCheckerSessionParams(); x.meglerProps.putAll(meglerProps); return x; }
+            public android.view.textservice.SpellCheckerSession.SpellCheckerSessionParams.Builder setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); return this; }
+            public android.view.textservice.SpellCheckerSession.SpellCheckerSessionParams.Builder setLocale(java.util.Locale p0) { meglerProps.put("Locale", p0); return this; }
+            public android.view.textservice.SpellCheckerSession.SpellCheckerSessionParams.Builder setShouldReferToSpellCheckerLanguageSettings(boolean p0) { meglerProps.put("ShouldReferToSpellCheckerLanguageSettings", Boolean.valueOf(p0)); return this; }
+            public android.view.textservice.SpellCheckerSession.SpellCheckerSessionParams.Builder setSupportedAttributes(int p0) { meglerProps.put("SupportedAttributes", Integer.valueOf(p0)); return this; }
         }
     }
 }

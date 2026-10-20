@@ -3,7 +3,7 @@ package android.nfc.tech;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class MifareClassic extends android.nfc.tech.BasicTagTechnology {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int BLOCK_SIZE = 16;
     public static byte[] KEY_DEFAULT;
     public static byte[] KEY_MIFARE_APPLICATION_DIRECTORY;
@@ -24,22 +24,22 @@ public abstract class MifareClassic extends android.nfc.tech.BasicTagTechnology 
     public void close() {}
     public void connect() {}
     public void decrement(int p0, int p1) {}
-    public int getBlockCount() { return (megletProps.get("BlockCount") instanceof Integer ? (Integer) megletProps.get("BlockCount") : 0); }
+    public int getBlockCount() { return (meglerProps.get("BlockCount") instanceof Integer ? (Integer) meglerProps.get("BlockCount") : 0); }
     public int getBlockCountInSector(int p0) { return 0; }
-    public int getMaxTransceiveLength() { return (megletProps.get("MaxTransceiveLength") instanceof Integer ? (Integer) megletProps.get("MaxTransceiveLength") : 0); }
-    public int getSectorCount() { return (megletProps.get("SectorCount") instanceof Integer ? (Integer) megletProps.get("SectorCount") : 0); }
-    public int getSize() { return (megletProps.get("Size") instanceof Integer ? (Integer) megletProps.get("Size") : 0); }
-    public android.nfc.Tag getTag() { return (android.nfc.Tag) megletProps.get("Tag"); }
-    public int getTimeout() { return (megletProps.get("Timeout") instanceof Integer ? (Integer) megletProps.get("Timeout") : 0); }
-    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
+    public int getMaxTransceiveLength() { return (meglerProps.get("MaxTransceiveLength") instanceof Integer ? (Integer) meglerProps.get("MaxTransceiveLength") : 0); }
+    public int getSectorCount() { return (meglerProps.get("SectorCount") instanceof Integer ? (Integer) meglerProps.get("SectorCount") : 0); }
+    public int getSize() { return (meglerProps.get("Size") instanceof Integer ? (Integer) meglerProps.get("Size") : 0); }
+    public android.nfc.Tag getTag() { return (android.nfc.Tag) meglerProps.get("Tag"); }
+    public int getTimeout() { return (meglerProps.get("Timeout") instanceof Integer ? (Integer) meglerProps.get("Timeout") : 0); }
+    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
     public void increment(int p0, int p1) {}
-    public boolean isConnected() { return (megletProps.get("Connected") instanceof Boolean ? (Boolean) megletProps.get("Connected") : false); }
-    public boolean isEmulated() { return (megletProps.get("Emulated") instanceof Boolean ? (Boolean) megletProps.get("Emulated") : false); }
+    public boolean isConnected() { return (meglerProps.get("Connected") instanceof Boolean ? (Boolean) meglerProps.get("Connected") : false); }
+    public boolean isEmulated() { return (meglerProps.get("Emulated") instanceof Boolean ? (Boolean) meglerProps.get("Emulated") : false); }
     public byte[] readBlock(int p0) { return null; }
     public void reconnect() {}
     public void restore(int p0) {}
     public int sectorToBlock(int p0) { return 0; }
-    public void setTimeout(int p0) { megletProps.put("Timeout", Integer.valueOf(p0)); }
+    public void setTimeout(int p0) { meglerProps.put("Timeout", Integer.valueOf(p0)); }
     public byte[] transceive(byte[] p0) { return null; }
     public void transfer(int p0) {}
     public void writeBlock(int p0, byte[] p1) {}

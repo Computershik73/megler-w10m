@@ -27,33 +27,33 @@ public class RelativeLayout extends ViewGroup {
         public boolean alignWithParent;
         public LayoutParams(Context c, AttributeSet attrs) {
             super(c, attrs);
-            TypedArray a = c.obtainStyledAttributes(attrs, meglet.S.RelativeLayout_Layout);
+            TypedArray a = c.obtainStyledAttributes(attrs, megler.S.RelativeLayout_Layout);
             for (int i = 0, n = a.getIndexCount(); i < n; i++) {
                 int at = a.getIndex(i);
                 switch (at) {
-                case meglet.S.RelativeLayout_Layout_layout_alignWithParentIfMissing: alignWithParent = a.getBoolean(at, false); break;
-                case meglet.S.RelativeLayout_Layout_layout_toLeftOf: mRules[LEFT_OF] = a.getResourceId(at, 0); break;
-                case meglet.S.RelativeLayout_Layout_layout_toRightOf: mRules[RIGHT_OF] = a.getResourceId(at, 0); break;
-                case meglet.S.RelativeLayout_Layout_layout_above: mRules[ABOVE] = a.getResourceId(at, 0); break;
-                case meglet.S.RelativeLayout_Layout_layout_below: mRules[BELOW] = a.getResourceId(at, 0); break;
-                case meglet.S.RelativeLayout_Layout_layout_alignBaseline: mRules[ALIGN_BASELINE] = a.getResourceId(at, 0); break;
-                case meglet.S.RelativeLayout_Layout_layout_alignLeft: mRules[ALIGN_LEFT] = a.getResourceId(at, 0); break;
-                case meglet.S.RelativeLayout_Layout_layout_alignTop: mRules[ALIGN_TOP] = a.getResourceId(at, 0); break;
-                case meglet.S.RelativeLayout_Layout_layout_alignRight: mRules[ALIGN_RIGHT] = a.getResourceId(at, 0); break;
-                case meglet.S.RelativeLayout_Layout_layout_alignBottom: mRules[ALIGN_BOTTOM] = a.getResourceId(at, 0); break;
-                case meglet.S.RelativeLayout_Layout_layout_alignParentLeft: mRules[ALIGN_PARENT_LEFT] = a.getBoolean(at, false) ? TRUE : 0; break;
-                case meglet.S.RelativeLayout_Layout_layout_alignParentTop: mRules[ALIGN_PARENT_TOP] = a.getBoolean(at, false) ? TRUE : 0; break;
-                case meglet.S.RelativeLayout_Layout_layout_alignParentRight: mRules[ALIGN_PARENT_RIGHT] = a.getBoolean(at, false) ? TRUE : 0; break;
-                case meglet.S.RelativeLayout_Layout_layout_alignParentBottom: mRules[ALIGN_PARENT_BOTTOM] = a.getBoolean(at, false) ? TRUE : 0; break;
-                case meglet.S.RelativeLayout_Layout_layout_centerInParent: mRules[CENTER_IN_PARENT] = a.getBoolean(at, false) ? TRUE : 0; break;
-                case meglet.S.RelativeLayout_Layout_layout_centerHorizontal: mRules[CENTER_HORIZONTAL] = a.getBoolean(at, false) ? TRUE : 0; break;
-                case meglet.S.RelativeLayout_Layout_layout_centerVertical: mRules[CENTER_VERTICAL] = a.getBoolean(at, false) ? TRUE : 0; break;
-                case meglet.S.RelativeLayout_Layout_layout_toStartOf: mRules[START_OF] = a.getResourceId(at, 0); break;
-                case meglet.S.RelativeLayout_Layout_layout_toEndOf: mRules[END_OF] = a.getResourceId(at, 0); break;
-                case meglet.S.RelativeLayout_Layout_layout_alignStart: mRules[ALIGN_START] = a.getResourceId(at, 0); break;
-                case meglet.S.RelativeLayout_Layout_layout_alignEnd: mRules[ALIGN_END] = a.getResourceId(at, 0); break;
-                case meglet.S.RelativeLayout_Layout_layout_alignParentStart: mRules[ALIGN_PARENT_START] = a.getBoolean(at, false) ? TRUE : 0; break;
-                case meglet.S.RelativeLayout_Layout_layout_alignParentEnd: mRules[ALIGN_PARENT_END] = a.getBoolean(at, false) ? TRUE : 0; break;
+                case megler.S.RelativeLayout_Layout_layout_alignWithParentIfMissing: alignWithParent = a.getBoolean(at, false); break;
+                case megler.S.RelativeLayout_Layout_layout_toLeftOf: mRules[LEFT_OF] = a.getResourceId(at, 0); break;
+                case megler.S.RelativeLayout_Layout_layout_toRightOf: mRules[RIGHT_OF] = a.getResourceId(at, 0); break;
+                case megler.S.RelativeLayout_Layout_layout_above: mRules[ABOVE] = a.getResourceId(at, 0); break;
+                case megler.S.RelativeLayout_Layout_layout_below: mRules[BELOW] = a.getResourceId(at, 0); break;
+                case megler.S.RelativeLayout_Layout_layout_alignBaseline: mRules[ALIGN_BASELINE] = a.getResourceId(at, 0); break;
+                case megler.S.RelativeLayout_Layout_layout_alignLeft: mRules[ALIGN_LEFT] = a.getResourceId(at, 0); break;
+                case megler.S.RelativeLayout_Layout_layout_alignTop: mRules[ALIGN_TOP] = a.getResourceId(at, 0); break;
+                case megler.S.RelativeLayout_Layout_layout_alignRight: mRules[ALIGN_RIGHT] = a.getResourceId(at, 0); break;
+                case megler.S.RelativeLayout_Layout_layout_alignBottom: mRules[ALIGN_BOTTOM] = a.getResourceId(at, 0); break;
+                case megler.S.RelativeLayout_Layout_layout_alignParentLeft: mRules[ALIGN_PARENT_LEFT] = a.getBoolean(at, false) ? TRUE : 0; break;
+                case megler.S.RelativeLayout_Layout_layout_alignParentTop: mRules[ALIGN_PARENT_TOP] = a.getBoolean(at, false) ? TRUE : 0; break;
+                case megler.S.RelativeLayout_Layout_layout_alignParentRight: mRules[ALIGN_PARENT_RIGHT] = a.getBoolean(at, false) ? TRUE : 0; break;
+                case megler.S.RelativeLayout_Layout_layout_alignParentBottom: mRules[ALIGN_PARENT_BOTTOM] = a.getBoolean(at, false) ? TRUE : 0; break;
+                case megler.S.RelativeLayout_Layout_layout_centerInParent: mRules[CENTER_IN_PARENT] = a.getBoolean(at, false) ? TRUE : 0; break;
+                case megler.S.RelativeLayout_Layout_layout_centerHorizontal: mRules[CENTER_HORIZONTAL] = a.getBoolean(at, false) ? TRUE : 0; break;
+                case megler.S.RelativeLayout_Layout_layout_centerVertical: mRules[CENTER_VERTICAL] = a.getBoolean(at, false) ? TRUE : 0; break;
+                case megler.S.RelativeLayout_Layout_layout_toStartOf: mRules[START_OF] = a.getResourceId(at, 0); break;
+                case megler.S.RelativeLayout_Layout_layout_toEndOf: mRules[END_OF] = a.getResourceId(at, 0); break;
+                case megler.S.RelativeLayout_Layout_layout_alignStart: mRules[ALIGN_START] = a.getResourceId(at, 0); break;
+                case megler.S.RelativeLayout_Layout_layout_alignEnd: mRules[ALIGN_END] = a.getResourceId(at, 0); break;
+                case megler.S.RelativeLayout_Layout_layout_alignParentStart: mRules[ALIGN_PARENT_START] = a.getBoolean(at, false) ? TRUE : 0; break;
+                case megler.S.RelativeLayout_Layout_layout_alignParentEnd: mRules[ALIGN_PARENT_END] = a.getBoolean(at, false) ? TRUE : 0; break;
                 }
             }
             a.recycle();
@@ -94,9 +94,9 @@ public class RelativeLayout extends ViewGroup {
     public RelativeLayout(Context c, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
         super(c, attrs, defStyleAttr, defStyleRes);
         if (attrs == null && defStyleAttr == 0) return;
-        TypedArray a = c.obtainStyledAttributes(attrs, meglet.S.RelativeLayout, defStyleAttr, defStyleRes);
-        mIgnoreGravity = a.getResourceId(meglet.S.RelativeLayout_ignoreGravity, View.NO_ID);
-        mGravity = a.getInt(meglet.S.RelativeLayout_gravity, mGravity);
+        TypedArray a = c.obtainStyledAttributes(attrs, megler.S.RelativeLayout, defStyleAttr, defStyleRes);
+        mIgnoreGravity = a.getResourceId(megler.S.RelativeLayout_ignoreGravity, View.NO_ID);
+        mGravity = a.getInt(megler.S.RelativeLayout_gravity, mGravity);
         a.recycle();
     }
     @Override public boolean shouldDelayChildPressedState() { return false; }
@@ -395,7 +395,7 @@ public class RelativeLayout extends ViewGroup {
     // ---- end of generated members
     // ---- generated by tools/compat/genstubs.py: the platform's nested classes this class does not write
     public static final class InspectionCompanion implements android.view.inspector.InspectionCompanion {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public InspectionCompanion() {}
         public void mapProperties(android.view.inspector.PropertyMapper p0) {}
         public void readProperties(android.widget.RelativeLayout p0, android.view.inspector.PropertyReader p1) {}

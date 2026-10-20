@@ -3,17 +3,17 @@ package android.adservices.measurement;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class WebTriggerRegistrationRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public android.net.Uri getDestination() { return (android.net.Uri) megletProps.get("Destination"); }
-    public java.util.List getTriggerParams() { return (megletProps.get("TriggerParams") != null ? (java.util.List) megletProps.get("TriggerParams") : new java.util.ArrayList()); }
+    public android.net.Uri getDestination() { return (android.net.Uri) meglerProps.get("Destination"); }
+    public java.util.List getTriggerParams() { return (meglerProps.get("TriggerParams") != null ? (java.util.List) meglerProps.get("TriggerParams") : new java.util.ArrayList()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected WebTriggerRegistrationRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(java.util.List p0, android.net.Uri p1) {}
-        public android.adservices.measurement.WebTriggerRegistrationRequest build() { android.adservices.measurement.WebTriggerRegistrationRequest x = new android.adservices.measurement.WebTriggerRegistrationRequest(); x.megletProps.putAll(megletProps); return x; }
+        public android.adservices.measurement.WebTriggerRegistrationRequest build() { android.adservices.measurement.WebTriggerRegistrationRequest x = new android.adservices.measurement.WebTriggerRegistrationRequest(); x.meglerProps.putAll(meglerProps); return x; }
         Builder() { this((java.util.List) null, (android.net.Uri) null); }
     }
 }

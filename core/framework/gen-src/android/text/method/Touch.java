@@ -3,7 +3,7 @@ package android.text.method;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Touch {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static int getInitialScrollX(android.widget.TextView p0, android.text.Spannable p1) { return 0; }
     public static int getInitialScrollY(android.widget.TextView p0, android.text.Spannable p1) { return 0; }
     public static boolean onTouchEvent(android.widget.TextView p0, android.text.Spannable p1, android.view.MotionEvent p2) { return false; }

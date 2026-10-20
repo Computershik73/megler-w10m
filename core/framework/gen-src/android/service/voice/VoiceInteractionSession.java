@@ -3,7 +3,7 @@ package android.service.voice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class VoiceInteractionSession implements android.view.KeyEvent.Callback, android.content.ComponentCallbacks2 {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String KEY_FOREGROUND_ACTIVITIES = "android.service.voice.FOREGROUND_ACTIVITIES";
     public static final java.lang.String KEY_SHOW_SESSION_ID = "android.service.voice.SHOW_SESSION_ID";
     public static final int SHOW_SOURCE_ACTIVITY = 16;
@@ -23,11 +23,11 @@ public class VoiceInteractionSession implements android.view.KeyEvent.Callback, 
     public void closeSystemDialogs() {}
     public void dump(java.lang.String p0, java.io.FileDescriptor p1, java.io.PrintWriter p2, java.lang.String[] p3) {}
     public void finish() {}
-    public android.content.Context getContext() { return (android.content.Context) megletProps.get("Context"); }
-    public int getDisabledShowContext() { return (megletProps.get("DisabledShowContext") instanceof Integer ? (Integer) megletProps.get("DisabledShowContext") : 0); }
-    public android.view.LayoutInflater getLayoutInflater() { return (android.view.LayoutInflater) megletProps.get("LayoutInflater"); }
-    public int getUserDisabledShowContext() { return (megletProps.get("UserDisabledShowContext") instanceof Integer ? (Integer) megletProps.get("UserDisabledShowContext") : 0); }
-    public android.app.Dialog getWindow() { return (android.app.Dialog) megletProps.get("Window"); }
+    public android.content.Context getContext() { return (android.content.Context) meglerProps.get("Context"); }
+    public int getDisabledShowContext() { return (meglerProps.get("DisabledShowContext") instanceof Integer ? (Integer) meglerProps.get("DisabledShowContext") : 0); }
+    public android.view.LayoutInflater getLayoutInflater() { return (android.view.LayoutInflater) meglerProps.get("LayoutInflater"); }
+    public int getUserDisabledShowContext() { return (meglerProps.get("UserDisabledShowContext") instanceof Integer ? (Integer) meglerProps.get("UserDisabledShowContext") : 0); }
+    public android.app.Dialog getWindow() { return (android.app.Dialog) meglerProps.get("Window"); }
     public void hide() {}
     public void onAssistStructureFailure(java.lang.Throwable p0) {}
     public void onBackPressed() {}
@@ -64,11 +64,11 @@ public class VoiceInteractionSession implements android.view.KeyEvent.Callback, 
     public void performDirectAction(android.app.DirectAction p0, android.os.Bundle p1, android.os.CancellationSignal p2, java.util.concurrent.Executor p3, java.util.function.Consumer p4) {}
     public void registerVisibleActivityCallback(java.util.concurrent.Executor p0, android.service.voice.VoiceInteractionSession.VisibleActivityCallback p1) {}
     public void requestDirectActions(android.service.voice.VoiceInteractionSession.ActivityId p0, android.os.CancellationSignal p1, java.util.concurrent.Executor p2, java.util.function.Consumer p3) {}
-    public void setContentView(android.view.View p0) { megletProps.put("ContentView", p0); }
-    public void setDisabledShowContext(int p0) { megletProps.put("DisabledShowContext", Integer.valueOf(p0)); }
-    public void setKeepAwake(boolean p0) { megletProps.put("KeepAwake", Boolean.valueOf(p0)); }
-    public void setTheme(int p0) { megletProps.put("Theme", Integer.valueOf(p0)); }
-    public void setUiEnabled(boolean p0) { megletProps.put("UiEnabled", Boolean.valueOf(p0)); }
+    public void setContentView(android.view.View p0) { meglerProps.put("ContentView", p0); }
+    public void setDisabledShowContext(int p0) { meglerProps.put("DisabledShowContext", Integer.valueOf(p0)); }
+    public void setKeepAwake(boolean p0) { meglerProps.put("KeepAwake", Boolean.valueOf(p0)); }
+    public void setTheme(int p0) { meglerProps.put("Theme", Integer.valueOf(p0)); }
+    public void setUiEnabled(boolean p0) { meglerProps.put("UiEnabled", Boolean.valueOf(p0)); }
     public void show(android.os.Bundle p0, int p1) {}
     public void startAssistantActivity(android.content.Intent p0) {}
     public void startAssistantActivity(android.content.Intent p0, android.os.Bundle p1) {}
@@ -76,52 +76,52 @@ public class VoiceInteractionSession implements android.view.KeyEvent.Callback, 
     public void unregisterVisibleActivityCallback(android.service.voice.VoiceInteractionSession.VisibleActivityCallback p0) {}
     VoiceInteractionSession() { this((android.content.Context) null); }
     public static final class AbortVoiceRequest extends android.service.voice.VoiceInteractionSession.Request {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public java.lang.CharSequence getMessage() { return (java.lang.CharSequence) megletProps.get("Message"); }
-        public android.app.VoiceInteractor.Prompt getVoicePrompt() { return (android.app.VoiceInteractor.Prompt) megletProps.get("VoicePrompt"); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public java.lang.CharSequence getMessage() { return (java.lang.CharSequence) meglerProps.get("Message"); }
+        public android.app.VoiceInteractor.Prompt getVoicePrompt() { return (android.app.VoiceInteractor.Prompt) meglerProps.get("VoicePrompt"); }
         public void sendAbortResult(android.os.Bundle p0) {}
         protected AbortVoiceRequest() { super(); }
     }
     public static class ActivityId {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public android.os.IBinder getAssistToken() { return (android.os.IBinder) megletProps.get("AssistToken"); }
-        public int getTaskId() { return (megletProps.get("TaskId") instanceof Integer ? (Integer) megletProps.get("TaskId") : 0); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public android.os.IBinder getAssistToken() { return (android.os.IBinder) meglerProps.get("AssistToken"); }
+        public int getTaskId() { return (meglerProps.get("TaskId") instanceof Integer ? (Integer) meglerProps.get("TaskId") : 0); }
         protected ActivityId() {}
     }
     public static final class AssistState {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public android.service.voice.VoiceInteractionSession.ActivityId getActivityId() { return (android.service.voice.VoiceInteractionSession.ActivityId) megletProps.get("ActivityId"); }
-        public android.app.assist.AssistContent getAssistContent() { return (android.app.assist.AssistContent) megletProps.get("AssistContent"); }
-        public android.os.Bundle getAssistData() { return (android.os.Bundle) megletProps.get("AssistData"); }
-        public android.app.assist.AssistStructure getAssistStructure() { return (android.app.assist.AssistStructure) megletProps.get("AssistStructure"); }
-        public int getCount() { return (megletProps.get("Count") instanceof Integer ? (Integer) megletProps.get("Count") : 0); }
-        public int getIndex() { return (megletProps.get("Index") instanceof Integer ? (Integer) megletProps.get("Index") : 0); }
-        public boolean isFocused() { return (megletProps.get("Focused") instanceof Boolean ? (Boolean) megletProps.get("Focused") : false); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public android.service.voice.VoiceInteractionSession.ActivityId getActivityId() { return (android.service.voice.VoiceInteractionSession.ActivityId) meglerProps.get("ActivityId"); }
+        public android.app.assist.AssistContent getAssistContent() { return (android.app.assist.AssistContent) meglerProps.get("AssistContent"); }
+        public android.os.Bundle getAssistData() { return (android.os.Bundle) meglerProps.get("AssistData"); }
+        public android.app.assist.AssistStructure getAssistStructure() { return (android.app.assist.AssistStructure) meglerProps.get("AssistStructure"); }
+        public int getCount() { return (meglerProps.get("Count") instanceof Integer ? (Integer) meglerProps.get("Count") : 0); }
+        public int getIndex() { return (meglerProps.get("Index") instanceof Integer ? (Integer) meglerProps.get("Index") : 0); }
+        public boolean isFocused() { return (meglerProps.get("Focused") instanceof Boolean ? (Boolean) meglerProps.get("Focused") : false); }
         protected AssistState() {}
     }
     public static final class CommandRequest extends android.service.voice.VoiceInteractionSession.Request {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public java.lang.String getCommand() { return (java.lang.String) megletProps.get("Command"); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public java.lang.String getCommand() { return (java.lang.String) meglerProps.get("Command"); }
         public void sendIntermediateResult(android.os.Bundle p0) {}
         public void sendResult(android.os.Bundle p0) {}
         protected CommandRequest() { super(); }
     }
     public static final class CompleteVoiceRequest extends android.service.voice.VoiceInteractionSession.Request {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public java.lang.CharSequence getMessage() { return (java.lang.CharSequence) megletProps.get("Message"); }
-        public android.app.VoiceInteractor.Prompt getVoicePrompt() { return (android.app.VoiceInteractor.Prompt) megletProps.get("VoicePrompt"); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public java.lang.CharSequence getMessage() { return (java.lang.CharSequence) meglerProps.get("Message"); }
+        public android.app.VoiceInteractor.Prompt getVoicePrompt() { return (android.app.VoiceInteractor.Prompt) meglerProps.get("VoicePrompt"); }
         public void sendCompleteResult(android.os.Bundle p0) {}
         protected CompleteVoiceRequest() { super(); }
     }
     public static final class ConfirmationRequest extends android.service.voice.VoiceInteractionSession.Request {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public java.lang.CharSequence getPrompt() { return (java.lang.CharSequence) megletProps.get("Prompt"); }
-        public android.app.VoiceInteractor.Prompt getVoicePrompt() { return (android.app.VoiceInteractor.Prompt) megletProps.get("VoicePrompt"); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public java.lang.CharSequence getPrompt() { return (java.lang.CharSequence) meglerProps.get("Prompt"); }
+        public android.app.VoiceInteractor.Prompt getVoicePrompt() { return (android.app.VoiceInteractor.Prompt) meglerProps.get("VoicePrompt"); }
         public void sendConfirmationResult(boolean p0, android.os.Bundle p1) {}
         protected ConfirmationRequest() { super(); }
     }
     public static final class Insets {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int TOUCHABLE_INSETS_CONTENT = 1;
         public static final int TOUCHABLE_INSETS_FRAME = 0;
         public static final int TOUCHABLE_INSETS_REGION = 3;
@@ -131,21 +131,21 @@ public class VoiceInteractionSession implements android.view.KeyEvent.Callback, 
         public Insets() {}
     }
     public static final class PickOptionRequest extends android.service.voice.VoiceInteractionSession.Request {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public android.app.VoiceInteractor.PickOptionRequest.Option[] getOptions() { return (android.app.VoiceInteractor.PickOptionRequest.Option[]) megletProps.get("Options"); }
-        public java.lang.CharSequence getPrompt() { return (java.lang.CharSequence) megletProps.get("Prompt"); }
-        public android.app.VoiceInteractor.Prompt getVoicePrompt() { return (android.app.VoiceInteractor.Prompt) megletProps.get("VoicePrompt"); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public android.app.VoiceInteractor.PickOptionRequest.Option[] getOptions() { return (android.app.VoiceInteractor.PickOptionRequest.Option[]) meglerProps.get("Options"); }
+        public java.lang.CharSequence getPrompt() { return (java.lang.CharSequence) meglerProps.get("Prompt"); }
+        public android.app.VoiceInteractor.Prompt getVoicePrompt() { return (android.app.VoiceInteractor.Prompt) meglerProps.get("VoicePrompt"); }
         public void sendIntermediatePickOptionResult(android.app.VoiceInteractor.PickOptionRequest.Option[] p0, android.os.Bundle p1) {}
         public void sendPickOptionResult(android.app.VoiceInteractor.PickOptionRequest.Option[] p0, android.os.Bundle p1) {}
         protected PickOptionRequest() { super(); }
     }
     public static class Request {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public void cancel() {}
-        public java.lang.String getCallingPackage() { return (java.lang.String) megletProps.get("CallingPackage"); }
-        public int getCallingUid() { return (megletProps.get("CallingUid") instanceof Integer ? (Integer) megletProps.get("CallingUid") : 0); }
-        public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
-        public boolean isActive() { return (megletProps.get("Active") instanceof Boolean ? (Boolean) megletProps.get("Active") : false); }
+        public java.lang.String getCallingPackage() { return (java.lang.String) meglerProps.get("CallingPackage"); }
+        public int getCallingUid() { return (meglerProps.get("CallingUid") instanceof Integer ? (Integer) meglerProps.get("CallingUid") : 0); }
+        public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
+        public boolean isActive() { return (meglerProps.get("Active") instanceof Boolean ? (Boolean) meglerProps.get("Active") : false); }
         protected Request() {}
     }
     public interface VisibleActivityCallback {

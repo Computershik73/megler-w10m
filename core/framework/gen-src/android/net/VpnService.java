@@ -3,15 +3,15 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class VpnService extends android.app.Service {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String SERVICE_INTERFACE = "android.net.VpnService";
     public static final java.lang.String SERVICE_META_DATA_SUPPORTS_ALWAYS_ON = "android.net.VpnService.SUPPORTS_ALWAYS_ON";
     public VpnService() { super(); }
     public static android.content.Intent prepare(android.content.Context p0) { return null; }
     public static void prepareAndAuthorize(android.content.Context p0) {}
     public boolean addAddress(java.net.InetAddress p0, int p1) { return false; }
-    public boolean isAlwaysOn() { return (megletProps.get("AlwaysOn") instanceof Boolean ? (Boolean) megletProps.get("AlwaysOn") : false); }
-    public boolean isLockdownEnabled() { return (megletProps.get("LockdownEnabled") instanceof Boolean ? (Boolean) megletProps.get("LockdownEnabled") : false); }
+    public boolean isAlwaysOn() { return (meglerProps.get("AlwaysOn") instanceof Boolean ? (Boolean) meglerProps.get("AlwaysOn") : false); }
+    public boolean isLockdownEnabled() { return (meglerProps.get("LockdownEnabled") instanceof Boolean ? (Boolean) meglerProps.get("LockdownEnabled") : false); }
     public android.os.IBinder onBind(android.content.Intent p0) { return null; }
     public void onRevoke() {}
     public boolean protect(int p0) { return false; }
@@ -20,7 +20,7 @@ public class VpnService extends android.app.Service {
     public boolean removeAddress(java.net.InetAddress p0, int p1) { return false; }
     public boolean setUnderlyingNetworks(android.net.Network[] p0) { return false; }
     public static class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.net.VpnService p0) {}
         public android.net.VpnService.Builder addAddress(java.lang.String p0, int p1) { return this; }
         public android.net.VpnService.Builder addAddress(java.net.InetAddress p0, int p1) { return this; }
@@ -37,13 +37,13 @@ public class VpnService extends android.app.Service {
         public android.os.ParcelFileDescriptor establish() { return null; }
         public android.net.VpnService.Builder excludeRoute(android.net.IpPrefix p0) { return this; }
         public java.util.List routes() { return new java.util.ArrayList(); }
-        public android.net.VpnService.Builder setBlocking(boolean p0) { megletProps.put("Blocking", Boolean.valueOf(p0)); return this; }
-        public android.net.VpnService.Builder setConfigureIntent(android.app.PendingIntent p0) { megletProps.put("ConfigureIntent", p0); return this; }
-        public android.net.VpnService.Builder setHttpProxy(android.net.ProxyInfo p0) { megletProps.put("HttpProxy", p0); return this; }
-        public android.net.VpnService.Builder setMetered(boolean p0) { megletProps.put("Metered", Boolean.valueOf(p0)); return this; }
-        public android.net.VpnService.Builder setMtu(int p0) { megletProps.put("Mtu", Integer.valueOf(p0)); return this; }
-        public android.net.VpnService.Builder setSession(java.lang.String p0) { megletProps.put("Session", p0); return this; }
-        public android.net.VpnService.Builder setUnderlyingNetworks(android.net.Network[] p0) { megletProps.put("UnderlyingNetworks", p0); return this; }
+        public android.net.VpnService.Builder setBlocking(boolean p0) { meglerProps.put("Blocking", Boolean.valueOf(p0)); return this; }
+        public android.net.VpnService.Builder setConfigureIntent(android.app.PendingIntent p0) { meglerProps.put("ConfigureIntent", p0); return this; }
+        public android.net.VpnService.Builder setHttpProxy(android.net.ProxyInfo p0) { meglerProps.put("HttpProxy", p0); return this; }
+        public android.net.VpnService.Builder setMetered(boolean p0) { meglerProps.put("Metered", Boolean.valueOf(p0)); return this; }
+        public android.net.VpnService.Builder setMtu(int p0) { meglerProps.put("Mtu", Integer.valueOf(p0)); return this; }
+        public android.net.VpnService.Builder setSession(java.lang.String p0) { meglerProps.put("Session", p0); return this; }
+        public android.net.VpnService.Builder setUnderlyingNetworks(android.net.Network[] p0) { meglerProps.put("UnderlyingNetworks", p0); return this; }
         Builder() { this((android.net.VpnService) null); }
     }
 }

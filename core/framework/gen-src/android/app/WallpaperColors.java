@@ -3,7 +3,7 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class WallpaperColors implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int HINT_FROM_BITMAP = 4;
     public static final int HINT_SUPPORTS_DARK_TEXT = 1;
@@ -16,12 +16,12 @@ public final class WallpaperColors implements android.os.Parcelable {
     public static android.app.WallpaperColors fromBitmap(android.graphics.Bitmap p0, float p1) { return new WallpaperColors(); }
     public static android.app.WallpaperColors fromDrawable(android.graphics.drawable.Drawable p0) { return new WallpaperColors(); }
     public int describeContents() { return 0; }
-    public java.util.Map getAllColors() { return (megletProps.get("AllColors") != null ? (java.util.Map) megletProps.get("AllColors") : new java.util.HashMap()); }
-    public int getColorHints() { return (megletProps.get("ColorHints") instanceof Integer ? (Integer) megletProps.get("ColorHints") : 0); }
-    public java.util.List getMainColors() { return (megletProps.get("MainColors") != null ? (java.util.List) megletProps.get("MainColors") : new java.util.ArrayList()); }
-    public android.graphics.Color getPrimaryColor() { return (android.graphics.Color) megletProps.get("PrimaryColor"); }
-    public android.graphics.Color getSecondaryColor() { return (android.graphics.Color) megletProps.get("SecondaryColor"); }
-    public android.graphics.Color getTertiaryColor() { return (android.graphics.Color) megletProps.get("TertiaryColor"); }
+    public java.util.Map getAllColors() { return (meglerProps.get("AllColors") != null ? (java.util.Map) meglerProps.get("AllColors") : new java.util.HashMap()); }
+    public int getColorHints() { return (meglerProps.get("ColorHints") instanceof Integer ? (Integer) meglerProps.get("ColorHints") : 0); }
+    public java.util.List getMainColors() { return (meglerProps.get("MainColors") != null ? (java.util.List) meglerProps.get("MainColors") : new java.util.ArrayList()); }
+    public android.graphics.Color getPrimaryColor() { return (android.graphics.Color) meglerProps.get("PrimaryColor"); }
+    public android.graphics.Color getSecondaryColor() { return (android.graphics.Color) meglerProps.get("SecondaryColor"); }
+    public android.graphics.Color getTertiaryColor() { return (android.graphics.Color) meglerProps.get("TertiaryColor"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     WallpaperColors() { this((android.os.Parcel) null); }
 }

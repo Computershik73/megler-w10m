@@ -6,9 +6,9 @@ PROFILE is a profile.txt pulled from the phone; without it the phone's is
 fetched (tools/phone.py's Device Portal). Each sample is an address in a
 module (module, offset); the offsets are put to functions with:
 
-  Meglet.exe       build/maps/Meglet_<version>.map (--version), else the last
-                 build's build/appx-arm/link/Meglet.map
-  libGLESv2.dll  build/angle/maps/... when Meglet's own ANGLE is built
+  Megler.exe       build/maps/Megler_<version>.map (--version), else the last
+                 build's build/appx-arm/link/Megler.map
+  libGLESv2.dll  build/angle/maps/... when Megler's own ANGLE is built
   libEGL.dll     (build/angle/dist), else gecko-w10m's (C:/rw-obj)
   FILE.so        an app's library (--lib, the one the APK has): its
                  exported symbols, which are often far from the code
@@ -103,9 +103,9 @@ def demangle_itanium(names):
 
 def default_maps(version):
     maps = {}
-    meglet = os.path.join(ROOT, "build", "maps", "Meglet_0.1.0.%s.map" % version) if version else None
-    maps["Meglet.exe"] = meglet if meglet and os.path.exists(meglet) else os.path.join(ROOT, "build", "appx-arm", "link", "Meglet.map")
-    own = os.path.isdir(os.path.join(ROOT, "build", "angle", "dist")) and not os.environ.get("MEGLET_ANGLE")
+    megler = os.path.join(ROOT, "build", "maps", "Megler_0.1.0.%s.map" % version) if version else None
+    maps["Megler.exe"] = megler if megler and os.path.exists(megler) else os.path.join(ROOT, "build", "appx-arm", "link", "Megler.map")
+    own = os.path.isdir(os.path.join(ROOT, "build", "angle", "dist")) and not os.environ.get("MEGLER_ANGLE")
     for name, sub in (("libGLESv2.dll", "libGLESv2_gn/libGLESv2.map"), ("libEGL.dll", "libEGL_gn/libEGL.map")):
         path = os.path.join(ROOT, "build", "angle", "maps", sub) if own else os.path.join("C:/rw-obj/third_party/angle", sub)
         maps[name] = path
@@ -162,7 +162,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("profile", nargs="?")
     ap.add_argument("--base", help="an earlier profile.txt of the same run, taken away")
-    ap.add_argument("--version", help="the package's build number, for its Meglet.exe map")
+    ap.add_argument("--version", help="the package's build number, for its Megler.exe map")
     ap.add_argument("--map", action="append", default=[], help="MODULE=FILE")
     ap.add_argument("--lib", action="append", default=[], help="an app's .so, named as the module of its file name")
     ap.add_argument("--top", type=int, default=30)

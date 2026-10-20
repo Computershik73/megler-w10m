@@ -4,14 +4,14 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/build/appx-tool"
-if [ -z "${MEGLET_VC:-}" ]; then
+if [ -z "${MEGLER_VC:-}" ]; then
   for cl in "/c/Program Files/Microsoft Visual Studio/2022/"*/VC/Tools/MSVC/*/bin/Hostx64/x64/cl.exe; do
-    [ -f "$cl" ] && MEGLET_VC="${cl%/bin/Hostx64/x64/cl.exe}"
+    [ -f "$cl" ] && MEGLER_VC="${cl%/bin/Hostx64/x64/cl.exe}"
   done
 fi
-VC="${MEGLET_VC:?no MSVC toolset; set MEGLET_VC}"
-SDK="${MEGLET_SDK:-/c/Program Files (x86)/Windows Kits/10}"
-SDKV="${MEGLET_SDK_VERSION:-10.0.22621.0}"
+VC="${MEGLER_VC:?no MSVC toolset; set MEGLER_VC}"
+SDK="${MEGLER_SDK:-/c/Program Files (x86)/Windows Kits/10}"
+SDKV="${MEGLER_SDK_VERSION:-10.0.22621.0}"
 w() { cygpath -w "$1"; }
 export INCLUDE="$(w "$VC/include");$(w "$SDK/Include/$SDKV/ucrt");$(w "$SDK/Include/$SDKV/shared");$(w "$SDK/Include/$SDKV/um")"
 export LIB="$(w "$VC/lib/x64");$(w "$SDK/Lib/$SDKV/ucrt/x64");$(w "$SDK/Lib/$SDKV/um/x64")"

@@ -3,7 +3,7 @@ package android.security.keystore;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class KeyProperties {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int AUTH_BIOMETRIC_STRONG = 2;
     public static final int AUTH_DEVICE_CREDENTIAL = 1;
     public static final java.lang.String BLOCK_MODE_CBC = "CBC";
@@ -58,7 +58,7 @@ public abstract class KeyProperties {
     public static int namespaceToLegacyUid(int p0) { return 0; }
     protected KeyProperties() {}
     public static abstract class BlockMode {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static java.lang.String[] allFromKeymaster(java.util.Collection p0) { return null; }
         public static int[] allToKeymaster(java.lang.String[] p0) { return null; }
         public static java.lang.String fromKeymaster(int p0) { return null; }
@@ -66,7 +66,7 @@ public abstract class KeyProperties {
         protected BlockMode() {}
     }
     public static abstract class Digest {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static java.lang.String[] allFromKeymaster(java.util.Collection p0) { return null; }
         public static int[] allToKeymaster(java.lang.String[] p0) { return null; }
         public static java.lang.String fromKeymaster(int p0) { return null; }
@@ -76,20 +76,20 @@ public abstract class KeyProperties {
         protected Digest() {}
     }
     public static abstract class EcCurve {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static int fromKeymasterCurve(int p0) { return 0; }
         public static int toKeymasterCurve(java.security.spec.ECParameterSpec p0) { return 0; }
         protected EcCurve() {}
     }
     public static abstract class EncryptionPadding {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static int[] allToKeymaster(java.lang.String[] p0) { return null; }
         public static java.lang.String fromKeymaster(int p0) { return null; }
         public static int toKeymaster(java.lang.String p0) { return 0; }
         protected EncryptionPadding() {}
     }
     public static abstract class KeyAlgorithm {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static java.lang.String fromKeymasterAsymmetricKeyAlgorithm(int p0) { return null; }
         public static java.lang.String fromKeymasterSecretKeyAlgorithm(int p0, int p1) { return null; }
         public static int toKeymasterAsymmetricKeyAlgorithm(java.lang.String p0) { return 0; }
@@ -98,12 +98,12 @@ public abstract class KeyProperties {
         protected KeyAlgorithm() {}
     }
     public static abstract class Origin {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static int fromKeymaster(int p0) { return 0; }
         protected Origin() {}
     }
     public static abstract class Purpose {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static int allFromKeymaster(java.util.Collection p0) { return 0; }
         public static int[] allToKeymaster(int p0) { return null; }
         public static int fromKeymaster(int p0) { return 0; }
@@ -111,13 +111,13 @@ public abstract class KeyProperties {
         protected Purpose() {}
     }
     public static abstract class SecurityLevel {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static int fromKeymaster(int p0) { return 0; }
         public static int toKeymaster(int p0) { return 0; }
         protected SecurityLevel() {}
     }
     public static abstract class SignaturePadding {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static int[] allToKeymaster(java.lang.String[] p0) { return null; }
         public static java.lang.String fromKeymaster(int p0) { return null; }
         public static int toKeymaster(java.lang.String p0) { return 0; }

@@ -3,15 +3,15 @@ package android.hardware.camera2.params;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MultiResolutionStreamConfigurationMap {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public MultiResolutionStreamConfigurationMap(java.util.Map p0) {}
-    public int[] getInputFormats() { return (int[]) megletProps.get("InputFormats"); }
+    public int[] getInputFormats() { return (int[]) meglerProps.get("InputFormats"); }
     public java.util.Collection getInputInfo(int p0) { return new java.util.ArrayList(); }
-    public int[] getOutputFormats() { return (int[]) megletProps.get("OutputFormats"); }
+    public int[] getOutputFormats() { return (int[]) meglerProps.get("OutputFormats"); }
     public java.util.Collection getOutputInfo(int p0) { return new java.util.ArrayList(); }
     MultiResolutionStreamConfigurationMap() { this((java.util.Map) null); }
     public static class SizeComparator implements java.util.Comparator {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public SizeComparator() {}
         public int compare(android.hardware.camera2.params.MultiResolutionStreamInfo p0, android.hardware.camera2.params.MultiResolutionStreamInfo p1) { return 0; }
         public int compare(java.lang.Object p0, java.lang.Object p1) { return 0; }

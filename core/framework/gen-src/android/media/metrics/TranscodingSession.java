@@ -3,9 +3,9 @@ package android.media.metrics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TranscodingSession implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public TranscodingSession(java.lang.String p0, android.media.metrics.MediaMetricsManager p1) {}
     public void close() {}
-    public android.media.metrics.LogSessionId getSessionId() { return (android.media.metrics.LogSessionId) megletProps.get("SessionId"); }
+    public android.media.metrics.LogSessionId getSessionId() { return (android.media.metrics.LogSessionId) meglerProps.get("SessionId"); }
     TranscodingSession() { this((java.lang.String) null, (android.media.metrics.MediaMetricsManager) null); }
 }

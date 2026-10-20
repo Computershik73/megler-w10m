@@ -3,7 +3,7 @@ package android.media.metrics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MediaItemInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final long DATA_TYPE_AUDIO = 4L;
     public static final long DATA_TYPE_DEPTH = 16L;
@@ -26,39 +26,39 @@ public final class MediaItemInfo implements android.os.Parcelable {
     public static final int SOURCE_TYPE_UNSPECIFIED = 0;
     public static final int VALUE_UNSPECIFIED = -1;
     public int describeContents() { return 0; }
-    public int getAudioChannelCount() { return (megletProps.get("AudioChannelCount") instanceof Integer ? (Integer) megletProps.get("AudioChannelCount") : 0); }
-    public long getAudioSampleCount() { return (megletProps.get("AudioSampleCount") instanceof Long ? (Long) megletProps.get("AudioSampleCount") : 0L); }
-    public int getAudioSampleRateHz() { return (megletProps.get("AudioSampleRateHz") instanceof Integer ? (Integer) megletProps.get("AudioSampleRateHz") : 0); }
-    public long getClipDurationMillis() { return (megletProps.get("ClipDurationMillis") instanceof Long ? (Long) megletProps.get("ClipDurationMillis") : 0L); }
-    public java.util.List getCodecNames() { return (megletProps.get("CodecNames") != null ? (java.util.List) megletProps.get("CodecNames") : new java.util.ArrayList()); }
-    public java.lang.String getContainerMimeType() { return (java.lang.String) megletProps.get("ContainerMimeType"); }
-    public long getDataTypes() { return (megletProps.get("DataTypes") instanceof Long ? (Long) megletProps.get("DataTypes") : 0L); }
-    public long getDurationMillis() { return (megletProps.get("DurationMillis") instanceof Long ? (Long) megletProps.get("DurationMillis") : 0L); }
-    public java.util.List getSampleMimeTypes() { return (megletProps.get("SampleMimeTypes") != null ? (java.util.List) megletProps.get("SampleMimeTypes") : new java.util.ArrayList()); }
-    public int getSourceType() { return (megletProps.get("SourceType") instanceof Integer ? (Integer) megletProps.get("SourceType") : 0); }
-    public int getVideoDataSpace() { return (megletProps.get("VideoDataSpace") instanceof Integer ? (Integer) megletProps.get("VideoDataSpace") : 0); }
-    public float getVideoFrameRate() { return (megletProps.get("VideoFrameRate") instanceof Float ? (Float) megletProps.get("VideoFrameRate") : 0f); }
-    public long getVideoSampleCount() { return (megletProps.get("VideoSampleCount") instanceof Long ? (Long) megletProps.get("VideoSampleCount") : 0L); }
-    public android.util.Size getVideoSize() { return (android.util.Size) megletProps.get("VideoSize"); }
+    public int getAudioChannelCount() { return (meglerProps.get("AudioChannelCount") instanceof Integer ? (Integer) meglerProps.get("AudioChannelCount") : 0); }
+    public long getAudioSampleCount() { return (meglerProps.get("AudioSampleCount") instanceof Long ? (Long) meglerProps.get("AudioSampleCount") : 0L); }
+    public int getAudioSampleRateHz() { return (meglerProps.get("AudioSampleRateHz") instanceof Integer ? (Integer) meglerProps.get("AudioSampleRateHz") : 0); }
+    public long getClipDurationMillis() { return (meglerProps.get("ClipDurationMillis") instanceof Long ? (Long) meglerProps.get("ClipDurationMillis") : 0L); }
+    public java.util.List getCodecNames() { return (meglerProps.get("CodecNames") != null ? (java.util.List) meglerProps.get("CodecNames") : new java.util.ArrayList()); }
+    public java.lang.String getContainerMimeType() { return (java.lang.String) meglerProps.get("ContainerMimeType"); }
+    public long getDataTypes() { return (meglerProps.get("DataTypes") instanceof Long ? (Long) meglerProps.get("DataTypes") : 0L); }
+    public long getDurationMillis() { return (meglerProps.get("DurationMillis") instanceof Long ? (Long) meglerProps.get("DurationMillis") : 0L); }
+    public java.util.List getSampleMimeTypes() { return (meglerProps.get("SampleMimeTypes") != null ? (java.util.List) meglerProps.get("SampleMimeTypes") : new java.util.ArrayList()); }
+    public int getSourceType() { return (meglerProps.get("SourceType") instanceof Integer ? (Integer) meglerProps.get("SourceType") : 0); }
+    public int getVideoDataSpace() { return (meglerProps.get("VideoDataSpace") instanceof Integer ? (Integer) meglerProps.get("VideoDataSpace") : 0); }
+    public float getVideoFrameRate() { return (meglerProps.get("VideoFrameRate") instanceof Float ? (Float) meglerProps.get("VideoFrameRate") : 0f); }
+    public long getVideoSampleCount() { return (meglerProps.get("VideoSampleCount") instanceof Long ? (Long) meglerProps.get("VideoSampleCount") : 0L); }
+    public android.util.Size getVideoSize() { return (android.util.Size) meglerProps.get("VideoSize"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected MediaItemInfo() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public android.media.metrics.MediaItemInfo.Builder addCodecName(java.lang.String p0) { return this; }
         public android.media.metrics.MediaItemInfo.Builder addDataType(long p0) { return this; }
         public android.media.metrics.MediaItemInfo.Builder addSampleMimeType(java.lang.String p0) { return this; }
-        public android.media.metrics.MediaItemInfo build() { android.media.metrics.MediaItemInfo x = new android.media.metrics.MediaItemInfo(); x.megletProps.putAll(megletProps); return x; }
-        public android.media.metrics.MediaItemInfo.Builder setAudioChannelCount(int p0) { megletProps.put("AudioChannelCount", Integer.valueOf(p0)); return this; }
-        public android.media.metrics.MediaItemInfo.Builder setAudioSampleCount(long p0) { megletProps.put("AudioSampleCount", Long.valueOf(p0)); return this; }
-        public android.media.metrics.MediaItemInfo.Builder setAudioSampleRateHz(int p0) { megletProps.put("AudioSampleRateHz", Integer.valueOf(p0)); return this; }
-        public android.media.metrics.MediaItemInfo.Builder setClipDurationMillis(long p0) { megletProps.put("ClipDurationMillis", Long.valueOf(p0)); return this; }
-        public android.media.metrics.MediaItemInfo.Builder setContainerMimeType(java.lang.String p0) { megletProps.put("ContainerMimeType", p0); return this; }
-        public android.media.metrics.MediaItemInfo.Builder setDurationMillis(long p0) { megletProps.put("DurationMillis", Long.valueOf(p0)); return this; }
-        public android.media.metrics.MediaItemInfo.Builder setSourceType(int p0) { megletProps.put("SourceType", Integer.valueOf(p0)); return this; }
-        public android.media.metrics.MediaItemInfo.Builder setVideoDataSpace(int p0) { megletProps.put("VideoDataSpace", Integer.valueOf(p0)); return this; }
-        public android.media.metrics.MediaItemInfo.Builder setVideoFrameRate(float p0) { megletProps.put("VideoFrameRate", Float.valueOf(p0)); return this; }
-        public android.media.metrics.MediaItemInfo.Builder setVideoSampleCount(long p0) { megletProps.put("VideoSampleCount", Long.valueOf(p0)); return this; }
-        public android.media.metrics.MediaItemInfo.Builder setVideoSize(android.util.Size p0) { megletProps.put("VideoSize", p0); return this; }
+        public android.media.metrics.MediaItemInfo build() { android.media.metrics.MediaItemInfo x = new android.media.metrics.MediaItemInfo(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.media.metrics.MediaItemInfo.Builder setAudioChannelCount(int p0) { meglerProps.put("AudioChannelCount", Integer.valueOf(p0)); return this; }
+        public android.media.metrics.MediaItemInfo.Builder setAudioSampleCount(long p0) { meglerProps.put("AudioSampleCount", Long.valueOf(p0)); return this; }
+        public android.media.metrics.MediaItemInfo.Builder setAudioSampleRateHz(int p0) { meglerProps.put("AudioSampleRateHz", Integer.valueOf(p0)); return this; }
+        public android.media.metrics.MediaItemInfo.Builder setClipDurationMillis(long p0) { meglerProps.put("ClipDurationMillis", Long.valueOf(p0)); return this; }
+        public android.media.metrics.MediaItemInfo.Builder setContainerMimeType(java.lang.String p0) { meglerProps.put("ContainerMimeType", p0); return this; }
+        public android.media.metrics.MediaItemInfo.Builder setDurationMillis(long p0) { meglerProps.put("DurationMillis", Long.valueOf(p0)); return this; }
+        public android.media.metrics.MediaItemInfo.Builder setSourceType(int p0) { meglerProps.put("SourceType", Integer.valueOf(p0)); return this; }
+        public android.media.metrics.MediaItemInfo.Builder setVideoDataSpace(int p0) { meglerProps.put("VideoDataSpace", Integer.valueOf(p0)); return this; }
+        public android.media.metrics.MediaItemInfo.Builder setVideoFrameRate(float p0) { meglerProps.put("VideoFrameRate", Float.valueOf(p0)); return this; }
+        public android.media.metrics.MediaItemInfo.Builder setVideoSampleCount(long p0) { meglerProps.put("VideoSampleCount", Long.valueOf(p0)); return this; }
+        public android.media.metrics.MediaItemInfo.Builder setVideoSize(android.util.Size p0) { meglerProps.put("VideoSize", p0); return this; }
     }
 }

@@ -3,7 +3,7 @@ package android.view;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class FocusFinder {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.view.FocusFinder getInstance() { return new FocusFinder(); }
     public static void sort(android.view.View[] p0, int p1, int p2, android.view.ViewGroup p3, boolean p4) {}
     public android.view.View findNearestTouchable(android.view.ViewGroup p0, int p1, int p2, int p3, int[] p4) { return null; }

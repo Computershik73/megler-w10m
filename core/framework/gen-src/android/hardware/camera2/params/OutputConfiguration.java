@@ -3,7 +3,7 @@ package android.hardware.camera2.params;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class OutputConfiguration implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int MIRROR_MODE_AUTO = 0;
     public static final int MIRROR_MODE_H = 2;
@@ -38,38 +38,38 @@ public final class OutputConfiguration implements android.os.Parcelable {
     public void clearColorSpace() {}
     public int describeContents() { return 0; }
     public void enableSurfaceSharing() {}
-    public android.graphics.ColorSpace getColorSpace() { return (android.graphics.ColorSpace) megletProps.get("ColorSpace"); }
-    public int getConfiguredFormat() { return (megletProps.get("ConfiguredFormat") instanceof Integer ? (Integer) megletProps.get("ConfiguredFormat") : 0); }
-    public android.util.Size getConfiguredSize() { return (android.util.Size) megletProps.get("ConfiguredSize"); }
-    public long getDynamicRangeProfile() { return (megletProps.get("DynamicRangeProfile") instanceof Long ? (Long) megletProps.get("DynamicRangeProfile") : 0L); }
-    public int getMaxSharedSurfaceCount() { return (megletProps.get("MaxSharedSurfaceCount") instanceof Integer ? (Integer) megletProps.get("MaxSharedSurfaceCount") : 0); }
-    public int getMirrorMode() { return (megletProps.get("MirrorMode") instanceof Integer ? (Integer) megletProps.get("MirrorMode") : 0); }
+    public android.graphics.ColorSpace getColorSpace() { return (android.graphics.ColorSpace) meglerProps.get("ColorSpace"); }
+    public int getConfiguredFormat() { return (meglerProps.get("ConfiguredFormat") instanceof Integer ? (Integer) meglerProps.get("ConfiguredFormat") : 0); }
+    public android.util.Size getConfiguredSize() { return (android.util.Size) meglerProps.get("ConfiguredSize"); }
+    public long getDynamicRangeProfile() { return (meglerProps.get("DynamicRangeProfile") instanceof Long ? (Long) meglerProps.get("DynamicRangeProfile") : 0L); }
+    public int getMaxSharedSurfaceCount() { return (meglerProps.get("MaxSharedSurfaceCount") instanceof Integer ? (Integer) meglerProps.get("MaxSharedSurfaceCount") : 0); }
+    public int getMirrorMode() { return (meglerProps.get("MirrorMode") instanceof Integer ? (Integer) meglerProps.get("MirrorMode") : 0); }
     public int getMirrorMode(android.view.Surface p0) { return 0; }
-    public java.lang.String getPhysicalCameraId() { return (java.lang.String) megletProps.get("PhysicalCameraId"); }
-    public int getRotation() { return (megletProps.get("Rotation") instanceof Integer ? (Integer) megletProps.get("Rotation") : 0); }
-    public java.util.List getSensorPixelModes() { return (megletProps.get("SensorPixelModes") != null ? (java.util.List) megletProps.get("SensorPixelModes") : new java.util.ArrayList()); }
-    public long getStreamUseCase() { return (megletProps.get("StreamUseCase") instanceof Long ? (Long) megletProps.get("StreamUseCase") : 0L); }
-    public android.view.Surface getSurface() { return (android.view.Surface) megletProps.get("Surface"); }
-    public int getSurfaceGroupId() { return (megletProps.get("SurfaceGroupId") instanceof Integer ? (Integer) megletProps.get("SurfaceGroupId") : 0); }
-    public java.util.List getSurfaces() { return (megletProps.get("Surfaces") != null ? (java.util.List) megletProps.get("Surfaces") : new java.util.ArrayList()); }
-    public int getTimestampBase() { return (megletProps.get("TimestampBase") instanceof Integer ? (Integer) megletProps.get("TimestampBase") : 0); }
-    public long getUsage() { return (megletProps.get("Usage") instanceof Long ? (Long) megletProps.get("Usage") : 0L); }
-    public boolean isDeferredConfiguration() { return (megletProps.get("DeferredConfiguration") instanceof Boolean ? (Boolean) megletProps.get("DeferredConfiguration") : false); }
-    public boolean isForPhysicalCamera() { return (megletProps.get("ForPhysicalCamera") instanceof Boolean ? (Boolean) megletProps.get("ForPhysicalCamera") : false); }
-    public boolean isMultiResolution() { return (megletProps.get("MultiResolution") instanceof Boolean ? (Boolean) megletProps.get("MultiResolution") : false); }
-    public boolean isReadoutTimestampEnabled() { return (megletProps.get("ReadoutTimestampEnabled") instanceof Boolean ? (Boolean) megletProps.get("ReadoutTimestampEnabled") : false); }
-    public boolean isShared() { return (megletProps.get("Shared") instanceof Boolean ? (Boolean) megletProps.get("Shared") : false); }
+    public java.lang.String getPhysicalCameraId() { return (java.lang.String) meglerProps.get("PhysicalCameraId"); }
+    public int getRotation() { return (meglerProps.get("Rotation") instanceof Integer ? (Integer) meglerProps.get("Rotation") : 0); }
+    public java.util.List getSensorPixelModes() { return (meglerProps.get("SensorPixelModes") != null ? (java.util.List) meglerProps.get("SensorPixelModes") : new java.util.ArrayList()); }
+    public long getStreamUseCase() { return (meglerProps.get("StreamUseCase") instanceof Long ? (Long) meglerProps.get("StreamUseCase") : 0L); }
+    public android.view.Surface getSurface() { return (android.view.Surface) meglerProps.get("Surface"); }
+    public int getSurfaceGroupId() { return (meglerProps.get("SurfaceGroupId") instanceof Integer ? (Integer) meglerProps.get("SurfaceGroupId") : 0); }
+    public java.util.List getSurfaces() { return (meglerProps.get("Surfaces") != null ? (java.util.List) meglerProps.get("Surfaces") : new java.util.ArrayList()); }
+    public int getTimestampBase() { return (meglerProps.get("TimestampBase") instanceof Integer ? (Integer) meglerProps.get("TimestampBase") : 0); }
+    public long getUsage() { return (meglerProps.get("Usage") instanceof Long ? (Long) meglerProps.get("Usage") : 0L); }
+    public boolean isDeferredConfiguration() { return (meglerProps.get("DeferredConfiguration") instanceof Boolean ? (Boolean) meglerProps.get("DeferredConfiguration") : false); }
+    public boolean isForPhysicalCamera() { return (meglerProps.get("ForPhysicalCamera") instanceof Boolean ? (Boolean) meglerProps.get("ForPhysicalCamera") : false); }
+    public boolean isMultiResolution() { return (meglerProps.get("MultiResolution") instanceof Boolean ? (Boolean) meglerProps.get("MultiResolution") : false); }
+    public boolean isReadoutTimestampEnabled() { return (meglerProps.get("ReadoutTimestampEnabled") instanceof Boolean ? (Boolean) meglerProps.get("ReadoutTimestampEnabled") : false); }
+    public boolean isShared() { return (meglerProps.get("Shared") instanceof Boolean ? (Boolean) meglerProps.get("Shared") : false); }
     public void removeSensorPixelModeUsed(int p0) {}
     public void removeSurface(android.view.Surface p0) {}
-    public void setColorSpace(android.graphics.ColorSpace.Named p0) { megletProps.put("ColorSpace", p0); }
-    public void setDynamicRangeProfile(long p0) { megletProps.put("DynamicRangeProfile", Long.valueOf(p0)); }
-    public void setMirrorMode(int p0) { megletProps.put("MirrorMode", Integer.valueOf(p0)); }
+    public void setColorSpace(android.graphics.ColorSpace.Named p0) { meglerProps.put("ColorSpace", p0); }
+    public void setDynamicRangeProfile(long p0) { meglerProps.put("DynamicRangeProfile", Long.valueOf(p0)); }
+    public void setMirrorMode(int p0) { meglerProps.put("MirrorMode", Integer.valueOf(p0)); }
     public void setMirrorMode(android.view.Surface p0, int p1) {}
     public void setMultiResolutionOutput() {}
-    public void setPhysicalCameraId(java.lang.String p0) { megletProps.put("PhysicalCameraId", p0); }
-    public void setReadoutTimestampEnabled(boolean p0) { megletProps.put("ReadoutTimestampEnabled", Boolean.valueOf(p0)); }
-    public void setStreamUseCase(long p0) { megletProps.put("StreamUseCase", Long.valueOf(p0)); }
-    public void setTimestampBase(int p0) { megletProps.put("TimestampBase", Integer.valueOf(p0)); }
+    public void setPhysicalCameraId(java.lang.String p0) { meglerProps.put("PhysicalCameraId", p0); }
+    public void setReadoutTimestampEnabled(boolean p0) { meglerProps.put("ReadoutTimestampEnabled", Boolean.valueOf(p0)); }
+    public void setStreamUseCase(long p0) { meglerProps.put("StreamUseCase", Long.valueOf(p0)); }
+    public void setTimestampBase(int p0) { meglerProps.put("TimestampBase", Integer.valueOf(p0)); }
     public void updateCachedSurfaceSize() {}
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     OutputConfiguration() { this((android.hardware.camera2.params.OutputConfiguration) null); }

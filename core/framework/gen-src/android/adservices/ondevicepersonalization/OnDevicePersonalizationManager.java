@@ -3,7 +3,7 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class OnDevicePersonalizationManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int FEATURE_DISABLED = 1;
     public static final int FEATURE_ENABLED = 0;
     public static final int FEATURE_UNSUPPORTED = 2;
@@ -15,9 +15,9 @@ public class OnDevicePersonalizationManager {
     public void requestSurfacePackage(android.adservices.ondevicepersonalization.SurfacePackageToken p0, android.os.IBinder p1, int p2, int p3, int p4, java.util.concurrent.Executor p5, android.os.OutcomeReceiver p6) {}
     OnDevicePersonalizationManager() { this((android.content.Context) null); }
     public static class ExecuteResult {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public byte[] getOutputData() { return (byte[]) megletProps.get("OutputData"); }
-        public android.adservices.ondevicepersonalization.SurfacePackageToken getSurfacePackageToken() { return (android.adservices.ondevicepersonalization.SurfacePackageToken) megletProps.get("SurfacePackageToken"); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public byte[] getOutputData() { return (byte[]) meglerProps.get("OutputData"); }
+        public android.adservices.ondevicepersonalization.SurfacePackageToken getSurfacePackageToken() { return (android.adservices.ondevicepersonalization.SurfacePackageToken) meglerProps.get("SurfacePackageToken"); }
         protected ExecuteResult() {}
     }
 }

@@ -3,38 +3,38 @@ package android.hardware.usb;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class UsbDevice implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static int getDeviceId(java.lang.String p0) { return 0; }
     public static java.lang.String getDeviceName(int p0) { return null; }
     public int describeContents() { return 0; }
     public android.hardware.usb.UsbConfiguration getConfiguration(int p0) { return null; }
-    public int getConfigurationCount() { return (megletProps.get("ConfigurationCount") instanceof Integer ? (Integer) megletProps.get("ConfigurationCount") : 0); }
-    public int getDeviceClass() { return (megletProps.get("DeviceClass") instanceof Integer ? (Integer) megletProps.get("DeviceClass") : 0); }
-    public int getDeviceId() { return (megletProps.get("DeviceId") instanceof Integer ? (Integer) megletProps.get("DeviceId") : 0); }
-    public java.lang.String getDeviceName() { return (java.lang.String) megletProps.get("DeviceName"); }
-    public int getDeviceProtocol() { return (megletProps.get("DeviceProtocol") instanceof Integer ? (Integer) megletProps.get("DeviceProtocol") : 0); }
-    public int getDeviceSubclass() { return (megletProps.get("DeviceSubclass") instanceof Integer ? (Integer) megletProps.get("DeviceSubclass") : 0); }
-    public boolean getHasAudioCapture() { return (megletProps.get("HasAudioCapture") instanceof Boolean ? (Boolean) megletProps.get("HasAudioCapture") : false); }
-    public boolean getHasAudioPlayback() { return (megletProps.get("HasAudioPlayback") instanceof Boolean ? (Boolean) megletProps.get("HasAudioPlayback") : false); }
-    public boolean getHasMidi() { return (megletProps.get("HasMidi") instanceof Boolean ? (Boolean) megletProps.get("HasMidi") : false); }
-    public boolean getHasVideoCapture() { return (megletProps.get("HasVideoCapture") instanceof Boolean ? (Boolean) megletProps.get("HasVideoCapture") : false); }
-    public boolean getHasVideoPlayback() { return (megletProps.get("HasVideoPlayback") instanceof Boolean ? (Boolean) megletProps.get("HasVideoPlayback") : false); }
+    public int getConfigurationCount() { return (meglerProps.get("ConfigurationCount") instanceof Integer ? (Integer) meglerProps.get("ConfigurationCount") : 0); }
+    public int getDeviceClass() { return (meglerProps.get("DeviceClass") instanceof Integer ? (Integer) meglerProps.get("DeviceClass") : 0); }
+    public int getDeviceId() { return (meglerProps.get("DeviceId") instanceof Integer ? (Integer) meglerProps.get("DeviceId") : 0); }
+    public java.lang.String getDeviceName() { return (java.lang.String) meglerProps.get("DeviceName"); }
+    public int getDeviceProtocol() { return (meglerProps.get("DeviceProtocol") instanceof Integer ? (Integer) meglerProps.get("DeviceProtocol") : 0); }
+    public int getDeviceSubclass() { return (meglerProps.get("DeviceSubclass") instanceof Integer ? (Integer) meglerProps.get("DeviceSubclass") : 0); }
+    public boolean getHasAudioCapture() { return (meglerProps.get("HasAudioCapture") instanceof Boolean ? (Boolean) meglerProps.get("HasAudioCapture") : false); }
+    public boolean getHasAudioPlayback() { return (meglerProps.get("HasAudioPlayback") instanceof Boolean ? (Boolean) meglerProps.get("HasAudioPlayback") : false); }
+    public boolean getHasMidi() { return (meglerProps.get("HasMidi") instanceof Boolean ? (Boolean) meglerProps.get("HasMidi") : false); }
+    public boolean getHasVideoCapture() { return (meglerProps.get("HasVideoCapture") instanceof Boolean ? (Boolean) meglerProps.get("HasVideoCapture") : false); }
+    public boolean getHasVideoPlayback() { return (meglerProps.get("HasVideoPlayback") instanceof Boolean ? (Boolean) meglerProps.get("HasVideoPlayback") : false); }
     public android.hardware.usb.UsbInterface getInterface(int p0) { return null; }
-    public int getInterfaceCount() { return (megletProps.get("InterfaceCount") instanceof Integer ? (Integer) megletProps.get("InterfaceCount") : 0); }
-    public java.lang.String getManufacturerName() { return (java.lang.String) megletProps.get("ManufacturerName"); }
-    public int getProductId() { return (megletProps.get("ProductId") instanceof Integer ? (Integer) megletProps.get("ProductId") : 0); }
-    public java.lang.String getProductName() { return (java.lang.String) megletProps.get("ProductName"); }
-    public java.lang.String getSerialNumber() { return (java.lang.String) megletProps.get("SerialNumber"); }
-    public int getVendorId() { return (megletProps.get("VendorId") instanceof Integer ? (Integer) megletProps.get("VendorId") : 0); }
-    public java.lang.String getVersion() { return (java.lang.String) megletProps.get("Version"); }
+    public int getInterfaceCount() { return (meglerProps.get("InterfaceCount") instanceof Integer ? (Integer) meglerProps.get("InterfaceCount") : 0); }
+    public java.lang.String getManufacturerName() { return (java.lang.String) meglerProps.get("ManufacturerName"); }
+    public int getProductId() { return (meglerProps.get("ProductId") instanceof Integer ? (Integer) meglerProps.get("ProductId") : 0); }
+    public java.lang.String getProductName() { return (java.lang.String) meglerProps.get("ProductName"); }
+    public java.lang.String getSerialNumber() { return (java.lang.String) meglerProps.get("SerialNumber"); }
+    public int getVendorId() { return (meglerProps.get("VendorId") instanceof Integer ? (Integer) meglerProps.get("VendorId") : 0); }
+    public java.lang.String getVersion() { return (java.lang.String) meglerProps.get("Version"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected UsbDevice() {}
     public static class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public java.lang.String serialNumber;
         public Builder(java.lang.String p0, int p1, int p2, int p3, int p4, int p5, java.lang.String p6, java.lang.String p7, java.lang.String p8, android.hardware.usb.UsbConfiguration[] p9, java.lang.String p10, boolean p11, boolean p12, boolean p13, boolean p14, boolean p15) {}
-        public android.hardware.usb.UsbDevice build(android.hardware.usb.IUsbSerialReader p0) { android.hardware.usb.UsbDevice x = new android.hardware.usb.UsbDevice(); x.megletProps.putAll(megletProps); return x; }
+        public android.hardware.usb.UsbDevice build(android.hardware.usb.IUsbSerialReader p0) { android.hardware.usb.UsbDevice x = new android.hardware.usb.UsbDevice(); x.meglerProps.putAll(meglerProps); return x; }
         Builder() { this((java.lang.String) null, (int) 0, (int) 0, (int) 0, (int) 0, (int) 0, (java.lang.String) null, (java.lang.String) null, (java.lang.String) null, (android.hardware.usb.UsbConfiguration[]) null, (java.lang.String) null, (boolean) false, (boolean) false, (boolean) false, (boolean) false, (boolean) false); }
     }
 }

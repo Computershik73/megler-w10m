@@ -3,7 +3,7 @@ package android.net.wifi;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ScanResult implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int BAND_24_GHZ_END_FREQ_MHZ = 2484;
     public static final int BAND_24_GHZ_FIRST_CH_NUM = 1;
     public static final int BAND_24_GHZ_LAST_CH_NUM = 14;
@@ -142,60 +142,60 @@ public final class ScanResult implements android.os.Parcelable {
     public static java.lang.String wifiStandardToString(int p0) { return null; }
     public void clearFlag(long p0) {}
     public int describeContents() { return 0; }
-    public java.util.List getAffiliatedMloLinks() { return (megletProps.get("AffiliatedMloLinks") != null ? (java.util.List) megletProps.get("AffiliatedMloLinks") : new java.util.ArrayList()); }
-    public android.net.MacAddress getApMldMacAddress() { return (android.net.MacAddress) megletProps.get("ApMldMacAddress"); }
-    public int getApMloLinkId() { return (megletProps.get("ApMloLinkId") instanceof Integer ? (Integer) megletProps.get("ApMloLinkId") : 0); }
-    public int getBand() { return (megletProps.get("Band") instanceof Integer ? (Integer) megletProps.get("Band") : 0); }
-    public java.util.List getInformationElements() { return (megletProps.get("InformationElements") != null ? (java.util.List) megletProps.get("InformationElements") : new java.util.ArrayList()); }
-    public int[] getSecurityTypes() { return (int[]) megletProps.get("SecurityTypes"); }
-    public android.net.wifi.WifiSsid getWifiSsid() { return (android.net.wifi.WifiSsid) megletProps.get("WifiSsid"); }
-    public int getWifiStandard() { return (megletProps.get("WifiStandard") instanceof Integer ? (Integer) megletProps.get("WifiStandard") : 0); }
-    public boolean is24GHz() { return (megletProps.get("24GHz") instanceof Boolean ? (Boolean) megletProps.get("24GHz") : false); }
-    public boolean is5GHz() { return (megletProps.get("5GHz") instanceof Boolean ? (Boolean) megletProps.get("5GHz") : false); }
-    public boolean is60GHz() { return (megletProps.get("60GHz") instanceof Boolean ? (Boolean) megletProps.get("60GHz") : false); }
-    public boolean is6GHz() { return (megletProps.get("6GHz") instanceof Boolean ? (Boolean) megletProps.get("6GHz") : false); }
-    public boolean is6GhzPsc() { return (megletProps.get("6GhzPsc") instanceof Boolean ? (Boolean) megletProps.get("6GhzPsc") : false); }
-    public boolean is80211azNtbResponder() { return (megletProps.get("80211azNtbResponder") instanceof Boolean ? (Boolean) megletProps.get("80211azNtbResponder") : false); }
-    public boolean is80211mcResponder() { return (megletProps.get("80211mcResponder") instanceof Boolean ? (Boolean) megletProps.get("80211mcResponder") : false); }
-    public boolean isPasspointNetwork() { return (megletProps.get("PasspointNetwork") instanceof Boolean ? (Boolean) megletProps.get("PasspointNetwork") : false); }
-    public boolean isRangingFrameProtectionRequired() { return (megletProps.get("RangingFrameProtectionRequired") instanceof Boolean ? (Boolean) megletProps.get("RangingFrameProtectionRequired") : false); }
-    public boolean isSecureHeLtfSupported() { return (megletProps.get("SecureHeLtfSupported") instanceof Boolean ? (Boolean) megletProps.get("SecureHeLtfSupported") : false); }
-    public boolean isTwtResponder() { return (megletProps.get("TwtResponder") instanceof Boolean ? (Boolean) megletProps.get("TwtResponder") : false); }
-    public void setAffiliatedMloLinks(java.util.List p0) { megletProps.put("AffiliatedMloLinks", p0); }
-    public void setApMldMacAddress(android.net.MacAddress p0) { megletProps.put("ApMldMacAddress", p0); }
-    public void setApMloLinkId(int p0) { megletProps.put("ApMloLinkId", Integer.valueOf(p0)); }
-    public void setFlag(long p0) { megletProps.put("Flag", Long.valueOf(p0)); }
-    public void setWifiSsid(android.net.wifi.WifiSsid p0) { megletProps.put("WifiSsid", p0); }
-    public void setWifiStandard(int p0) { megletProps.put("WifiStandard", Integer.valueOf(p0)); }
+    public java.util.List getAffiliatedMloLinks() { return (meglerProps.get("AffiliatedMloLinks") != null ? (java.util.List) meglerProps.get("AffiliatedMloLinks") : new java.util.ArrayList()); }
+    public android.net.MacAddress getApMldMacAddress() { return (android.net.MacAddress) meglerProps.get("ApMldMacAddress"); }
+    public int getApMloLinkId() { return (meglerProps.get("ApMloLinkId") instanceof Integer ? (Integer) meglerProps.get("ApMloLinkId") : 0); }
+    public int getBand() { return (meglerProps.get("Band") instanceof Integer ? (Integer) meglerProps.get("Band") : 0); }
+    public java.util.List getInformationElements() { return (meglerProps.get("InformationElements") != null ? (java.util.List) meglerProps.get("InformationElements") : new java.util.ArrayList()); }
+    public int[] getSecurityTypes() { return (int[]) meglerProps.get("SecurityTypes"); }
+    public android.net.wifi.WifiSsid getWifiSsid() { return (android.net.wifi.WifiSsid) meglerProps.get("WifiSsid"); }
+    public int getWifiStandard() { return (meglerProps.get("WifiStandard") instanceof Integer ? (Integer) meglerProps.get("WifiStandard") : 0); }
+    public boolean is24GHz() { return (meglerProps.get("24GHz") instanceof Boolean ? (Boolean) meglerProps.get("24GHz") : false); }
+    public boolean is5GHz() { return (meglerProps.get("5GHz") instanceof Boolean ? (Boolean) meglerProps.get("5GHz") : false); }
+    public boolean is60GHz() { return (meglerProps.get("60GHz") instanceof Boolean ? (Boolean) meglerProps.get("60GHz") : false); }
+    public boolean is6GHz() { return (meglerProps.get("6GHz") instanceof Boolean ? (Boolean) meglerProps.get("6GHz") : false); }
+    public boolean is6GhzPsc() { return (meglerProps.get("6GhzPsc") instanceof Boolean ? (Boolean) meglerProps.get("6GhzPsc") : false); }
+    public boolean is80211azNtbResponder() { return (meglerProps.get("80211azNtbResponder") instanceof Boolean ? (Boolean) meglerProps.get("80211azNtbResponder") : false); }
+    public boolean is80211mcResponder() { return (meglerProps.get("80211mcResponder") instanceof Boolean ? (Boolean) meglerProps.get("80211mcResponder") : false); }
+    public boolean isPasspointNetwork() { return (meglerProps.get("PasspointNetwork") instanceof Boolean ? (Boolean) meglerProps.get("PasspointNetwork") : false); }
+    public boolean isRangingFrameProtectionRequired() { return (meglerProps.get("RangingFrameProtectionRequired") instanceof Boolean ? (Boolean) meglerProps.get("RangingFrameProtectionRequired") : false); }
+    public boolean isSecureHeLtfSupported() { return (meglerProps.get("SecureHeLtfSupported") instanceof Boolean ? (Boolean) meglerProps.get("SecureHeLtfSupported") : false); }
+    public boolean isTwtResponder() { return (meglerProps.get("TwtResponder") instanceof Boolean ? (Boolean) meglerProps.get("TwtResponder") : false); }
+    public void setAffiliatedMloLinks(java.util.List p0) { meglerProps.put("AffiliatedMloLinks", p0); }
+    public void setApMldMacAddress(android.net.MacAddress p0) { meglerProps.put("ApMldMacAddress", p0); }
+    public void setApMloLinkId(int p0) { meglerProps.put("ApMloLinkId", Integer.valueOf(p0)); }
+    public void setFlag(long p0) { meglerProps.put("Flag", Long.valueOf(p0)); }
+    public void setWifiSsid(android.net.wifi.WifiSsid p0) { meglerProps.put("WifiSsid", p0); }
+    public void setWifiStandard(int p0) { meglerProps.put("WifiStandard", Integer.valueOf(p0)); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.net.wifi.WifiSsid p0, java.lang.String p1) {}
-        public android.net.wifi.ScanResult build() { android.net.wifi.ScanResult x = new android.net.wifi.ScanResult(); x.megletProps.putAll(megletProps); return x; }
+        public android.net.wifi.ScanResult build() { android.net.wifi.ScanResult x = new android.net.wifi.ScanResult(); x.meglerProps.putAll(meglerProps); return x; }
         public void clear() {}
-        public android.net.wifi.ScanResult.Builder setAnqpDomainId(int p0) { megletProps.put("AnqpDomainId", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.ScanResult.Builder setBssid(java.lang.String p0) { megletProps.put("Bssid", p0); return this; }
-        public android.net.wifi.ScanResult.Builder setCaps(java.lang.String p0) { megletProps.put("Caps", p0); return this; }
-        public android.net.wifi.ScanResult.Builder setCenterFreq0(int p0) { megletProps.put("CenterFreq0", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.ScanResult.Builder setCenterFreq1(int p0) { megletProps.put("CenterFreq1", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.ScanResult.Builder setChannelWidth(int p0) { megletProps.put("ChannelWidth", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.ScanResult.Builder setDistanceCm(int p0) { megletProps.put("DistanceCm", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.ScanResult.Builder setDistanceSdCm(int p0) { megletProps.put("DistanceSdCm", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.ScanResult.Builder setFrequency(int p0) { megletProps.put("Frequency", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.ScanResult.Builder setHessid(long p0) { megletProps.put("Hessid", Long.valueOf(p0)); return this; }
-        public android.net.wifi.ScanResult.Builder setIs80211McRTTResponder(boolean p0) { megletProps.put("Is80211McRTTResponder", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.ScanResult.Builder setIs80211azNtbRTTResponder(boolean p0) { megletProps.put("Is80211azNtbRTTResponder", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.ScanResult.Builder setIsTwtResponder(boolean p0) { megletProps.put("IsTwtResponder", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.ScanResult.Builder setOsuProviders(byte[] p0) { megletProps.put("OsuProviders", p0); return this; }
-        public android.net.wifi.ScanResult.Builder setRangingFrameProtectionRequired(boolean p0) { megletProps.put("RangingFrameProtectionRequired", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.ScanResult.Builder setRssi(int p0) { megletProps.put("Rssi", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.ScanResult.Builder setSecureHeLtfSupported(boolean p0) { megletProps.put("SecureHeLtfSupported", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.ScanResult.Builder setTsf(long p0) { megletProps.put("Tsf", Long.valueOf(p0)); return this; }
-        public android.net.wifi.ScanResult.Builder setWifiSsid(android.net.wifi.WifiSsid p0) { megletProps.put("WifiSsid", p0); return this; }
+        public android.net.wifi.ScanResult.Builder setAnqpDomainId(int p0) { meglerProps.put("AnqpDomainId", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.ScanResult.Builder setBssid(java.lang.String p0) { meglerProps.put("Bssid", p0); return this; }
+        public android.net.wifi.ScanResult.Builder setCaps(java.lang.String p0) { meglerProps.put("Caps", p0); return this; }
+        public android.net.wifi.ScanResult.Builder setCenterFreq0(int p0) { meglerProps.put("CenterFreq0", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.ScanResult.Builder setCenterFreq1(int p0) { meglerProps.put("CenterFreq1", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.ScanResult.Builder setChannelWidth(int p0) { meglerProps.put("ChannelWidth", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.ScanResult.Builder setDistanceCm(int p0) { meglerProps.put("DistanceCm", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.ScanResult.Builder setDistanceSdCm(int p0) { meglerProps.put("DistanceSdCm", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.ScanResult.Builder setFrequency(int p0) { meglerProps.put("Frequency", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.ScanResult.Builder setHessid(long p0) { meglerProps.put("Hessid", Long.valueOf(p0)); return this; }
+        public android.net.wifi.ScanResult.Builder setIs80211McRTTResponder(boolean p0) { meglerProps.put("Is80211McRTTResponder", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.ScanResult.Builder setIs80211azNtbRTTResponder(boolean p0) { meglerProps.put("Is80211azNtbRTTResponder", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.ScanResult.Builder setIsTwtResponder(boolean p0) { meglerProps.put("IsTwtResponder", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.ScanResult.Builder setOsuProviders(byte[] p0) { meglerProps.put("OsuProviders", p0); return this; }
+        public android.net.wifi.ScanResult.Builder setRangingFrameProtectionRequired(boolean p0) { meglerProps.put("RangingFrameProtectionRequired", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.ScanResult.Builder setRssi(int p0) { meglerProps.put("Rssi", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.ScanResult.Builder setSecureHeLtfSupported(boolean p0) { meglerProps.put("SecureHeLtfSupported", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.ScanResult.Builder setTsf(long p0) { meglerProps.put("Tsf", Long.valueOf(p0)); return this; }
+        public android.net.wifi.ScanResult.Builder setWifiSsid(android.net.wifi.WifiSsid p0) { meglerProps.put("WifiSsid", p0); return this; }
     }
     public static class InformationElement implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public static final int EID_BSS_LOAD = 11;
         public static final int EID_COUNTRY = 7;
@@ -229,13 +229,13 @@ public final class ScanResult implements android.os.Parcelable {
         public InformationElement(int p0, int p1, byte[] p2) {}
         public InformationElement(android.net.wifi.ScanResult.InformationElement p0) {}
         public int describeContents() { return 0; }
-        public java.nio.ByteBuffer getBytes() { return (java.nio.ByteBuffer) megletProps.get("Bytes"); }
-        public int getId() { return (megletProps.get("Id") instanceof Integer ? (Integer) megletProps.get("Id") : 0); }
-        public int getIdExt() { return (megletProps.get("IdExt") instanceof Integer ? (Integer) megletProps.get("IdExt") : 0); }
+        public java.nio.ByteBuffer getBytes() { return (java.nio.ByteBuffer) meglerProps.get("Bytes"); }
+        public int getId() { return (meglerProps.get("Id") instanceof Integer ? (Integer) meglerProps.get("Id") : 0); }
+        public int getIdExt() { return (meglerProps.get("IdExt") instanceof Integer ? (Integer) meglerProps.get("IdExt") : 0); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
     }
     public static class RadioChainInfo {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public int id;
         public int level;
         public RadioChainInfo() {}

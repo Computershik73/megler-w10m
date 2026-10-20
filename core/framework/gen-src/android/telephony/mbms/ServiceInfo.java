@@ -3,16 +3,16 @@ package android.telephony.mbms;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ServiceInfo {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     protected ServiceInfo(android.os.Parcel p0) {}
     public ServiceInfo(java.util.Map p0, java.lang.String p1, java.util.List p2, java.lang.String p3, java.util.Date p4, java.util.Date p5) {}
-    public java.util.List getLocales() { return (megletProps.get("Locales") != null ? (java.util.List) megletProps.get("Locales") : new java.util.ArrayList()); }
+    public java.util.List getLocales() { return (meglerProps.get("Locales") != null ? (java.util.List) meglerProps.get("Locales") : new java.util.ArrayList()); }
     public java.lang.CharSequence getNameForLocale(java.util.Locale p0) { return null; }
-    public java.util.Set getNamedContentLocales() { return (megletProps.get("NamedContentLocales") != null ? (java.util.Set) megletProps.get("NamedContentLocales") : new java.util.HashSet()); }
-    public java.lang.String getServiceClassName() { return (java.lang.String) megletProps.get("ServiceClassName"); }
-    public java.lang.String getServiceId() { return (java.lang.String) megletProps.get("ServiceId"); }
-    public java.util.Date getSessionEndTime() { return (java.util.Date) megletProps.get("SessionEndTime"); }
-    public java.util.Date getSessionStartTime() { return (java.util.Date) megletProps.get("SessionStartTime"); }
+    public java.util.Set getNamedContentLocales() { return (meglerProps.get("NamedContentLocales") != null ? (java.util.Set) meglerProps.get("NamedContentLocales") : new java.util.HashSet()); }
+    public java.lang.String getServiceClassName() { return (java.lang.String) meglerProps.get("ServiceClassName"); }
+    public java.lang.String getServiceId() { return (java.lang.String) meglerProps.get("ServiceId"); }
+    public java.util.Date getSessionEndTime() { return (java.util.Date) meglerProps.get("SessionEndTime"); }
+    public java.util.Date getSessionStartTime() { return (java.util.Date) meglerProps.get("SessionStartTime"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     ServiceInfo() { this((android.os.Parcel) null); }
 }

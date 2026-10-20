@@ -3,13 +3,13 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DataOrigin {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
     protected DataOrigin() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.health.connect.datatypes.DataOrigin build() { android.health.connect.datatypes.DataOrigin x = new android.health.connect.datatypes.DataOrigin(); x.megletProps.putAll(megletProps); return x; }
-        public android.health.connect.datatypes.DataOrigin.Builder setPackageName(java.lang.String p0) { megletProps.put("PackageName", p0); return this; }
+        public android.health.connect.datatypes.DataOrigin build() { android.health.connect.datatypes.DataOrigin x = new android.health.connect.datatypes.DataOrigin(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.health.connect.datatypes.DataOrigin.Builder setPackageName(java.lang.String p0) { meglerProps.put("PackageName", p0); return this; }
     }
 }

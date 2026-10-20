@@ -3,15 +3,15 @@ package android.text.style;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class LineBreakConfigSpan implements android.text.ParcelableSpan {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public LineBreakConfigSpan(android.graphics.text.LineBreakConfig p0) {}
     public static android.text.style.LineBreakConfigSpan createNoBreakSpan() { return new LineBreakConfigSpan(); }
     public static android.text.style.LineBreakConfigSpan createNoHyphenationSpan() { return new LineBreakConfigSpan(); }
     public int describeContents() { return 0; }
-    public android.graphics.text.LineBreakConfig getLineBreakConfig() { return (android.graphics.text.LineBreakConfig) megletProps.get("LineBreakConfig"); }
-    public int getSpanTypeId() { return (megletProps.get("SpanTypeId") instanceof Integer ? (Integer) megletProps.get("SpanTypeId") : 0); }
-    public int getSpanTypeIdInternal() { return (megletProps.get("SpanTypeIdInternal") instanceof Integer ? (Integer) megletProps.get("SpanTypeIdInternal") : 0); }
+    public android.graphics.text.LineBreakConfig getLineBreakConfig() { return (android.graphics.text.LineBreakConfig) meglerProps.get("LineBreakConfig"); }
+    public int getSpanTypeId() { return (meglerProps.get("SpanTypeId") instanceof Integer ? (Integer) meglerProps.get("SpanTypeId") : 0); }
+    public int getSpanTypeIdInternal() { return (meglerProps.get("SpanTypeIdInternal") instanceof Integer ? (Integer) meglerProps.get("SpanTypeIdInternal") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public void writeToParcelInternal(android.os.Parcel p0, int p1) {}
     LineBreakConfigSpan() { this((android.graphics.text.LineBreakConfig) null); }

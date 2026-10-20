@@ -1,5 +1,5 @@
 /*
- * A stand-in for the shell's decoders (meglet_codec_host), for tests where there are none: portable C that decodes
+ * A stand-in for the shell's decoders (megler_codec_host), for tests where there are none: portable C that decodes
  * nothing, but takes samples as a real decoder must be given them and hands out what can be checked.
  *
  * H.264 and AAC and MP3; not H.265, so that a kind the shell lacks is seen missing. A unit of H.264 must be Annex-B
@@ -14,13 +14,13 @@
 #ifndef MG_CODEC_STANDIN_H
 #define MG_CODEC_STANDIN_H
 
-#include "../include/meglet.h"
+#include "../include/megler.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-const meglet_codec_host *mg_codec_standin(void);
+const megler_codec_host *mg_codec_standin(void);
 /* The luma of the stand-in's picture for a sample of that time: 16 + 8 N for the Nth thirtieth of a second, N below 28. */
 int mg_codec_standin_luma(int64_t time_us);
 

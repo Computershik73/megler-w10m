@@ -3,10 +3,10 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ExecuteInput {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ExecuteInput(android.adservices.ondevicepersonalization.ExecuteInputParcel p0) {}
     public ExecuteInput(java.lang.String p0, android.os.PersistableBundle p1) {}
-    public java.lang.String getAppPackageName() { return (java.lang.String) megletProps.get("AppPackageName"); }
-    public android.os.PersistableBundle getAppParams() { return (android.os.PersistableBundle) megletProps.get("AppParams"); }
+    public java.lang.String getAppPackageName() { return (java.lang.String) meglerProps.get("AppPackageName"); }
+    public android.os.PersistableBundle getAppParams() { return (android.os.PersistableBundle) meglerProps.get("AppParams"); }
     ExecuteInput() { this((android.adservices.ondevicepersonalization.ExecuteInputParcel) null); }
 }

@@ -3,7 +3,7 @@ package android.media.metrics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PlaybackErrorEvent extends android.media.metrics.Event implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int ERROR_AUDIO_TRACK_INIT_FAILED = 17;
     public static final int ERROR_AUDIO_TRACK_OTHER = 19;
@@ -42,21 +42,21 @@ public final class PlaybackErrorEvent extends android.media.metrics.Event implem
     public static final int ERROR_RUNTIME = 2;
     public static int ERROR_UNKNOWN;
     public int describeContents() { return 0; }
-    public int getErrorCode() { return (megletProps.get("ErrorCode") instanceof Integer ? (Integer) megletProps.get("ErrorCode") : 0); }
-    public java.lang.String getExceptionStack() { return (java.lang.String) megletProps.get("ExceptionStack"); }
-    public android.os.Bundle getMetricsBundle() { return (android.os.Bundle) megletProps.get("MetricsBundle"); }
-    public int getSubErrorCode() { return (megletProps.get("SubErrorCode") instanceof Integer ? (Integer) megletProps.get("SubErrorCode") : 0); }
-    public long getTimeSinceCreatedMillis() { return (megletProps.get("TimeSinceCreatedMillis") instanceof Long ? (Long) megletProps.get("TimeSinceCreatedMillis") : 0L); }
+    public int getErrorCode() { return (meglerProps.get("ErrorCode") instanceof Integer ? (Integer) meglerProps.get("ErrorCode") : 0); }
+    public java.lang.String getExceptionStack() { return (java.lang.String) meglerProps.get("ExceptionStack"); }
+    public android.os.Bundle getMetricsBundle() { return (android.os.Bundle) meglerProps.get("MetricsBundle"); }
+    public int getSubErrorCode() { return (meglerProps.get("SubErrorCode") instanceof Integer ? (Integer) meglerProps.get("SubErrorCode") : 0); }
+    public long getTimeSinceCreatedMillis() { return (meglerProps.get("TimeSinceCreatedMillis") instanceof Long ? (Long) meglerProps.get("TimeSinceCreatedMillis") : 0L); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected PlaybackErrorEvent() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.media.metrics.PlaybackErrorEvent build() { android.media.metrics.PlaybackErrorEvent x = new android.media.metrics.PlaybackErrorEvent(); x.megletProps.putAll(megletProps); return x; }
-        public android.media.metrics.PlaybackErrorEvent.Builder setErrorCode(int p0) { megletProps.put("ErrorCode", Integer.valueOf(p0)); return this; }
-        public android.media.metrics.PlaybackErrorEvent.Builder setException(java.lang.Exception p0) { megletProps.put("Exception", p0); return this; }
-        public android.media.metrics.PlaybackErrorEvent.Builder setMetricsBundle(android.os.Bundle p0) { megletProps.put("MetricsBundle", p0); return this; }
-        public android.media.metrics.PlaybackErrorEvent.Builder setSubErrorCode(int p0) { megletProps.put("SubErrorCode", Integer.valueOf(p0)); return this; }
-        public android.media.metrics.PlaybackErrorEvent.Builder setTimeSinceCreatedMillis(long p0) { megletProps.put("TimeSinceCreatedMillis", Long.valueOf(p0)); return this; }
+        public android.media.metrics.PlaybackErrorEvent build() { android.media.metrics.PlaybackErrorEvent x = new android.media.metrics.PlaybackErrorEvent(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.media.metrics.PlaybackErrorEvent.Builder setErrorCode(int p0) { meglerProps.put("ErrorCode", Integer.valueOf(p0)); return this; }
+        public android.media.metrics.PlaybackErrorEvent.Builder setException(java.lang.Exception p0) { meglerProps.put("Exception", p0); return this; }
+        public android.media.metrics.PlaybackErrorEvent.Builder setMetricsBundle(android.os.Bundle p0) { meglerProps.put("MetricsBundle", p0); return this; }
+        public android.media.metrics.PlaybackErrorEvent.Builder setSubErrorCode(int p0) { meglerProps.put("SubErrorCode", Integer.valueOf(p0)); return this; }
+        public android.media.metrics.PlaybackErrorEvent.Builder setTimeSinceCreatedMillis(long p0) { meglerProps.put("TimeSinceCreatedMillis", Long.valueOf(p0)); return this; }
     }
 }

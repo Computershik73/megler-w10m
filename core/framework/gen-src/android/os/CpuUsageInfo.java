@@ -3,12 +3,12 @@ package android.os;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CpuUsageInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public CpuUsageInfo(long p0, long p1) {}
     public int describeContents() { return 0; }
-    public long getActive() { return (megletProps.get("Active") instanceof Long ? (Long) megletProps.get("Active") : 0L); }
-    public long getTotal() { return (megletProps.get("Total") instanceof Long ? (Long) megletProps.get("Total") : 0L); }
+    public long getActive() { return (meglerProps.get("Active") instanceof Long ? (Long) meglerProps.get("Active") : 0L); }
+    public long getTotal() { return (meglerProps.get("Total") instanceof Long ? (Long) meglerProps.get("Total") : 0L); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     CpuUsageInfo() { this((long) 0L, (long) 0L); }
 }

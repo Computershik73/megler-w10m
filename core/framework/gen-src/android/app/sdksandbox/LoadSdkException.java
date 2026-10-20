@@ -3,15 +3,15 @@ package android.app.sdksandbox;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class LoadSdkException extends java.lang.Exception implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public LoadSdkException(int p0, java.lang.String p1) { super(); }
     public LoadSdkException(int p0, java.lang.String p1, java.lang.Throwable p2) { super(); }
     public LoadSdkException(int p0, java.lang.String p1, java.lang.Throwable p2, android.os.Bundle p3) { super(); }
     public LoadSdkException(java.lang.Throwable p0, android.os.Bundle p1) { super(); }
     public int describeContents() { return 0; }
-    public android.os.Bundle getExtraInformation() { return (android.os.Bundle) megletProps.get("ExtraInformation"); }
-    public int getLoadSdkErrorCode() { return (megletProps.get("LoadSdkErrorCode") instanceof Integer ? (Integer) megletProps.get("LoadSdkErrorCode") : 0); }
+    public android.os.Bundle getExtraInformation() { return (android.os.Bundle) meglerProps.get("ExtraInformation"); }
+    public int getLoadSdkErrorCode() { return (meglerProps.get("LoadSdkErrorCode") instanceof Integer ? (Integer) meglerProps.get("LoadSdkErrorCode") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     LoadSdkException() { this((int) 0, (java.lang.String) null); }
 }

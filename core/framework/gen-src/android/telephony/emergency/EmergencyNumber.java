@@ -3,7 +3,7 @@ package android.telephony.emergency;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class EmergencyNumber implements android.os.Parcelable, java.lang.Comparable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int EMERGENCY_CALL_ROUTING_EMERGENCY = 1;
     public static final int EMERGENCY_CALL_ROUTING_NORMAL = 2;
@@ -33,16 +33,16 @@ public final class EmergencyNumber implements android.os.Parcelable, java.lang.C
     public int compareTo(android.telephony.emergency.EmergencyNumber p0) { return 0; }
     public int compareTo(java.lang.Object p0) { return 0; }
     public int describeContents() { return 0; }
-    public java.lang.String getCountryIso() { return (java.lang.String) megletProps.get("CountryIso"); }
-    public int getEmergencyCallRouting() { return (megletProps.get("EmergencyCallRouting") instanceof Integer ? (Integer) megletProps.get("EmergencyCallRouting") : 0); }
-    public int getEmergencyNumberSourceBitmask() { return (megletProps.get("EmergencyNumberSourceBitmask") instanceof Integer ? (Integer) megletProps.get("EmergencyNumberSourceBitmask") : 0); }
-    public java.util.List getEmergencyNumberSources() { return (megletProps.get("EmergencyNumberSources") != null ? (java.util.List) megletProps.get("EmergencyNumberSources") : new java.util.ArrayList()); }
-    public java.util.List getEmergencyServiceCategories() { return (megletProps.get("EmergencyServiceCategories") != null ? (java.util.List) megletProps.get("EmergencyServiceCategories") : new java.util.ArrayList()); }
-    public int getEmergencyServiceCategoryBitmask() { return (megletProps.get("EmergencyServiceCategoryBitmask") instanceof Integer ? (Integer) megletProps.get("EmergencyServiceCategoryBitmask") : 0); }
-    public int getEmergencyServiceCategoryBitmaskInternalDial() { return (megletProps.get("EmergencyServiceCategoryBitmaskInternalDial") instanceof Integer ? (Integer) megletProps.get("EmergencyServiceCategoryBitmaskInternalDial") : 0); }
-    public java.util.List getEmergencyUrns() { return (megletProps.get("EmergencyUrns") != null ? (java.util.List) megletProps.get("EmergencyUrns") : new java.util.ArrayList()); }
-    public java.lang.String getMnc() { return (java.lang.String) megletProps.get("Mnc"); }
-    public java.lang.String getNumber() { return (java.lang.String) megletProps.get("Number"); }
+    public java.lang.String getCountryIso() { return (java.lang.String) meglerProps.get("CountryIso"); }
+    public int getEmergencyCallRouting() { return (meglerProps.get("EmergencyCallRouting") instanceof Integer ? (Integer) meglerProps.get("EmergencyCallRouting") : 0); }
+    public int getEmergencyNumberSourceBitmask() { return (meglerProps.get("EmergencyNumberSourceBitmask") instanceof Integer ? (Integer) meglerProps.get("EmergencyNumberSourceBitmask") : 0); }
+    public java.util.List getEmergencyNumberSources() { return (meglerProps.get("EmergencyNumberSources") != null ? (java.util.List) meglerProps.get("EmergencyNumberSources") : new java.util.ArrayList()); }
+    public java.util.List getEmergencyServiceCategories() { return (meglerProps.get("EmergencyServiceCategories") != null ? (java.util.List) meglerProps.get("EmergencyServiceCategories") : new java.util.ArrayList()); }
+    public int getEmergencyServiceCategoryBitmask() { return (meglerProps.get("EmergencyServiceCategoryBitmask") instanceof Integer ? (Integer) meglerProps.get("EmergencyServiceCategoryBitmask") : 0); }
+    public int getEmergencyServiceCategoryBitmaskInternalDial() { return (meglerProps.get("EmergencyServiceCategoryBitmaskInternalDial") instanceof Integer ? (Integer) meglerProps.get("EmergencyServiceCategoryBitmaskInternalDial") : 0); }
+    public java.util.List getEmergencyUrns() { return (meglerProps.get("EmergencyUrns") != null ? (java.util.List) meglerProps.get("EmergencyUrns") : new java.util.ArrayList()); }
+    public java.lang.String getMnc() { return (java.lang.String) meglerProps.get("Mnc"); }
+    public java.lang.String getNumber() { return (java.lang.String) meglerProps.get("Number"); }
     public boolean isFromSources(int p0) { return false; }
     public boolean isInEmergencyServiceCategories(int p0) { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}

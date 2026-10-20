@@ -3,7 +3,7 @@ package android.widget;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class AdapterViewAnimator extends android.widget.AdapterView implements android.widget.RemoteViewsAdapter.RemoteAdapterConnectionCallback, android.widget.Advanceable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public AdapterViewAnimator(android.content.Context p0) { super(p0); }
     public AdapterViewAnimator(android.content.Context p0, android.util.AttributeSet p1) { super(p0, p1); }
     public AdapterViewAnimator(android.content.Context p0, android.util.AttributeSet p1, int p2) { super(p0, p1, p2); }
@@ -11,32 +11,32 @@ public abstract class AdapterViewAnimator extends android.widget.AdapterView imp
     public void advance() {}
     public void deferNotifyDataSetChanged() {}
     public void fyiWillBeAdvancedByHostKThx() {}
-    public java.lang.CharSequence getAccessibilityClassName() { return (java.lang.CharSequence) megletProps.get("AccessibilityClassName"); }
-    public android.widget.Adapter getAdapter() { return (android.widget.Adapter) megletProps.get("Adapter"); }
-    public int getBaseline() { return (megletProps.get("Baseline") instanceof Integer ? (Integer) megletProps.get("Baseline") : 0); }
-    public android.view.View getCurrentView() { return (android.view.View) megletProps.get("CurrentView"); }
-    public int getDisplayedChild() { return (megletProps.get("DisplayedChild") instanceof Integer ? (Integer) megletProps.get("DisplayedChild") : 0); }
-    public android.animation.ObjectAnimator getInAnimation() { return (android.animation.ObjectAnimator) megletProps.get("InAnimation"); }
-    public android.animation.ObjectAnimator getOutAnimation() { return (android.animation.ObjectAnimator) megletProps.get("OutAnimation"); }
-    public android.view.View getSelectedView() { return (android.view.View) megletProps.get("SelectedView"); }
+    public java.lang.CharSequence getAccessibilityClassName() { return (java.lang.CharSequence) meglerProps.get("AccessibilityClassName"); }
+    public android.widget.Adapter getAdapter() { return (android.widget.Adapter) meglerProps.get("Adapter"); }
+    public int getBaseline() { return (meglerProps.get("Baseline") instanceof Integer ? (Integer) meglerProps.get("Baseline") : 0); }
+    public android.view.View getCurrentView() { return (android.view.View) meglerProps.get("CurrentView"); }
+    public int getDisplayedChild() { return (meglerProps.get("DisplayedChild") instanceof Integer ? (Integer) meglerProps.get("DisplayedChild") : 0); }
+    public android.animation.ObjectAnimator getInAnimation() { return (android.animation.ObjectAnimator) meglerProps.get("InAnimation"); }
+    public android.animation.ObjectAnimator getOutAnimation() { return (android.animation.ObjectAnimator) meglerProps.get("OutAnimation"); }
+    public android.view.View getSelectedView() { return (android.view.View) meglerProps.get("SelectedView"); }
     public void onMeasure(int p0, int p1) {}
     public boolean onRemoteAdapterConnected() { return false; }
     public void onRemoteAdapterDisconnected() {}
     public void onRestoreInstanceState(android.os.Parcelable p0) {}
     public android.os.Parcelable onSaveInstanceState() { return null; }
     public boolean onTouchEvent(android.view.MotionEvent p0) { return false; }
-    public void setAdapter(android.widget.Adapter p0) { megletProps.put("Adapter", p0); }
-    public void setAnimateFirstView(boolean p0) { megletProps.put("AnimateFirstView", Boolean.valueOf(p0)); }
-    public void setDisplayedChild(int p0) { megletProps.put("DisplayedChild", Integer.valueOf(p0)); }
-    public void setInAnimation(android.animation.ObjectAnimator p0) { megletProps.put("InAnimation", p0); }
+    public void setAdapter(android.widget.Adapter p0) { meglerProps.put("Adapter", p0); }
+    public void setAnimateFirstView(boolean p0) { meglerProps.put("AnimateFirstView", Boolean.valueOf(p0)); }
+    public void setDisplayedChild(int p0) { meglerProps.put("DisplayedChild", Integer.valueOf(p0)); }
+    public void setInAnimation(android.animation.ObjectAnimator p0) { meglerProps.put("InAnimation", p0); }
     public void setInAnimation(android.content.Context p0, int p1) {}
-    public void setOutAnimation(android.animation.ObjectAnimator p0) { megletProps.put("OutAnimation", p0); }
+    public void setOutAnimation(android.animation.ObjectAnimator p0) { meglerProps.put("OutAnimation", p0); }
     public void setOutAnimation(android.content.Context p0, int p1) {}
-    public void setRemoteViewsAdapter(android.content.Intent p0) { megletProps.put("RemoteViewsAdapter", p0); }
+    public void setRemoteViewsAdapter(android.content.Intent p0) { meglerProps.put("RemoteViewsAdapter", p0); }
     public void setRemoteViewsAdapter(android.content.Intent p0, boolean p1) {}
     public java.lang.Runnable setRemoteViewsAdapterAsync(android.content.Intent p0) { return null; }
-    public void setRemoteViewsOnClickHandler(android.widget.RemoteViews.InteractionHandler p0) { megletProps.put("RemoteViewsOnClickHandler", p0); }
-    public void setSelection(int p0) { megletProps.put("Selection", Integer.valueOf(p0)); }
+    public void setRemoteViewsOnClickHandler(android.widget.RemoteViews.InteractionHandler p0) { meglerProps.put("RemoteViewsOnClickHandler", p0); }
+    public void setSelection(int p0) { meglerProps.put("Selection", Integer.valueOf(p0)); }
     public void showNext() {}
     public void showPrevious() {}
     AdapterViewAnimator() { this((android.content.Context) null); }

@@ -3,19 +3,19 @@ package android.view.inputmethod;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class InsertModeGesture extends android.view.inputmethod.CancellableHandwritingGesture implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public android.os.CancellationSignal getCancellationSignal() { return (android.os.CancellationSignal) megletProps.get("CancellationSignal"); }
-    public android.graphics.PointF getInsertionPoint() { return (android.graphics.PointF) megletProps.get("InsertionPoint"); }
+    public android.os.CancellationSignal getCancellationSignal() { return (android.os.CancellationSignal) meglerProps.get("CancellationSignal"); }
+    public android.graphics.PointF getInsertionPoint() { return (android.graphics.PointF) meglerProps.get("InsertionPoint"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected InsertModeGesture() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public android.view.inputmethod.InsertModeGesture build() { return null; }
-        public android.view.inputmethod.InsertModeGesture.Builder setCancellationSignal(android.os.CancellationSignal p0) { megletProps.put("CancellationSignal", p0); return this; }
-        public android.view.inputmethod.InsertModeGesture.Builder setFallbackText(java.lang.String p0) { megletProps.put("FallbackText", p0); return this; }
-        public android.view.inputmethod.InsertModeGesture.Builder setInsertionPoint(android.graphics.PointF p0) { megletProps.put("InsertionPoint", p0); return this; }
+        public android.view.inputmethod.InsertModeGesture.Builder setCancellationSignal(android.os.CancellationSignal p0) { meglerProps.put("CancellationSignal", p0); return this; }
+        public android.view.inputmethod.InsertModeGesture.Builder setFallbackText(java.lang.String p0) { meglerProps.put("FallbackText", p0); return this; }
+        public android.view.inputmethod.InsertModeGesture.Builder setInsertionPoint(android.graphics.PointF p0) { meglerProps.put("InsertionPoint", p0); return this; }
     }
 }

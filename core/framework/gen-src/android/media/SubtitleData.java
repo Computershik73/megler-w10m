@@ -3,12 +3,12 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SubtitleData {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public SubtitleData(int p0, long p1, long p2, byte[] p3) {}
     public SubtitleData(android.os.Parcel p0) {}
-    public byte[] getData() { return (byte[]) megletProps.get("Data"); }
-    public long getDurationUs() { return (megletProps.get("DurationUs") instanceof Long ? (Long) megletProps.get("DurationUs") : 0L); }
-    public long getStartTimeUs() { return (megletProps.get("StartTimeUs") instanceof Long ? (Long) megletProps.get("StartTimeUs") : 0L); }
-    public int getTrackIndex() { return (megletProps.get("TrackIndex") instanceof Integer ? (Integer) megletProps.get("TrackIndex") : 0); }
+    public byte[] getData() { return (byte[]) meglerProps.get("Data"); }
+    public long getDurationUs() { return (meglerProps.get("DurationUs") instanceof Long ? (Long) meglerProps.get("DurationUs") : 0L); }
+    public long getStartTimeUs() { return (meglerProps.get("StartTimeUs") instanceof Long ? (Long) meglerProps.get("StartTimeUs") : 0L); }
+    public int getTrackIndex() { return (meglerProps.get("TrackIndex") instanceof Integer ? (Integer) meglerProps.get("TrackIndex") : 0); }
     SubtitleData() { this((android.os.Parcel) null); }
 }

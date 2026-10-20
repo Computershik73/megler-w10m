@@ -3,19 +3,19 @@ package android.view;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class WindowId implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public WindowId(android.os.IBinder p0) {}
     public WindowId(android.view.IWindowId p0) {}
     public int describeContents() { return 0; }
-    public android.view.IWindowId getTarget() { return (android.view.IWindowId) megletProps.get("Target"); }
-    public boolean isFocused() { return (megletProps.get("Focused") instanceof Boolean ? (Boolean) megletProps.get("Focused") : false); }
+    public android.view.IWindowId getTarget() { return (android.view.IWindowId) meglerProps.get("Target"); }
+    public boolean isFocused() { return (meglerProps.get("Focused") instanceof Boolean ? (Boolean) meglerProps.get("Focused") : false); }
     public void registerFocusObserver(android.view.WindowId.FocusObserver p0) {}
     public void unregisterFocusObserver(android.view.WindowId.FocusObserver p0) {}
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     WindowId() { this((android.os.IBinder) null); }
     public static abstract class FocusObserver {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public FocusObserver() {}
         public abstract void onFocusGained(android.view.WindowId p0);
         public abstract void onFocusLost(android.view.WindowId p0);

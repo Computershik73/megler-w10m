@@ -3,12 +3,12 @@ package android.media.midi;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MidiDeviceStatus implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public MidiDeviceStatus(android.media.midi.MidiDeviceInfo p0) {}
     public MidiDeviceStatus(android.media.midi.MidiDeviceInfo p0, boolean[] p1, int[] p2) {}
     public int describeContents() { return 0; }
-    public android.media.midi.MidiDeviceInfo getDeviceInfo() { return (android.media.midi.MidiDeviceInfo) megletProps.get("DeviceInfo"); }
+    public android.media.midi.MidiDeviceInfo getDeviceInfo() { return (android.media.midi.MidiDeviceInfo) meglerProps.get("DeviceInfo"); }
     public int getOutputPortOpenCount(int p0) { return 0; }
     public boolean isInputPortOpen(int p0) { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}

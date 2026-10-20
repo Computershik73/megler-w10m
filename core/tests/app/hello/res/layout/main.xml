@@ -18,7 +18,7 @@
         android:layout_width="match_parent"
         android:layout_height="64dp"
         android:text="@string/press" />
-    <meglet.test.hello.Swatch
+    <megler.test.hello.Swatch
         android:id="@+id/swatch"
         android:layout_width="match_parent"
         android:layout_height="100dp" />

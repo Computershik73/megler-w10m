@@ -3,10 +3,10 @@ package android.health.connect.datatypes.units;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Volume implements java.lang.Comparable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.health.connect.datatypes.units.Volume fromLiters(double p0) { return new Volume(); }
     public int compareTo(android.health.connect.datatypes.units.Volume p0) { return 0; }
     public int compareTo(java.lang.Object p0) { return 0; }
-    public double getInLiters() { return (megletProps.get("InLiters") instanceof Double ? (Double) megletProps.get("InLiters") : 0d); }
+    public double getInLiters() { return (meglerProps.get("InLiters") instanceof Double ? (Double) meglerProps.get("InLiters") : 0d); }
     protected Volume() {}
 }

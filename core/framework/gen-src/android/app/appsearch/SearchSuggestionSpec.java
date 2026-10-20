@@ -3,23 +3,23 @@ package android.app.appsearch;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class SearchSuggestionSpec extends android.app.appsearch.safeparcel.AbstractSafeParcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int SUGGESTION_RANKING_STRATEGY_DOCUMENT_COUNT = 0;
     public static final int SUGGESTION_RANKING_STRATEGY_NONE = 2;
     public static final int SUGGESTION_RANKING_STRATEGY_TERM_FREQUENCY = 1;
     public SearchSuggestionSpec(java.util.List p0, java.util.List p1, android.os.Bundle p2, android.os.Bundle p3, int p4, int p5, java.util.List p6) { super(); }
-    public java.util.Map getFilterDocumentIds() { return (megletProps.get("FilterDocumentIds") != null ? (java.util.Map) megletProps.get("FilterDocumentIds") : new java.util.HashMap()); }
-    public java.util.List getFilterNamespaces() { return (megletProps.get("FilterNamespaces") != null ? (java.util.List) megletProps.get("FilterNamespaces") : new java.util.ArrayList()); }
-    public java.util.Map getFilterProperties() { return (megletProps.get("FilterProperties") != null ? (java.util.Map) megletProps.get("FilterProperties") : new java.util.HashMap()); }
-    public java.util.List getFilterSchemas() { return (megletProps.get("FilterSchemas") != null ? (java.util.List) megletProps.get("FilterSchemas") : new java.util.ArrayList()); }
-    public int getMaximumResultCount() { return (megletProps.get("MaximumResultCount") instanceof Integer ? (Integer) megletProps.get("MaximumResultCount") : 0); }
-    public int getRankingStrategy() { return (megletProps.get("RankingStrategy") instanceof Integer ? (Integer) megletProps.get("RankingStrategy") : 0); }
-    public java.util.List getSearchStringParameters() { return (megletProps.get("SearchStringParameters") != null ? (java.util.List) megletProps.get("SearchStringParameters") : new java.util.ArrayList()); }
+    public java.util.Map getFilterDocumentIds() { return (meglerProps.get("FilterDocumentIds") != null ? (java.util.Map) meglerProps.get("FilterDocumentIds") : new java.util.HashMap()); }
+    public java.util.List getFilterNamespaces() { return (meglerProps.get("FilterNamespaces") != null ? (java.util.List) meglerProps.get("FilterNamespaces") : new java.util.ArrayList()); }
+    public java.util.Map getFilterProperties() { return (meglerProps.get("FilterProperties") != null ? (java.util.Map) meglerProps.get("FilterProperties") : new java.util.HashMap()); }
+    public java.util.List getFilterSchemas() { return (meglerProps.get("FilterSchemas") != null ? (java.util.List) meglerProps.get("FilterSchemas") : new java.util.ArrayList()); }
+    public int getMaximumResultCount() { return (meglerProps.get("MaximumResultCount") instanceof Integer ? (Integer) meglerProps.get("MaximumResultCount") : 0); }
+    public int getRankingStrategy() { return (meglerProps.get("RankingStrategy") instanceof Integer ? (Integer) meglerProps.get("RankingStrategy") : 0); }
+    public java.util.List getSearchStringParameters() { return (meglerProps.get("SearchStringParameters") != null ? (java.util.List) meglerProps.get("SearchStringParameters") : new java.util.ArrayList()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     SearchSuggestionSpec() { this((java.util.List) null, (java.util.List) null, (android.os.Bundle) null, (android.os.Bundle) null, (int) 0, (int) 0, (java.util.List) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(int p0) {}
         public android.app.appsearch.SearchSuggestionSpec.Builder addFilterDocumentIds(java.lang.String p0, java.util.Collection p1) { return this; }
         public android.app.appsearch.SearchSuggestionSpec.Builder addFilterDocumentIds(java.lang.String p0, java.lang.String[] p1) { return this; }
@@ -32,7 +32,7 @@ public abstract class SearchSuggestionSpec extends android.app.appsearch.safepar
         public android.app.appsearch.SearchSuggestionSpec.Builder addSearchStringParameters(java.util.List p0) { return this; }
         public android.app.appsearch.SearchSuggestionSpec.Builder addSearchStringParameters(java.lang.String[] p0) { return this; }
         public android.app.appsearch.SearchSuggestionSpec build() { return null; }
-        public android.app.appsearch.SearchSuggestionSpec.Builder setRankingStrategy(int p0) { megletProps.put("RankingStrategy", Integer.valueOf(p0)); return this; }
+        public android.app.appsearch.SearchSuggestionSpec.Builder setRankingStrategy(int p0) { meglerProps.put("RankingStrategy", Integer.valueOf(p0)); return this; }
         Builder() { this((int) 0); }
     }
 }

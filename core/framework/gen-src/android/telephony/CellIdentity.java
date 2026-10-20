@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class CellIdentity implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int INVALID_CHANNEL_NUMBER = 2147483647;
     public static final int MCC_LENGTH = 3;
@@ -24,19 +24,19 @@ public abstract class CellIdentity implements android.os.Parcelable {
     public static boolean isValidPlmn(java.lang.String p0) { return false; }
     public abstract android.telephony.CellLocation asCellLocation();
     public int describeContents() { return 0; }
-    public int getChannelNumber() { return (megletProps.get("ChannelNumber") instanceof Integer ? (Integer) megletProps.get("ChannelNumber") : 0); }
-    public java.lang.String getGlobalCellId() { return (java.lang.String) megletProps.get("GlobalCellId"); }
-    public java.lang.String getMccString() { return (java.lang.String) megletProps.get("MccString"); }
-    public java.lang.String getMncString() { return (java.lang.String) megletProps.get("MncString"); }
-    public java.lang.CharSequence getOperatorAlphaLong() { return (java.lang.CharSequence) megletProps.get("OperatorAlphaLong"); }
-    public java.lang.CharSequence getOperatorAlphaShort() { return (java.lang.CharSequence) megletProps.get("OperatorAlphaShort"); }
-    public java.lang.String getPlmn() { return (java.lang.String) megletProps.get("Plmn"); }
-    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
+    public int getChannelNumber() { return (meglerProps.get("ChannelNumber") instanceof Integer ? (Integer) meglerProps.get("ChannelNumber") : 0); }
+    public java.lang.String getGlobalCellId() { return (java.lang.String) meglerProps.get("GlobalCellId"); }
+    public java.lang.String getMccString() { return (java.lang.String) meglerProps.get("MccString"); }
+    public java.lang.String getMncString() { return (java.lang.String) meglerProps.get("MncString"); }
+    public java.lang.CharSequence getOperatorAlphaLong() { return (java.lang.CharSequence) meglerProps.get("OperatorAlphaLong"); }
+    public java.lang.CharSequence getOperatorAlphaShort() { return (java.lang.CharSequence) meglerProps.get("OperatorAlphaShort"); }
+    public java.lang.String getPlmn() { return (java.lang.String) meglerProps.get("Plmn"); }
+    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
     public boolean isSameCell(android.telephony.CellIdentity p0) { return false; }
     protected void log(java.lang.String p0) {}
     public abstract android.telephony.CellIdentity sanitizeLocationInfo();
-    public void setOperatorAlphaLong(java.lang.String p0) { megletProps.put("OperatorAlphaLong", p0); }
-    public void setOperatorAlphaShort(java.lang.String p0) { megletProps.put("OperatorAlphaShort", p0); }
+    public void setOperatorAlphaLong(java.lang.String p0) { meglerProps.put("OperatorAlphaLong", p0); }
+    public void setOperatorAlphaShort(java.lang.String p0) { meglerProps.put("OperatorAlphaShort", p0); }
     protected abstract void updateGlobalCellId();
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     CellIdentity() { this((java.lang.String) null, (int) 0, (android.os.Parcel) null); }

@@ -3,7 +3,7 @@ package android.util;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DebugUtils {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public DebugUtils() {}
     public static void buildShortClassTag(java.lang.Object p0, java.lang.StringBuilder p1) {}
     public static java.util.List callersWithin(java.lang.Class p0, int p1) { return new java.util.ArrayList(); }

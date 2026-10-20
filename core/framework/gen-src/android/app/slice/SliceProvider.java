@@ -3,7 +3,7 @@ package android.app.slice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class SliceProvider extends android.content.ContentProvider {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String EXTRA_BIND_URI = "slice_uri";
     public static final java.lang.String EXTRA_INTENT = "slice_intent";
     public static final java.lang.String EXTRA_PKG = "pkg";

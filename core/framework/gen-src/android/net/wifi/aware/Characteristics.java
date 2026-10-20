@@ -3,7 +3,7 @@ package android.net.wifi.aware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Characteristics implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String KEY_IS_INSTANT_COMMUNICATION_MODE_SUPPORTED = "key_is_instant_communication_mode_supported";
     public static final java.lang.String KEY_MAX_MATCH_FILTER_LENGTH = "key_max_match_filter_length";
@@ -34,21 +34,21 @@ public final class Characteristics implements android.os.Parcelable {
     public static int WIFI_AWARE_CIPHER_SUITE_NONE;
     public Characteristics(android.os.Bundle p0) {}
     public int describeContents() { return 0; }
-    public int getMaxMatchFilterLength() { return (megletProps.get("MaxMatchFilterLength") instanceof Integer ? (Integer) megletProps.get("MaxMatchFilterLength") : 0); }
-    public int getMaxServiceNameLength() { return (megletProps.get("MaxServiceNameLength") instanceof Integer ? (Integer) megletProps.get("MaxServiceNameLength") : 0); }
-    public int getMaxServiceSpecificInfoLength() { return (megletProps.get("MaxServiceSpecificInfoLength") instanceof Integer ? (Integer) megletProps.get("MaxServiceSpecificInfoLength") : 0); }
-    public int getMaxSupportedRangingPacketBandwidth() { return (megletProps.get("MaxSupportedRangingPacketBandwidth") instanceof Integer ? (Integer) megletProps.get("MaxSupportedRangingPacketBandwidth") : 0); }
-    public int getMaxSupportedRxChains() { return (megletProps.get("MaxSupportedRxChains") instanceof Integer ? (Integer) megletProps.get("MaxSupportedRxChains") : 0); }
-    public int getNumberOfSupportedDataInterfaces() { return (megletProps.get("NumberOfSupportedDataInterfaces") instanceof Integer ? (Integer) megletProps.get("NumberOfSupportedDataInterfaces") : 0); }
-    public int getNumberOfSupportedDataPaths() { return (megletProps.get("NumberOfSupportedDataPaths") instanceof Integer ? (Integer) megletProps.get("NumberOfSupportedDataPaths") : 0); }
-    public int getNumberOfSupportedPublishSessions() { return (megletProps.get("NumberOfSupportedPublishSessions") instanceof Integer ? (Integer) megletProps.get("NumberOfSupportedPublishSessions") : 0); }
-    public int getNumberOfSupportedSubscribeSessions() { return (megletProps.get("NumberOfSupportedSubscribeSessions") instanceof Integer ? (Integer) megletProps.get("NumberOfSupportedSubscribeSessions") : 0); }
-    public int getSupportedCipherSuites() { return (megletProps.get("SupportedCipherSuites") instanceof Integer ? (Integer) megletProps.get("SupportedCipherSuites") : 0); }
-    public int getSupportedPairingCipherSuites() { return (megletProps.get("SupportedPairingCipherSuites") instanceof Integer ? (Integer) megletProps.get("SupportedPairingCipherSuites") : 0); }
-    public boolean isAwarePairingSupported() { return (megletProps.get("AwarePairingSupported") instanceof Boolean ? (Boolean) megletProps.get("AwarePairingSupported") : false); }
-    public boolean isInstantCommunicationModeSupported() { return (megletProps.get("InstantCommunicationModeSupported") instanceof Boolean ? (Boolean) megletProps.get("InstantCommunicationModeSupported") : false); }
-    public boolean isPeriodicRangingSupported() { return (megletProps.get("PeriodicRangingSupported") instanceof Boolean ? (Boolean) megletProps.get("PeriodicRangingSupported") : false); }
-    public boolean isSuspensionSupported() { return (megletProps.get("SuspensionSupported") instanceof Boolean ? (Boolean) megletProps.get("SuspensionSupported") : false); }
+    public int getMaxMatchFilterLength() { return (meglerProps.get("MaxMatchFilterLength") instanceof Integer ? (Integer) meglerProps.get("MaxMatchFilterLength") : 0); }
+    public int getMaxServiceNameLength() { return (meglerProps.get("MaxServiceNameLength") instanceof Integer ? (Integer) meglerProps.get("MaxServiceNameLength") : 0); }
+    public int getMaxServiceSpecificInfoLength() { return (meglerProps.get("MaxServiceSpecificInfoLength") instanceof Integer ? (Integer) meglerProps.get("MaxServiceSpecificInfoLength") : 0); }
+    public int getMaxSupportedRangingPacketBandwidth() { return (meglerProps.get("MaxSupportedRangingPacketBandwidth") instanceof Integer ? (Integer) meglerProps.get("MaxSupportedRangingPacketBandwidth") : 0); }
+    public int getMaxSupportedRxChains() { return (meglerProps.get("MaxSupportedRxChains") instanceof Integer ? (Integer) meglerProps.get("MaxSupportedRxChains") : 0); }
+    public int getNumberOfSupportedDataInterfaces() { return (meglerProps.get("NumberOfSupportedDataInterfaces") instanceof Integer ? (Integer) meglerProps.get("NumberOfSupportedDataInterfaces") : 0); }
+    public int getNumberOfSupportedDataPaths() { return (meglerProps.get("NumberOfSupportedDataPaths") instanceof Integer ? (Integer) meglerProps.get("NumberOfSupportedDataPaths") : 0); }
+    public int getNumberOfSupportedPublishSessions() { return (meglerProps.get("NumberOfSupportedPublishSessions") instanceof Integer ? (Integer) meglerProps.get("NumberOfSupportedPublishSessions") : 0); }
+    public int getNumberOfSupportedSubscribeSessions() { return (meglerProps.get("NumberOfSupportedSubscribeSessions") instanceof Integer ? (Integer) meglerProps.get("NumberOfSupportedSubscribeSessions") : 0); }
+    public int getSupportedCipherSuites() { return (meglerProps.get("SupportedCipherSuites") instanceof Integer ? (Integer) meglerProps.get("SupportedCipherSuites") : 0); }
+    public int getSupportedPairingCipherSuites() { return (meglerProps.get("SupportedPairingCipherSuites") instanceof Integer ? (Integer) meglerProps.get("SupportedPairingCipherSuites") : 0); }
+    public boolean isAwarePairingSupported() { return (meglerProps.get("AwarePairingSupported") instanceof Boolean ? (Boolean) meglerProps.get("AwarePairingSupported") : false); }
+    public boolean isInstantCommunicationModeSupported() { return (meglerProps.get("InstantCommunicationModeSupported") instanceof Boolean ? (Boolean) meglerProps.get("InstantCommunicationModeSupported") : false); }
+    public boolean isPeriodicRangingSupported() { return (meglerProps.get("PeriodicRangingSupported") instanceof Boolean ? (Boolean) meglerProps.get("PeriodicRangingSupported") : false); }
+    public boolean isSuspensionSupported() { return (meglerProps.get("SuspensionSupported") instanceof Boolean ? (Boolean) meglerProps.get("SuspensionSupported") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     Characteristics() { this((android.os.Bundle) null); }
 }

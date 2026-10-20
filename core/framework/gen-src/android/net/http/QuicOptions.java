@@ -3,21 +3,21 @@ package android.net.http;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class QuicOptions {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.net.http.QuicOptions.Builder builder() { return null; }
-    public java.util.Set getAllowedQuicHosts() { return (megletProps.get("AllowedQuicHosts") != null ? (java.util.Set) megletProps.get("AllowedQuicHosts") : new java.util.HashSet()); }
-    public java.lang.String getHandshakeUserAgent() { return (java.lang.String) megletProps.get("HandshakeUserAgent"); }
-    public java.time.Duration getIdleConnectionTimeout() { return (java.time.Duration) megletProps.get("IdleConnectionTimeout"); }
-    public int getInMemoryServerConfigsCacheSize() { return (megletProps.get("InMemoryServerConfigsCacheSize") instanceof Integer ? (Integer) megletProps.get("InMemoryServerConfigsCacheSize") : 0); }
+    public java.util.Set getAllowedQuicHosts() { return (meglerProps.get("AllowedQuicHosts") != null ? (java.util.Set) meglerProps.get("AllowedQuicHosts") : new java.util.HashSet()); }
+    public java.lang.String getHandshakeUserAgent() { return (java.lang.String) meglerProps.get("HandshakeUserAgent"); }
+    public java.time.Duration getIdleConnectionTimeout() { return (java.time.Duration) meglerProps.get("IdleConnectionTimeout"); }
+    public int getInMemoryServerConfigsCacheSize() { return (meglerProps.get("InMemoryServerConfigsCacheSize") instanceof Integer ? (Integer) meglerProps.get("InMemoryServerConfigsCacheSize") : 0); }
     public boolean hasInMemoryServerConfigsCacheSize() { return false; }
     protected QuicOptions() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public android.net.http.QuicOptions.Builder addAllowedQuicHost(java.lang.String p0) { return this; }
-        public android.net.http.QuicOptions build() { android.net.http.QuicOptions x = new android.net.http.QuicOptions(); x.megletProps.putAll(megletProps); return x; }
-        public android.net.http.QuicOptions.Builder setHandshakeUserAgent(java.lang.String p0) { megletProps.put("HandshakeUserAgent", p0); return this; }
-        public android.net.http.QuicOptions.Builder setIdleConnectionTimeout(java.time.Duration p0) { megletProps.put("IdleConnectionTimeout", p0); return this; }
-        public android.net.http.QuicOptions.Builder setInMemoryServerConfigsCacheSize(int p0) { megletProps.put("InMemoryServerConfigsCacheSize", Integer.valueOf(p0)); return this; }
+        public android.net.http.QuicOptions build() { android.net.http.QuicOptions x = new android.net.http.QuicOptions(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.net.http.QuicOptions.Builder setHandshakeUserAgent(java.lang.String p0) { meglerProps.put("HandshakeUserAgent", p0); return this; }
+        public android.net.http.QuicOptions.Builder setIdleConnectionTimeout(java.time.Duration p0) { meglerProps.put("IdleConnectionTimeout", p0); return this; }
+        public android.net.http.QuicOptions.Builder setInMemoryServerConfigsCacheSize(int p0) { meglerProps.put("InMemoryServerConfigsCacheSize", Integer.valueOf(p0)); return this; }
     }
 }

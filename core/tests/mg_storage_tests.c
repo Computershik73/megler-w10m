@@ -3,7 +3,7 @@
  *
  * On a phone the user's music, pictures and videos are files Windows will
  * not open by path for an app; its broker hands over handles for them, and
- * the shell passes those on (meglet_storage_host). Here a stand-in does the
+ * the shell passes those on (megler_storage_host). Here a stand-in does the
  * same with folders under the tests' scratch folder: it opens them with the
  * operating system's plain calls and hands the handles over. Everything
  * between that and an app -- the host layer's foreign paths, the shared
@@ -18,7 +18,7 @@
 
 #include <stdio.h>
 
-#include "../include/meglet.h"
+#include "../include/megler.h"
 #include "../src/bionic/mg_bionic.h"
 #include "../src/mg_base.h"
 #include "../src/host/mg_host.h"
@@ -251,7 +251,7 @@ static bool fake_rename(void *user, int from_root, const char *from, int to_root
  * tests' program has it (mg_storage_tests_run_shell). Either way through
  * these, which count the calls: some checks are that nobody was asked.
  */
-static meglet_storage_host g_inner;
+static megler_storage_host g_inner;
 static volatile i32 g_calls;
 
 static void *counted_open(void *user, int link, const char *path, int flags, int kind, int *err)
@@ -368,7 +368,7 @@ static void test_foreign_paths(const char *scratch)
 
     /* Nobody answers yet: such a path is nowhere. */
     mg_foreign_set(NULL);
-    CHECK(mg_path_is_foreign(L0) && mg_path_is_foreign(L0 "/a") && !mg_path_is_foreign(scratch) && !mg_path_is_foreign("meglet-link"));
+    CHECK(mg_path_is_foreign(L0) && mg_path_is_foreign(L0 "/a") && !mg_path_is_foreign(scratch) && !mg_path_is_foreign("megler-link"));
     CHECK(!mg_path_stat(L0, &st, &err) && err == MG_E_NOENT);
     CHECK(mg_file_open(L0 "/a.txt", MG_O_READ, &err) == NULL && err == MG_E_NOENT);
     CHECK(!mg_path_mkdir(L0 "/d", &err) && err == MG_E_NOENT);
@@ -732,10 +732,10 @@ static int type_of(const dir_seen *s, const char *name)
     return 0;
 }
 
-#define PKG "org.meglet.test.storage"
+#define PKG "org.megler.test.storage"
 #define SD "/storage/emulated/0"
 
-static const meglet_storage_link k_links[] = {
+static const megler_storage_link k_links[] = {
     { "Music", true }, { "Pictures", true },
     { "Books", false },                /* a name of the user's own, and only to be read */
     /* Three that cannot be: the apps' own folder, a path, and a name there is already. */
@@ -746,7 +746,7 @@ static void test_layout(const char *data)
 {
     static const char *const names[] = { SD, "/sdcard", "/mnt/sdcard", "/storage/sdcard0", "/storage/self/primary" };
     static const char *const standard[] = { "Alarms", "DCIM", "Documents", "Download", "Movies", "Music", "Notifications", "Pictures", "Podcasts", "Ringtones" };
-    meglet_storage_host host;
+    megler_storage_host host;
     dir_seen seen;
     mg_stat st;
     char *own = mg_sprintf("%s/apps/" PKG "/sdcard", data), *shared = mg_sprintf("%s/sdcard", data), *p, *text;
@@ -1267,12 +1267,12 @@ static void test_no_links(const char *data)
  *
  * What an app does to files, done in a folder of the shared storage through
  * the C library, a line said for every step: mg_storage_check_run, which a
- * phone runs on its real libraries (meglet_storage_check in meglet.h) and the
+ * phone runs on its real libraries (megler_storage_check in megler.h) and the
  * tests run here on the stand-in's. Everything happens in a folder of the
- * check's own, meglet-storage-check, made in the folder asked about and taken
+ * check's own, megler-storage-check, made in the folder asked about and taken
  * away at the end: nothing else there is opened, changed or removed.
  */
-#define CHECK_DIR "meglet-storage-check"
+#define CHECK_DIR "megler-storage-check"
 
 static void heading(const char *fmt, ...)
 {
@@ -1524,7 +1524,7 @@ static int run_in(const char *base, mg_storage_host_maker make, mg_test_sink sin
 {
     static const char *const names[FAKE_ROOTS] = { "Music", "Pictures", "Books" };
     char *data = mg_sprintf("%s/data", base);
-    const meglet_storage_host *made = NULL;
+    const megler_storage_host *made = NULL;
     int i;
     t_sink = sink;
     t_sink_user = user;

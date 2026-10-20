@@ -3,20 +3,20 @@ package android.adservices.common;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AppInstallFilters implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String PACKAGE_NAMES_FIELD_NAME = "package_names";
     public static android.adservices.common.AppInstallFilters fromJson(org.json.JSONObject p0) { return new AppInstallFilters(); }
     public int describeContents() { return 0; }
-    public java.util.Set getPackageNames() { return (megletProps.get("PackageNames") != null ? (java.util.Set) megletProps.get("PackageNames") : new java.util.HashSet()); }
-    public int getSizeInBytes() { return (megletProps.get("SizeInBytes") instanceof Integer ? (Integer) megletProps.get("SizeInBytes") : 0); }
+    public java.util.Set getPackageNames() { return (meglerProps.get("PackageNames") != null ? (java.util.Set) meglerProps.get("PackageNames") : new java.util.HashSet()); }
+    public int getSizeInBytes() { return (meglerProps.get("SizeInBytes") instanceof Integer ? (Integer) meglerProps.get("SizeInBytes") : 0); }
     public org.json.JSONObject toJson() { return null; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected AppInstallFilters() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.adservices.common.AppInstallFilters build() { android.adservices.common.AppInstallFilters x = new android.adservices.common.AppInstallFilters(); x.megletProps.putAll(megletProps); return x; }
-        public android.adservices.common.AppInstallFilters.Builder setPackageNames(java.util.Set p0) { megletProps.put("PackageNames", p0); return this; }
+        public android.adservices.common.AppInstallFilters build() { android.adservices.common.AppInstallFilters x = new android.adservices.common.AppInstallFilters(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.adservices.common.AppInstallFilters.Builder setPackageNames(java.util.Set p0) { meglerProps.put("PackageNames", p0); return this; }
     }
 }

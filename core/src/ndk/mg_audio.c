@@ -4,7 +4,7 @@
 #include "../host/mg_host.h"
 #include "../run/mg_run.h"
 
-const char *meglet_data_dir(void);
+const char *megler_data_dir(void);
 
 #define MAX_QUEUE 64
 
@@ -74,7 +74,7 @@ static u32 mix_voice(mg_voice *v, float *mix, int frames)
 
 /*
  * The flag "record-audio": what the mixer puts out, from the first sound on
- * and for half a minute, written to meglet-audio.wav in the data folder. With
+ * and for half a minute, written to megler-audio.wav in the data folder. With
  * "record-film" instead, the half minute starts as a film's sound does. Nobody
  * at the PC hears a phone; a file can be fetched and looked at (is it music
  * or noise, is it clipped, are there gaps).
@@ -113,8 +113,8 @@ static void record(const i16 *out, u32 frames)
     memcpy(g_record + (size_t)g_record_frames * 2, out, (size_t)n * 4);
     g_record_frames += n;
     if (g_record_frames == want) {
-        const char *dir = meglet_data_dir();
-        char *path = mg_sprintf("%s/meglet-audio.wav", dir && dir[0] ? dir : ".");
+        const char *dir = megler_data_dir();
+        char *path = mg_sprintf("%s/megler-audio.wav", dir && dir[0] ? dir : ".");
         u32 bytes = want * 4;
         u8 *wav = (u8 *)mg_alloc(44 + (size_t)bytes);
         static const u8 head[44] = { 'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'A', 'V', 'E', 'f', 'm', 't', ' ', 16, 0, 0, 0, 1, 0, 2, 0,
@@ -146,7 +146,7 @@ static void mixer_thread(void *arg)
     u64 next = mg_time_monotonic_ns();
     (void)arg;
     for (;;) {
-        const meglet_run_config *run = mg_run_config();
+        const megler_run_config *run = mg_run_config();
         struct { mg_voice *v; u32 ended; mg_voice_done_fn fn; void *user; } done[32];
         int ndone = 0, i;
         mg_voice *v, **link;
@@ -203,7 +203,7 @@ static bool (*g_open_tried)(void *user, int rate);
 
 static void ensure_mixer(void)
 {
-    const meglet_run_config *run = mg_run_config();
+    const megler_run_config *run = mg_run_config();
     if (g_mixer && g_open_asked && run->audio.open == g_open_tried) return;
     mg_lock_acquire(&g_lock);
     if (!g_open_asked || run->audio.open != g_open_tried) {

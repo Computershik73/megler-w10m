@@ -237,7 +237,7 @@ static bool on_fault(mg_fault *f)
              * the exception through would end the process, and the report
              * with it; the thread is parked instead, for good. The shell
              * shows what happened, and the app's other threads stay as they
-             * are until Meglet is closed (nothing else can run after an app
+             * are until Megler is closed (nothing else can run after an app
              * anyway).
              */
             if (mg_guest_tp_get()) {
@@ -266,18 +266,18 @@ bool mg_core_init(void)
         if (!mg_guest_tp_where(&opc2, &offset)) mg_err("core: the guest thread pointer has no place on this host; libraries that read it will not work");
     }
 #endif
-    mg_info("meglet core on %s%s", mg_host_name(), g_can_run ? "" : " (guest code cannot run here)");
+    mg_info("megler core on %s%s", mg_host_name(), g_can_run ? "" : " (guest code cannot run here)");
     return g_can_run;
 }
 
-const char *meglet_data_dir(void);
+const char *megler_data_dir(void);
 
 static int g_arm_state;
 static bool g_arm_state_read;
 
 static char *arm_state_path(void)
 {
-    const char *dir = meglet_data_dir();
+    const char *dir = megler_data_dir();
     return dir && dir[0] ? mg_sprintf("%s/arm-state.txt", dir) : NULL;
 }
 

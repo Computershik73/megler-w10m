@@ -3,18 +3,18 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TrainingExampleRecord implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public byte[] getResumptionToken() { return (byte[]) megletProps.get("ResumptionToken"); }
-    public byte[] getTrainingExample() { return (byte[]) megletProps.get("TrainingExample"); }
+    public byte[] getResumptionToken() { return (byte[]) meglerProps.get("ResumptionToken"); }
+    public byte[] getTrainingExample() { return (byte[]) meglerProps.get("TrainingExample"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected TrainingExampleRecord() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.adservices.ondevicepersonalization.TrainingExampleRecord build() { android.adservices.ondevicepersonalization.TrainingExampleRecord x = new android.adservices.ondevicepersonalization.TrainingExampleRecord(); x.megletProps.putAll(megletProps); return x; }
-        public android.adservices.ondevicepersonalization.TrainingExampleRecord.Builder setResumptionToken(byte[] p0) { megletProps.put("ResumptionToken", p0); return this; }
-        public android.adservices.ondevicepersonalization.TrainingExampleRecord.Builder setTrainingExample(byte[] p0) { megletProps.put("TrainingExample", p0); return this; }
+        public android.adservices.ondevicepersonalization.TrainingExampleRecord build() { android.adservices.ondevicepersonalization.TrainingExampleRecord x = new android.adservices.ondevicepersonalization.TrainingExampleRecord(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.adservices.ondevicepersonalization.TrainingExampleRecord.Builder setResumptionToken(byte[] p0) { meglerProps.put("ResumptionToken", p0); return this; }
+        public android.adservices.ondevicepersonalization.TrainingExampleRecord.Builder setTrainingExample(byte[] p0) { meglerProps.put("TrainingExample", p0); return this; }
     }
 }

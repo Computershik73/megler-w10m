@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ImageReader implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.media.ImageReader.ImagePlane[] initializeImagePlanes(int p0, android.graphics.GraphicBuffer p1, int p2, int p3, long p4, int p5, int p6, android.graphics.Rect p7) { return null; }
     public static android.media.ImageReader newInstance(int p0, int p1, int p2, int p3) { return new ImageReader(); }
     public static android.media.ImageReader newInstance(int p0, int p1, int p2, int p3, long p4) { return new ImageReader(); }
@@ -16,33 +16,33 @@ public class ImageReader implements java.lang.AutoCloseable {
     public void detachImage(android.media.Image p0) {}
     public void discardFreeBuffers() {}
     protected void finalize() {}
-    public int getDataSpace() { return (megletProps.get("DataSpace") instanceof Integer ? (Integer) megletProps.get("DataSpace") : 0); }
-    public int getHardwareBufferFormat() { return (megletProps.get("HardwareBufferFormat") instanceof Integer ? (Integer) megletProps.get("HardwareBufferFormat") : 0); }
-    public int getHeight() { return (megletProps.get("Height") instanceof Integer ? (Integer) megletProps.get("Height") : 0); }
-    public int getImageFormat() { return (megletProps.get("ImageFormat") instanceof Integer ? (Integer) megletProps.get("ImageFormat") : 0); }
-    public int getMaxImages() { return (megletProps.get("MaxImages") instanceof Integer ? (Integer) megletProps.get("MaxImages") : 0); }
-    public android.view.Surface getSurface() { return (android.view.Surface) megletProps.get("Surface"); }
-    public long getUsage() { return (megletProps.get("Usage") instanceof Long ? (Long) megletProps.get("Usage") : 0L); }
-    public int getWidth() { return (megletProps.get("Width") instanceof Integer ? (Integer) megletProps.get("Width") : 0); }
+    public int getDataSpace() { return (meglerProps.get("DataSpace") instanceof Integer ? (Integer) meglerProps.get("DataSpace") : 0); }
+    public int getHardwareBufferFormat() { return (meglerProps.get("HardwareBufferFormat") instanceof Integer ? (Integer) meglerProps.get("HardwareBufferFormat") : 0); }
+    public int getHeight() { return (meglerProps.get("Height") instanceof Integer ? (Integer) meglerProps.get("Height") : 0); }
+    public int getImageFormat() { return (meglerProps.get("ImageFormat") instanceof Integer ? (Integer) meglerProps.get("ImageFormat") : 0); }
+    public int getMaxImages() { return (meglerProps.get("MaxImages") instanceof Integer ? (Integer) meglerProps.get("MaxImages") : 0); }
+    public android.view.Surface getSurface() { return (android.view.Surface) meglerProps.get("Surface"); }
+    public long getUsage() { return (meglerProps.get("Usage") instanceof Long ? (Long) meglerProps.get("Usage") : 0L); }
+    public int getWidth() { return (meglerProps.get("Width") instanceof Integer ? (Integer) meglerProps.get("Width") : 0); }
     public void setOnImageAvailableListener(android.media.ImageReader.OnImageAvailableListener p0, android.os.Handler p1) {}
     public void setOnImageAvailableListenerWithExecutor(android.media.ImageReader.OnImageAvailableListener p0, java.util.concurrent.Executor p1) {}
     protected ImageReader() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(int p0, int p1) {}
-        public android.media.ImageReader build() { android.media.ImageReader x = new android.media.ImageReader(); x.megletProps.putAll(megletProps); return x; }
-        public android.media.ImageReader.Builder setDefaultDataSpace(int p0) { megletProps.put("DefaultDataSpace", Integer.valueOf(p0)); return this; }
-        public android.media.ImageReader.Builder setDefaultHardwareBufferFormat(int p0) { megletProps.put("DefaultHardwareBufferFormat", Integer.valueOf(p0)); return this; }
-        public android.media.ImageReader.Builder setImageFormat(int p0) { megletProps.put("ImageFormat", Integer.valueOf(p0)); return this; }
-        public android.media.ImageReader.Builder setMaxImages(int p0) { megletProps.put("MaxImages", Integer.valueOf(p0)); return this; }
-        public android.media.ImageReader.Builder setUsage(long p0) { megletProps.put("Usage", Long.valueOf(p0)); return this; }
+        public android.media.ImageReader build() { android.media.ImageReader x = new android.media.ImageReader(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.media.ImageReader.Builder setDefaultDataSpace(int p0) { meglerProps.put("DefaultDataSpace", Integer.valueOf(p0)); return this; }
+        public android.media.ImageReader.Builder setDefaultHardwareBufferFormat(int p0) { meglerProps.put("DefaultHardwareBufferFormat", Integer.valueOf(p0)); return this; }
+        public android.media.ImageReader.Builder setImageFormat(int p0) { meglerProps.put("ImageFormat", Integer.valueOf(p0)); return this; }
+        public android.media.ImageReader.Builder setMaxImages(int p0) { meglerProps.put("MaxImages", Integer.valueOf(p0)); return this; }
+        public android.media.ImageReader.Builder setUsage(long p0) { meglerProps.put("Usage", Long.valueOf(p0)); return this; }
         Builder() { this((int) 0, (int) 0); }
     }
     public static class ImagePlane extends android.media.Image.Plane {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public java.nio.ByteBuffer getBuffer() { return (java.nio.ByteBuffer) megletProps.get("Buffer"); }
-        public int getPixelStride() { return (megletProps.get("PixelStride") instanceof Integer ? (Integer) megletProps.get("PixelStride") : 0); }
-        public int getRowStride() { return (megletProps.get("RowStride") instanceof Integer ? (Integer) megletProps.get("RowStride") : 0); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public java.nio.ByteBuffer getBuffer() { return (java.nio.ByteBuffer) meglerProps.get("Buffer"); }
+        public int getPixelStride() { return (meglerProps.get("PixelStride") instanceof Integer ? (Integer) meglerProps.get("PixelStride") : 0); }
+        public int getRowStride() { return (meglerProps.get("RowStride") instanceof Integer ? (Integer) meglerProps.get("RowStride") : 0); }
         protected ImagePlane() { super(); }
     }
     public interface OnImageAvailableListener {

@@ -3,12 +3,12 @@ package android.service.quickaccesswallet;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GetWalletCardsResponse implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public GetWalletCardsResponse(java.util.List p0, int p1) {}
     public int describeContents() { return 0; }
-    public int getSelectedIndex() { return (megletProps.get("SelectedIndex") instanceof Integer ? (Integer) megletProps.get("SelectedIndex") : 0); }
-    public java.util.List getWalletCards() { return (megletProps.get("WalletCards") != null ? (java.util.List) megletProps.get("WalletCards") : new java.util.ArrayList()); }
+    public int getSelectedIndex() { return (meglerProps.get("SelectedIndex") instanceof Integer ? (Integer) meglerProps.get("SelectedIndex") : 0); }
+    public java.util.List getWalletCards() { return (meglerProps.get("WalletCards") != null ? (java.util.List) meglerProps.get("WalletCards") : new java.util.ArrayList()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     GetWalletCardsResponse() { this((java.util.List) null, (int) 0); }
 }

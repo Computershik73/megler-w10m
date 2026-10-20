@@ -3,20 +3,20 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Session2CommandGroup implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public java.util.Set getCommands() { return (megletProps.get("Commands") != null ? (java.util.Set) megletProps.get("Commands") : new java.util.HashSet()); }
+    public java.util.Set getCommands() { return (meglerProps.get("Commands") != null ? (java.util.Set) meglerProps.get("Commands") : new java.util.HashSet()); }
     public boolean hasCommand(int p0) { return false; }
     public boolean hasCommand(android.media.Session2Command p0) { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected Session2CommandGroup() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.media.Session2CommandGroup p0) {}
         public android.media.Session2CommandGroup.Builder addCommand(android.media.Session2Command p0) { return this; }
-        public android.media.Session2CommandGroup build() { android.media.Session2CommandGroup x = new android.media.Session2CommandGroup(); x.megletProps.putAll(megletProps); return x; }
+        public android.media.Session2CommandGroup build() { android.media.Session2CommandGroup x = new android.media.Session2CommandGroup(); x.meglerProps.putAll(meglerProps); return x; }
         public android.media.Session2CommandGroup.Builder removeCommand(android.media.Session2Command p0) { return this; }
     }
 }

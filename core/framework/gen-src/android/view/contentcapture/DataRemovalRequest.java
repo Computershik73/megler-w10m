@@ -3,26 +3,26 @@ package android.view.contentcapture;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DataRemovalRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int FLAG_IS_PREFIX = 1;
     public int describeContents() { return 0; }
-    public java.util.List getLocusIdRequests() { return (megletProps.get("LocusIdRequests") != null ? (java.util.List) megletProps.get("LocusIdRequests") : new java.util.ArrayList()); }
-    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
-    public boolean isForEverything() { return (megletProps.get("ForEverything") instanceof Boolean ? (Boolean) megletProps.get("ForEverything") : false); }
+    public java.util.List getLocusIdRequests() { return (meglerProps.get("LocusIdRequests") != null ? (java.util.List) meglerProps.get("LocusIdRequests") : new java.util.ArrayList()); }
+    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
+    public boolean isForEverything() { return (meglerProps.get("ForEverything") instanceof Boolean ? (Boolean) meglerProps.get("ForEverything") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected DataRemovalRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public android.view.contentcapture.DataRemovalRequest.Builder addLocusId(android.content.LocusId p0, int p1) { return this; }
-        public android.view.contentcapture.DataRemovalRequest build() { android.view.contentcapture.DataRemovalRequest x = new android.view.contentcapture.DataRemovalRequest(); x.megletProps.putAll(megletProps); return x; }
+        public android.view.contentcapture.DataRemovalRequest build() { android.view.contentcapture.DataRemovalRequest x = new android.view.contentcapture.DataRemovalRequest(); x.meglerProps.putAll(meglerProps); return x; }
         public android.view.contentcapture.DataRemovalRequest.Builder forEverything() { return this; }
     }
     public static final class LocusIdRequest {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public int getFlags() { return (megletProps.get("Flags") instanceof Integer ? (Integer) megletProps.get("Flags") : 0); }
-        public android.content.LocusId getLocusId() { return (android.content.LocusId) megletProps.get("LocusId"); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public int getFlags() { return (meglerProps.get("Flags") instanceof Integer ? (Integer) meglerProps.get("Flags") : 0); }
+        public android.content.LocusId getLocusId() { return (android.content.LocusId) meglerProps.get("LocusId"); }
         protected LocusIdRequest() {}
     }
 }

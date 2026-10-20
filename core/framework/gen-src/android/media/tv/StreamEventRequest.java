@@ -3,12 +3,12 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class StreamEventRequest extends android.media.tv.BroadcastInfoRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public StreamEventRequest(int p0, int p1, android.net.Uri p2, java.lang.String p3) { super(); }
     public int describeContents() { return 0; }
-    public java.lang.String getEventName() { return (java.lang.String) megletProps.get("EventName"); }
-    public android.net.Uri getTargetUri() { return (android.net.Uri) megletProps.get("TargetUri"); }
+    public java.lang.String getEventName() { return (java.lang.String) meglerProps.get("EventName"); }
+    public android.net.Uri getTargetUri() { return (android.net.Uri) meglerProps.get("TargetUri"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     StreamEventRequest() { this((int) 0, (int) 0, (android.net.Uri) null, (java.lang.String) null); }
 }

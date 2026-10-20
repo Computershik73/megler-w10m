@@ -3,33 +3,33 @@ package android.content;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SyncRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     protected SyncRequest(android.content.SyncRequest.Builder p0) {}
     public int describeContents() { return 0; }
-    public android.accounts.Account getAccount() { return (android.accounts.Account) megletProps.get("Account"); }
-    public android.os.Bundle getBundle() { return (android.os.Bundle) megletProps.get("Bundle"); }
-    public java.lang.String getProvider() { return (java.lang.String) megletProps.get("Provider"); }
-    public long getSyncFlexTime() { return (megletProps.get("SyncFlexTime") instanceof Long ? (Long) megletProps.get("SyncFlexTime") : 0L); }
-    public long getSyncRunTime() { return (megletProps.get("SyncRunTime") instanceof Long ? (Long) megletProps.get("SyncRunTime") : 0L); }
-    public boolean isExpedited() { return (megletProps.get("Expedited") instanceof Boolean ? (Boolean) megletProps.get("Expedited") : false); }
-    public boolean isPeriodic() { return (megletProps.get("Periodic") instanceof Boolean ? (Boolean) megletProps.get("Periodic") : false); }
-    public boolean isScheduledAsExpeditedJob() { return (megletProps.get("ScheduledAsExpeditedJob") instanceof Boolean ? (Boolean) megletProps.get("ScheduledAsExpeditedJob") : false); }
+    public android.accounts.Account getAccount() { return (android.accounts.Account) meglerProps.get("Account"); }
+    public android.os.Bundle getBundle() { return (android.os.Bundle) meglerProps.get("Bundle"); }
+    public java.lang.String getProvider() { return (java.lang.String) meglerProps.get("Provider"); }
+    public long getSyncFlexTime() { return (meglerProps.get("SyncFlexTime") instanceof Long ? (Long) meglerProps.get("SyncFlexTime") : 0L); }
+    public long getSyncRunTime() { return (meglerProps.get("SyncRunTime") instanceof Long ? (Long) meglerProps.get("SyncRunTime") : 0L); }
+    public boolean isExpedited() { return (meglerProps.get("Expedited") instanceof Boolean ? (Boolean) meglerProps.get("Expedited") : false); }
+    public boolean isPeriodic() { return (meglerProps.get("Periodic") instanceof Boolean ? (Boolean) meglerProps.get("Periodic") : false); }
+    public boolean isScheduledAsExpeditedJob() { return (meglerProps.get("ScheduledAsExpeditedJob") instanceof Boolean ? (Boolean) meglerProps.get("ScheduledAsExpeditedJob") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     SyncRequest() { this((android.content.SyncRequest.Builder) null); }
     public static class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.content.SyncRequest build() { android.content.SyncRequest x = new android.content.SyncRequest(); x.megletProps.putAll(megletProps); return x; }
-        public android.content.SyncRequest.Builder setDisallowMetered(boolean p0) { megletProps.put("DisallowMetered", Boolean.valueOf(p0)); return this; }
-        public android.content.SyncRequest.Builder setExpedited(boolean p0) { megletProps.put("Expedited", Boolean.valueOf(p0)); return this; }
-        public android.content.SyncRequest.Builder setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); return this; }
-        public android.content.SyncRequest.Builder setIgnoreBackoff(boolean p0) { megletProps.put("IgnoreBackoff", Boolean.valueOf(p0)); return this; }
-        public android.content.SyncRequest.Builder setIgnoreSettings(boolean p0) { megletProps.put("IgnoreSettings", Boolean.valueOf(p0)); return this; }
-        public android.content.SyncRequest.Builder setManual(boolean p0) { megletProps.put("Manual", Boolean.valueOf(p0)); return this; }
-        public android.content.SyncRequest.Builder setNoRetry(boolean p0) { megletProps.put("NoRetry", Boolean.valueOf(p0)); return this; }
-        public android.content.SyncRequest.Builder setRequiresCharging(boolean p0) { megletProps.put("RequiresCharging", Boolean.valueOf(p0)); return this; }
-        public android.content.SyncRequest.Builder setScheduleAsExpeditedJob(boolean p0) { megletProps.put("ScheduleAsExpeditedJob", Boolean.valueOf(p0)); return this; }
+        public android.content.SyncRequest build() { android.content.SyncRequest x = new android.content.SyncRequest(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.content.SyncRequest.Builder setDisallowMetered(boolean p0) { meglerProps.put("DisallowMetered", Boolean.valueOf(p0)); return this; }
+        public android.content.SyncRequest.Builder setExpedited(boolean p0) { meglerProps.put("Expedited", Boolean.valueOf(p0)); return this; }
+        public android.content.SyncRequest.Builder setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); return this; }
+        public android.content.SyncRequest.Builder setIgnoreBackoff(boolean p0) { meglerProps.put("IgnoreBackoff", Boolean.valueOf(p0)); return this; }
+        public android.content.SyncRequest.Builder setIgnoreSettings(boolean p0) { meglerProps.put("IgnoreSettings", Boolean.valueOf(p0)); return this; }
+        public android.content.SyncRequest.Builder setManual(boolean p0) { meglerProps.put("Manual", Boolean.valueOf(p0)); return this; }
+        public android.content.SyncRequest.Builder setNoRetry(boolean p0) { meglerProps.put("NoRetry", Boolean.valueOf(p0)); return this; }
+        public android.content.SyncRequest.Builder setRequiresCharging(boolean p0) { meglerProps.put("RequiresCharging", Boolean.valueOf(p0)); return this; }
+        public android.content.SyncRequest.Builder setScheduleAsExpeditedJob(boolean p0) { meglerProps.put("ScheduleAsExpeditedJob", Boolean.valueOf(p0)); return this; }
         public android.content.SyncRequest.Builder setSyncAdapter(android.accounts.Account p0, java.lang.String p1) { return this; }
         public android.content.SyncRequest.Builder syncOnce() { return this; }
         public android.content.SyncRequest.Builder syncPeriodic(long p0, long p1) { return this; }

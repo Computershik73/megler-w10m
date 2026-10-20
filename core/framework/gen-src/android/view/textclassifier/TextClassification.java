@@ -3,65 +3,65 @@ package android.view.textclassifier;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TextClassification implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static android.view.textclassifier.TextClassification EMPTY;
     public static android.view.View.OnClickListener createIntentOnClickListener(android.app.PendingIntent p0) { return null; }
     public static android.app.PendingIntent createPendingIntent(android.content.Context p0, android.content.Intent p1, int p2) { return null; }
     public int describeContents() { return 0; }
-    public java.util.List getActions() { return (megletProps.get("Actions") != null ? (java.util.List) megletProps.get("Actions") : new java.util.ArrayList()); }
+    public java.util.List getActions() { return (meglerProps.get("Actions") != null ? (java.util.List) meglerProps.get("Actions") : new java.util.ArrayList()); }
     public float getConfidenceScore(java.lang.String p0) { return 0f; }
     public java.lang.String getEntity(int p0) { return null; }
-    public int getEntityCount() { return (megletProps.get("EntityCount") instanceof Integer ? (Integer) megletProps.get("EntityCount") : 0); }
-    public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
-    public android.graphics.drawable.Drawable getIcon() { return (android.graphics.drawable.Drawable) megletProps.get("Icon"); }
-    public java.lang.String getId() { return (java.lang.String) megletProps.get("Id"); }
-    public android.content.Intent getIntent() { return (android.content.Intent) megletProps.get("Intent"); }
-    public java.lang.CharSequence getLabel() { return (java.lang.CharSequence) megletProps.get("Label"); }
-    public android.view.View.OnClickListener getOnClickListener() { return (android.view.View.OnClickListener) megletProps.get("OnClickListener"); }
-    public java.lang.String getText() { return (java.lang.String) megletProps.get("Text"); }
+    public int getEntityCount() { return (meglerProps.get("EntityCount") instanceof Integer ? (Integer) meglerProps.get("EntityCount") : 0); }
+    public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
+    public android.graphics.drawable.Drawable getIcon() { return (android.graphics.drawable.Drawable) meglerProps.get("Icon"); }
+    public java.lang.String getId() { return (java.lang.String) meglerProps.get("Id"); }
+    public android.content.Intent getIntent() { return (android.content.Intent) meglerProps.get("Intent"); }
+    public java.lang.CharSequence getLabel() { return (java.lang.CharSequence) meglerProps.get("Label"); }
+    public android.view.View.OnClickListener getOnClickListener() { return (android.view.View.OnClickListener) meglerProps.get("OnClickListener"); }
+    public java.lang.String getText() { return (java.lang.String) meglerProps.get("Text"); }
     public android.view.textclassifier.TextClassification.Builder toBuilder() { return null; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected TextClassification() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public android.view.textclassifier.TextClassification.Builder addAction(android.app.RemoteAction p0) { return this; }
         public android.view.textclassifier.TextClassification.Builder addActions(java.util.Collection p0) { return this; }
-        public android.view.textclassifier.TextClassification build() { android.view.textclassifier.TextClassification x = new android.view.textclassifier.TextClassification(); x.megletProps.putAll(megletProps); return x; }
+        public android.view.textclassifier.TextClassification build() { android.view.textclassifier.TextClassification x = new android.view.textclassifier.TextClassification(); x.meglerProps.putAll(meglerProps); return x; }
         public android.view.textclassifier.TextClassification.Builder clearActions() { return this; }
         public android.view.textclassifier.TextClassification.Builder clearEntityTypes() { return this; }
         public android.view.textclassifier.TextClassification.Builder setEntityType(java.lang.String p0, float p1) { return this; }
-        public android.view.textclassifier.TextClassification.Builder setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); return this; }
-        public android.view.textclassifier.TextClassification.Builder setIcon(android.graphics.drawable.Drawable p0) { megletProps.put("Icon", p0); return this; }
-        public android.view.textclassifier.TextClassification.Builder setId(java.lang.String p0) { megletProps.put("Id", p0); return this; }
-        public android.view.textclassifier.TextClassification.Builder setIntent(android.content.Intent p0) { megletProps.put("Intent", p0); return this; }
-        public android.view.textclassifier.TextClassification.Builder setLabel(java.lang.String p0) { megletProps.put("Label", p0); return this; }
-        public android.view.textclassifier.TextClassification.Builder setOnClickListener(android.view.View.OnClickListener p0) { megletProps.put("OnClickListener", p0); return this; }
-        public android.view.textclassifier.TextClassification.Builder setText(java.lang.String p0) { megletProps.put("Text", p0); return this; }
+        public android.view.textclassifier.TextClassification.Builder setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); return this; }
+        public android.view.textclassifier.TextClassification.Builder setIcon(android.graphics.drawable.Drawable p0) { meglerProps.put("Icon", p0); return this; }
+        public android.view.textclassifier.TextClassification.Builder setId(java.lang.String p0) { meglerProps.put("Id", p0); return this; }
+        public android.view.textclassifier.TextClassification.Builder setIntent(android.content.Intent p0) { meglerProps.put("Intent", p0); return this; }
+        public android.view.textclassifier.TextClassification.Builder setLabel(java.lang.String p0) { meglerProps.put("Label", p0); return this; }
+        public android.view.textclassifier.TextClassification.Builder setOnClickListener(android.view.View.OnClickListener p0) { meglerProps.put("OnClickListener", p0); return this; }
+        public android.view.textclassifier.TextClassification.Builder setText(java.lang.String p0) { meglerProps.put("Text", p0); return this; }
     }
     public static final class Request implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public int describeContents() { return 0; }
-        public java.lang.String getCallingPackageName() { return (java.lang.String) megletProps.get("CallingPackageName"); }
-        public android.os.LocaleList getDefaultLocales() { return (android.os.LocaleList) megletProps.get("DefaultLocales"); }
-        public int getEndIndex() { return (megletProps.get("EndIndex") instanceof Integer ? (Integer) megletProps.get("EndIndex") : 0); }
-        public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
-        public java.time.ZonedDateTime getReferenceTime() { return (java.time.ZonedDateTime) megletProps.get("ReferenceTime"); }
-        public int getStartIndex() { return (megletProps.get("StartIndex") instanceof Integer ? (Integer) megletProps.get("StartIndex") : 0); }
-        public android.view.textclassifier.SystemTextClassifierMetadata getSystemTextClassifierMetadata() { return (android.view.textclassifier.SystemTextClassifierMetadata) megletProps.get("SystemTextClassifierMetadata"); }
-        public java.lang.CharSequence getText() { return (java.lang.CharSequence) megletProps.get("Text"); }
-        public void setSystemTextClassifierMetadata(android.view.textclassifier.SystemTextClassifierMetadata p0) { megletProps.put("SystemTextClassifierMetadata", p0); }
+        public java.lang.String getCallingPackageName() { return (java.lang.String) meglerProps.get("CallingPackageName"); }
+        public android.os.LocaleList getDefaultLocales() { return (android.os.LocaleList) meglerProps.get("DefaultLocales"); }
+        public int getEndIndex() { return (meglerProps.get("EndIndex") instanceof Integer ? (Integer) meglerProps.get("EndIndex") : 0); }
+        public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
+        public java.time.ZonedDateTime getReferenceTime() { return (java.time.ZonedDateTime) meglerProps.get("ReferenceTime"); }
+        public int getStartIndex() { return (meglerProps.get("StartIndex") instanceof Integer ? (Integer) meglerProps.get("StartIndex") : 0); }
+        public android.view.textclassifier.SystemTextClassifierMetadata getSystemTextClassifierMetadata() { return (android.view.textclassifier.SystemTextClassifierMetadata) meglerProps.get("SystemTextClassifierMetadata"); }
+        public java.lang.CharSequence getText() { return (java.lang.CharSequence) meglerProps.get("Text"); }
+        public void setSystemTextClassifierMetadata(android.view.textclassifier.SystemTextClassifierMetadata p0) { meglerProps.put("SystemTextClassifierMetadata", p0); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         protected Request() {}
         public static final class Builder {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public Builder(java.lang.CharSequence p0, int p1, int p2) {}
-            public android.view.textclassifier.TextClassification.Request build() { android.view.textclassifier.TextClassification.Request x = new android.view.textclassifier.TextClassification.Request(); x.megletProps.putAll(megletProps); return x; }
-            public android.view.textclassifier.TextClassification.Request.Builder setDefaultLocales(android.os.LocaleList p0) { megletProps.put("DefaultLocales", p0); return this; }
-            public android.view.textclassifier.TextClassification.Request.Builder setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); return this; }
-            public android.view.textclassifier.TextClassification.Request.Builder setReferenceTime(java.time.ZonedDateTime p0) { megletProps.put("ReferenceTime", p0); return this; }
+            public android.view.textclassifier.TextClassification.Request build() { android.view.textclassifier.TextClassification.Request x = new android.view.textclassifier.TextClassification.Request(); x.meglerProps.putAll(meglerProps); return x; }
+            public android.view.textclassifier.TextClassification.Request.Builder setDefaultLocales(android.os.LocaleList p0) { meglerProps.put("DefaultLocales", p0); return this; }
+            public android.view.textclassifier.TextClassification.Request.Builder setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); return this; }
+            public android.view.textclassifier.TextClassification.Request.Builder setReferenceTime(java.time.ZonedDateTime p0) { meglerProps.put("ReferenceTime", p0); return this; }
             Builder() { this((java.lang.CharSequence) null, (int) 0, (int) 0); }
         }
     }

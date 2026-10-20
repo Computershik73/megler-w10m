@@ -3,7 +3,7 @@ package android.content.pm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Checksum implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int MAX_CHECKSUM_SIZE_BYTES = 64;
     public static final int TYPE_PARTIAL_MERKLE_ROOT_1M_SHA256 = 32;
@@ -17,8 +17,8 @@ public final class Checksum implements android.os.Parcelable {
     public static android.content.pm.Checksum readFromStream(java.io.DataInputStream p0) { return new Checksum(); }
     public static void writeToStream(java.io.DataOutputStream p0, android.content.pm.Checksum p1) {}
     public int describeContents() { return 0; }
-    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
-    public byte[] getValue() { return (byte[]) megletProps.get("Value"); }
+    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
+    public byte[] getValue() { return (byte[]) meglerProps.get("Value"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     Checksum() { this((int) 0, (byte[]) null); }
 }

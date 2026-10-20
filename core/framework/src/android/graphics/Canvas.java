@@ -1,6 +1,6 @@
 package android.graphics;
 
-/** Drawing into a Bitmap through meglet.Gfx. The view system draws the window through one of these each frame. */
+/** Drawing into a Bitmap through megler.Gfx. The view system draws the window through one of these each frame. */
 public class Canvas {
     public static final int ALL_SAVE_FLAG = 0x1F, MATRIX_SAVE_FLAG = 1, CLIP_SAVE_FLAG = 2, HAS_ALPHA_LAYER_SAVE_FLAG = 4, FULL_COLOR_LAYER_SAVE_FLAG = 8,
         CLIP_TO_LAYER_SAVE_FLAG = 16;
@@ -16,20 +16,20 @@ public class Canvas {
 
     public Canvas() {}
     public Canvas(Bitmap b) { setBitmap(b); }
-    public long megletNative() { return mNative; }
+    public long meglerNative() { return mNative; }
 
     public void setBitmap(Bitmap b) {
-        if (mNative != 0) { meglet.Gfx.cvFree(mNative); mNative = 0; }
+        if (mNative != 0) { megler.Gfx.cvFree(mNative); mNative = 0; }
         mBitmap = b;
         if (b != null) {
             if (!b.isMutable() && false) throw new IllegalStateException("Immutable bitmap passed to Canvas constructor");
-            mNative = meglet.Gfx.cvNew(b.megletNative());
+            mNative = megler.Gfx.cvNew(b.meglerNative());
             mDensity = b.getDensity();
         }
     }
-    /** Meglet: done with this canvas (its native state is freed; the bitmap is kept). */
-    public void megletRelease() { setBitmap(null); }
-    @Override protected void finalize() throws Throwable { if (mNative != 0) meglet.Gfx.cvFree(mNative); mNative = 0; super.finalize(); }
+    /** Megler: done with this canvas (its native state is freed; the bitmap is kept). */
+    public void meglerRelease() { setBitmap(null); }
+    @Override protected void finalize() throws Throwable { if (mNative != 0) megler.Gfx.cvFree(mNative); mNative = 0; super.finalize(); }
 
     public boolean isHardwareAccelerated() { return false; }
     public boolean isOpaque() { return false; }
@@ -45,32 +45,32 @@ public class Canvas {
     public DrawFilter getDrawFilter() { return null; }
     public void setDrawFilter(DrawFilter f) {}
 
-    private void touched() { if (mBitmap != null) mBitmap.megletTouched(); }
+    private void touched() { if (mBitmap != null) mBitmap.meglerTouched(); }
 
     // ---- state
-    public int save() { return mNative == 0 ? 1 : meglet.Gfx.cvSave(mNative); }
+    public int save() { return mNative == 0 ? 1 : megler.Gfx.cvSave(mNative); }
     public int save(int flags) { return save(); }
     public int saveLayer(RectF b, Paint p, int flags) { return saveLayer(b, p); }
     public int saveLayer(RectF b, Paint p) { return b == null ? saveLayer(0, 0, 0, 0, p) : saveLayer(b.left, b.top, b.right, b.bottom, p); }
     /* the layer is composited with the paint's alpha and blend mode (Lottie's mattes and masks restore with DST_IN / DST_OUT) */
     public int saveLayer(float l, float t, float r, float b, Paint p, int flags) {
         if (mNative == 0) return 1;
-        return meglet.Gfx.cvSaveLayerMode(mNative, l, t, r, b, p == null ? 255 : p.getAlpha(), p == null ? 3 : p.megletXfer());
+        return megler.Gfx.cvSaveLayerMode(mNative, l, t, r, b, p == null ? 255 : p.getAlpha(), p == null ? 3 : p.meglerXfer());
     }
     public int saveLayer(float l, float t, float r, float b, Paint p) { return saveLayer(l, t, r, b, p, ALL_SAVE_FLAG); }
     public int saveLayerAlpha(RectF b, int alpha, int flags) { return saveLayerAlpha(b, alpha); }
     public int saveLayerAlpha(RectF b, int alpha) { return b == null ? saveLayerAlpha(0, 0, 0, 0, alpha) : saveLayerAlpha(b.left, b.top, b.right, b.bottom, alpha); }
     public int saveLayerAlpha(float l, float t, float r, float b, int alpha, int flags) { return saveLayerAlpha(l, t, r, b, alpha); }
-    public int saveLayerAlpha(float l, float t, float r, float b, int alpha) { return mNative == 0 ? 1 : meglet.Gfx.cvSaveLayer(mNative, l, t, r, b, Math.max(0, Math.min(255, alpha))); }
-    public void restore() { if (mNative != 0) meglet.Gfx.cvRestore(mNative); }
-    public int getSaveCount() { return mNative == 0 ? 1 : meglet.Gfx.cvSaveCount(mNative); }
-    public void restoreToCount(int n) { if (mNative != 0) meglet.Gfx.cvRestoreTo(mNative, Math.max(1, n)); }
+    public int saveLayerAlpha(float l, float t, float r, float b, int alpha) { return mNative == 0 ? 1 : megler.Gfx.cvSaveLayer(mNative, l, t, r, b, Math.max(0, Math.min(255, alpha))); }
+    public void restore() { if (mNative != 0) megler.Gfx.cvRestore(mNative); }
+    public int getSaveCount() { return mNative == 0 ? 1 : megler.Gfx.cvSaveCount(mNative); }
+    public void restoreToCount(int n) { if (mNative != 0) megler.Gfx.cvRestoreTo(mNative, Math.max(1, n)); }
 
     // ---- matrix
     private void concat6(float a, float b, float c, float d, float e, float f) {
         if (mNative == 0) return;
         mAff[0] = a; mAff[1] = b; mAff[2] = c; mAff[3] = d; mAff[4] = e; mAff[5] = f;
-        meglet.Gfx.cvMatrix(mNative, mAff, false);
+        megler.Gfx.cvMatrix(mNative, mAff, false);
     }
     public void translate(float dx, float dy) { if (dx != 0 || dy != 0) concat6(1, 0, dx, 0, 1, dy); }
     public void scale(float sx, float sy) { if (sx != 1 || sy != 1) concat6(sx, 0, 0, 0, sy, 0); }
@@ -78,32 +78,32 @@ public class Canvas {
     public void rotate(float deg) { if (deg != 0) { double r = Math.toRadians(deg); float c = (float) Math.cos(r), s = (float) Math.sin(r); concat6(c, -s, 0, s, c, 0); } }
     public final void rotate(float deg, float px, float py) { translate(px, py); rotate(deg); translate(-px, -py); }
     public void skew(float sx, float sy) { concat6(1, sx, 0, sy, 1, 0); }
-    public void concat(Matrix m) { if (m != null && !m.isIdentity() && mNative != 0) meglet.Gfx.cvMatrix(mNative, m.megletAffine(), false); }
-    public void setMatrix(Matrix m) { if (mNative != 0) meglet.Gfx.cvMatrix(mNative, (m == null ? new Matrix() : m).megletAffine(), true); }
+    public void concat(Matrix m) { if (m != null && !m.isIdentity() && mNative != 0) megler.Gfx.cvMatrix(mNative, m.meglerAffine(), false); }
+    public void setMatrix(Matrix m) { if (mNative != 0) megler.Gfx.cvMatrix(mNative, (m == null ? new Matrix() : m).meglerAffine(), true); }
     public void getMatrix(Matrix m) {
         if (mNative == 0) { m.reset(); return; }
-        meglet.Gfx.cvGetMatrix(mNative, mAff);
+        megler.Gfx.cvGetMatrix(mNative, mAff);
         m.setValues(new float[] { mAff[0], mAff[1], mAff[2], mAff[3], mAff[4], mAff[5], 0, 0, 1 });
     }
     public final Matrix getMatrix() { Matrix m = new Matrix(); getMatrix(m); return m; }
 
     // ---- clip
-    public boolean clipRect(float l, float t, float r, float b) { return mNative == 0 || meglet.Gfx.cvClipRect(mNative, l, t, r, b, 1); }
+    public boolean clipRect(float l, float t, float r, float b) { return mNative == 0 || megler.Gfx.cvClipRect(mNative, l, t, r, b, 1); }
     public boolean clipRect(int l, int t, int r, int b) { return clipRect((float) l, t, r, b); }
     public boolean clipRect(RectF r) { return clipRect(r.left, r.top, r.right, r.bottom); }
     public boolean clipRect(Rect r) { return clipRect((float) r.left, r.top, r.right, r.bottom); }
     public boolean clipRect(RectF r, Region.Op op) { return op == Region.Op.DIFFERENCE ? clipOutRect(r) : clipRect(r); }
     public boolean clipRect(Rect r, Region.Op op) { return op == Region.Op.DIFFERENCE ? clipOutRect(r) : clipRect(r); }
     public boolean clipRect(float l, float t, float r, float b, Region.Op op) { return op == Region.Op.DIFFERENCE ? clipOutRect(l, t, r, b) : clipRect(l, t, r, b); }
-    public boolean clipOutRect(float l, float t, float r, float b) { return mNative == 0 || meglet.Gfx.cvClipRect(mNative, l, t, r, b, 0); }
+    public boolean clipOutRect(float l, float t, float r, float b) { return mNative == 0 || megler.Gfx.cvClipRect(mNative, l, t, r, b, 0); }
     public boolean clipOutRect(int l, int t, int r, int b) { return clipOutRect((float) l, t, r, b); }
     public boolean clipOutRect(RectF r) { return clipOutRect(r.left, r.top, r.right, r.bottom); }
     public boolean clipOutRect(Rect r) { return clipOutRect((float) r.left, r.top, r.right, r.bottom); }
-    public boolean clipPath(Path p) { return mNative == 0 || meglet.Gfx.cvClipPath(mNative, p.ops, p.n, p.megletFill(), 1); }
+    public boolean clipPath(Path p) { return mNative == 0 || megler.Gfx.cvClipPath(mNative, p.ops, p.n, p.meglerFill(), 1); }
     public boolean clipPath(Path p, Region.Op op) { return op == Region.Op.DIFFERENCE ? clipOutPath(p) : clipPath(p); }
-    public boolean clipOutPath(Path p) { return mNative == 0 || meglet.Gfx.cvClipPath(mNative, p.ops, p.n, p.megletFill(), 0); }
+    public boolean clipOutPath(Path p) { return mNative == 0 || megler.Gfx.cvClipPath(mNative, p.ops, p.n, p.meglerFill(), 0); }
     public boolean getClipBounds(Rect r) {
-        boolean ok = mNative != 0 && meglet.Gfx.cvClipBounds(mNative, mClip);
+        boolean ok = mNative != 0 && megler.Gfx.cvClipBounds(mNative, mClip);
         if (r != null) r.set(mClip[0], mClip[1], mClip[2], mClip[3]);
         return ok;
     }
@@ -115,27 +115,27 @@ public class Canvas {
     public boolean quickReject(float l, float t, float r, float b, EdgeType e) { return quickReject(l, t, r, b); }
     public boolean quickReject(float l, float t, float r, float b) {
         // only when the matrix is a translation and scale: the clip bounds are in the current coordinates
-        if (mNative == 0 || !meglet.Gfx.cvClipBounds(mNative, mClip)) return true;
+        if (mNative == 0 || !megler.Gfx.cvClipBounds(mNative, mClip)) return true;
         return r <= mClip[0] || l >= mClip[2] || b <= mClip[1] || t >= mClip[3];
     }
 
     // ---- drawing
-    public void drawColor(int c) { if (mNative != 0) { meglet.Gfx.cvDrawColor(mNative, c, 3); touched(); } }
+    public void drawColor(int c) { if (mNative != 0) { megler.Gfx.cvDrawColor(mNative, c, 3); touched(); } }
     public void drawColor(long c) { drawColor(Color.toArgb(c)); }
-    public void drawColor(int c, PorterDuff.Mode m) { if (mNative != 0) { meglet.Gfx.cvDrawColor(mNative, c, m.nativeInt); touched(); } }
-    public void drawColor(int c, BlendMode m) { if (mNative != 0) { meglet.Gfx.cvDrawColor(mNative, c, m.n); touched(); } }
+    public void drawColor(int c, PorterDuff.Mode m) { if (mNative != 0) { megler.Gfx.cvDrawColor(mNative, c, m.nativeInt); touched(); } }
+    public void drawColor(int c, BlendMode m) { if (mNative != 0) { megler.Gfx.cvDrawColor(mNative, c, m.n); touched(); } }
     public void drawRGB(int r, int g, int b) { drawColor(Color.rgb(r, g, b)); }
     public void drawARGB(int a, int r, int g, int b) { drawColor(Color.argb(a, r, g, b)); }
     public void drawPaint(Paint p) {
         if (mNative == 0) return;
-        meglet.Gfx.cvClipBounds(mNative, mClip);
-        meglet.Gfx.cvDrawRect(mNative, mClip[0], mClip[1], mClip[2], mClip[3], p.mP, p.megletShader());
+        megler.Gfx.cvClipBounds(mNative, mClip);
+        megler.Gfx.cvDrawRect(mNative, mClip[0], mClip[1], mClip[2], mClip[3], p.mP, p.meglerShader());
         touched();
     }
-    public void drawRect(float l, float t, float r, float b, Paint p) { if (mNative != 0) { meglet.Gfx.cvDrawRect(mNative, l, t, r, b, p.mP, p.megletShader()); touched(); } }
+    public void drawRect(float l, float t, float r, float b, Paint p) { if (mNative != 0) { megler.Gfx.cvDrawRect(mNative, l, t, r, b, p.mP, p.meglerShader()); touched(); } }
     public void drawRect(RectF r, Paint p) { drawRect(r.left, r.top, r.right, r.bottom, p); }
     public void drawRect(Rect r, Paint p) { drawRect(r.left, r.top, r.right, r.bottom, p); }
-    public void drawRoundRect(float l, float t, float r, float b, float rx, float ry, Paint p) { if (mNative != 0) { meglet.Gfx.cvDrawRRect(mNative, l, t, r, b, rx, ry, p.mP, p.megletShader()); touched(); } }
+    public void drawRoundRect(float l, float t, float r, float b, float rx, float ry, Paint p) { if (mNative != 0) { megler.Gfx.cvDrawRRect(mNative, l, t, r, b, rx, ry, p.mP, p.meglerShader()); touched(); } }
     public void drawRoundRect(RectF r, float rx, float ry, Paint p) { drawRoundRect(r.left, r.top, r.right, r.bottom, rx, ry, p); }
     public void drawDoubleRoundRect(RectF outer, float orx, float ory, RectF inner, float irx, float iry, Paint p) {
         Path path = new Path();
@@ -144,19 +144,19 @@ public class Canvas {
         path.setFillType(Path.FillType.EVEN_ODD);
         drawPath(path, p);
     }
-    public void drawOval(float l, float t, float r, float b, Paint p) { if (mNative != 0) { meglet.Gfx.cvDrawOval(mNative, l, t, r, b, p.mP, p.megletShader()); touched(); } }
+    public void drawOval(float l, float t, float r, float b, Paint p) { if (mNative != 0) { megler.Gfx.cvDrawOval(mNative, l, t, r, b, p.mP, p.meglerShader()); touched(); } }
     public void drawOval(RectF r, Paint p) { drawOval(r.left, r.top, r.right, r.bottom, p); }
     public void drawCircle(float cx, float cy, float radius, Paint p) { drawOval(cx - radius, cy - radius, cx + radius, cy + radius, p); }
     public void drawArc(float l, float t, float r, float b, float start, float sweep, boolean useCenter, Paint p) {
-        if (mNative != 0) { meglet.Gfx.cvDrawArc(mNative, l, t, r, b, start, sweep, useCenter, p.mP, p.megletShader()); touched(); }
+        if (mNative != 0) { megler.Gfx.cvDrawArc(mNative, l, t, r, b, start, sweep, useCenter, p.mP, p.meglerShader()); touched(); }
     }
     public void drawArc(RectF o, float start, float sweep, boolean useCenter, Paint p) { drawArc(o.left, o.top, o.right, o.bottom, start, sweep, useCenter, p); }
-    public void drawPath(Path path, Paint p) { if (mNative != 0 && path.n > 0) { meglet.Gfx.cvDrawPath(mNative, path.ops, path.n, path.megletFill(), p.mP, p.megletShader()); touched(); } }
+    public void drawPath(Path path, Paint p) { if (mNative != 0 && path.n > 0) { megler.Gfx.cvDrawPath(mNative, path.ops, path.n, path.meglerFill(), p.mP, p.meglerShader()); touched(); } }
     public void drawLine(float x0, float y0, float x1, float y1, Paint p) { drawLines(new float[] { x0, y0, x1, y1 }, 0, 4, p); }
-    public void drawLines(float[] pts, int offset, int count, Paint p) { if (mNative != 0) { meglet.Gfx.cvDrawLines(mNative, pts, offset, count, p.mP, p.megletShader(), false); touched(); } }
+    public void drawLines(float[] pts, int offset, int count, Paint p) { if (mNative != 0) { megler.Gfx.cvDrawLines(mNative, pts, offset, count, p.mP, p.meglerShader(), false); touched(); } }
     public void drawLines(float[] pts, Paint p) { drawLines(pts, 0, pts.length, p); }
     public void drawPoint(float x, float y, Paint p) { drawPoints(new float[] { x, y }, 0, 2, p); }
-    public void drawPoints(float[] pts, int offset, int count, Paint p) { if (mNative != 0) { meglet.Gfx.cvDrawLines(mNative, pts, offset, count, p.mP, p.megletShader(), true); touched(); } }
+    public void drawPoints(float[] pts, int offset, int count, Paint p) { if (mNative != 0) { megler.Gfx.cvDrawLines(mNative, pts, offset, count, p.mP, p.meglerShader(), true); touched(); } }
     public void drawPoints(float[] pts, Paint p) { drawPoints(pts, 0, pts.length, p); }
 
     // ---- bitmaps
@@ -165,20 +165,20 @@ public class Canvas {
         if (mNative == 0 || b == null || b.isRecycled()) return;
         float w = b.getWidth(), h = b.getHeight();
         if (mDensity != 0 && b.getDensity() != 0 && mDensity != b.getDensity()) { w = b.getScaledWidth(mDensity); h = b.getScaledHeight(mDensity); }
-        meglet.Gfx.cvDrawBitmap(mNative, b.megletNative(), 0, 0, b.getWidth(), b.getHeight(), left, top, left + w, top + h, paintOf(p));
+        megler.Gfx.cvDrawBitmap(mNative, b.meglerNative(), 0, 0, b.getWidth(), b.getHeight(), left, top, left + w, top + h, paintOf(p));
         touched();
     }
     public void drawBitmap(Bitmap b, Rect src, RectF dst, Paint p) {
         if (mNative == 0 || b == null || b.isRecycled()) return;
         float sl = 0, st = 0, sr = b.getWidth(), sb = b.getHeight();
         if (src != null) { sl = src.left; st = src.top; sr = src.right; sb = src.bottom; }
-        meglet.Gfx.cvDrawBitmap(mNative, b.megletNative(), sl, st, sr, sb, dst.left, dst.top, dst.right, dst.bottom, paintOf(p));
+        megler.Gfx.cvDrawBitmap(mNative, b.meglerNative(), sl, st, sr, sb, dst.left, dst.top, dst.right, dst.bottom, paintOf(p));
         touched();
     }
     public void drawBitmap(Bitmap b, Rect src, Rect dst, Paint p) { drawBitmap(b, src, new RectF(dst), p); }
     public void drawBitmap(Bitmap b, Matrix m, Paint p) {
         if (mNative == 0 || b == null || b.isRecycled()) return;
-        meglet.Gfx.cvDrawBitmapM(mNative, b.megletNative(), (m == null ? new Matrix() : m).megletAffine(), paintOf(p));
+        megler.Gfx.cvDrawBitmapM(mNative, b.meglerNative(), (m == null ? new Matrix() : m).meglerAffine(), paintOf(p));
         touched();
     }
     public void drawBitmap(int[] colors, int offset, int stride, float x, float y, int w, int h, boolean alpha, Paint p) {
@@ -193,13 +193,13 @@ public class Canvas {
     public void drawPicture(Picture pic, RectF dst) { save(); translate(dst.left, dst.top); if (pic.getWidth() > 0 && pic.getHeight() > 0) scale(dst.width() / pic.getWidth(), dst.height() / pic.getHeight()); drawPicture(pic); restore(); }
     public void drawPicture(Picture pic, Rect dst) { drawPicture(pic, new RectF(dst)); }
     public void drawVertices(VertexMode mode, int vc, float[] verts, int vo, float[] tex, int to, int[] colors, int co, short[] idx, int io, int ic, Paint p) {}
-    public void drawRenderNode(android.graphics.RenderNode n) { if (n != null) n.megletDraw(this); }
+    public void drawRenderNode(android.graphics.RenderNode n) { if (n != null) n.meglerDraw(this); }
 
     // ---- text
     public void drawText(String s, float x, float y, Paint p) { drawText(s, 0, s.length(), x, y, p); }
     public void drawText(String s, int start, int end, float x, float y, Paint p) {
         if (mNative == 0 || s == null || end <= start) return;
-        meglet.Gfx.cvDrawText(mNative, s, start, end, x, y, p.mP, p.megletFace(), p.megletShader());
+        megler.Gfx.cvDrawText(mNative, s, start, end, x, y, p.mP, p.meglerFace(), p.meglerShader());
         touched();
     }
     public void drawText(CharSequence s, int start, int end, float x, float y, Paint p) { drawText(s.toString(), start, end, x, y, p); }

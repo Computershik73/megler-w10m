@@ -3,7 +3,7 @@ package android.service.carrier;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class CarrierService extends android.app.Service {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String CARRIER_SERVICE_INTERFACE = "android.service.carrier.CarrierService";
     public CarrierService() { super(); }
     public void notifyCarrierNetworkChange(int p0, boolean p1) {}
@@ -12,7 +12,7 @@ public abstract class CarrierService extends android.app.Service {
     public android.os.PersistableBundle onLoadConfig(int p0, android.service.carrier.CarrierIdentifier p1) { return null; }
     public abstract android.os.PersistableBundle onLoadConfig(android.service.carrier.CarrierIdentifier p0);
     public static abstract class ICarrierServiceWrapper extends android.service.carrier.ICarrierService.Stub {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String KEY_CONFIG_BUNDLE = "config_bundle";
         public static final int RESULT_ERROR = 1;
         public static int RESULT_OK;

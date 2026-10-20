@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TelephonyScanManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int CALLBACK_RESTRICTED_SCAN_RESULTS = 4;
     public static final int CALLBACK_SCAN_COMPLETE = 3;
     public static final int CALLBACK_SCAN_ERROR = 2;
@@ -14,7 +14,7 @@ public final class TelephonyScanManager {
     public TelephonyScanManager() {}
     public android.telephony.NetworkScan requestNetworkScan(int p0, boolean p1, android.telephony.NetworkScanRequest p2, java.util.concurrent.Executor p3, android.telephony.TelephonyScanManager.NetworkScanCallback p4, java.lang.String p5, java.lang.String p6) { return null; }
     public static abstract class NetworkScanCallback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public NetworkScanCallback() {}
         public void onComplete() {}
         public void onError(int p0) {}

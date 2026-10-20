@@ -3,7 +3,7 @@ package android.graphics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BitmapRegionDecoder {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.graphics.BitmapRegionDecoder newInstance(android.os.ParcelFileDescriptor p0) { return new BitmapRegionDecoder(); }
     public static android.graphics.BitmapRegionDecoder newInstance(java.io.FileDescriptor p0, boolean p1) { return new BitmapRegionDecoder(); }
     public static android.graphics.BitmapRegionDecoder newInstance(java.io.InputStream p0) { return new BitmapRegionDecoder(); }
@@ -14,9 +14,9 @@ public final class BitmapRegionDecoder {
     public static android.graphics.BitmapRegionDecoder newInstance(byte[] p0, int p1, int p2, boolean p3) { return new BitmapRegionDecoder(); }
     public android.graphics.Bitmap decodeRegion(android.graphics.Rect p0, android.graphics.BitmapFactory.Options p1) { return null; }
     protected void finalize() {}
-    public int getHeight() { return (megletProps.get("Height") instanceof Integer ? (Integer) megletProps.get("Height") : 0); }
-    public int getWidth() { return (megletProps.get("Width") instanceof Integer ? (Integer) megletProps.get("Width") : 0); }
-    public boolean isRecycled() { return (megletProps.get("Recycled") instanceof Boolean ? (Boolean) megletProps.get("Recycled") : false); }
+    public int getHeight() { return (meglerProps.get("Height") instanceof Integer ? (Integer) meglerProps.get("Height") : 0); }
+    public int getWidth() { return (meglerProps.get("Width") instanceof Integer ? (Integer) meglerProps.get("Width") : 0); }
+    public boolean isRecycled() { return (meglerProps.get("Recycled") instanceof Boolean ? (Boolean) meglerProps.get("Recycled") : false); }
     public void recycle() {}
     protected BitmapRegionDecoder() {}
 }

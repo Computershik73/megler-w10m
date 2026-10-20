@@ -3,10 +3,10 @@ package android.app.admin;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class FreezePeriod {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public FreezePeriod(java.time.MonthDay p0, java.time.MonthDay p1) {}
     public static int distanceWithoutLeapYear(java.time.LocalDate p0, java.time.LocalDate p1) { return 0; }
-    public java.time.MonthDay getEnd() { return (java.time.MonthDay) megletProps.get("End"); }
-    public java.time.MonthDay getStart() { return (java.time.MonthDay) megletProps.get("Start"); }
+    public java.time.MonthDay getEnd() { return (java.time.MonthDay) meglerProps.get("End"); }
+    public java.time.MonthDay getStart() { return (java.time.MonthDay) meglerProps.get("Start"); }
     FreezePeriod() { this((java.time.MonthDay) null, (java.time.MonthDay) null); }
 }

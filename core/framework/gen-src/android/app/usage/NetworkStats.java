@@ -3,14 +3,14 @@ package android.app.usage;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class NetworkStats implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public void close() {}
     protected void finalize() {}
     public boolean getNextBucket(android.app.usage.NetworkStats.Bucket p0) { return false; }
     public boolean hasNextBucket() { return false; }
     protected NetworkStats() {}
     public static class Bucket {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int DEFAULT_NETWORK_ALL = -1;
         public static final int DEFAULT_NETWORK_NO = 1;
         public static final int DEFAULT_NETWORK_YES = 2;
@@ -28,17 +28,17 @@ public final class NetworkStats implements java.lang.AutoCloseable {
         public static final int UID_REMOVED = -4;
         public static final int UID_TETHERING = -5;
         public Bucket() {}
-        public int getDefaultNetworkStatus() { return (megletProps.get("DefaultNetworkStatus") instanceof Integer ? (Integer) megletProps.get("DefaultNetworkStatus") : 0); }
-        public long getEndTimeStamp() { return (megletProps.get("EndTimeStamp") instanceof Long ? (Long) megletProps.get("EndTimeStamp") : 0L); }
-        public int getMetered() { return (megletProps.get("Metered") instanceof Integer ? (Integer) megletProps.get("Metered") : 0); }
-        public int getRoaming() { return (megletProps.get("Roaming") instanceof Integer ? (Integer) megletProps.get("Roaming") : 0); }
-        public long getRxBytes() { return (megletProps.get("RxBytes") instanceof Long ? (Long) megletProps.get("RxBytes") : 0L); }
-        public long getRxPackets() { return (megletProps.get("RxPackets") instanceof Long ? (Long) megletProps.get("RxPackets") : 0L); }
-        public long getStartTimeStamp() { return (megletProps.get("StartTimeStamp") instanceof Long ? (Long) megletProps.get("StartTimeStamp") : 0L); }
-        public int getState() { return (megletProps.get("State") instanceof Integer ? (Integer) megletProps.get("State") : 0); }
-        public int getTag() { return (megletProps.get("Tag") instanceof Integer ? (Integer) megletProps.get("Tag") : 0); }
-        public long getTxBytes() { return (megletProps.get("TxBytes") instanceof Long ? (Long) megletProps.get("TxBytes") : 0L); }
-        public long getTxPackets() { return (megletProps.get("TxPackets") instanceof Long ? (Long) megletProps.get("TxPackets") : 0L); }
-        public int getUid() { return (megletProps.get("Uid") instanceof Integer ? (Integer) megletProps.get("Uid") : 0); }
+        public int getDefaultNetworkStatus() { return (meglerProps.get("DefaultNetworkStatus") instanceof Integer ? (Integer) meglerProps.get("DefaultNetworkStatus") : 0); }
+        public long getEndTimeStamp() { return (meglerProps.get("EndTimeStamp") instanceof Long ? (Long) meglerProps.get("EndTimeStamp") : 0L); }
+        public int getMetered() { return (meglerProps.get("Metered") instanceof Integer ? (Integer) meglerProps.get("Metered") : 0); }
+        public int getRoaming() { return (meglerProps.get("Roaming") instanceof Integer ? (Integer) meglerProps.get("Roaming") : 0); }
+        public long getRxBytes() { return (meglerProps.get("RxBytes") instanceof Long ? (Long) meglerProps.get("RxBytes") : 0L); }
+        public long getRxPackets() { return (meglerProps.get("RxPackets") instanceof Long ? (Long) meglerProps.get("RxPackets") : 0L); }
+        public long getStartTimeStamp() { return (meglerProps.get("StartTimeStamp") instanceof Long ? (Long) meglerProps.get("StartTimeStamp") : 0L); }
+        public int getState() { return (meglerProps.get("State") instanceof Integer ? (Integer) meglerProps.get("State") : 0); }
+        public int getTag() { return (meglerProps.get("Tag") instanceof Integer ? (Integer) meglerProps.get("Tag") : 0); }
+        public long getTxBytes() { return (meglerProps.get("TxBytes") instanceof Long ? (Long) meglerProps.get("TxBytes") : 0L); }
+        public long getTxPackets() { return (meglerProps.get("TxPackets") instanceof Long ? (Long) meglerProps.get("TxPackets") : 0L); }
+        public int getUid() { return (meglerProps.get("Uid") instanceof Integer ? (Integer) meglerProps.get("Uid") : 0); }
     }
 }

@@ -3,31 +3,31 @@ package android.view;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class WindowInsetsAnimation {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public WindowInsetsAnimation(int p0, android.view.animation.Interpolator p1, long p2) {}
-    public float getAlpha() { return (megletProps.get("Alpha") instanceof Float ? (Float) megletProps.get("Alpha") : 0f); }
-    public long getDurationMillis() { return (megletProps.get("DurationMillis") instanceof Long ? (Long) megletProps.get("DurationMillis") : 0L); }
-    public float getFraction() { return (megletProps.get("Fraction") instanceof Float ? (Float) megletProps.get("Fraction") : 0f); }
-    public float getInterpolatedFraction() { return (megletProps.get("InterpolatedFraction") instanceof Float ? (Float) megletProps.get("InterpolatedFraction") : 0f); }
-    public android.view.animation.Interpolator getInterpolator() { return (android.view.animation.Interpolator) megletProps.get("Interpolator"); }
-    public int getTypeMask() { return (megletProps.get("TypeMask") instanceof Integer ? (Integer) megletProps.get("TypeMask") : 0); }
-    public void setAlpha(float p0) { megletProps.put("Alpha", Float.valueOf(p0)); }
-    public void setFraction(float p0) { megletProps.put("Fraction", Float.valueOf(p0)); }
+    public float getAlpha() { return (meglerProps.get("Alpha") instanceof Float ? (Float) meglerProps.get("Alpha") : 0f); }
+    public long getDurationMillis() { return (meglerProps.get("DurationMillis") instanceof Long ? (Long) meglerProps.get("DurationMillis") : 0L); }
+    public float getFraction() { return (meglerProps.get("Fraction") instanceof Float ? (Float) meglerProps.get("Fraction") : 0f); }
+    public float getInterpolatedFraction() { return (meglerProps.get("InterpolatedFraction") instanceof Float ? (Float) meglerProps.get("InterpolatedFraction") : 0f); }
+    public android.view.animation.Interpolator getInterpolator() { return (android.view.animation.Interpolator) meglerProps.get("Interpolator"); }
+    public int getTypeMask() { return (meglerProps.get("TypeMask") instanceof Integer ? (Integer) meglerProps.get("TypeMask") : 0); }
+    public void setAlpha(float p0) { meglerProps.put("Alpha", Float.valueOf(p0)); }
+    public void setFraction(float p0) { meglerProps.put("Fraction", Float.valueOf(p0)); }
     WindowInsetsAnimation() { this((int) 0, (android.view.animation.Interpolator) null, (long) 0L); }
     public static final class Bounds {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Bounds(android.graphics.Insets p0, android.graphics.Insets p1) {}
-        public android.graphics.Insets getLowerBound() { return (android.graphics.Insets) megletProps.get("LowerBound"); }
-        public android.graphics.Insets getUpperBound() { return (android.graphics.Insets) megletProps.get("UpperBound"); }
+        public android.graphics.Insets getLowerBound() { return (android.graphics.Insets) meglerProps.get("LowerBound"); }
+        public android.graphics.Insets getUpperBound() { return (android.graphics.Insets) meglerProps.get("UpperBound"); }
         public android.view.WindowInsetsAnimation.Bounds inset(android.graphics.Insets p0) { return this; }
         Bounds() { this((android.graphics.Insets) null, (android.graphics.Insets) null); }
     }
     public static abstract class Callback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int DISPATCH_MODE_CONTINUE_ON_SUBTREE = 1;
         public static int DISPATCH_MODE_STOP;
         public Callback(int p0) {}
-        public int getDispatchMode() { return (megletProps.get("DispatchMode") instanceof Integer ? (Integer) megletProps.get("DispatchMode") : 0); }
+        public int getDispatchMode() { return (meglerProps.get("DispatchMode") instanceof Integer ? (Integer) meglerProps.get("DispatchMode") : 0); }
         public void onEnd(android.view.WindowInsetsAnimation p0) {}
         public void onPrepare(android.view.WindowInsetsAnimation p0) {}
         public abstract android.view.WindowInsets onProgress(android.view.WindowInsets p0, java.util.List p1);

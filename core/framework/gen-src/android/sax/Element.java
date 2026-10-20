@@ -3,15 +3,15 @@ package android.sax;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Element {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public android.sax.Element getChild(java.lang.String p0) { return this; }
     public android.sax.Element getChild(java.lang.String p0, java.lang.String p1) { return this; }
     public android.sax.Element requireChild(java.lang.String p0) { return this; }
     public android.sax.Element requireChild(java.lang.String p0, java.lang.String p1) { return this; }
-    public void setElementListener(android.sax.ElementListener p0) { megletProps.put("ElementListener", p0); }
-    public void setEndElementListener(android.sax.EndElementListener p0) { megletProps.put("EndElementListener", p0); }
-    public void setEndTextElementListener(android.sax.EndTextElementListener p0) { megletProps.put("EndTextElementListener", p0); }
-    public void setStartElementListener(android.sax.StartElementListener p0) { megletProps.put("StartElementListener", p0); }
-    public void setTextElementListener(android.sax.TextElementListener p0) { megletProps.put("TextElementListener", p0); }
+    public void setElementListener(android.sax.ElementListener p0) { meglerProps.put("ElementListener", p0); }
+    public void setEndElementListener(android.sax.EndElementListener p0) { meglerProps.put("EndElementListener", p0); }
+    public void setEndTextElementListener(android.sax.EndTextElementListener p0) { meglerProps.put("EndTextElementListener", p0); }
+    public void setStartElementListener(android.sax.StartElementListener p0) { meglerProps.put("StartElementListener", p0); }
+    public void setTextElementListener(android.sax.TextElementListener p0) { meglerProps.put("TextElementListener", p0); }
     protected Element() {}
 }

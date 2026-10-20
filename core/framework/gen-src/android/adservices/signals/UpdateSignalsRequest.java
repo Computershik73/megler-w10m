@@ -3,14 +3,14 @@ package android.adservices.signals;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class UpdateSignalsRequest {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public android.net.Uri getUpdateUri() { return (android.net.Uri) megletProps.get("UpdateUri"); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public android.net.Uri getUpdateUri() { return (android.net.Uri) meglerProps.get("UpdateUri"); }
     protected UpdateSignalsRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.net.Uri p0) {}
-        public android.adservices.signals.UpdateSignalsRequest build() { android.adservices.signals.UpdateSignalsRequest x = new android.adservices.signals.UpdateSignalsRequest(); x.megletProps.putAll(megletProps); return x; }
-        public android.adservices.signals.UpdateSignalsRequest.Builder setUpdateUri(android.net.Uri p0) { megletProps.put("UpdateUri", p0); return this; }
+        public android.adservices.signals.UpdateSignalsRequest build() { android.adservices.signals.UpdateSignalsRequest x = new android.adservices.signals.UpdateSignalsRequest(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.adservices.signals.UpdateSignalsRequest.Builder setUpdateUri(android.net.Uri p0) { meglerProps.put("UpdateUri", p0); return this; }
         Builder() { this((android.net.Uri) null); }
     }
 }

@@ -74,15 +74,15 @@ public class AnimatedVectorDrawable extends Drawable implements Animatable2, Dra
     public interface VectorDrawableAnimator {
     }
     public static class VectorDrawableAnimatorRT implements android.graphics.drawable.AnimatedVectorDrawable.VectorDrawableAnimator, android.view.NativeVectorDrawableAnimator {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public boolean canReverse() { return false; }
         public void end() {}
-        public long getAnimatorNativePtr() { return (megletProps.get("AnimatorNativePtr") instanceof Long ? (Long) megletProps.get("AnimatorNativePtr") : 0L); }
-        public long getTotalDuration() { return (megletProps.get("TotalDuration") instanceof Long ? (Long) megletProps.get("TotalDuration") : 0L); }
+        public long getAnimatorNativePtr() { return (meglerProps.get("AnimatorNativePtr") instanceof Long ? (Long) meglerProps.get("AnimatorNativePtr") : 0L); }
+        public long getTotalDuration() { return (meglerProps.get("TotalDuration") instanceof Long ? (Long) meglerProps.get("TotalDuration") : 0L); }
         public void init(android.animation.AnimatorSet p0) {}
-        public boolean isInfinite() { return (megletProps.get("Infinite") instanceof Boolean ? (Boolean) megletProps.get("Infinite") : false); }
-        public boolean isRunning() { return (megletProps.get("Running") instanceof Boolean ? (Boolean) megletProps.get("Running") : false); }
-        public boolean isStarted() { return (megletProps.get("Started") instanceof Boolean ? (Boolean) megletProps.get("Started") : false); }
+        public boolean isInfinite() { return (meglerProps.get("Infinite") instanceof Boolean ? (Boolean) meglerProps.get("Infinite") : false); }
+        public boolean isRunning() { return (meglerProps.get("Running") instanceof Boolean ? (Boolean) meglerProps.get("Running") : false); }
+        public boolean isStarted() { return (meglerProps.get("Started") instanceof Boolean ? (Boolean) meglerProps.get("Started") : false); }
         public void onDraw(android.graphics.Canvas p0) {}
         public void pause() {}
         protected void recordLastSeenTarget(android.graphics.RecordingCanvas p0) {}
@@ -90,8 +90,8 @@ public class AnimatedVectorDrawable extends Drawable implements Animatable2, Dra
         public void reset() {}
         public void resume() {}
         public void reverse() {}
-        public void setListener(android.animation.Animator.AnimatorListener p0) { megletProps.put("Listener", p0); }
-        public void setThreadedRendererAnimatorListener(android.animation.Animator.AnimatorListener p0) { megletProps.put("ThreadedRendererAnimatorListener", p0); }
+        public void setListener(android.animation.Animator.AnimatorListener p0) { meglerProps.put("Listener", p0); }
+        public void setThreadedRendererAnimatorListener(android.animation.Animator.AnimatorListener p0) { meglerProps.put("ThreadedRendererAnimatorListener", p0); }
         public void start() {}
         protected VectorDrawableAnimatorRT() {}
     }

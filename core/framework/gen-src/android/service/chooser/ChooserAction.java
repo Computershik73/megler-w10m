@@ -3,18 +3,18 @@ package android.service.chooser;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ChooserAction implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public android.app.PendingIntent getAction() { return (android.app.PendingIntent) megletProps.get("Action"); }
-    public android.graphics.drawable.Icon getIcon() { return (android.graphics.drawable.Icon) megletProps.get("Icon"); }
-    public java.lang.CharSequence getLabel() { return (java.lang.CharSequence) megletProps.get("Label"); }
+    public android.app.PendingIntent getAction() { return (android.app.PendingIntent) meglerProps.get("Action"); }
+    public android.graphics.drawable.Icon getIcon() { return (android.graphics.drawable.Icon) meglerProps.get("Icon"); }
+    public java.lang.CharSequence getLabel() { return (java.lang.CharSequence) meglerProps.get("Label"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected ChooserAction() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.graphics.drawable.Icon p0, java.lang.CharSequence p1, android.app.PendingIntent p2) {}
-        public android.service.chooser.ChooserAction build() { android.service.chooser.ChooserAction x = new android.service.chooser.ChooserAction(); x.megletProps.putAll(megletProps); return x; }
+        public android.service.chooser.ChooserAction build() { android.service.chooser.ChooserAction x = new android.service.chooser.ChooserAction(); x.meglerProps.putAll(meglerProps); return x; }
         Builder() { this((android.graphics.drawable.Icon) null, (java.lang.CharSequence) null, (android.app.PendingIntent) null); }
     }
 }

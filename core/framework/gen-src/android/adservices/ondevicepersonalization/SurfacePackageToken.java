@@ -3,8 +3,8 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SurfacePackageToken {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public SurfacePackageToken(java.lang.String p0) {}
-    public java.lang.String getTokenString() { return (java.lang.String) megletProps.get("TokenString"); }
+    public java.lang.String getTokenString() { return (java.lang.String) meglerProps.get("TokenString"); }
     SurfacePackageToken() { this((java.lang.String) null); }
 }

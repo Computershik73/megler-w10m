@@ -3,7 +3,7 @@ package android.telecom;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DisconnectCause implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int ANSWERED_ELSEWHERE = 11;
     public static final int BUSY = 7;
     public static final int CALL_PULLED = 12;
@@ -28,27 +28,27 @@ public final class DisconnectCause implements android.os.Parcelable {
     public DisconnectCause(int p0, java.lang.CharSequence p1, java.lang.CharSequence p2, java.lang.String p3, int p4, int p5, int p6, android.telephony.ims.ImsReasonInfo p7) {}
     public DisconnectCause(int p0, java.lang.String p1) {}
     public int describeContents() { return 0; }
-    public int getCode() { return (megletProps.get("Code") instanceof Integer ? (Integer) megletProps.get("Code") : 0); }
-    public java.lang.CharSequence getDescription() { return (java.lang.CharSequence) megletProps.get("Description"); }
-    public android.telephony.ims.ImsReasonInfo getImsReasonInfo() { return (android.telephony.ims.ImsReasonInfo) megletProps.get("ImsReasonInfo"); }
-    public java.lang.CharSequence getLabel() { return (java.lang.CharSequence) megletProps.get("Label"); }
-    public java.lang.String getReason() { return (java.lang.String) megletProps.get("Reason"); }
-    public int getTelephonyDisconnectCause() { return (megletProps.get("TelephonyDisconnectCause") instanceof Integer ? (Integer) megletProps.get("TelephonyDisconnectCause") : 0); }
-    public int getTelephonyPreciseDisconnectCause() { return (megletProps.get("TelephonyPreciseDisconnectCause") instanceof Integer ? (Integer) megletProps.get("TelephonyPreciseDisconnectCause") : 0); }
-    public int getTone() { return (megletProps.get("Tone") instanceof Integer ? (Integer) megletProps.get("Tone") : 0); }
+    public int getCode() { return (meglerProps.get("Code") instanceof Integer ? (Integer) meglerProps.get("Code") : 0); }
+    public java.lang.CharSequence getDescription() { return (java.lang.CharSequence) meglerProps.get("Description"); }
+    public android.telephony.ims.ImsReasonInfo getImsReasonInfo() { return (android.telephony.ims.ImsReasonInfo) meglerProps.get("ImsReasonInfo"); }
+    public java.lang.CharSequence getLabel() { return (java.lang.CharSequence) meglerProps.get("Label"); }
+    public java.lang.String getReason() { return (java.lang.String) meglerProps.get("Reason"); }
+    public int getTelephonyDisconnectCause() { return (meglerProps.get("TelephonyDisconnectCause") instanceof Integer ? (Integer) meglerProps.get("TelephonyDisconnectCause") : 0); }
+    public int getTelephonyPreciseDisconnectCause() { return (meglerProps.get("TelephonyPreciseDisconnectCause") instanceof Integer ? (Integer) meglerProps.get("TelephonyPreciseDisconnectCause") : 0); }
+    public int getTone() { return (meglerProps.get("Tone") instanceof Integer ? (Integer) meglerProps.get("Tone") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     DisconnectCause() { this((int) 0); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(int p0) {}
-        public android.telecom.DisconnectCause build() { android.telecom.DisconnectCause x = new android.telecom.DisconnectCause(); x.megletProps.putAll(megletProps); return x; }
-        public android.telecom.DisconnectCause.Builder setDescription(java.lang.CharSequence p0) { megletProps.put("Description", p0); return this; }
-        public android.telecom.DisconnectCause.Builder setImsReasonInfo(android.telephony.ims.ImsReasonInfo p0) { megletProps.put("ImsReasonInfo", p0); return this; }
-        public android.telecom.DisconnectCause.Builder setLabel(java.lang.CharSequence p0) { megletProps.put("Label", p0); return this; }
-        public android.telecom.DisconnectCause.Builder setReason(java.lang.String p0) { megletProps.put("Reason", p0); return this; }
-        public android.telecom.DisconnectCause.Builder setTelephonyDisconnectCause(int p0) { megletProps.put("TelephonyDisconnectCause", Integer.valueOf(p0)); return this; }
-        public android.telecom.DisconnectCause.Builder setTelephonyPreciseDisconnectCause(int p0) { megletProps.put("TelephonyPreciseDisconnectCause", Integer.valueOf(p0)); return this; }
-        public android.telecom.DisconnectCause.Builder setTone(int p0) { megletProps.put("Tone", Integer.valueOf(p0)); return this; }
+        public android.telecom.DisconnectCause build() { android.telecom.DisconnectCause x = new android.telecom.DisconnectCause(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.telecom.DisconnectCause.Builder setDescription(java.lang.CharSequence p0) { meglerProps.put("Description", p0); return this; }
+        public android.telecom.DisconnectCause.Builder setImsReasonInfo(android.telephony.ims.ImsReasonInfo p0) { meglerProps.put("ImsReasonInfo", p0); return this; }
+        public android.telecom.DisconnectCause.Builder setLabel(java.lang.CharSequence p0) { meglerProps.put("Label", p0); return this; }
+        public android.telecom.DisconnectCause.Builder setReason(java.lang.String p0) { meglerProps.put("Reason", p0); return this; }
+        public android.telecom.DisconnectCause.Builder setTelephonyDisconnectCause(int p0) { meglerProps.put("TelephonyDisconnectCause", Integer.valueOf(p0)); return this; }
+        public android.telecom.DisconnectCause.Builder setTelephonyPreciseDisconnectCause(int p0) { meglerProps.put("TelephonyPreciseDisconnectCause", Integer.valueOf(p0)); return this; }
+        public android.telecom.DisconnectCause.Builder setTone(int p0) { meglerProps.put("Tone", Integer.valueOf(p0)); return this; }
         Builder() { this((int) 0); }
     }
 }

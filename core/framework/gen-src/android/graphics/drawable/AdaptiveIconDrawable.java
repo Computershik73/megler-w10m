@@ -3,7 +3,7 @@ package android.graphics.drawable;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AdaptiveIconDrawable extends android.graphics.drawable.Drawable implements android.graphics.drawable.Drawable.Callback {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final float MASK_SIZE = 100.0f;
     public AdaptiveIconDrawable(android.graphics.drawable.Drawable p0, android.graphics.drawable.Drawable p1) { super(); }
     public AdaptiveIconDrawable(android.graphics.drawable.Drawable p0, android.graphics.drawable.Drawable p1, android.graphics.drawable.Drawable p2) { super(); }
@@ -11,16 +11,16 @@ public class AdaptiveIconDrawable extends android.graphics.drawable.Drawable imp
     public static float getExtraInsetPercentage() { return 0f; }
     public void clearMutated() {}
     public void draw(android.graphics.Canvas p0) {}
-    public android.graphics.drawable.Drawable getBackground() { return (android.graphics.drawable.Drawable) megletProps.get("Background"); }
-    public android.graphics.drawable.Drawable getForeground() { return (android.graphics.drawable.Drawable) megletProps.get("Foreground"); }
-    public android.graphics.Path getIconMask() { return (android.graphics.Path) megletProps.get("IconMask"); }
-    public android.graphics.drawable.Drawable getMonochrome() { return (android.graphics.drawable.Drawable) megletProps.get("Monochrome"); }
-    public android.graphics.Region getSafeZone() { return (android.graphics.Region) megletProps.get("SafeZone"); }
-    public int getSourceDrawableResId() { return (megletProps.get("SourceDrawableResId") instanceof Integer ? (Integer) megletProps.get("SourceDrawableResId") : 0); }
+    public android.graphics.drawable.Drawable getBackground() { return (android.graphics.drawable.Drawable) meglerProps.get("Background"); }
+    public android.graphics.drawable.Drawable getForeground() { return (android.graphics.drawable.Drawable) meglerProps.get("Foreground"); }
+    public android.graphics.Path getIconMask() { return (android.graphics.Path) meglerProps.get("IconMask"); }
+    public android.graphics.drawable.Drawable getMonochrome() { return (android.graphics.drawable.Drawable) meglerProps.get("Monochrome"); }
+    public android.graphics.Region getSafeZone() { return (android.graphics.Region) meglerProps.get("SafeZone"); }
+    public int getSourceDrawableResId() { return (meglerProps.get("SourceDrawableResId") instanceof Integer ? (Integer) meglerProps.get("SourceDrawableResId") : 0); }
     public void invalidateDrawable(android.graphics.drawable.Drawable p0) {}
-    public boolean isProjected() { return (megletProps.get("Projected") instanceof Boolean ? (Boolean) megletProps.get("Projected") : false); }
+    public boolean isProjected() { return (meglerProps.get("Projected") instanceof Boolean ? (Boolean) meglerProps.get("Projected") : false); }
     public void scheduleDrawable(android.graphics.drawable.Drawable p0, java.lang.Runnable p1, long p2) {}
-    public void setOpacity(int p0) { megletProps.put("Opacity", Integer.valueOf(p0)); }
+    public void setOpacity(int p0) { meglerProps.put("Opacity", Integer.valueOf(p0)); }
     public void unscheduleDrawable(android.graphics.drawable.Drawable p0, java.lang.Runnable p1) {}
     AdaptiveIconDrawable() { this((android.graphics.drawable.Drawable) null, (android.graphics.drawable.Drawable) null); }
 }

@@ -3,7 +3,7 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ModelManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ModelManager(android.adservices.ondevicepersonalization.aidl.IDataAccessService p0, android.adservices.ondevicepersonalization.aidl.IIsolatedModelService p1) {}
     public void run(android.adservices.ondevicepersonalization.InferenceInput p0, java.util.concurrent.Executor p1, android.os.OutcomeReceiver p2) {}
     ModelManager() { this((android.adservices.ondevicepersonalization.aidl.IDataAccessService) null, (android.adservices.ondevicepersonalization.aidl.IIsolatedModelService) null); }

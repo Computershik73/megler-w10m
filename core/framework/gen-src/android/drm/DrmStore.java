@@ -3,10 +3,10 @@ package android.drm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DrmStore {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public DrmStore() {}
     public static class Action {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int DEFAULT = 0;
         public static final int DISPLAY = 7;
         public static final int EXECUTE = 6;
@@ -26,7 +26,7 @@ public class DrmStore {
         java.lang.String REMAINING_REPEAT_COUNT = "remaining_repeat_count";
     }
     public static class DrmObjectType {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int CONTENT = 1;
         public static final int RIGHTS_OBJECT = 2;
         public static final int TRIGGER_OBJECT = 3;
@@ -34,7 +34,7 @@ public class DrmStore {
         public DrmObjectType() {}
     }
     public static class Playback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int PAUSE = 2;
         public static final int RESUME = 3;
         public static final int START = 0;
@@ -42,7 +42,7 @@ public class DrmStore {
         public Playback() {}
     }
     public static class RightsStatus {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int RIGHTS_EXPIRED = 2;
         public static final int RIGHTS_INVALID = 1;
         public static final int RIGHTS_NOT_ACQUIRED = 3;

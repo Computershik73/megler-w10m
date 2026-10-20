@@ -3,7 +3,7 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class BluetoothGattService implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int SERVICE_TYPE_PRIMARY = 0;
     public static final int SERVICE_TYPE_SECONDARY = 1;
@@ -21,15 +21,15 @@ public class BluetoothGattService implements android.os.Parcelable {
     public boolean addService(android.bluetooth.BluetoothGattService p0) { return false; }
     public int describeContents() { return 0; }
     public android.bluetooth.BluetoothGattCharacteristic getCharacteristic(java.util.UUID p0) { return null; }
-    public java.util.List getCharacteristics() { return (megletProps.get("Characteristics") != null ? (java.util.List) megletProps.get("Characteristics") : new java.util.ArrayList()); }
-    public java.util.List getIncludedServices() { return (megletProps.get("IncludedServices") != null ? (java.util.List) megletProps.get("IncludedServices") : new java.util.ArrayList()); }
-    public int getInstanceId() { return (megletProps.get("InstanceId") instanceof Integer ? (Integer) megletProps.get("InstanceId") : 0); }
-    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
-    public java.util.UUID getUuid() { return (java.util.UUID) megletProps.get("Uuid"); }
-    public boolean isAdvertisePreferred() { return (megletProps.get("AdvertisePreferred") instanceof Boolean ? (Boolean) megletProps.get("AdvertisePreferred") : false); }
-    public void setAdvertisePreferred(boolean p0) { megletProps.put("AdvertisePreferred", Boolean.valueOf(p0)); }
-    public void setHandles(int p0) { megletProps.put("Handles", Integer.valueOf(p0)); }
-    public void setInstanceId(int p0) { megletProps.put("InstanceId", Integer.valueOf(p0)); }
+    public java.util.List getCharacteristics() { return (meglerProps.get("Characteristics") != null ? (java.util.List) meglerProps.get("Characteristics") : new java.util.ArrayList()); }
+    public java.util.List getIncludedServices() { return (meglerProps.get("IncludedServices") != null ? (java.util.List) meglerProps.get("IncludedServices") : new java.util.ArrayList()); }
+    public int getInstanceId() { return (meglerProps.get("InstanceId") instanceof Integer ? (Integer) meglerProps.get("InstanceId") : 0); }
+    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
+    public java.util.UUID getUuid() { return (java.util.UUID) meglerProps.get("Uuid"); }
+    public boolean isAdvertisePreferred() { return (meglerProps.get("AdvertisePreferred") instanceof Boolean ? (Boolean) meglerProps.get("AdvertisePreferred") : false); }
+    public void setAdvertisePreferred(boolean p0) { meglerProps.put("AdvertisePreferred", Boolean.valueOf(p0)); }
+    public void setHandles(int p0) { meglerProps.put("Handles", Integer.valueOf(p0)); }
+    public void setInstanceId(int p0) { meglerProps.put("InstanceId", Integer.valueOf(p0)); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     BluetoothGattService() { this((java.util.UUID) null, (int) 0); }
 }

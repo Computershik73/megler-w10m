@@ -3,12 +3,12 @@ package android.view.textclassifier;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TextClassificationSessionId implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public TextClassificationSessionId() {}
     public TextClassificationSessionId(java.lang.String p0, android.os.IBinder p1) {}
     public int describeContents() { return 0; }
-    public android.os.IBinder getToken() { return (android.os.IBinder) megletProps.get("Token"); }
-    public java.lang.String getValue() { return (java.lang.String) megletProps.get("Value"); }
+    public android.os.IBinder getToken() { return (android.os.IBinder) meglerProps.get("Token"); }
+    public java.lang.String getValue() { return (java.lang.String) meglerProps.get("Value"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
 }

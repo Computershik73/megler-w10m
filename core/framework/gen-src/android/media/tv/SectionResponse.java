@@ -3,13 +3,13 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SectionResponse extends android.media.tv.BroadcastInfoResponse implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public SectionResponse(int p0, int p1, int p2, int p3, int p4, android.os.Bundle p5) { super(); }
     public int describeContents() { return 0; }
-    public android.os.Bundle getSessionData() { return (android.os.Bundle) megletProps.get("SessionData"); }
-    public int getSessionId() { return (megletProps.get("SessionId") instanceof Integer ? (Integer) megletProps.get("SessionId") : 0); }
-    public int getVersion() { return (megletProps.get("Version") instanceof Integer ? (Integer) megletProps.get("Version") : 0); }
+    public android.os.Bundle getSessionData() { return (android.os.Bundle) meglerProps.get("SessionData"); }
+    public int getSessionId() { return (meglerProps.get("SessionId") instanceof Integer ? (Integer) meglerProps.get("SessionId") : 0); }
+    public int getVersion() { return (meglerProps.get("Version") instanceof Integer ? (Integer) meglerProps.get("Version") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     SectionResponse() { this((int) 0, (int) 0, (int) 0, (int) 0, (int) 0, (android.os.Bundle) null); }
 }

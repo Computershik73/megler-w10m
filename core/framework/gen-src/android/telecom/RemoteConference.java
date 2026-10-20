@@ -3,31 +3,31 @@ package android.telecom;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class RemoteConference {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.telecom.RemoteConference failure(android.telecom.DisconnectCause p0) { return new RemoteConference(); }
     public void disconnect() {}
-    public java.util.List getConferenceableConnections() { return (megletProps.get("ConferenceableConnections") != null ? (java.util.List) megletProps.get("ConferenceableConnections") : new java.util.ArrayList()); }
-    public int getConnectionCapabilities() { return (megletProps.get("ConnectionCapabilities") instanceof Integer ? (Integer) megletProps.get("ConnectionCapabilities") : 0); }
-    public int getConnectionProperties() { return (megletProps.get("ConnectionProperties") instanceof Integer ? (Integer) megletProps.get("ConnectionProperties") : 0); }
-    public java.util.List getConnections() { return (megletProps.get("Connections") != null ? (java.util.List) megletProps.get("Connections") : new java.util.ArrayList()); }
-    public android.telecom.DisconnectCause getDisconnectCause() { return (android.telecom.DisconnectCause) megletProps.get("DisconnectCause"); }
-    public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
-    public int getState() { return (megletProps.get("State") instanceof Integer ? (Integer) megletProps.get("State") : 0); }
+    public java.util.List getConferenceableConnections() { return (meglerProps.get("ConferenceableConnections") != null ? (java.util.List) meglerProps.get("ConferenceableConnections") : new java.util.ArrayList()); }
+    public int getConnectionCapabilities() { return (meglerProps.get("ConnectionCapabilities") instanceof Integer ? (Integer) meglerProps.get("ConnectionCapabilities") : 0); }
+    public int getConnectionProperties() { return (meglerProps.get("ConnectionProperties") instanceof Integer ? (Integer) meglerProps.get("ConnectionProperties") : 0); }
+    public java.util.List getConnections() { return (meglerProps.get("Connections") != null ? (java.util.List) meglerProps.get("Connections") : new java.util.ArrayList()); }
+    public android.telecom.DisconnectCause getDisconnectCause() { return (android.telecom.DisconnectCause) meglerProps.get("DisconnectCause"); }
+    public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
+    public int getState() { return (meglerProps.get("State") instanceof Integer ? (Integer) meglerProps.get("State") : 0); }
     public void hold() {}
     public void merge() {}
     public void playDtmfTone(char p0) {}
     public void registerCallback(android.telecom.RemoteConference.Callback p0) {}
     public void registerCallback(android.telecom.RemoteConference.Callback p0, android.os.Handler p1) {}
     public void separate(android.telecom.RemoteConnection p0) {}
-    public void setAudioState(android.telecom.AudioState p0) { megletProps.put("AudioState", p0); }
-    public void setCallAudioState(android.telecom.CallAudioState p0) { megletProps.put("CallAudioState", p0); }
+    public void setAudioState(android.telecom.AudioState p0) { meglerProps.put("AudioState", p0); }
+    public void setCallAudioState(android.telecom.CallAudioState p0) { meglerProps.put("CallAudioState", p0); }
     public void stopDtmfTone() {}
     public void swap() {}
     public void unhold() {}
     public void unregisterCallback(android.telecom.RemoteConference.Callback p0) {}
     protected RemoteConference() {}
     public static abstract class Callback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Callback() {}
         public void onConferenceableConnectionsChanged(android.telecom.RemoteConference p0, java.util.List p1) {}
         public void onConnectionAdded(android.telecom.RemoteConference p0, android.telecom.RemoteConnection p1) {}

@@ -3,10 +3,10 @@ package android.service.controls.actions;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BooleanAction extends android.service.controls.actions.ControlAction {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public BooleanAction(java.lang.String p0, boolean p1) { super(); }
     public BooleanAction(java.lang.String p0, boolean p1, java.lang.String p2) { super(); }
-    public int getActionType() { return (megletProps.get("ActionType") instanceof Integer ? (Integer) megletProps.get("ActionType") : 0); }
-    public boolean getNewState() { return (megletProps.get("NewState") instanceof Boolean ? (Boolean) megletProps.get("NewState") : false); }
+    public int getActionType() { return (meglerProps.get("ActionType") instanceof Integer ? (Integer) meglerProps.get("ActionType") : 0); }
+    public boolean getNewState() { return (meglerProps.get("NewState") instanceof Boolean ? (Boolean) meglerProps.get("NewState") : false); }
     BooleanAction() { this((java.lang.String) null, (boolean) false); }
 }

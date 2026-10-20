@@ -3,16 +3,16 @@ package android.adservices.customaudience;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class RemoveCustomAudienceOverrideRequest {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public RemoveCustomAudienceOverrideRequest(android.adservices.common.AdTechIdentifier p0, java.lang.String p1) {}
-    public android.adservices.common.AdTechIdentifier getBuyer() { return (android.adservices.common.AdTechIdentifier) megletProps.get("Buyer"); }
-    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
+    public android.adservices.common.AdTechIdentifier getBuyer() { return (android.adservices.common.AdTechIdentifier) meglerProps.get("Buyer"); }
+    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
     RemoveCustomAudienceOverrideRequest() { this((android.adservices.common.AdTechIdentifier) null, (java.lang.String) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.adservices.customaudience.RemoveCustomAudienceOverrideRequest build() { android.adservices.customaudience.RemoveCustomAudienceOverrideRequest x = new android.adservices.customaudience.RemoveCustomAudienceOverrideRequest(); x.megletProps.putAll(megletProps); return x; }
-        public android.adservices.customaudience.RemoveCustomAudienceOverrideRequest.Builder setBuyer(android.adservices.common.AdTechIdentifier p0) { megletProps.put("Buyer", p0); return this; }
-        public android.adservices.customaudience.RemoveCustomAudienceOverrideRequest.Builder setName(java.lang.String p0) { megletProps.put("Name", p0); return this; }
+        public android.adservices.customaudience.RemoveCustomAudienceOverrideRequest build() { android.adservices.customaudience.RemoveCustomAudienceOverrideRequest x = new android.adservices.customaudience.RemoveCustomAudienceOverrideRequest(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.adservices.customaudience.RemoveCustomAudienceOverrideRequest.Builder setBuyer(android.adservices.common.AdTechIdentifier p0) { meglerProps.put("Buyer", p0); return this; }
+        public android.adservices.customaudience.RemoveCustomAudienceOverrideRequest.Builder setName(java.lang.String p0) { meglerProps.put("Name", p0); return this; }
     }
 }

@@ -3,11 +3,11 @@ package android.service.quickaccesswallet;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SelectWalletCardRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public SelectWalletCardRequest(java.lang.String p0) {}
     public int describeContents() { return 0; }
-    public java.lang.String getCardId() { return (java.lang.String) megletProps.get("CardId"); }
+    public java.lang.String getCardId() { return (java.lang.String) meglerProps.get("CardId"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     SelectWalletCardRequest() { this((java.lang.String) null); }
 }

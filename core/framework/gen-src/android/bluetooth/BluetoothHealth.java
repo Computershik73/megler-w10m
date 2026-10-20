@@ -3,7 +3,7 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BluetoothHealth implements android.bluetooth.BluetoothProfile {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int APP_CONFIG_REGISTRATION_FAILURE = 1;
     public static final int APP_CONFIG_REGISTRATION_SUCCESS = 0;
     public static final int APP_CONFIG_UNREGISTRATION_FAILURE = 3;
@@ -18,8 +18,8 @@ public final class BluetoothHealth implements android.bluetooth.BluetoothProfile
     public static final int STATE_CHANNEL_DISCONNECTING = 3;
     public boolean connectChannelToSource(android.bluetooth.BluetoothDevice p0, android.bluetooth.BluetoothHealthAppConfiguration p1) { return false; }
     public boolean disconnectChannel(android.bluetooth.BluetoothDevice p0, android.bluetooth.BluetoothHealthAppConfiguration p1, int p2) { return false; }
-    public android.bluetooth.BluetoothAdapter getAdapter() { return (android.bluetooth.BluetoothAdapter) megletProps.get("Adapter"); }
-    public java.util.List getConnectedDevices() { return (megletProps.get("ConnectedDevices") != null ? (java.util.List) megletProps.get("ConnectedDevices") : new java.util.ArrayList()); }
+    public android.bluetooth.BluetoothAdapter getAdapter() { return (android.bluetooth.BluetoothAdapter) meglerProps.get("Adapter"); }
+    public java.util.List getConnectedDevices() { return (meglerProps.get("ConnectedDevices") != null ? (java.util.List) meglerProps.get("ConnectedDevices") : new java.util.ArrayList()); }
     public int getConnectionState(android.bluetooth.BluetoothDevice p0) { return 0; }
     public java.util.List getDevicesMatchingConnectionStates(int[] p0) { return new java.util.ArrayList(); }
     public android.os.ParcelFileDescriptor getMainChannelFd(android.bluetooth.BluetoothDevice p0, android.bluetooth.BluetoothHealthAppConfiguration p1) { return null; }

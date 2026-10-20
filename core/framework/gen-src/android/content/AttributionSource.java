@@ -3,7 +3,7 @@ package android.content;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AttributionSource implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public AttributionSource(int p0, int p1, java.lang.String p2, java.lang.String p3) {}
     public AttributionSource(int p0, int p1, java.lang.String p2, java.lang.String p3, android.os.IBinder p4) {}
@@ -23,19 +23,19 @@ public final class AttributionSource implements android.os.Parcelable {
     public void enforceCallingPid() {}
     public void enforceCallingUid() {}
     public boolean equalsExceptToken(android.content.AttributionSource p0) { return false; }
-    public java.lang.String getAttributionTag() { return (java.lang.String) megletProps.get("AttributionTag"); }
-    public int getDeviceId() { return (megletProps.get("DeviceId") instanceof Integer ? (Integer) megletProps.get("DeviceId") : 0); }
-    public android.content.AttributionSource getNext() { return (android.content.AttributionSource) megletProps.get("Next"); }
-    public java.lang.String getNextAttributionTag() { return (java.lang.String) megletProps.get("NextAttributionTag"); }
-    public int getNextDeviceId() { return (megletProps.get("NextDeviceId") instanceof Integer ? (Integer) megletProps.get("NextDeviceId") : 0); }
-    public java.lang.String getNextPackageName() { return (java.lang.String) megletProps.get("NextPackageName"); }
-    public android.os.IBinder getNextToken() { return (android.os.IBinder) megletProps.get("NextToken"); }
-    public int getNextUid() { return (megletProps.get("NextUid") instanceof Integer ? (Integer) megletProps.get("NextUid") : 0); }
-    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
-    public int getPid() { return (megletProps.get("Pid") instanceof Integer ? (Integer) megletProps.get("Pid") : 0); }
-    public java.util.Set getRenouncedPermissions() { return (megletProps.get("RenouncedPermissions") != null ? (java.util.Set) megletProps.get("RenouncedPermissions") : new java.util.HashSet()); }
-    public android.os.IBinder getToken() { return (android.os.IBinder) megletProps.get("Token"); }
-    public int getUid() { return (megletProps.get("Uid") instanceof Integer ? (Integer) megletProps.get("Uid") : 0); }
+    public java.lang.String getAttributionTag() { return (java.lang.String) meglerProps.get("AttributionTag"); }
+    public int getDeviceId() { return (meglerProps.get("DeviceId") instanceof Integer ? (Integer) meglerProps.get("DeviceId") : 0); }
+    public android.content.AttributionSource getNext() { return (android.content.AttributionSource) meglerProps.get("Next"); }
+    public java.lang.String getNextAttributionTag() { return (java.lang.String) meglerProps.get("NextAttributionTag"); }
+    public int getNextDeviceId() { return (meglerProps.get("NextDeviceId") instanceof Integer ? (Integer) meglerProps.get("NextDeviceId") : 0); }
+    public java.lang.String getNextPackageName() { return (java.lang.String) meglerProps.get("NextPackageName"); }
+    public android.os.IBinder getNextToken() { return (android.os.IBinder) meglerProps.get("NextToken"); }
+    public int getNextUid() { return (meglerProps.get("NextUid") instanceof Integer ? (Integer) meglerProps.get("NextUid") : 0); }
+    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
+    public int getPid() { return (meglerProps.get("Pid") instanceof Integer ? (Integer) meglerProps.get("Pid") : 0); }
+    public java.util.Set getRenouncedPermissions() { return (meglerProps.get("RenouncedPermissions") != null ? (java.util.Set) meglerProps.get("RenouncedPermissions") : new java.util.HashSet()); }
+    public android.os.IBinder getToken() { return (android.os.IBinder) meglerProps.get("Token"); }
+    public int getUid() { return (meglerProps.get("Uid") instanceof Integer ? (Integer) meglerProps.get("Uid") : 0); }
     public boolean isTrusted(android.content.Context p0) { return false; }
     public android.content.AttributionSource withDefaultToken() { return this; }
     public android.content.AttributionSource withDeviceId(int p0) { return this; }
@@ -46,24 +46,24 @@ public final class AttributionSource implements android.os.Parcelable {
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     AttributionSource() { this((android.content.AttributionSourceState) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(int p0) {}
         public Builder(android.content.AttributionSource p0) {}
-        public android.content.AttributionSource build() { android.content.AttributionSource x = new android.content.AttributionSource(); x.megletProps.putAll(megletProps); return x; }
-        public android.content.AttributionSource.Builder setAttributionTag(java.lang.String p0) { megletProps.put("AttributionTag", p0); return this; }
-        public android.content.AttributionSource.Builder setDeviceId(int p0) { megletProps.put("DeviceId", Integer.valueOf(p0)); return this; }
-        public android.content.AttributionSource.Builder setNext(android.content.AttributionSource p0) { megletProps.put("Next", p0); return this; }
-        public android.content.AttributionSource.Builder setNextAttributionSource(android.content.AttributionSource p0) { megletProps.put("NextAttributionSource", p0); return this; }
-        public android.content.AttributionSource.Builder setPackageName(java.lang.String p0) { megletProps.put("PackageName", p0); return this; }
-        public android.content.AttributionSource.Builder setPid(int p0) { megletProps.put("Pid", Integer.valueOf(p0)); return this; }
-        public android.content.AttributionSource.Builder setRenouncedPermissions(java.util.Set p0) { megletProps.put("RenouncedPermissions", p0); return this; }
+        public android.content.AttributionSource build() { android.content.AttributionSource x = new android.content.AttributionSource(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.content.AttributionSource.Builder setAttributionTag(java.lang.String p0) { meglerProps.put("AttributionTag", p0); return this; }
+        public android.content.AttributionSource.Builder setDeviceId(int p0) { meglerProps.put("DeviceId", Integer.valueOf(p0)); return this; }
+        public android.content.AttributionSource.Builder setNext(android.content.AttributionSource p0) { meglerProps.put("Next", p0); return this; }
+        public android.content.AttributionSource.Builder setNextAttributionSource(android.content.AttributionSource p0) { meglerProps.put("NextAttributionSource", p0); return this; }
+        public android.content.AttributionSource.Builder setPackageName(java.lang.String p0) { meglerProps.put("PackageName", p0); return this; }
+        public android.content.AttributionSource.Builder setPid(int p0) { meglerProps.put("Pid", Integer.valueOf(p0)); return this; }
+        public android.content.AttributionSource.Builder setRenouncedPermissions(java.util.Set p0) { meglerProps.put("RenouncedPermissions", p0); return this; }
         Builder() { this((int) 0); }
     }
     public static class ScopedParcelState implements java.lang.AutoCloseable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public ScopedParcelState(android.content.AttributionSource p0) {}
         public void close() {}
-        public android.os.Parcel getParcel() { return (android.os.Parcel) megletProps.get("Parcel"); }
+        public android.os.Parcel getParcel() { return (android.os.Parcel) meglerProps.get("Parcel"); }
         ScopedParcelState() { this((android.content.AttributionSource) null); }
     }
 }

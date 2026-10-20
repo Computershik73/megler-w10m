@@ -12,7 +12,7 @@
 //     root.addView(toolbar, 0);
 // in onPostCreate. Apktool M's settings screen does exactly that, got null from findViewById, and ended the app with
 // "NullPointerException: ... View.getParent() on a null object reference (in SettingActivity.onPostCreate)". The layout is
-// made in code (megletContent), with Android's shape and none of its paddings.
+// made in code (meglerContent), with Android's shape and none of its paddings.
 //
 // The headers. A settings screen written for Android 3 to 9 is a list of headers (onBuildHeaders, usually
 // loadHeadersFromResource), each of which opens a PreferenceFragment. loadHeadersFromResource was an empty method here, so
@@ -65,7 +65,7 @@ public abstract class PreferenceActivity extends ListActivity implements Prefere
     }
 
     /** Android's preference_list_content, as far as its shape goes: root (vertical) > row (horizontal) > headers (vertical) > android:id/list, and the fragment's frame beside the headers. */
-    private View megletContent() {
+    private View meglerContent() {
         android.widget.LinearLayout root = new android.widget.LinearLayout(this), row = new android.widget.LinearLayout(this), headers = new android.widget.LinearLayout(this);
         root.setOrientation(android.widget.LinearLayout.VERTICAL);
         row.setOrientation(android.widget.LinearLayout.HORIZONTAL);
@@ -85,9 +85,9 @@ public abstract class PreferenceActivity extends ListActivity implements Prefere
     }
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
-        setContentView(megletContent(), new android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+        setContentView(meglerContent(), new android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT));
         mManager = new PreferenceManager(this, 100);
-        mManager.megletSetTreeClickListener(this);
+        mManager.meglerSetTreeClickListener(this);
         android.content.Intent in = getIntent();
         String frag = in != null ? in.getStringExtra(EXTRA_SHOW_FRAGMENT) : null;
         if (frag != null) {
@@ -99,10 +99,10 @@ public abstract class PreferenceActivity extends ListActivity implements Prefere
         }
         if (in == null || !in.getBooleanExtra(EXTRA_NO_HEADERS, false)) {
             onBuildHeaders(mHeaders);
-            if (!mHeaders.isEmpty()) megletShowHeaders();
+            if (!mHeaders.isEmpty()) meglerShowHeaders();
         }
     }
-    private void megletShowHeaders() {
+    private void meglerShowHeaders() {
         mShowingHeaders = true;
         setListAdapter(new android.widget.BaseAdapter() {
             @Override public int getCount() { return mHeaders.size(); }
@@ -132,7 +132,7 @@ public abstract class PreferenceActivity extends ListActivity implements Prefere
             }
         });
     }
-    @Override protected void onStop() { super.onStop(); if (mManager != null) mManager.megletActivityStop(); }
+    @Override protected void onStop() { super.onStop(); if (mManager != null) mManager.meglerActivityStop(); }
     public void onBuildHeaders(java.util.List<Header> target) {}
     /** The headers of a preference-headers XML file: each header's own attributes, its extras (the fragment's arguments) and its intent. */
     public void loadHeadersFromResource(int resId, java.util.List<Header> target) {
@@ -186,7 +186,7 @@ public abstract class PreferenceActivity extends ListActivity implements Prefere
     public void invalidateHeaders() {
         mHeaders.clear();
         onBuildHeaders(mHeaders);
-        if (mShowingHeaders || !mHeaders.isEmpty()) megletShowHeaders();
+        if (mShowingHeaders || !mHeaders.isEmpty()) meglerShowHeaders();
     }
     /** A header was touched: on one pane, its fragment in an activity of its own, or its intent. */
     public void onHeaderClick(Header header, int position) {
@@ -209,7 +209,7 @@ public abstract class PreferenceActivity extends ListActivity implements Prefere
     }
     public void switchToHeader(Header header) { if (header != null && header.fragment != null) switchToHeader(header.fragment, header.fragmentArguments); }
     /** The fragment takes the place of the headers' list, inside the root: whatever the app put above the list (a toolbar) stays. */
-    private int megletFragmentFrame() {
+    private int meglerFragmentFrame() {
         if (mPrefsFrame == null) return android.R.id.content;
         mHeadersColumn.setVisibility(View.GONE);
         mPrefsFrame.setVisibility(View.VISIBLE);
@@ -218,14 +218,14 @@ public abstract class PreferenceActivity extends ListActivity implements Prefere
     protected boolean isValidFragment(String name) { return true; }
     public void switchToHeader(String fragmentName, Bundle args) {
         android.app.Fragment f = android.app.Fragment.instantiate(this, fragmentName, args);
-        getFragmentManager().beginTransaction().replace(megletFragmentFrame(), f).commit();
+        getFragmentManager().beginTransaction().replace(meglerFragmentFrame(), f).commit();
     }
-    public void startPreferenceFragment(android.app.Fragment f, boolean push) { getFragmentManager().beginTransaction().replace(megletFragmentFrame(), f).commit(); }
+    public void startPreferenceFragment(android.app.Fragment f, boolean push) { getFragmentManager().beginTransaction().replace(meglerFragmentFrame(), f).commit(); }
     public boolean onPreferenceStartFragment(PreferenceFragment caller, Preference pref) { switchToHeader(pref.getFragment(), pref.getExtras()); return true; }
 
     @Deprecated public PreferenceManager getPreferenceManager() { return mManager; }
-    @Deprecated public void setPreferenceScreen(PreferenceScreen s) { if (mManager.megletSetScreen(s) && s != null) s.bind(getListView()); }
-    @Deprecated public PreferenceScreen getPreferenceScreen() { return mManager.megletScreen(); }
+    @Deprecated public void setPreferenceScreen(PreferenceScreen s) { if (mManager.meglerSetScreen(s) && s != null) s.bind(getListView()); }
+    @Deprecated public PreferenceScreen getPreferenceScreen() { return mManager.meglerScreen(); }
     @Deprecated public void addPreferencesFromResource(int resId) { setPreferenceScreen(mManager.inflateFromResource(this, resId, getPreferenceScreen())); }
     @Deprecated public void addPreferencesFromIntent(android.content.Intent i) {}
     @Deprecated public Preference findPreference(CharSequence key) { return mManager.findPreference(key); }

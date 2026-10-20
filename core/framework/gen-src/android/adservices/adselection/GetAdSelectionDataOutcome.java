@@ -3,16 +3,16 @@ package android.adservices.adselection;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GetAdSelectionDataOutcome {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public byte[] getAdSelectionData() { return (byte[]) megletProps.get("AdSelectionData"); }
-    public long getAdSelectionDataId() { return (megletProps.get("AdSelectionDataId") instanceof Long ? (Long) megletProps.get("AdSelectionDataId") : 0L); }
-    public long getAdSelectionId() { return (megletProps.get("AdSelectionId") instanceof Long ? (Long) megletProps.get("AdSelectionId") : 0L); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public byte[] getAdSelectionData() { return (byte[]) meglerProps.get("AdSelectionData"); }
+    public long getAdSelectionDataId() { return (meglerProps.get("AdSelectionDataId") instanceof Long ? (Long) meglerProps.get("AdSelectionDataId") : 0L); }
+    public long getAdSelectionId() { return (meglerProps.get("AdSelectionId") instanceof Long ? (Long) meglerProps.get("AdSelectionId") : 0L); }
     protected GetAdSelectionDataOutcome() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.adservices.adselection.GetAdSelectionDataOutcome build() { android.adservices.adselection.GetAdSelectionDataOutcome x = new android.adservices.adselection.GetAdSelectionDataOutcome(); x.megletProps.putAll(megletProps); return x; }
-        public android.adservices.adselection.GetAdSelectionDataOutcome.Builder setAdSelectionData(byte[] p0) { megletProps.put("AdSelectionData", p0); return this; }
-        public android.adservices.adselection.GetAdSelectionDataOutcome.Builder setAdSelectionId(long p0) { megletProps.put("AdSelectionId", Long.valueOf(p0)); return this; }
+        public android.adservices.adselection.GetAdSelectionDataOutcome build() { android.adservices.adselection.GetAdSelectionDataOutcome x = new android.adservices.adselection.GetAdSelectionDataOutcome(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.adservices.adselection.GetAdSelectionDataOutcome.Builder setAdSelectionData(byte[] p0) { meglerProps.put("AdSelectionData", p0); return this; }
+        public android.adservices.adselection.GetAdSelectionDataOutcome.Builder setAdSelectionId(long p0) { meglerProps.put("AdSelectionId", Long.valueOf(p0)); return this; }
     }
 }

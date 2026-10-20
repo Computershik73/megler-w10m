@@ -300,7 +300,7 @@ typedef struct shell_job {
 static void shell_job_run(void *p)
 {
     shell_job *j = (shell_job *)p;
-    const meglet_run_config *run = mg_run_config();
+    const megler_run_config *run = mg_run_config();
     if (j->what == 0) j->ok = run->window.attach_device(run->window.user, j->device);
     else if (j->what == 1) j->texture = run->window.acquire_target(run->window.user, j->width, j->height);
     else run->window.release_target(run->window.user);
@@ -696,7 +696,7 @@ bool mg_egl_keyed_mutex(void *mutex, bool acquire)
     if (!mutex) return false;
     /* (The tests' stand-in for ANGLE has mutexes of its own: the seam is its "function" by this name.) */
     if (g_provider) {
-        fn_keyed f = (fn_keyed)g_provider("megletKeyedMutexANGLE");
+        fn_keyed f = (fn_keyed)g_provider("meglerKeyedMutexANGLE");
         return f && f(mutex, acquire ? 1 : 0);
     }
     return mg_host_keyed_mutex(mutex, acquire, acquire ? 1000 : 0);
@@ -814,7 +814,7 @@ static EGLSurface window_surface_create(EGLDisplay d, EGLConfig config, mg_nwind
 
 static EGLSurface g_eglCreateWindowSurface(EGLDisplay d, EGLConfig config, mg_nwindow *window, const EGLint *attribs)
 {
-    const meglet_run_config *run = mg_run_config();
+    const megler_run_config *run = mg_run_config();
     surface *s = NULL;
     EGLint none[] = { EGL_NONE };
     (void)attribs;
@@ -902,7 +902,7 @@ static EGLBoolean g_eglDestroySurface(EGLDisplay d, EGLSurface handle)
     s = surface_of(handle);
     ok = real ? real(d, handle) : 0;
     if (s) {
-        const meglet_run_config *run = mg_run_config();
+        const megler_run_config *run = mg_run_config();
         if (s->from_host && run->window.release_target) shell_release_target();
         if (s->window) mg_nwindow_release(s->window);
         free_entry(s);
@@ -1138,7 +1138,7 @@ static EGLBoolean g_eglSwapBuffers(EGLDisplay d, EGLSurface handle)
         return real ? real(d, handle) : 0;
     }
     if (s->from_host) {
-        const meglet_run_config *run = mg_run_config();
+        const megler_run_config *run = mg_run_config();
         fn_gl_void flush = A(fn_gl_void, "glFlush");
         if (flush) flush();
         if (run->window.present) run->window.present(run->window.user);

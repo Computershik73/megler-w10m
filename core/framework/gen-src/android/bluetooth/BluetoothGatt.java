@@ -3,7 +3,7 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BluetoothGatt implements android.bluetooth.BluetoothProfile {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int CONNECTION_PRIORITY_BALANCED = 0;
     public static final int CONNECTION_PRIORITY_DCK = 3;
     public static final int CONNECTION_PRIORITY_HIGH = 1;
@@ -35,13 +35,13 @@ public final class BluetoothGatt implements android.bluetooth.BluetoothProfile {
     public boolean discoverServiceByUuid(java.util.UUID p0) { return false; }
     public boolean discoverServices() { return false; }
     public boolean executeReliableWrite() { return false; }
-    public android.bluetooth.BluetoothAdapter getAdapter() { return (android.bluetooth.BluetoothAdapter) megletProps.get("Adapter"); }
-    public java.util.List getConnectedDevices() { return (megletProps.get("ConnectedDevices") != null ? (java.util.List) megletProps.get("ConnectedDevices") : new java.util.ArrayList()); }
+    public android.bluetooth.BluetoothAdapter getAdapter() { return (android.bluetooth.BluetoothAdapter) meglerProps.get("Adapter"); }
+    public java.util.List getConnectedDevices() { return (meglerProps.get("ConnectedDevices") != null ? (java.util.List) meglerProps.get("ConnectedDevices") : new java.util.ArrayList()); }
     public int getConnectionState(android.bluetooth.BluetoothDevice p0) { return 0; }
-    public android.bluetooth.BluetoothDevice getDevice() { return (android.bluetooth.BluetoothDevice) megletProps.get("Device"); }
+    public android.bluetooth.BluetoothDevice getDevice() { return (android.bluetooth.BluetoothDevice) meglerProps.get("Device"); }
     public java.util.List getDevicesMatchingConnectionStates(int[] p0) { return new java.util.ArrayList(); }
     public android.bluetooth.BluetoothGattService getService(java.util.UUID p0) { return null; }
-    public java.util.List getServices() { return (megletProps.get("Services") != null ? (java.util.List) megletProps.get("Services") : new java.util.ArrayList()); }
+    public java.util.List getServices() { return (meglerProps.get("Services") != null ? (java.util.List) meglerProps.get("Services") : new java.util.ArrayList()); }
     public void onServiceConnected(android.os.IBinder p0) {}
     public void onServiceDisconnected() {}
     public boolean readCharacteristic(android.bluetooth.BluetoothGattCharacteristic p0) { return false; }

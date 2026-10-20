@@ -3,19 +3,19 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AudioPlaybackCaptureConfiguration {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public int[] getExcludeUids() { return (int[]) megletProps.get("ExcludeUids"); }
-    public int[] getExcludeUsages() { return (int[]) megletProps.get("ExcludeUsages"); }
-    public int[] getMatchingUids() { return (int[]) megletProps.get("MatchingUids"); }
-    public int[] getMatchingUsages() { return (int[]) megletProps.get("MatchingUsages"); }
-    public android.media.projection.MediaProjection getMediaProjection() { return (android.media.projection.MediaProjection) megletProps.get("MediaProjection"); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public int[] getExcludeUids() { return (int[]) meglerProps.get("ExcludeUids"); }
+    public int[] getExcludeUsages() { return (int[]) meglerProps.get("ExcludeUsages"); }
+    public int[] getMatchingUids() { return (int[]) meglerProps.get("MatchingUids"); }
+    public int[] getMatchingUsages() { return (int[]) meglerProps.get("MatchingUsages"); }
+    public android.media.projection.MediaProjection getMediaProjection() { return (android.media.projection.MediaProjection) meglerProps.get("MediaProjection"); }
     protected AudioPlaybackCaptureConfiguration() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.media.projection.MediaProjection p0) {}
         public android.media.AudioPlaybackCaptureConfiguration.Builder addMatchingUid(int p0) { return this; }
         public android.media.AudioPlaybackCaptureConfiguration.Builder addMatchingUsage(int p0) { return this; }
-        public android.media.AudioPlaybackCaptureConfiguration build() { android.media.AudioPlaybackCaptureConfiguration x = new android.media.AudioPlaybackCaptureConfiguration(); x.megletProps.putAll(megletProps); return x; }
+        public android.media.AudioPlaybackCaptureConfiguration build() { android.media.AudioPlaybackCaptureConfiguration x = new android.media.AudioPlaybackCaptureConfiguration(); x.meglerProps.putAll(meglerProps); return x; }
         public android.media.AudioPlaybackCaptureConfiguration.Builder excludeUid(int p0) { return this; }
         public android.media.AudioPlaybackCaptureConfiguration.Builder excludeUsage(int p0) { return this; }
         Builder() { this((android.media.projection.MediaProjection) null); }

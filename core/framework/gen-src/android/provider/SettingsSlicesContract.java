@@ -3,7 +3,7 @@ package android.provider;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SettingsSlicesContract {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String AUTHORITY = "android.settings.slices";
     public static android.net.Uri BASE_URI;
     public static final java.lang.String KEY_AIRPLANE_MODE = "airplane_mode";

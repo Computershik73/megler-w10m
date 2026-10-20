@@ -3,43 +3,43 @@ package android.widget;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Magnifier {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int SOURCE_BOUND_MAX_IN_SURFACE = 0;
     public static final int SOURCE_BOUND_MAX_VISIBLE = 1;
     public Magnifier(android.view.View p0) {}
     public static android.graphics.PointF getMagnifierDefaultSize() { return null; }
     public void dismiss() {}
-    public android.graphics.Bitmap getContent() { return (android.graphics.Bitmap) megletProps.get("Content"); }
-    public float getCornerRadius() { return (megletProps.get("CornerRadius") instanceof Float ? (Float) megletProps.get("CornerRadius") : 0f); }
-    public int getDefaultHorizontalSourceToMagnifierOffset() { return (megletProps.get("DefaultHorizontalSourceToMagnifierOffset") instanceof Integer ? (Integer) megletProps.get("DefaultHorizontalSourceToMagnifierOffset") : 0); }
-    public int getDefaultVerticalSourceToMagnifierOffset() { return (megletProps.get("DefaultVerticalSourceToMagnifierOffset") instanceof Integer ? (Integer) megletProps.get("DefaultVerticalSourceToMagnifierOffset") : 0); }
-    public float getElevation() { return (megletProps.get("Elevation") instanceof Float ? (Float) megletProps.get("Elevation") : 0f); }
-    public int getHeight() { return (megletProps.get("Height") instanceof Integer ? (Integer) megletProps.get("Height") : 0); }
-    public android.graphics.Bitmap getOriginalContent() { return (android.graphics.Bitmap) megletProps.get("OriginalContent"); }
-    public android.graphics.drawable.Drawable getOverlay() { return (android.graphics.drawable.Drawable) megletProps.get("Overlay"); }
-    public android.graphics.Point getPosition() { return (android.graphics.Point) megletProps.get("Position"); }
-    public int getSourceHeight() { return (megletProps.get("SourceHeight") instanceof Integer ? (Integer) megletProps.get("SourceHeight") : 0); }
-    public android.graphics.Point getSourcePosition() { return (android.graphics.Point) megletProps.get("SourcePosition"); }
-    public int getSourceWidth() { return (megletProps.get("SourceWidth") instanceof Integer ? (Integer) megletProps.get("SourceWidth") : 0); }
-    public int getWidth() { return (megletProps.get("Width") instanceof Integer ? (Integer) megletProps.get("Width") : 0); }
-    public float getZoom() { return (megletProps.get("Zoom") instanceof Float ? (Float) megletProps.get("Zoom") : 0f); }
-    public boolean isClippingEnabled() { return (megletProps.get("ClippingEnabled") instanceof Boolean ? (Boolean) megletProps.get("ClippingEnabled") : false); }
-    public void setOnOperationCompleteCallback(android.widget.Magnifier.Callback p0) { megletProps.put("OnOperationCompleteCallback", p0); }
-    public void setZoom(float p0) { megletProps.put("Zoom", Float.valueOf(p0)); }
+    public android.graphics.Bitmap getContent() { return (android.graphics.Bitmap) meglerProps.get("Content"); }
+    public float getCornerRadius() { return (meglerProps.get("CornerRadius") instanceof Float ? (Float) meglerProps.get("CornerRadius") : 0f); }
+    public int getDefaultHorizontalSourceToMagnifierOffset() { return (meglerProps.get("DefaultHorizontalSourceToMagnifierOffset") instanceof Integer ? (Integer) meglerProps.get("DefaultHorizontalSourceToMagnifierOffset") : 0); }
+    public int getDefaultVerticalSourceToMagnifierOffset() { return (meglerProps.get("DefaultVerticalSourceToMagnifierOffset") instanceof Integer ? (Integer) meglerProps.get("DefaultVerticalSourceToMagnifierOffset") : 0); }
+    public float getElevation() { return (meglerProps.get("Elevation") instanceof Float ? (Float) meglerProps.get("Elevation") : 0f); }
+    public int getHeight() { return (meglerProps.get("Height") instanceof Integer ? (Integer) meglerProps.get("Height") : 0); }
+    public android.graphics.Bitmap getOriginalContent() { return (android.graphics.Bitmap) meglerProps.get("OriginalContent"); }
+    public android.graphics.drawable.Drawable getOverlay() { return (android.graphics.drawable.Drawable) meglerProps.get("Overlay"); }
+    public android.graphics.Point getPosition() { return (android.graphics.Point) meglerProps.get("Position"); }
+    public int getSourceHeight() { return (meglerProps.get("SourceHeight") instanceof Integer ? (Integer) meglerProps.get("SourceHeight") : 0); }
+    public android.graphics.Point getSourcePosition() { return (android.graphics.Point) meglerProps.get("SourcePosition"); }
+    public int getSourceWidth() { return (meglerProps.get("SourceWidth") instanceof Integer ? (Integer) meglerProps.get("SourceWidth") : 0); }
+    public int getWidth() { return (meglerProps.get("Width") instanceof Integer ? (Integer) meglerProps.get("Width") : 0); }
+    public float getZoom() { return (meglerProps.get("Zoom") instanceof Float ? (Float) meglerProps.get("Zoom") : 0f); }
+    public boolean isClippingEnabled() { return (meglerProps.get("ClippingEnabled") instanceof Boolean ? (Boolean) meglerProps.get("ClippingEnabled") : false); }
+    public void setOnOperationCompleteCallback(android.widget.Magnifier.Callback p0) { meglerProps.put("OnOperationCompleteCallback", p0); }
+    public void setZoom(float p0) { meglerProps.put("Zoom", Float.valueOf(p0)); }
     public void show(float p0, float p1) {}
     public void show(float p0, float p1, float p2, float p3) {}
     public void update() {}
     Magnifier() { this((android.view.View) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.view.View p0) {}
-        public android.widget.Magnifier build() { android.widget.Magnifier x = new android.widget.Magnifier(); x.megletProps.putAll(megletProps); return x; }
-        public android.widget.Magnifier.Builder setClippingEnabled(boolean p0) { megletProps.put("ClippingEnabled", Boolean.valueOf(p0)); return this; }
-        public android.widget.Magnifier.Builder setCornerRadius(float p0) { megletProps.put("CornerRadius", Float.valueOf(p0)); return this; }
+        public android.widget.Magnifier build() { android.widget.Magnifier x = new android.widget.Magnifier(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.widget.Magnifier.Builder setClippingEnabled(boolean p0) { meglerProps.put("ClippingEnabled", Boolean.valueOf(p0)); return this; }
+        public android.widget.Magnifier.Builder setCornerRadius(float p0) { meglerProps.put("CornerRadius", Float.valueOf(p0)); return this; }
         public android.widget.Magnifier.Builder setDefaultSourceToMagnifierOffset(int p0, int p1) { return this; }
-        public android.widget.Magnifier.Builder setElevation(float p0) { megletProps.put("Elevation", Float.valueOf(p0)); return this; }
-        public android.widget.Magnifier.Builder setInitialZoom(float p0) { megletProps.put("InitialZoom", Float.valueOf(p0)); return this; }
-        public android.widget.Magnifier.Builder setOverlay(android.graphics.drawable.Drawable p0) { megletProps.put("Overlay", p0); return this; }
+        public android.widget.Magnifier.Builder setElevation(float p0) { meglerProps.put("Elevation", Float.valueOf(p0)); return this; }
+        public android.widget.Magnifier.Builder setInitialZoom(float p0) { meglerProps.put("InitialZoom", Float.valueOf(p0)); return this; }
+        public android.widget.Magnifier.Builder setOverlay(android.graphics.drawable.Drawable p0) { meglerProps.put("Overlay", p0); return this; }
         public android.widget.Magnifier.Builder setSize(int p0, int p1) { return this; }
         public android.widget.Magnifier.Builder setSourceBounds(int p0, int p1, int p2, int p3) { return this; }
         Builder() { this((android.view.View) null); }

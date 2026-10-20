@@ -3,18 +3,18 @@ package android.content.pm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ApkChecksum implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public ApkChecksum(java.lang.String p0, int p1, byte[] p2) {}
     public ApkChecksum(java.lang.String p0, int p1, byte[] p2, java.lang.String p3, java.security.cert.Certificate p4) {}
     public ApkChecksum(java.lang.String p0, android.content.pm.Checksum p1, java.lang.String p2, byte[] p3) {}
     public int describeContents() { return 0; }
-    public java.security.cert.Certificate getInstallerCertificate() { return (java.security.cert.Certificate) megletProps.get("InstallerCertificate"); }
-    public byte[] getInstallerCertificateBytes() { return (byte[]) megletProps.get("InstallerCertificateBytes"); }
-    public java.lang.String getInstallerPackageName() { return (java.lang.String) megletProps.get("InstallerPackageName"); }
-    public java.lang.String getSplitName() { return (java.lang.String) megletProps.get("SplitName"); }
-    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
-    public byte[] getValue() { return (byte[]) megletProps.get("Value"); }
+    public java.security.cert.Certificate getInstallerCertificate() { return (java.security.cert.Certificate) meglerProps.get("InstallerCertificate"); }
+    public byte[] getInstallerCertificateBytes() { return (byte[]) meglerProps.get("InstallerCertificateBytes"); }
+    public java.lang.String getInstallerPackageName() { return (java.lang.String) meglerProps.get("InstallerPackageName"); }
+    public java.lang.String getSplitName() { return (java.lang.String) meglerProps.get("SplitName"); }
+    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
+    public byte[] getValue() { return (byte[]) meglerProps.get("Value"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     ApkChecksum() { this((java.lang.String) null, (int) 0, (byte[]) null); }
 }

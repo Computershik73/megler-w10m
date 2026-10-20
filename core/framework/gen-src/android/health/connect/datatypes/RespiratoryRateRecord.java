@@ -3,17 +3,17 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class RespiratoryRateRecord extends android.health.connect.datatypes.InstantRecord {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public double getRate() { return (megletProps.get("Rate") instanceof Double ? (Double) megletProps.get("Rate") : 0d); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public double getRate() { return (meglerProps.get("Rate") instanceof Double ? (Double) meglerProps.get("Rate") : 0d); }
     public android.health.connect.internal.datatypes.RespiratoryRateRecordInternal toRecordInternal() { return null; }
     protected RespiratoryRateRecord() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.health.connect.datatypes.Metadata p0, java.time.Instant p1, double p2) {}
-        public android.health.connect.datatypes.RespiratoryRateRecord build() { android.health.connect.datatypes.RespiratoryRateRecord x = new android.health.connect.datatypes.RespiratoryRateRecord(); x.megletProps.putAll(megletProps); return x; }
+        public android.health.connect.datatypes.RespiratoryRateRecord build() { android.health.connect.datatypes.RespiratoryRateRecord x = new android.health.connect.datatypes.RespiratoryRateRecord(); x.meglerProps.putAll(meglerProps); return x; }
         public android.health.connect.datatypes.RespiratoryRateRecord buildWithoutValidation() { return null; }
         public android.health.connect.datatypes.RespiratoryRateRecord.Builder clearZoneOffset() { return this; }
-        public android.health.connect.datatypes.RespiratoryRateRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { megletProps.put("ZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.RespiratoryRateRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("ZoneOffset", p0); return this; }
         Builder() { this((android.health.connect.datatypes.Metadata) null, (java.time.Instant) null, (double) 0d); }
     }
 }

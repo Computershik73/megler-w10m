@@ -3,13 +3,13 @@ package android.printservice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class PrinterDiscoverySession {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public PrinterDiscoverySession() {}
     public void addPrinters(java.util.List p0) {}
-    public java.util.List getPrinters() { return (megletProps.get("Printers") != null ? (java.util.List) megletProps.get("Printers") : new java.util.ArrayList()); }
-    public java.util.List getTrackedPrinters() { return (megletProps.get("TrackedPrinters") != null ? (java.util.List) megletProps.get("TrackedPrinters") : new java.util.ArrayList()); }
-    public boolean isDestroyed() { return (megletProps.get("Destroyed") instanceof Boolean ? (Boolean) megletProps.get("Destroyed") : false); }
-    public boolean isPrinterDiscoveryStarted() { return (megletProps.get("PrinterDiscoveryStarted") instanceof Boolean ? (Boolean) megletProps.get("PrinterDiscoveryStarted") : false); }
+    public java.util.List getPrinters() { return (meglerProps.get("Printers") != null ? (java.util.List) meglerProps.get("Printers") : new java.util.ArrayList()); }
+    public java.util.List getTrackedPrinters() { return (meglerProps.get("TrackedPrinters") != null ? (java.util.List) meglerProps.get("TrackedPrinters") : new java.util.ArrayList()); }
+    public boolean isDestroyed() { return (meglerProps.get("Destroyed") instanceof Boolean ? (Boolean) meglerProps.get("Destroyed") : false); }
+    public boolean isPrinterDiscoveryStarted() { return (meglerProps.get("PrinterDiscoveryStarted") instanceof Boolean ? (Boolean) meglerProps.get("PrinterDiscoveryStarted") : false); }
     public abstract void onDestroy();
     public void onRequestCustomPrinterIcon(android.print.PrinterId p0, android.os.CancellationSignal p1, android.printservice.CustomPrinterIconCallback p2) {}
     public abstract void onStartPrinterDiscovery(java.util.List p0);

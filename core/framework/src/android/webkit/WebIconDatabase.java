@@ -2,9 +2,9 @@ package android.webkit;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class WebIconDatabase {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public WebIconDatabase() {}
-    public static android.webkit.WebIconDatabase getInstance() { synchronized (WebIconDatabase.class) { if (sInstance == null) sInstance = new Meglet(); return sInstance; } }
+    public static android.webkit.WebIconDatabase getInstance() { synchronized (WebIconDatabase.class) { if (sInstance == null) sInstance = new Megler(); return sInstance; } }
     public abstract void bulkRequestIconForPageUrl(android.content.ContentResolver p0, java.lang.String p1, android.webkit.WebIconDatabase.IconListener p2);
     public abstract void close();
     public abstract void open(java.lang.String p0);
@@ -15,7 +15,7 @@ public abstract class WebIconDatabase {
     public interface IconListener {
         void onReceivedIcon(java.lang.String p0, android.graphics.Bitmap p1);
     }
-    static final class Meglet extends WebIconDatabase {
+    static final class Megler extends WebIconDatabase {
         public void bulkRequestIconForPageUrl(android.content.ContentResolver p0, java.lang.String p1, android.webkit.WebIconDatabase.IconListener p2) {}
         public void close() {}
         public void open(java.lang.String p0) {}

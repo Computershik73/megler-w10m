@@ -1,6 +1,6 @@
 package android.os;
 
-/** Messages by time; next() waits for the first that is due. Also polls Meglet's input queue, so touches reach the UI thread. */
+/** Messages by time; next() waits for the first that is due. Also polls Megler's input queue, so touches reach the UI thread. */
 public final class MessageQueue {
     private Message head;
     private boolean quitting;
@@ -39,7 +39,7 @@ public final class MessageQueue {
     Message next(boolean main) {
         for (;;) {
             if (main) Looper.deliverInput();
-            mNativeLooper = meglet.Native.nativeLooperPoll();
+            mNativeLooper = megler.Native.nativeLooperPoll();
             synchronized (this) {
                 if (quitting) return null;
                 long now = SystemClock.uptimeMillis();

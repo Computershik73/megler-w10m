@@ -3,7 +3,7 @@ package android.graphics.text;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class LineBreakConfig implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int HYPHENATION_DISABLED = 0;
     public static final int HYPHENATION_ENABLED = 1;
@@ -26,20 +26,20 @@ public final class LineBreakConfig implements android.os.Parcelable {
     public static int getResolvedLineBreakStyle(android.graphics.text.LineBreakConfig p0) { return 0; }
     public static int getResolvedLineBreakWordStyle(android.graphics.text.LineBreakConfig p0) { return 0; }
     public int describeContents() { return 0; }
-    public int getHyphenation() { return (megletProps.get("Hyphenation") instanceof Integer ? (Integer) megletProps.get("Hyphenation") : 0); }
-    public int getLineBreakStyle() { return (megletProps.get("LineBreakStyle") instanceof Integer ? (Integer) megletProps.get("LineBreakStyle") : 0); }
-    public int getLineBreakWordStyle() { return (megletProps.get("LineBreakWordStyle") instanceof Integer ? (Integer) megletProps.get("LineBreakWordStyle") : 0); }
+    public int getHyphenation() { return (meglerProps.get("Hyphenation") instanceof Integer ? (Integer) meglerProps.get("Hyphenation") : 0); }
+    public int getLineBreakStyle() { return (meglerProps.get("LineBreakStyle") instanceof Integer ? (Integer) meglerProps.get("LineBreakStyle") : 0); }
+    public int getLineBreakWordStyle() { return (meglerProps.get("LineBreakWordStyle") instanceof Integer ? (Integer) meglerProps.get("LineBreakWordStyle") : 0); }
     public android.graphics.text.LineBreakConfig merge(android.graphics.text.LineBreakConfig p0) { return this; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     LineBreakConfig() { this((int) 0, (int) 0, (int) 0); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.graphics.text.LineBreakConfig build() { android.graphics.text.LineBreakConfig x = new android.graphics.text.LineBreakConfig(); x.megletProps.putAll(megletProps); return x; }
+        public android.graphics.text.LineBreakConfig build() { android.graphics.text.LineBreakConfig x = new android.graphics.text.LineBreakConfig(); x.meglerProps.putAll(meglerProps); return x; }
         public android.graphics.text.LineBreakConfig.Builder merge(android.graphics.text.LineBreakConfig p0) { return this; }
         public android.graphics.text.LineBreakConfig.Builder reset(android.graphics.text.LineBreakConfig p0) { return this; }
-        public android.graphics.text.LineBreakConfig.Builder setHyphenation(int p0) { megletProps.put("Hyphenation", Integer.valueOf(p0)); return this; }
-        public android.graphics.text.LineBreakConfig.Builder setLineBreakStyle(int p0) { megletProps.put("LineBreakStyle", Integer.valueOf(p0)); return this; }
-        public android.graphics.text.LineBreakConfig.Builder setLineBreakWordStyle(int p0) { megletProps.put("LineBreakWordStyle", Integer.valueOf(p0)); return this; }
+        public android.graphics.text.LineBreakConfig.Builder setHyphenation(int p0) { meglerProps.put("Hyphenation", Integer.valueOf(p0)); return this; }
+        public android.graphics.text.LineBreakConfig.Builder setLineBreakStyle(int p0) { meglerProps.put("LineBreakStyle", Integer.valueOf(p0)); return this; }
+        public android.graphics.text.LineBreakConfig.Builder setLineBreakWordStyle(int p0) { meglerProps.put("LineBreakWordStyle", Integer.valueOf(p0)); return this; }
     }
 }

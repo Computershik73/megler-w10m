@@ -3,7 +3,7 @@ package android.location;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GnssStatus implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int CONSTELLATION_BEIDOU = 5;
     public static final int CONSTELLATION_COUNT = 8;
     public static final int CONSTELLATION_GALILEO = 6;
@@ -23,7 +23,7 @@ public final class GnssStatus implements android.os.Parcelable {
     public float getCn0DbHz(int p0) { return 0f; }
     public int getConstellationType(int p0) { return 0; }
     public float getElevationDegrees(int p0) { return 0f; }
-    public int getSatelliteCount() { return (megletProps.get("SatelliteCount") instanceof Integer ? (Integer) megletProps.get("SatelliteCount") : 0); }
+    public int getSatelliteCount() { return (meglerProps.get("SatelliteCount") instanceof Integer ? (Integer) meglerProps.get("SatelliteCount") : 0); }
     public int getSvid(int p0) { return 0; }
     public boolean hasAlmanacData(int p0) { return false; }
     public boolean hasBasebandCn0DbHz(int p0) { return false; }
@@ -33,10 +33,10 @@ public final class GnssStatus implements android.os.Parcelable {
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected GnssStatus() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public android.location.GnssStatus.Builder addSatellite(int p0, int p1, float p2, float p3, float p4, boolean p5, boolean p6, boolean p7, boolean p8, float p9, boolean p10, float p11) { return this; }
-        public android.location.GnssStatus build() { android.location.GnssStatus x = new android.location.GnssStatus(); x.megletProps.putAll(megletProps); return x; }
+        public android.location.GnssStatus build() { android.location.GnssStatus x = new android.location.GnssStatus(); x.meglerProps.putAll(meglerProps); return x; }
         public android.location.GnssStatus.Builder clearSatellites() { return this; }
     }
     public static abstract class Callback {

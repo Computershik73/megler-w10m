@@ -9,7 +9,7 @@
 #include "../src/host/mg_host.h"
 
 typedef struct picture {
-    meglet_codec_picture p;
+    megler_codec_picture p;
     struct picture *next;
     u8 pixels[1];
 } picture;
@@ -55,16 +55,16 @@ int mg_codec_standin_luma(int64_t time_us)
 static bool supports(void *user, int kind)
 {
     (void)user;
-    return kind == MEGLET_CODEC_H264 || kind == MEGLET_CODEC_AAC || kind == MEGLET_CODEC_MP3;
+    return kind == MEGLER_CODEC_H264 || kind == MEGLER_CODEC_AAC || kind == MEGLER_CODEC_MP3;
 }
 
-static void *open_decoder(void *user, int kind, const meglet_codec_format *f)
+static void *open_decoder(void *user, int kind, const megler_codec_format *f)
 {
     decoder *d;
     (void)user;
     if (!supports(NULL, kind)) return NULL;
-    if (kind == MEGLET_CODEC_AAC && (!f->config || f->config_size < 2)) return NULL;
-    if (kind != MEGLET_CODEC_H264 && (f->sample_rate <= 0 || f->channels <= 0)) return NULL;
+    if (kind == MEGLER_CODEC_AAC && (!f->config || f->config_size < 2)) return NULL;
+    if (kind != MEGLER_CODEC_H264 && (f->sample_rate <= 0 || f->channels <= 0)) return NULL;
     d = (decoder *)mg_alloc(sizeof(*d));
     d->kind = kind;
     d->width = f->width > 0 ? f->width : 64;
@@ -120,7 +120,7 @@ static bool push(void *user, void *codec, const uint8_t *data, size_t size, int6
     decoder *d = (decoder *)codec;
     (void)user;
     count(&g_counts.pushed);
-    if (d->kind == MEGLET_CODEC_H264) {
+    if (d->kind == MEGLER_CODEC_H264) {
         size_t luma = (size_t)d->width * (size_t)d->height, chroma = luma / 2;
         picture *pic;
         if (!unit_fit(data, size, d->fresh)) {
@@ -131,7 +131,7 @@ static bool push(void *user, void *codec, const uint8_t *data, size_t size, int6
         pic = (picture *)mg_alloc(sizeof(*pic) + luma + chroma);
         memset(pic->pixels, mg_codec_standin_luma(time_us), luma);
         memset(pic->pixels + luma, 128, chroma);
-        pic->p.format = MEGLET_CODEC_NV12;
+        pic->p.format = MEGLER_CODEC_NV12;
         pic->p.width = d->width;
         pic->p.height = d->height;
         pic->p.data = pic->pixels;
@@ -143,7 +143,7 @@ static bool push(void *user, void *codec, const uint8_t *data, size_t size, int6
         d->pictures_tail = &pic->next;
         return true;
     }
-    if (d->kind == MEGLET_CODEC_AAC && size >= 2 && data[0] == 0xFF && (data[1] & 0xF6) == 0xF0) {
+    if (d->kind == MEGLER_CODEC_AAC && size >= 2 && data[0] == 0xFF && (data[1] & 0xF6) == 0xF0) {
         count(&g_counts.refused);
         return false;
     }
@@ -151,7 +151,7 @@ static bool push(void *user, void *codec, const uint8_t *data, size_t size, int6
         count(&g_counts.refused);
         return false;
     }
-    add_sound(d, d->kind == MEGLET_CODEC_AAC ? 1024 : 1152, time_us);
+    add_sound(d, d->kind == MEGLER_CODEC_AAC ? 1024 : 1152, time_us);
     return true;
 }
 
@@ -162,7 +162,7 @@ static void drain(void *user, void *codec)
     count(&g_counts.drained);
 }
 
-static void *pull_picture(void *user, void *codec, meglet_codec_picture *out)
+static void *pull_picture(void *user, void *codec, megler_codec_picture *out)
 {
     decoder *d = (decoder *)codec;
     picture *pic = d->pictures;
@@ -182,7 +182,7 @@ static void release_picture(void *user, void *pic)
     count(&g_counts.pictures_released);
 }
 
-static bool pull_sound(void *user, void *codec, meglet_codec_sound *out)
+static bool pull_sound(void *user, void *codec, megler_codec_sound *out)
 {
     decoder *d = (decoder *)codec;
     block *b = d->blocks;
@@ -236,8 +236,8 @@ static void close_decoder(void *user, void *codec)
     count(&g_counts.closed);
 }
 
-const meglet_codec_host *mg_codec_standin(void)
+const megler_codec_host *mg_codec_standin(void)
 {
-    static const meglet_codec_host host = { NULL, 4, supports, open_decoder, push, drain, pull_picture, release_picture, pull_sound, flush, close_decoder };
+    static const megler_codec_host host = { NULL, 4, supports, open_decoder, push, drain, pull_picture, release_picture, pull_sound, flush, close_decoder };
     return &host;
 }

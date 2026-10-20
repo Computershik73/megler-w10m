@@ -3,22 +3,22 @@
  *
  * Unlike the other drivers this one plays no Java part in C. It starts the
  * Dalvik runtime (dvm/) on Android's libcore, puts the Java framework and the
- * app's own DEX files after it, and calls meglet.AppRunner.run on a thread that
+ * app's own DEX files after it, and calls megler.AppRunner.run on a thread that
  * stands for Android's main thread. The framework is core/framework's
  * (tools/build-framework.sh): android.* in Java, which does in the app's own
  * process what Android does in system_server -- the Application, the
  * activity stack, the main Looper, views measured, laid out and drawn into a
- * bitmap. What it cannot do in Java it asks of meglet.* classes' native
- * methods. This file is meglet.Native: the log, the APK's files, the screen's
- * size, input, the end of the app. meglet.Gfx, the drawing, is mg_java_gfx.c;
+ * bitmap. What it cannot do in Java it asks of megler.* classes' native
+ * methods. This file is megler.Native: the log, the APK's files, the screen's
+ * size, input, the end of the app. megler.Gfx, the drawing, is mg_java_gfx.c;
  * OpenGL ES and EGL, and a GLSurfaceView's thread, mg_java_gl.c.
  *
  * Everything the runtime needs to start is in one folder laid out like
  * Android's /system, the "Android root" (tools/dvm-android-root.sh):
- * meglet_run_config.android_root, or the folder `android` in the package.
+ * megler_run_config.android_root, or the folder `android` in the package.
  *
  * Input is not delivered: it is asked for. The framework's main loop calls
- * pollInput between messages (every 8 ms at most), so meglet_touch and the
+ * pollInput between messages (every 8 ms at most), so megler_touch and the
  * rest only queue here, and everything that happens to the app happens on its
  * main thread. Stopping is the same: a flag the next poll sees, which
  * finishes every activity; the framework then calls exit, and the main loop
@@ -46,19 +46,19 @@
 #define FIRST_SPLIT_APK 2
 #define MAX_SPLITS 10
 
-/* The phases of an event as meglet.AppRunner.deliver reads them. */
+/* The phases of an event as megler.AppRunner.deliver reads them. */
 enum { EV_DOWN = 0, EV_MOVE = 1, EV_UP = 2, EV_CANCEL = 3, EV_KEY = 4, EV_BACK = 5, EV_HOST_PAUSE = 6, EV_TEXT = 7, EV_INSETS = 8 };
 
 #define MAX_TEXT 512
 
 static struct {
-    const meglet_run_config *config;
+    const megler_run_config *config;
     char *root;                        /* the Android root, a host path */
     char activity[200], application[200], package[128];
     char guest_apk[400];               /* the APK's path as the app sees it */
     bool apache_http;                  /* the app gets Android's legacy Apache HTTP client (org.apache.http.legacy): see apache_http_wanted */
     /*
-     * The app's splits (meglet_run_config.split_apks, as many as there is room for): their names from their manifests
+     * The app's splits (megler_run_config.split_apks, as many as there is room for): their names from their manifests
      * ("config.armeabi_v7a"), their paths as the app sees them (Native.splitPaths), and whether they have code.
      */
     int nsplits;
@@ -84,7 +84,7 @@ static struct {
     mg_java_stats stats;
     /*
      * What the shell's keyboard has sent and the app has not taken yet, oldest first: "t<text>" typed text, "d" Backspace,
-     * "e" Enter, "h" the keyboard was put away -- the letters meglet.InputMethods reads. One EV_TEXT event is queued for
+     * "e" Enter, "h" the keyboard was put away -- the letters megler.InputMethods reads. One EV_TEXT event is queued for
      * each, and each such event takes one, so that text and the keys that go as key events stay in the order they were sent.
      */
     char *text[MAX_TEXT];
@@ -109,7 +109,7 @@ static const char *text_of(mg_jobj *s)
     return t ? t : "";
 }
 
-/* ----------------------------------------------------------- meglet.Native */
+/* ----------------------------------------------------------- megler.Native */
 
 #define N(name) static void name(mg_jcall *c)
 
@@ -249,7 +249,7 @@ static void list_one(const mg_zip_entry *e, void *user)
     l->names[l->n++][len] = 0;
 }
 
-/* meglet.Native.dnsServers: the phone's name servers (mg_net_dns_servers), for LinkProperties.getDnsServers. */
+/* megler.Native.dnsServers: the phone's name servers (mg_net_dns_servers), for LinkProperties.getDnsServers. */
 N(Native_dnsServers)
 {
     char servers[8][48];
@@ -395,7 +395,7 @@ static void Native_checkPartial(mg_jcall *c);
  * The battery has been set to something else since the app was last told (mg_battery_set, from any thread; this is the
  * app's main thread). Android broadcasts ACTION_BATTERY_CHANGED to whoever is registered for it, and before that
  * ACTION_POWER_CONNECTED or ACTION_POWER_DISCONNECTED when it went between running on its battery and not; the
- * framework's meglet.Broadcasts sends them (the overlay's batteryChanged). What is compared is what the app was told last
+ * framework's megler.Broadcasts sends them (the overlay's batteryChanged). What is compared is what the app was told last
  * with what is there now, so a battery that changed and changed back between two looks is no news, and nothing is sent
  * more often than the charge, the status or the plug changes.
  */
@@ -409,8 +409,8 @@ static void battery_news(void)
     power.j = 0;
     power.i = (now.plugged != 0) == (J.battery.plugged != 0) ? 0 : now.plugged ? 1 : 2;
     J.battery = now;
-    if (!mg_dvm_call_static("meglet/Broadcasts", "batteryChanged", "(I)V", &power, NULL)) {
-        mg_note_once("java: the battery changed and the app was not told: %s", mg_dvm_pending() ? mg_dvm_class_of(mg_dvm_pending())->name : "meglet.Broadcasts.batteryChanged did not run");
+    if (!mg_dvm_call_static("megler/Broadcasts", "batteryChanged", "(I)V", &power, NULL)) {
+        mg_note_once("java: the battery changed and the app was not told: %s", mg_dvm_pending() ? mg_dvm_class_of(mg_dvm_pending())->name : "megler.Broadcasts.batteryChanged did not run");
         mg_dvm_clear_pending();
     }
 }
@@ -427,7 +427,7 @@ N(Native_pollInput)
     mg_jobj *a = NULL;
     int n;
     if (J.stop == 1 && mg_atomic_cas(&J.stop, 1, 2) == 1) {
-        mg_dvm_call_static("meglet/AppRunner", "finishAll", "()V", NULL, NULL);
+        mg_dvm_call_static("megler/AppRunner", "finishAll", "()V", NULL, NULL);
         if (mg_dvm_pending()) return;
     }
     if (mg_battery_changes() != J.battery_changes) battery_news();
@@ -451,7 +451,7 @@ N(Native_pollInput)
 N(Native_setClipboard) { J.clipboard = c->args[0].l; }
 N(Native_getClipboard) { c->ret.l = J.clipboard; }
 
-/* The battery as the core has it (mg_battery_read, run/mg_run.h), in the order meglet.Native.battery's comment gives. */
+/* The battery as the core has it (mg_battery_read, run/mg_run.h), in the order megler.Native.battery's comment gives. */
 N(Native_battery)
 {
     mg_battery b;
@@ -479,7 +479,7 @@ N(Native_batteryTechnology)
 }
 
 /*
- * How much of each edge of the surface the phone's bars cover (meglet_set_insets), kept apart from J, which a start clears:
+ * How much of each edge of the surface the phone's bars cover (megler_set_insets), kept apart from J, which a start clears:
  * the shell may say it before the app runs.
  */
 static volatile i32 g_bar_insets[4];
@@ -496,23 +496,23 @@ N(Native_insets)
     c->ret.l = a;
 }
 
-/* systemBars(bars): the bars the app's window wants hidden, and whether its status bar is light (meglet.h, meglet_system_bars_host). */
+/* systemBars(bars): the bars the app's window wants hidden, and whether its status bar is light (megler.h, megler_system_bars_host). */
 N(Native_systemBars)
 {
-    const meglet_system_bars_host *b = &J.config->bars;
-    if (b->wanted) b->wanted(b->user, c->args[0].i & (MEGLET_BAR_STATUS | MEGLET_BAR_NAVIGATION | MEGLET_BAR_LIGHT_STATUS));
+    const megler_system_bars_host *b = &J.config->bars;
+    if (b->wanted) b->wanted(b->user, c->args[0].i & (MEGLER_BAR_STATUS | MEGLER_BAR_NAVIGATION | MEGLER_BAR_LIGHT_STATUS));
 }
 
 /* ----------------------------------------------------------- the keyboard */
 
 /*
  * showKeyboard(show, inputType, imeOptions): the framework wants the shell's keyboard for the field being edited, or wants
- * it gone. Android's two words about the field are turned into the shell's three (meglet.h): what is typed there, more
+ * it gone. Android's two words about the field are turned into the shell's three (megler.h): what is typed there, more
  * about it, and what Enter does. Called on the app's main thread; the shell's function returns at once.
  */
 N(Native_showKeyboard)
 {
-    const meglet_keyboard_host *k = &J.config->keyboard;
+    const megler_keyboard_host *k = &J.config->keyboard;
     i32 type = c->args[1].i, ime = c->args[2].i;
     int cls = type & 0xF, variation = type & 0xFF0, action = ime & 0xFF, kind, flags = 0, enter;
     if (!c->args[0].z) {
@@ -521,32 +521,32 @@ N(Native_showKeyboard)
     }
     if (cls == 2) {
         /* TYPE_CLASS_NUMBER; its variation 0x10 is a PIN. */
-        kind = variation == 0x10 ? MEGLET_KEYBOARD_NUMBER_PASSWORD : MEGLET_KEYBOARD_NUMBER;
-        if (type & 0x1000) flags |= MEGLET_KEYBOARD_F_SIGNED;
-        if (type & 0x2000) flags |= MEGLET_KEYBOARD_F_DECIMAL;
+        kind = variation == 0x10 ? MEGLER_KEYBOARD_NUMBER_PASSWORD : MEGLER_KEYBOARD_NUMBER;
+        if (type & 0x1000) flags |= MEGLER_KEYBOARD_F_SIGNED;
+        if (type & 0x2000) flags |= MEGLER_KEYBOARD_F_DECIMAL;
     } else if (cls == 3) {
-        kind = MEGLET_KEYBOARD_PHONE;
+        kind = MEGLER_KEYBOARD_PHONE;
     } else if (cls == 4) {
-        kind = MEGLET_KEYBOARD_DATETIME;
+        kind = MEGLER_KEYBOARD_DATETIME;
     } else {
         /* TYPE_CLASS_TEXT: passwords (0x80, visible 0x90, web 0xE0), e-mail addresses (0x20, web 0xD0), URIs (0x10). */
-        kind = variation == 0x80 || variation == 0x90 || variation == 0xE0 ? MEGLET_KEYBOARD_PASSWORD
-               : variation == 0x20 || variation == 0xD0 ? MEGLET_KEYBOARD_EMAIL : variation == 0x10 ? MEGLET_KEYBOARD_URL : MEGLET_KEYBOARD_TEXT;
-        if (type & 0x20000) flags |= MEGLET_KEYBOARD_F_MULTILINE;
-        if (type & 0x80000) flags |= MEGLET_KEYBOARD_F_NO_SUGGESTIONS;
-        if (type & 0x4000) flags |= MEGLET_KEYBOARD_F_CAP_SENTENCES;
-        if (type & 0x2000) flags |= MEGLET_KEYBOARD_F_CAP_WORDS;
-        if (type & 0x1000) flags |= MEGLET_KEYBOARD_F_CAP_ALL;
+        kind = variation == 0x80 || variation == 0x90 || variation == 0xE0 ? MEGLER_KEYBOARD_PASSWORD
+               : variation == 0x20 || variation == 0xD0 ? MEGLER_KEYBOARD_EMAIL : variation == 0x10 ? MEGLER_KEYBOARD_URL : MEGLER_KEYBOARD_TEXT;
+        if (type & 0x20000) flags |= MEGLER_KEYBOARD_F_MULTILINE;
+        if (type & 0x80000) flags |= MEGLER_KEYBOARD_F_NO_SUGGESTIONS;
+        if (type & 0x4000) flags |= MEGLER_KEYBOARD_F_CAP_SENTENCES;
+        if (type & 0x2000) flags |= MEGLER_KEYBOARD_F_CAP_WORDS;
+        if (type & 0x1000) flags |= MEGLER_KEYBOARD_F_CAP_ALL;
     }
     /*
      * What Enter does. IME_FLAG_NO_ENTER_ACTION (0x40000000) is the field saying that Enter is no action there but a new
      * line; a TextView of several lines sets it, on Android and in this framework. Otherwise Enter is the editor's action.
      */
-    if (ime & 0x40000000) enter = MEGLET_ENTER_NEWLINE;
-    else enter = action == 2 ? MEGLET_ENTER_GO : action == 3 ? MEGLET_ENTER_SEARCH : action == 4 ? MEGLET_ENTER_SEND : action == 5 ? MEGLET_ENTER_NEXT : action == 7 ? MEGLET_ENTER_PREVIOUS : MEGLET_ENTER_DONE;
-    mg_atomic_xchg(&J.enter_newline, enter == MEGLET_ENTER_NEWLINE);
+    if (ime & 0x40000000) enter = MEGLER_ENTER_NEWLINE;
+    else enter = action == 2 ? MEGLER_ENTER_GO : action == 3 ? MEGLER_ENTER_SEARCH : action == 4 ? MEGLER_ENTER_SEND : action == 5 ? MEGLER_ENTER_NEXT : action == 7 ? MEGLER_ENTER_PREVIOUS : MEGLER_ENTER_DONE;
+    mg_atomic_xchg(&J.enter_newline, enter == MEGLER_ENTER_NEWLINE);
     if (k->show) k->show(k->user, kind, flags, enter);
-    else mg_note_once("java: the app asked for the keyboard, and the shell gave the layer none to ask (meglet_run_config.keyboard)");
+    else mg_note_once("java: the app asked for the keyboard, and the shell gave the layer none to ask (megler_run_config.keyboard)");
 }
 
 /* pollText(): the oldest thing the keyboard sent, as a String[1], or null. Asked once for each EV_TEXT event. */
@@ -575,7 +575,7 @@ N(Native_setOrientation) { mg_note_once("java: the app asked for orientation %d;
 
 /*
  * exit(): the framework calls it when the last activity is gone. The main
- * loop is told to end, and meglet.AppRunner.run returns to main_thread below.
+ * loop is told to end, and megler.AppRunner.run returns to main_thread below.
  */
 N(Native_exit)
 {
@@ -587,49 +587,49 @@ N(Native_exit)
 }
 
 static const mg_jhle k_native[] = {
-    { "meglet/Native", "log", NULL, Native_log },
-    { "meglet/Native", "readAsset", NULL, Native_readAsset },
-    { "meglet/Native", "listAssets", NULL, Native_listAssets },
-    { "meglet/Native", "assetFd", NULL, Native_assetFd },
-    { "meglet/Native", "assetLength", NULL, Native_assetLength },
-    { "meglet/Native", "readApkFile", NULL, Native_readApkFile },
-    { "meglet/Native", "addApk", NULL, Native_addApk },
-    { "meglet/Native", "listApkFiles", NULL, Native_listApkFiles },
-    { "meglet/Native", "apkFileFd", NULL, Native_apkFileFd },
-    { "meglet/Native", "apkFileLength", NULL, Native_apkFileLength },
-    { "meglet/Native", "apkPath", NULL, Native_apkPath },
-    { "meglet/Native", "splitPaths", NULL, Native_splitPaths },
-    { "meglet/Native", "setAppClassLoader", NULL, Native_setAppClassLoader },
-    { "meglet/Native", "nativeLooperPrepare", NULL, Native_looperPrepare },
-    { "meglet/Native", "nativeLooperPoll", NULL, Native_looperPoll },
-    { "meglet/Native", "dataDir", NULL, Native_dataDir },
-    { "meglet/Native", "externalDir", NULL, Native_externalDir },
-    { "meglet/Native", "battery", NULL, Native_battery },
-    { "meglet/Native", "batteryTechnology", NULL, Native_batteryTechnology },
-    { "meglet/Native", "packageName", NULL, Native_packageName },
-    { "meglet/Native", "screenWidth", NULL, Native_screenWidth },
-    { "meglet/Native", "screenHeight", NULL, Native_screenHeight },
-    { "meglet/Native", "density", NULL, Native_density },
-    { "meglet/Native", "setContentView", NULL, Native_nothing },
-    { "meglet/Native", "pollInput", NULL, Native_pollInput },
-    { "meglet/Native", "pollText", NULL, Native_pollText },
-    { "meglet/Native", "showKeyboard", NULL, Native_showKeyboard },
-    { "meglet/Native", "systemBars", NULL, Native_systemBars },
-    { "meglet/Native", "setClipboard", NULL, Native_setClipboard },
-    { "meglet/Native", "getClipboard", NULL, Native_getClipboard },
-    { "meglet/Native", "share", NULL, Native_share },
-    { "meglet/Native", "setOrientation", NULL, Native_setOrientation },
-    { "meglet/Native", "insets", NULL, Native_insets },
-    { "meglet/Native", "nightMode", NULL, Native_nothing },
-    { "meglet/Native", "dnsServers", NULL, Native_dnsServers },
-    { "meglet/Native", "vibrate", NULL, Native_nothing },
-    { "meglet/Native", "openUrl", NULL, Native_openUrl },
-    { "meglet/Native", "exit", NULL, Native_exit },
-    { "meglet/Native", "uptimeNanos", NULL, Native_uptimeNanos },
-    { "meglet/Native", "frameMark", NULL, Native_frameMark },
-    { "meglet/Native", "presentRect", NULL, Native_presentRect },
-    { "meglet/Native", "checkPartial", NULL, Native_checkPartial },
-    { "meglet/Native", "flag", NULL, Native_flag },
+    { "megler/Native", "log", NULL, Native_log },
+    { "megler/Native", "readAsset", NULL, Native_readAsset },
+    { "megler/Native", "listAssets", NULL, Native_listAssets },
+    { "megler/Native", "assetFd", NULL, Native_assetFd },
+    { "megler/Native", "assetLength", NULL, Native_assetLength },
+    { "megler/Native", "readApkFile", NULL, Native_readApkFile },
+    { "megler/Native", "addApk", NULL, Native_addApk },
+    { "megler/Native", "listApkFiles", NULL, Native_listApkFiles },
+    { "megler/Native", "apkFileFd", NULL, Native_apkFileFd },
+    { "megler/Native", "apkFileLength", NULL, Native_apkFileLength },
+    { "megler/Native", "apkPath", NULL, Native_apkPath },
+    { "megler/Native", "splitPaths", NULL, Native_splitPaths },
+    { "megler/Native", "setAppClassLoader", NULL, Native_setAppClassLoader },
+    { "megler/Native", "nativeLooperPrepare", NULL, Native_looperPrepare },
+    { "megler/Native", "nativeLooperPoll", NULL, Native_looperPoll },
+    { "megler/Native", "dataDir", NULL, Native_dataDir },
+    { "megler/Native", "externalDir", NULL, Native_externalDir },
+    { "megler/Native", "battery", NULL, Native_battery },
+    { "megler/Native", "batteryTechnology", NULL, Native_batteryTechnology },
+    { "megler/Native", "packageName", NULL, Native_packageName },
+    { "megler/Native", "screenWidth", NULL, Native_screenWidth },
+    { "megler/Native", "screenHeight", NULL, Native_screenHeight },
+    { "megler/Native", "density", NULL, Native_density },
+    { "megler/Native", "setContentView", NULL, Native_nothing },
+    { "megler/Native", "pollInput", NULL, Native_pollInput },
+    { "megler/Native", "pollText", NULL, Native_pollText },
+    { "megler/Native", "showKeyboard", NULL, Native_showKeyboard },
+    { "megler/Native", "systemBars", NULL, Native_systemBars },
+    { "megler/Native", "setClipboard", NULL, Native_setClipboard },
+    { "megler/Native", "getClipboard", NULL, Native_getClipboard },
+    { "megler/Native", "share", NULL, Native_share },
+    { "megler/Native", "setOrientation", NULL, Native_setOrientation },
+    { "megler/Native", "insets", NULL, Native_insets },
+    { "megler/Native", "nightMode", NULL, Native_nothing },
+    { "megler/Native", "dnsServers", NULL, Native_dnsServers },
+    { "megler/Native", "vibrate", NULL, Native_nothing },
+    { "megler/Native", "openUrl", NULL, Native_openUrl },
+    { "megler/Native", "exit", NULL, Native_exit },
+    { "megler/Native", "uptimeNanos", NULL, Native_uptimeNanos },
+    { "megler/Native", "frameMark", NULL, Native_frameMark },
+    { "megler/Native", "presentRect", NULL, Native_presentRect },
+    { "megler/Native", "checkPartial", NULL, Native_checkPartial },
+    { "megler/Native", "flag", NULL, Native_flag },
     { NULL, NULL, NULL, NULL },
 };
 
@@ -640,8 +640,8 @@ static const mg_jhle k_native[] = {
  * written here yet. Each of their methods answers zero, false or null, said
  * once in the log for the class, and the framework's own Java makes of that
  * what an app can live with: a sensor is not available, a web view an empty
- * rectangle. (Databases, meglet.Sqlite, are mg_java_sqlite.c; sound, meglet.Audio,
- * mg_java_audio.c; the decoders behind MediaCodec, meglet.MediaCodecNative,
+ * rectangle. (Databases, megler.Sqlite, are mg_java_sqlite.c; sound, megler.Audio,
+ * mg_java_audio.c; the decoders behind MediaCodec, megler.MediaCodecNative,
  * mg_java_media.c; OpenGL ES and EGL, mg_java_gl.c and mg_java_gles.c, whose
  * tables are registered after this one: the entries here for their classes are
  * only for a native the framework might declare and they do not bind.)
@@ -675,10 +675,10 @@ N(Absent)
  */
 N(Sensors_available) { c->ret.j = 0; }
 static const mg_jhle k_absent[] = {
-    { "meglet/Sensors", "available", NULL, Sensors_available },
-    { "meglet/Web", NULL, NULL, Absent },
-    { "meglet/Sensors", NULL, NULL, Absent },
-    { "meglet/EGLNative", NULL, NULL, Absent },
+    { "megler/Sensors", "available", NULL, Sensors_available },
+    { "megler/Web", NULL, NULL, Absent },
+    { "megler/Sensors", NULL, NULL, Absent },
+    { "megler/EGLNative", NULL, NULL, Absent },
     { "android/opengl/GLES10", NULL, NULL, Absent },
     { "android/opengl/GLES10Ext", NULL, NULL, Absent },
     { "android/opengl/GLES11", NULL, NULL, Absent },
@@ -732,7 +732,7 @@ static void present(void *user, const void *pixels, int width, int height, int s
 
 /*
  * Gfx.present, the window's views, shown by the shell from its own picture of the canvas that draws them, without the memory
- * (meglet_gfx_host.present): what mg_java_gfx.c tries before it brings the memory up to date. Not while OpenGL frames are
+ * (megler_gfx_host.present): what mg_java_gfx.c tries before it brings the memory up to date. Not while OpenGL frames are
  * composed under the views, which needs the views' memory; and false when the shell cannot, the memory's way then following.
  */
 static bool present_canvas(void *user, void *canvas, int width, int height)
@@ -765,7 +765,7 @@ N(Native_checkPartial) { c->ret.z = g_check_partial; }
 
 /*
  * Where the main thread's time goes while the app draws, from the core's side and in summed counters: nothing is logged per
- * call or per frame. meglet.ViewRoot.doFrame (overlaid for this) calls Native.frameMark(1) as a frame begins with its measure
+ * call or per frame. megler.ViewRoot.doFrame (overlaid for this) calls Native.frameMark(1) as a frame begins with its measure
  * and layout, frameMark(2) as its draw traversal begins and frameMark(3, pixels drawn) as it ends. At each mark the main
  * thread's clock, its time in the shell's drawing (mg_java_gfx_host_ns), in handing pictures over (present, above), in
  * Object.wait and Thread.sleep, in native methods, allocating and waiting for monitors, and its instructions
@@ -916,7 +916,7 @@ static void meter_line(const char *what, const meter_window *w, u64 now)
             (double)elapsed / 1e9, (unsigned)(bitmap_bytes >> 20), (unsigned)(list_bytes >> 10), (unsigned)nodes, mem, redrawn);
 }
 
-/* meglet.Native.frameMark(phase, redrawn), from meglet.ViewRoot.doFrame on the main thread. */
+/* megler.Native.frameMark(phase, redrawn), from megler.ViewRoot.doFrame on the main thread. */
 N(Native_frameMark)
 {
     int phase = c->args[0].i;
@@ -1153,7 +1153,7 @@ static void add_shared_libraries(void)
 
 static void main_thread(void *arg)
 {
-    char *framework = mg_sprintf("%s/framework/meglet-framework.dex", J.root), *res = mg_sprintf("%s/framework/framework-res.apk", J.root);
+    char *framework = mg_sprintf("%s/framework/megler-framework.dex", J.root), *res = mg_sprintf("%s/framework/framework-res.apk", J.root);
     char why[1600], stack[1200];
     mg_jvalue args[2];
     int i;
@@ -1216,7 +1216,7 @@ static void main_thread(void *arg)
         args[0].l = mg_dvm_new_string(J.activity);
         args[1].l = J.application[0] ? mg_dvm_new_string(J.application) : NULL;
         mg_info("java: starting %s%s%s", J.activity, J.application[0] ? " in " : "", J.application);
-        if (!mg_dvm_call_static("meglet/AppRunner", "run", "(Ljava/lang/String;Ljava/lang/String;)V", args, NULL)) {
+        if (!mg_dvm_call_static("megler/AppRunner", "run", "(Ljava/lang/String;Ljava/lang/String;)V", args, NULL)) {
             /*
              * An exception nothing caught came all the way up the main thread: thrown in an activity's onCreate, a
              * listener, a message. Android ends the app there as well -- its default handler logs "FATAL EXCEPTION: main",
@@ -1244,7 +1244,7 @@ static void main_thread(void *arg)
     J.end_status = why[0] ? -1 : 0;
     mg_strlcpy(J.end_reason, why[0] ? why : J.stop ? "stopped" : "", sizeof(J.end_reason));
     mg_atomic_xchg(&J.ended, 1);
-    /* The reason is meglet_last_error's too: the shell may ask after the app is gone. */
+    /* The reason is megler_last_error's too: the shell may ask after the app is gone. */
     if (why[0]) mg_run_set_error("%s", why);
     if (why[0]) mg_run_ended(-1, why);
     else mg_run_ended(0, J.stop ? "stopped" : NULL);
@@ -1273,7 +1273,7 @@ static bool apache_http_wanted(const mg_apk_info *info)
     return false;
 }
 
-static bool java_start(const meglet_run_config *config, const mg_apk_info *info)
+static bool java_start(const megler_run_config *config, const mg_apk_info *info)
 {
     mg_stat st;
     char *probe;
@@ -1281,12 +1281,12 @@ static bool java_start(const meglet_run_config *config, const mg_apk_info *info)
     memset(&J, 0, sizeof(J));
     mg_lock_init(&J.lock);
     J.config = config;
-    J.root = config->android_root && config->android_root[0] ? mg_strdup(config->android_root) : mg_sprintf("%s/android", meglet_package_dir());
+    J.root = config->android_root && config->android_root[0] ? mg_strdup(config->android_root) : mg_sprintf("%s/android", megler_package_dir());
     mg_strlcpy(J.activity, info->activity, sizeof(J.activity));
     mg_strlcpy(J.application, info->application, sizeof(J.application));
     mg_strlcpy(J.package, info->package, sizeof(J.package));
     J.apache_http = apache_http_wanted(info);
-    /* The splits, in meglet_run's order, which is info->splits' (run/mg_run.c): as many as the framework reads. */
+    /* The splits, in megler_run's order, which is info->splits' (run/mg_run.c): as many as the framework reads. */
     J.nsplits = config->split_count < info->nsplits ? config->split_count : info->nsplits;
     if (J.nsplits > MAX_SPLITS) {
         mg_warn("java: the app has %d splits, and the framework reads %d: %s and those after it are left out", J.nsplits, MAX_SPLITS, info->splits[MAX_SPLITS]);
@@ -1356,7 +1356,7 @@ static void java_set_paused(bool paused) { push_event(EV_HOST_PAUSE, paused ? 1 
 static bool java_runs(void) { return J.config && J.main && !J.ended; }
 
 /*
- * One thing the keyboard sent, queued for meglet.InputMethods. The first that arrives is said in the log, with whether it was
+ * One thing the keyboard sent, queued for megler.InputMethods. The first that arrives is said in the log, with whether it was
  * queued, so that a phone's log shows where typed text was lost: the shell says that it sent it, this that the core queued it,
  * and the framework (the overlay's InputMethods) where it went. Never the text itself.
  */
@@ -1393,15 +1393,15 @@ void mg_java_text_key(int key)
 {
     /* Android's key codes for the keys that go to the field as a hardware keyboard's would. */
     static const int codes[] = { 0, 0, 0, 112 /* FORWARD_DEL */, 21, 22, 19, 20 /* DPAD_LEFT, RIGHT, UP, DOWN */, 122, 123 /* MOVE_HOME, MOVE_END */ };
-    if (key == MEGLET_TEXT_BACKSPACE) push_text("d", NULL);
+    if (key == MEGLER_TEXT_BACKSPACE) push_text("d", NULL);
     /*
      * Enter is a new line where the field said so when the keyboard was shown for it, and typed as one. (The framework's
-     * own "e" would decide it again, and decides it the wrong way round: meglet.InputMethods makes a new line only where
+     * own "e" would decide it again, and decides it the wrong way round: megler.InputMethods makes a new line only where
      * IME_FLAG_NO_ENTER_ACTION is not set, which is never in a field of several lines.) Anywhere else it is the editor's
      * action.
      */
-    else if (key == MEGLET_TEXT_ENTER) push_text(J.enter_newline ? "t\n" : "e", NULL);
-    else if (key >= MEGLET_TEXT_DELETE && key <= MEGLET_TEXT_END && java_runs()) {
+    else if (key == MEGLER_TEXT_ENTER) push_text(J.enter_newline ? "t\n" : "e", NULL);
+    else if (key >= MEGLER_TEXT_DELETE && key <= MEGLER_TEXT_END && java_runs()) {
         push_event(EV_KEY, codes[key], 1, 0);
         push_event(EV_KEY, codes[key], 0, 0);
     }

@@ -3,11 +3,11 @@ package android.hardware.camera2.params;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ColorSpaceProfiles {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int UNSPECIFIED = -1;
     public ColorSpaceProfiles(long[] p0) {}
     public static void checkProfileValue(int p0) {}
-    public java.util.Map getProfileMap() { return (megletProps.get("ProfileMap") != null ? (java.util.Map) megletProps.get("ProfileMap") : new java.util.HashMap()); }
+    public java.util.Map getProfileMap() { return (meglerProps.get("ProfileMap") != null ? (java.util.Map) meglerProps.get("ProfileMap") : new java.util.HashMap()); }
     public java.util.Set getSupportedColorSpaces(int p0) { return new java.util.HashSet(); }
     public java.util.Set getSupportedColorSpacesForDynamicRange(int p0, long p1) { return new java.util.HashSet(); }
     public java.util.Set getSupportedDynamicRangeProfiles(android.graphics.ColorSpace.Named p0, int p1) { return new java.util.HashSet(); }

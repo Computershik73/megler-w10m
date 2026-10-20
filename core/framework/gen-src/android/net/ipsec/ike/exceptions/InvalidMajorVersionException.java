@@ -3,11 +3,11 @@ package android.net.ipsec.ike.exceptions;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class InvalidMajorVersionException extends android.net.ipsec.ike.exceptions.IkeProtocolException {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public InvalidMajorVersionException(byte p0) { super((int) 0); }
     public InvalidMajorVersionException(byte[] p0) { super((int) 0); }
-    public byte getMajorVersion() { return (megletProps.get("MajorVersion") instanceof Byte ? (Byte) megletProps.get("MajorVersion") : (byte) 0); }
-    public int getMetricsErrorCode() { return (megletProps.get("MetricsErrorCode") instanceof Integer ? (Integer) megletProps.get("MetricsErrorCode") : 0); }
+    public byte getMajorVersion() { return (meglerProps.get("MajorVersion") instanceof Byte ? (Byte) meglerProps.get("MajorVersion") : (byte) 0); }
+    public int getMetricsErrorCode() { return (meglerProps.get("MetricsErrorCode") instanceof Integer ? (Integer) meglerProps.get("MetricsErrorCode") : 0); }
     public boolean isValidDataLength(int p0) { return false; }
     InvalidMajorVersionException() { this((byte) (byte) 0); }
 }

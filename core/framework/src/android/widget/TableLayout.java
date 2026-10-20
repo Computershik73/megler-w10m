@@ -16,12 +16,12 @@ public class TableLayout extends LinearLayout {
     public TableLayout(Context c, AttributeSet attrs) {
         super(c, attrs);
         setOrientation(VERTICAL);
-        TypedArray a = c.obtainStyledAttributes(attrs, meglet.S.TableLayout);
-        String s = a.getString(meglet.S.TableLayout_stretchColumns);
+        TypedArray a = c.obtainStyledAttributes(attrs, megler.S.TableLayout);
+        String s = a.getString(megler.S.TableLayout_stretchColumns);
         if (s != null) { if (s.trim().equals("*")) mStretchAll = true; else mStretchable = parse(s); }
-        s = a.getString(meglet.S.TableLayout_shrinkColumns);
+        s = a.getString(megler.S.TableLayout_shrinkColumns);
         if (s != null) { if (s.trim().equals("*")) mShrinkAll = true; else mShrinkable = parse(s); }
-        s = a.getString(meglet.S.TableLayout_collapseColumns);
+        s = a.getString(megler.S.TableLayout_collapseColumns);
         if (s != null) mCollapsed = parse(s);
         a.recycle();
     }
@@ -53,7 +53,7 @@ public class TableLayout extends LinearLayout {
         for (int i = 0; i < count; i++) { View c = getChildAt(i); if (c instanceof TableRow) ((TableRow) c).setColumnsWidthConstraints(widths); }
         super.onMeasure(ws, hs);
     }
-    @Override public void addView(View child, int index, ViewGroup.LayoutParams p) { super.addView(child, index, p); if (child instanceof TableRow) ((TableRow) child).setColumnCollapsedMeglet(mCollapsed); }
+    @Override public void addView(View child, int index, ViewGroup.LayoutParams p) { super.addView(child, index, p); if (child instanceof TableRow) ((TableRow) child).setColumnCollapsedMegler(mCollapsed); }
     @Override public LayoutParams generateLayoutParams(AttributeSet a) { return new TableLayout.LayoutParams(getContext(), a); }
     @Override protected LinearLayout.LayoutParams generateDefaultLayoutParams() { return new LayoutParams(); }
     @Override protected boolean checkLayoutParams(ViewGroup.LayoutParams p) { return p instanceof TableLayout.LayoutParams; }

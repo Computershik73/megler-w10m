@@ -3,7 +3,7 @@ package android.os.strictmode;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class IntentReceiverLeakedViolation extends android.os.strictmode.Violation {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public IntentReceiverLeakedViolation(java.lang.Throwable p0) { super(); }
     IntentReceiverLeakedViolation() { this((java.lang.Throwable) null); }
 }

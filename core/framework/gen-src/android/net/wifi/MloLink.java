@@ -3,7 +3,7 @@ package android.net.wifi;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MloLink implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int INVALID_MLO_LINK_ID = -1;
     public static final int MAX_MLO_LINK_ID = 15;
@@ -22,31 +22,31 @@ public final class MloLink implements android.os.Parcelable {
     public static java.lang.String getStateString(int p0) { return null; }
     public static boolean isValidState(int p0) { return false; }
     public int describeContents() { return 0; }
-    public android.net.MacAddress getApMacAddress() { return (android.net.MacAddress) megletProps.get("ApMacAddress"); }
-    public int getBand() { return (megletProps.get("Band") instanceof Integer ? (Integer) megletProps.get("Band") : 0); }
-    public int getChannel() { return (megletProps.get("Channel") instanceof Integer ? (Integer) megletProps.get("Channel") : 0); }
-    public int getLinkId() { return (megletProps.get("LinkId") instanceof Integer ? (Integer) megletProps.get("LinkId") : 0); }
-    public double getLostTxPacketsPerSecond() { return (megletProps.get("LostTxPacketsPerSecond") instanceof Double ? (Double) megletProps.get("LostTxPacketsPerSecond") : 0d); }
-    public double getRetriedTxPacketsPerSecond() { return (megletProps.get("RetriedTxPacketsPerSecond") instanceof Double ? (Double) megletProps.get("RetriedTxPacketsPerSecond") : 0d); }
-    public int getRssi() { return (megletProps.get("Rssi") instanceof Integer ? (Integer) megletProps.get("Rssi") : 0); }
-    public int getRxLinkSpeedMbps() { return (megletProps.get("RxLinkSpeedMbps") instanceof Integer ? (Integer) megletProps.get("RxLinkSpeedMbps") : 0); }
-    public android.net.MacAddress getStaMacAddress() { return (android.net.MacAddress) megletProps.get("StaMacAddress"); }
-    public int getState() { return (megletProps.get("State") instanceof Integer ? (Integer) megletProps.get("State") : 0); }
-    public double getSuccessfulRxPacketsPerSecond() { return (megletProps.get("SuccessfulRxPacketsPerSecond") instanceof Double ? (Double) megletProps.get("SuccessfulRxPacketsPerSecond") : 0d); }
-    public double getSuccessfulTxPacketsPerSecond() { return (megletProps.get("SuccessfulTxPacketsPerSecond") instanceof Double ? (Double) megletProps.get("SuccessfulTxPacketsPerSecond") : 0d); }
-    public int getTxLinkSpeedMbps() { return (megletProps.get("TxLinkSpeedMbps") instanceof Integer ? (Integer) megletProps.get("TxLinkSpeedMbps") : 0); }
-    public void setApMacAddress(android.net.MacAddress p0) { megletProps.put("ApMacAddress", p0); }
-    public void setBand(int p0) { megletProps.put("Band", Integer.valueOf(p0)); }
-    public void setChannel(int p0) { megletProps.put("Channel", Integer.valueOf(p0)); }
-    public void setLinkId(int p0) { megletProps.put("LinkId", Integer.valueOf(p0)); }
-    public void setLostTxPacketsPerSecond(double p0) { megletProps.put("LostTxPacketsPerSecond", Double.valueOf(p0)); }
-    public void setRetriedTxPacketsRate(double p0) { megletProps.put("RetriedTxPacketsRate", Double.valueOf(p0)); }
-    public void setRssi(int p0) { megletProps.put("Rssi", Integer.valueOf(p0)); }
-    public void setRxLinkSpeedMbps(int p0) { megletProps.put("RxLinkSpeedMbps", Integer.valueOf(p0)); }
-    public void setStaMacAddress(android.net.MacAddress p0) { megletProps.put("StaMacAddress", p0); }
-    public void setState(int p0) { megletProps.put("State", Integer.valueOf(p0)); }
-    public void setSuccessfulRxPacketsPerSecond(double p0) { megletProps.put("SuccessfulRxPacketsPerSecond", Double.valueOf(p0)); }
-    public void setSuccessfulTxPacketsPerSecond(double p0) { megletProps.put("SuccessfulTxPacketsPerSecond", Double.valueOf(p0)); }
-    public void setTxLinkSpeedMbps(int p0) { megletProps.put("TxLinkSpeedMbps", Integer.valueOf(p0)); }
+    public android.net.MacAddress getApMacAddress() { return (android.net.MacAddress) meglerProps.get("ApMacAddress"); }
+    public int getBand() { return (meglerProps.get("Band") instanceof Integer ? (Integer) meglerProps.get("Band") : 0); }
+    public int getChannel() { return (meglerProps.get("Channel") instanceof Integer ? (Integer) meglerProps.get("Channel") : 0); }
+    public int getLinkId() { return (meglerProps.get("LinkId") instanceof Integer ? (Integer) meglerProps.get("LinkId") : 0); }
+    public double getLostTxPacketsPerSecond() { return (meglerProps.get("LostTxPacketsPerSecond") instanceof Double ? (Double) meglerProps.get("LostTxPacketsPerSecond") : 0d); }
+    public double getRetriedTxPacketsPerSecond() { return (meglerProps.get("RetriedTxPacketsPerSecond") instanceof Double ? (Double) meglerProps.get("RetriedTxPacketsPerSecond") : 0d); }
+    public int getRssi() { return (meglerProps.get("Rssi") instanceof Integer ? (Integer) meglerProps.get("Rssi") : 0); }
+    public int getRxLinkSpeedMbps() { return (meglerProps.get("RxLinkSpeedMbps") instanceof Integer ? (Integer) meglerProps.get("RxLinkSpeedMbps") : 0); }
+    public android.net.MacAddress getStaMacAddress() { return (android.net.MacAddress) meglerProps.get("StaMacAddress"); }
+    public int getState() { return (meglerProps.get("State") instanceof Integer ? (Integer) meglerProps.get("State") : 0); }
+    public double getSuccessfulRxPacketsPerSecond() { return (meglerProps.get("SuccessfulRxPacketsPerSecond") instanceof Double ? (Double) meglerProps.get("SuccessfulRxPacketsPerSecond") : 0d); }
+    public double getSuccessfulTxPacketsPerSecond() { return (meglerProps.get("SuccessfulTxPacketsPerSecond") instanceof Double ? (Double) meglerProps.get("SuccessfulTxPacketsPerSecond") : 0d); }
+    public int getTxLinkSpeedMbps() { return (meglerProps.get("TxLinkSpeedMbps") instanceof Integer ? (Integer) meglerProps.get("TxLinkSpeedMbps") : 0); }
+    public void setApMacAddress(android.net.MacAddress p0) { meglerProps.put("ApMacAddress", p0); }
+    public void setBand(int p0) { meglerProps.put("Band", Integer.valueOf(p0)); }
+    public void setChannel(int p0) { meglerProps.put("Channel", Integer.valueOf(p0)); }
+    public void setLinkId(int p0) { meglerProps.put("LinkId", Integer.valueOf(p0)); }
+    public void setLostTxPacketsPerSecond(double p0) { meglerProps.put("LostTxPacketsPerSecond", Double.valueOf(p0)); }
+    public void setRetriedTxPacketsRate(double p0) { meglerProps.put("RetriedTxPacketsRate", Double.valueOf(p0)); }
+    public void setRssi(int p0) { meglerProps.put("Rssi", Integer.valueOf(p0)); }
+    public void setRxLinkSpeedMbps(int p0) { meglerProps.put("RxLinkSpeedMbps", Integer.valueOf(p0)); }
+    public void setStaMacAddress(android.net.MacAddress p0) { meglerProps.put("StaMacAddress", p0); }
+    public void setState(int p0) { meglerProps.put("State", Integer.valueOf(p0)); }
+    public void setSuccessfulRxPacketsPerSecond(double p0) { meglerProps.put("SuccessfulRxPacketsPerSecond", Double.valueOf(p0)); }
+    public void setSuccessfulTxPacketsPerSecond(double p0) { meglerProps.put("SuccessfulTxPacketsPerSecond", Double.valueOf(p0)); }
+    public void setTxLinkSpeedMbps(int p0) { meglerProps.put("TxLinkSpeedMbps", Integer.valueOf(p0)); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
 }

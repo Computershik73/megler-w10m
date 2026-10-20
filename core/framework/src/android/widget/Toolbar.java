@@ -35,7 +35,7 @@ public class Toolbar extends ViewGroup {
     private boolean mTitleColorSet, mSubtitleColorSet;
     private final LinearLayout mMenuView;
     private ImageButton mOverflow;
-    private meglet.MenuImpl mMenu;
+    private megler.MenuImpl mMenu;
     private OnMenuItemClickListener mOnMenuItemClickListener;
     private Drawable mOverflowIcon;
     private int mPopupTheme;
@@ -47,21 +47,21 @@ public class Toolbar extends ViewGroup {
     public Toolbar(Context c, AttributeSet attrs, int s, int r) {
         super(c, attrs, s, r);
         mD = c.getResources().getDisplayMetrics().density;
-        TypedArray a = c.obtainStyledAttributes(attrs, meglet.S.Toolbar, s, r);
-        mTitleAppearance = a.getResourceId(meglet.S.Toolbar_titleTextAppearance, 0);
-        mSubtitleAppearance = a.getResourceId(meglet.S.Toolbar_subtitleTextAppearance, 0);
-        mContentInsetStart = a.getDimensionPixelOffset(meglet.S.Toolbar_contentInsetStart, (int) (16 * mD));
-        mContentInsetEnd = a.getDimensionPixelOffset(meglet.S.Toolbar_contentInsetEnd, 0);
-        mTitleMargin = a.getDimensionPixelOffset(meglet.S.Toolbar_titleMargin, 0);
-        mPopupTheme = a.getResourceId(meglet.S.Toolbar_popupTheme, 0);
-        CharSequence title = a.getText(meglet.S.Toolbar_title);
-        CharSequence subtitle = a.getText(meglet.S.Toolbar_subtitle);
-        if (a.hasValue(meglet.S.Toolbar_titleTextColor)) { mTitleTextColor = a.getColor(meglet.S.Toolbar_titleTextColor, 0xFFFFFFFF); mTitleColorSet = true; }
-        if (a.hasValue(meglet.S.Toolbar_subtitleTextColor)) { mSubtitleTextColor = a.getColor(meglet.S.Toolbar_subtitleTextColor, 0xFFFFFFFF); mSubtitleColorSet = true; }
+        TypedArray a = c.obtainStyledAttributes(attrs, megler.S.Toolbar, s, r);
+        mTitleAppearance = a.getResourceId(megler.S.Toolbar_titleTextAppearance, 0);
+        mSubtitleAppearance = a.getResourceId(megler.S.Toolbar_subtitleTextAppearance, 0);
+        mContentInsetStart = a.getDimensionPixelOffset(megler.S.Toolbar_contentInsetStart, (int) (16 * mD));
+        mContentInsetEnd = a.getDimensionPixelOffset(megler.S.Toolbar_contentInsetEnd, 0);
+        mTitleMargin = a.getDimensionPixelOffset(megler.S.Toolbar_titleMargin, 0);
+        mPopupTheme = a.getResourceId(megler.S.Toolbar_popupTheme, 0);
+        CharSequence title = a.getText(megler.S.Toolbar_title);
+        CharSequence subtitle = a.getText(megler.S.Toolbar_subtitle);
+        if (a.hasValue(megler.S.Toolbar_titleTextColor)) { mTitleTextColor = a.getColor(megler.S.Toolbar_titleTextColor, 0xFFFFFFFF); mTitleColorSet = true; }
+        if (a.hasValue(megler.S.Toolbar_subtitleTextColor)) { mSubtitleTextColor = a.getColor(megler.S.Toolbar_subtitleTextColor, 0xFFFFFFFF); mSubtitleColorSet = true; }
         Drawable nav = null, logo = null;
-        try { nav = a.getDrawable(meglet.S.Toolbar_navigationIcon); } catch (RuntimeException e) {}
-        try { logo = a.getDrawable(meglet.S.Toolbar_logo); } catch (RuntimeException e) {}
-        CharSequence navDesc = a.getText(meglet.S.Toolbar_navigationContentDescription);
+        try { nav = a.getDrawable(megler.S.Toolbar_navigationIcon); } catch (RuntimeException e) {}
+        try { logo = a.getDrawable(megler.S.Toolbar_logo); } catch (RuntimeException e) {}
+        CharSequence navDesc = a.getText(megler.S.Toolbar_navigationContentDescription);
         a.recycle();
         mMenuView = new LinearLayout(c);
         mMenuView.setOrientation(LinearLayout.HORIZONTAL);
@@ -75,8 +75,8 @@ public class Toolbar extends ViewGroup {
         if (getMinimumHeight() == 0) setMinimumHeight(actionBarSize());
     }
     private int actionBarSize() { TypedValue v = new TypedValue(); return getContext().getTheme().resolveAttribute(android.R.attr.actionBarSize, v, true) ? TypedValue.complexToDimensionPixelSize(v.data, getResources().getDisplayMetrics()) : (int) (56 * mD); }
-    private void addSystemView(View v) { LayoutParams lp = new LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT); lp.gravity = Gravity.CENTER_VERTICAL; v.setTag(meglet.IR.id.action_bar, "system"); addView(v, lp); }
-    private boolean isSystem(View v) { return "system".equals(v.getTag(meglet.IR.id.action_bar)); }
+    private void addSystemView(View v) { LayoutParams lp = new LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT); lp.gravity = Gravity.CENTER_VERTICAL; v.setTag(megler.IR.id.action_bar, "system"); addView(v, lp); }
+    private boolean isSystem(View v) { return "system".equals(v.getTag(megler.IR.id.action_bar)); }
     private int foreground() {
         TypedValue v = new TypedValue();
         if (getContext().getTheme().resolveAttribute(android.R.attr.textColorPrimary, v, true)) {
@@ -135,8 +135,8 @@ public class Toolbar extends ViewGroup {
     public void setTitleTextAppearance(Context c, int r) { mTitleAppearance = r; if (mTitleTextView != null) mTitleTextView.setTextAppearance(r); }
     public void setSubtitleTextAppearance(Context c, int r) { mSubtitleAppearance = r; if (mSubtitleTextView != null) mSubtitleTextView.setTextAppearance(r); }
     public void setTitleTextColor(int c) { mTitleTextColor = c; mTitleColorSet = true; if (mTitleTextView != null) mTitleTextView.setTextColor(c); }
-    /** Meglet: the title's color, for icons drawn to match it (the decor action bar's up arrow). */
-    public int getTitleTextColorMeglet() { return mTitleColorSet ? mTitleTextColor : foreground(); }
+    /** Megler: the title's color, for icons drawn to match it (the decor action bar's up arrow). */
+    public int getTitleTextColorMegler() { return mTitleColorSet ? mTitleTextColor : foreground(); }
     public void setTitleTextColor(ColorStateList c) { setTitleTextColor(c.getDefaultColor()); }
     public void setSubtitleTextColor(int c) { mSubtitleTextColor = c; mSubtitleColorSet = true; if (mSubtitleTextView != null) mSubtitleTextView.setTextColor(c); }
     public void setSubtitleTextColor(ColorStateList c) { setSubtitleTextColor(c.getDefaultColor()); }
@@ -151,7 +151,7 @@ public class Toolbar extends ViewGroup {
     }
     public Drawable getNavigationIcon() { return mNavButton != null ? mNavButton.getDrawable() : null; }
     public void setNavigationOnClickListener(OnClickListener l) { ensureNavButton(); mNavButton.setOnClickListener(l); }
-    public View getNavigationViewMeglet() { return mNavButton; }
+    public View getNavigationViewMegler() { return mNavButton; }
     private ImageButton iconButton() {
         ImageButton b = new ImageButton(getContext(), null, 0);
         b.setScaleType(ImageView.ScaleType.CENTER);
@@ -163,10 +163,10 @@ public class Toolbar extends ViewGroup {
         return b;
     }
     private void ensureNavButton() { if (mNavButton == null) { mNavButton = iconButton(); mNavButton.clearColorFilter(); addSystemView(mNavButton); } }
-    public Menu getMenu() { if (mMenu == null) mMenu = new meglet.MenuImpl(getContext()); return mMenu; }
+    public Menu getMenu() { if (mMenu == null) mMenu = new megler.MenuImpl(getContext()); return mMenu; }
     public void setOverflowIcon(Drawable d) { mOverflowIcon = d; if (mOverflow != null) mOverflow.setImageDrawable(d); }
     public Drawable getOverflowIcon() { return mOverflowIcon; }
-    public void inflateMenu(int r) { new MenuInflater(getContext()).inflate(r, getMenu()); megletMenuChanged(); }
+    public void inflateMenu(int r) { new MenuInflater(getContext()).inflate(r, getMenu()); meglerMenuChanged(); }
     public void setOnMenuItemClickListener(OnMenuItemClickListener l) { mOnMenuItemClickListener = l; }
     public boolean showOverflowMenu() { if (mMenu == null) return false; showOverflow(); return true; }
     public boolean isOverflowMenuShowing() { return mOverflowPopup != null && mOverflowPopup.isShowing(); }
@@ -187,17 +187,17 @@ public class Toolbar extends ViewGroup {
         if (mOnMenuItemClickListener != null && mOnMenuItemClickListener.onMenuItemClick(it)) return true;
         return false;
     }
-    /** Meglet: the menu's items changed; rebuild the action buttons and the overflow. */
-    public void megletMenuChanged() {
+    /** Megler: the menu's items changed; rebuild the action buttons and the overflow. */
+    public void meglerMenuChanged() {
         mMenuView.removeAllViews();
         mOverflow = null;
         if (mMenu == null) return;
         boolean overflow = false;
-        int actions = 0, maxActions = Math.max(2, (int) (meglet.Native.screenWidth() / mD / 120));
+        int actions = 0, maxActions = Math.max(2, (int) (megler.Native.screenWidth() / mD / 120));
         for (int i = 0; i < mMenu.size(); i++) {
             final MenuItem it = mMenu.getItem(i);
             if (!it.isVisible()) continue;
-            int show = ((meglet.MenuImpl.Item) it).megletShowAs();
+            int show = ((megler.MenuImpl.Item) it).meglerShowAs();
             boolean always = (show & MenuItem.SHOW_AS_ACTION_ALWAYS) != 0, ifRoom = (show & MenuItem.SHOW_AS_ACTION_IF_ROOM) != 0;
             if ((always || (ifRoom && actions < maxActions)) && (it.getActionView() != null || it.getIcon() != null || it.getTitle() != null)) {
                 actions++;
@@ -206,7 +206,7 @@ public class Toolbar extends ViewGroup {
                 else if (it.getIcon() != null && (show & MenuItem.SHOW_AS_ACTION_WITH_TEXT) == 0) { ImageButton b = iconButton(); b.setImageDrawable(it.getIcon()); if (it.getIconTintList() != null) b.setImageTintList(it.getIconTintList()); else b.clearColorFilter(); b.setContentDescription(it.getTitle()); v = b; }
                 else { Button b = new Button(getContext(), null, 0); b.setText(it.getTitle()); b.setBackground(null); b.setTextColor(foreground()); b.setAllCaps(true); b.setPadding((int) (12 * mD), 0, (int) (12 * mD), 0); b.setMinHeight((int) (48 * mD)); b.setMinimumHeight((int) (48 * mD)); b.setGravity(Gravity.CENTER); v = b; }
                 v.setEnabled(it.isEnabled());
-                if (it.getActionView() == null) v.setOnClickListener(x -> { if (!onItem(it)) ((meglet.MenuImpl.Item) it).megletInvoke(); });
+                if (it.getActionView() == null) v.setOnClickListener(x -> { if (!onItem(it)) ((megler.MenuImpl.Item) it).meglerInvoke(); });
                 mMenuView.addView(v, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             } else overflow = true;
         }
@@ -221,18 +221,18 @@ public class Toolbar extends ViewGroup {
         requestLayout();
     }
     private void showOverflow() {
-        meglet.MenuImpl rest = new meglet.MenuImpl(getContext());
+        megler.MenuImpl rest = new megler.MenuImpl(getContext());
         final ArrayList<MenuItem> hidden = new ArrayList<>();
-        int actions = 0, maxActions = Math.max(2, (int) (meglet.Native.screenWidth() / mD / 120));
+        int actions = 0, maxActions = Math.max(2, (int) (megler.Native.screenWidth() / mD / 120));
         for (int i = 0; i < mMenu.size(); i++) {
             MenuItem it = mMenu.getItem(i);
             if (!it.isVisible()) continue;
-            int show = ((meglet.MenuImpl.Item) it).megletShowAs();
+            int show = ((megler.MenuImpl.Item) it).meglerShowAs();
             boolean always = (show & MenuItem.SHOW_AS_ACTION_ALWAYS) != 0, ifRoom = (show & MenuItem.SHOW_AS_ACTION_IF_ROOM) != 0;
             if (always || (ifRoom && actions < maxActions)) { actions++; continue; }
             hidden.add(it);
         }
-        meglet.MenuImpl view = meglet.MenuImpl.viewOf(getContext(), hidden);
+        megler.MenuImpl view = megler.MenuImpl.viewOf(getContext(), hidden);
         Context pc = mPopupTheme != 0 ? new ContextThemeWrapper(getContext(), mPopupTheme) : getContext();
         mOverflowPopup = PopupMenu.showMenu(pc, mOverflow != null ? mOverflow : this, view, Gravity.END, this::onItem, null);
     }
@@ -307,22 +307,22 @@ public class Toolbar extends ViewGroup {
     @Override public boolean onTouchEvent(MotionEvent e) { return true; }
     @Override public CharSequence getAccessibilityClassName() { return Toolbar.class.getName(); }
     // ---- generated by tools/compat/fillmembers.py: the platform's members this class does not write (signatures only)
-    private final java.util.HashMap<String, Object> megletFill = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerFill = new java.util.HashMap<>();
     public boolean canShowOverflowMenu() { return false; }
-    public java.lang.CharSequence getCollapseContentDescription() { return (java.lang.CharSequence) megletFill.get("CollapseContentDescription"); }
-    public android.graphics.drawable.Drawable getCollapseIcon() { return (android.graphics.drawable.Drawable) megletFill.get("CollapseIcon"); }
+    public java.lang.CharSequence getCollapseContentDescription() { return (java.lang.CharSequence) meglerFill.get("CollapseContentDescription"); }
+    public android.graphics.drawable.Drawable getCollapseIcon() { return (android.graphics.drawable.Drawable) meglerFill.get("CollapseIcon"); }
     public android.view.View getNavigationView() { return null; }
     public boolean isOverflowMenuShowPending() { return false; }
     public boolean isTitleTruncated() { return false; }
-    public void setCollapseContentDescription(int p0) { megletFill.put("CollapseContentDescription", Integer.valueOf(p0)); }
-    public void setCollapseContentDescription(java.lang.CharSequence p0) { megletFill.put("CollapseContentDescription", p0); }
-    public void setCollapseIcon(int p0) { megletFill.put("CollapseIcon", Integer.valueOf(p0)); }
-    public void setCollapseIcon(android.graphics.drawable.Drawable p0) { megletFill.put("CollapseIcon", p0); }
+    public void setCollapseContentDescription(int p0) { meglerFill.put("CollapseContentDescription", Integer.valueOf(p0)); }
+    public void setCollapseContentDescription(java.lang.CharSequence p0) { meglerFill.put("CollapseContentDescription", p0); }
+    public void setCollapseIcon(int p0) { meglerFill.put("CollapseIcon", Integer.valueOf(p0)); }
+    public void setCollapseIcon(android.graphics.drawable.Drawable p0) { meglerFill.put("CollapseIcon", p0); }
     public void setCollapsible(boolean p0) {}
     // ---- end of generated members
     // ---- generated by tools/compat/genstubs.py: the platform's nested classes this class does not write
     public static final class InspectionCompanion implements android.view.inspector.InspectionCompanion {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public InspectionCompanion() {}
         public void mapProperties(android.view.inspector.PropertyMapper p0) {}
         public void readProperties(android.widget.Toolbar p0, android.view.inspector.PropertyReader p1) {}

@@ -3,20 +3,20 @@ package android.graphics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Matrix44 {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public Matrix44() {}
     public Matrix44(android.graphics.Matrix p0) {}
     public android.graphics.Matrix44 concat(android.graphics.Matrix44 p0) { return this; }
     public float get(int p0, int p1) { return 0f; }
     public void getValues(float[] p0) {}
     public boolean invert() { return false; }
-    public boolean isIdentity() { return (megletProps.get("Identity") instanceof Boolean ? (Boolean) megletProps.get("Identity") : false); }
+    public boolean isIdentity() { return (meglerProps.get("Identity") instanceof Boolean ? (Boolean) meglerProps.get("Identity") : false); }
     public void map(float p0, float p1, float p2, float p3, float[] p4) {}
     public float[] map(float p0, float p1, float p2, float p3) { return null; }
     public void reset() {}
     public android.graphics.Matrix44 rotate(float p0, float p1, float p2, float p3) { return this; }
     public android.graphics.Matrix44 scale(float p0, float p1, float p2) { return this; }
     public void set(int p0, int p1, float p2) {}
-    public void setValues(float[] p0) { megletProps.put("Values", p0); }
+    public void setValues(float[] p0) { meglerProps.put("Values", p0); }
     public android.graphics.Matrix44 translate(float p0, float p1, float p2) { return this; }
 }

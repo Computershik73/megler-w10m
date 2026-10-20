@@ -3,28 +3,28 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ApplicationMediaCapabilities implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static android.media.ApplicationMediaCapabilities createFromXml(org.xmlpull.v1.XmlPullParser p0) { return new ApplicationMediaCapabilities(); }
     public int describeContents() { return 0; }
-    public java.util.List getSupportedHdrTypes() { return (megletProps.get("SupportedHdrTypes") != null ? (java.util.List) megletProps.get("SupportedHdrTypes") : new java.util.ArrayList()); }
-    public java.util.List getSupportedVideoMimeTypes() { return (megletProps.get("SupportedVideoMimeTypes") != null ? (java.util.List) megletProps.get("SupportedVideoMimeTypes") : new java.util.ArrayList()); }
-    public java.util.List getUnsupportedHdrTypes() { return (megletProps.get("UnsupportedHdrTypes") != null ? (java.util.List) megletProps.get("UnsupportedHdrTypes") : new java.util.ArrayList()); }
-    public java.util.List getUnsupportedVideoMimeTypes() { return (megletProps.get("UnsupportedVideoMimeTypes") != null ? (java.util.List) megletProps.get("UnsupportedVideoMimeTypes") : new java.util.ArrayList()); }
+    public java.util.List getSupportedHdrTypes() { return (meglerProps.get("SupportedHdrTypes") != null ? (java.util.List) meglerProps.get("SupportedHdrTypes") : new java.util.ArrayList()); }
+    public java.util.List getSupportedVideoMimeTypes() { return (meglerProps.get("SupportedVideoMimeTypes") != null ? (java.util.List) meglerProps.get("SupportedVideoMimeTypes") : new java.util.ArrayList()); }
+    public java.util.List getUnsupportedHdrTypes() { return (meglerProps.get("UnsupportedHdrTypes") != null ? (java.util.List) meglerProps.get("UnsupportedHdrTypes") : new java.util.ArrayList()); }
+    public java.util.List getUnsupportedVideoMimeTypes() { return (meglerProps.get("UnsupportedVideoMimeTypes") != null ? (java.util.List) meglerProps.get("UnsupportedVideoMimeTypes") : new java.util.ArrayList()); }
     public boolean isFormatSpecified(java.lang.String p0) { return false; }
     public boolean isHdrTypeSupported(java.lang.String p0) { return false; }
-    public boolean isSlowMotionSupported() { return (megletProps.get("SlowMotionSupported") instanceof Boolean ? (Boolean) megletProps.get("SlowMotionSupported") : false); }
+    public boolean isSlowMotionSupported() { return (meglerProps.get("SlowMotionSupported") instanceof Boolean ? (Boolean) meglerProps.get("SlowMotionSupported") : false); }
     public boolean isVideoMimeTypeSupported(java.lang.String p0) { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected ApplicationMediaCapabilities() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public android.media.ApplicationMediaCapabilities.Builder addSupportedHdrType(java.lang.String p0) { return this; }
         public android.media.ApplicationMediaCapabilities.Builder addSupportedVideoMimeType(java.lang.String p0) { return this; }
         public android.media.ApplicationMediaCapabilities.Builder addUnsupportedHdrType(java.lang.String p0) { return this; }
         public android.media.ApplicationMediaCapabilities.Builder addUnsupportedVideoMimeType(java.lang.String p0) { return this; }
-        public android.media.ApplicationMediaCapabilities build() { android.media.ApplicationMediaCapabilities x = new android.media.ApplicationMediaCapabilities(); x.megletProps.putAll(megletProps); return x; }
-        public android.media.ApplicationMediaCapabilities.Builder setSlowMotionSupported(boolean p0) { megletProps.put("SlowMotionSupported", Boolean.valueOf(p0)); return this; }
+        public android.media.ApplicationMediaCapabilities build() { android.media.ApplicationMediaCapabilities x = new android.media.ApplicationMediaCapabilities(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.media.ApplicationMediaCapabilities.Builder setSlowMotionSupported(boolean p0) { meglerProps.put("SlowMotionSupported", Boolean.valueOf(p0)); return this; }
     }
 }

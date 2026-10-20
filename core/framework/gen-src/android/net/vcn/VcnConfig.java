@@ -3,24 +3,24 @@ package android.net.vcn;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class VcnConfig implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public VcnConfig(android.os.PersistableBundle p0) {}
     public int describeContents() { return 0; }
-    public java.util.Set getGatewayConnectionConfigs() { return (megletProps.get("GatewayConnectionConfigs") != null ? (java.util.Set) megletProps.get("GatewayConnectionConfigs") : new java.util.HashSet()); }
-    public java.lang.String getProvisioningPackageName() { return (java.lang.String) megletProps.get("ProvisioningPackageName"); }
-    public java.util.Set getRestrictedUnderlyingNetworkTransports() { return (megletProps.get("RestrictedUnderlyingNetworkTransports") != null ? (java.util.Set) megletProps.get("RestrictedUnderlyingNetworkTransports") : new java.util.HashSet()); }
-    public boolean isTestModeProfile() { return (megletProps.get("TestModeProfile") instanceof Boolean ? (Boolean) megletProps.get("TestModeProfile") : false); }
+    public java.util.Set getGatewayConnectionConfigs() { return (meglerProps.get("GatewayConnectionConfigs") != null ? (java.util.Set) meglerProps.get("GatewayConnectionConfigs") : new java.util.HashSet()); }
+    public java.lang.String getProvisioningPackageName() { return (java.lang.String) meglerProps.get("ProvisioningPackageName"); }
+    public java.util.Set getRestrictedUnderlyingNetworkTransports() { return (meglerProps.get("RestrictedUnderlyingNetworkTransports") != null ? (java.util.Set) meglerProps.get("RestrictedUnderlyingNetworkTransports") : new java.util.HashSet()); }
+    public boolean isTestModeProfile() { return (meglerProps.get("TestModeProfile") instanceof Boolean ? (Boolean) meglerProps.get("TestModeProfile") : false); }
     public android.os.PersistableBundle toPersistableBundle() { return null; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     VcnConfig() { this((android.os.PersistableBundle) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.content.Context p0) {}
         public android.net.vcn.VcnConfig.Builder addGatewayConnectionConfig(android.net.vcn.VcnGatewayConnectionConfig p0) { return this; }
-        public android.net.vcn.VcnConfig build() { android.net.vcn.VcnConfig x = new android.net.vcn.VcnConfig(); x.megletProps.putAll(megletProps); return x; }
+        public android.net.vcn.VcnConfig build() { android.net.vcn.VcnConfig x = new android.net.vcn.VcnConfig(); x.meglerProps.putAll(meglerProps); return x; }
         public android.net.vcn.VcnConfig.Builder setIsTestModeProfile() { return this; }
-        public android.net.vcn.VcnConfig.Builder setRestrictedUnderlyingNetworkTransports(java.util.Set p0) { megletProps.put("RestrictedUnderlyingNetworkTransports", p0); return this; }
+        public android.net.vcn.VcnConfig.Builder setRestrictedUnderlyingNetworkTransports(java.util.Set p0) { meglerProps.put("RestrictedUnderlyingNetworkTransports", p0); return this; }
         Builder() { this((android.content.Context) null); }
     }
 }

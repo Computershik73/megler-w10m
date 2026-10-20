@@ -3,10 +3,10 @@ package android.adservices.adselection;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ReportImpressionRequest {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ReportImpressionRequest(long p0) {}
     public ReportImpressionRequest(long p0, android.adservices.adselection.AdSelectionConfig p1) {}
-    public android.adservices.adselection.AdSelectionConfig getAdSelectionConfig() { return (android.adservices.adselection.AdSelectionConfig) megletProps.get("AdSelectionConfig"); }
-    public long getAdSelectionId() { return (megletProps.get("AdSelectionId") instanceof Long ? (Long) megletProps.get("AdSelectionId") : 0L); }
+    public android.adservices.adselection.AdSelectionConfig getAdSelectionConfig() { return (android.adservices.adselection.AdSelectionConfig) meglerProps.get("AdSelectionConfig"); }
+    public long getAdSelectionId() { return (meglerProps.get("AdSelectionId") instanceof Long ? (Long) meglerProps.get("AdSelectionId") : 0L); }
     ReportImpressionRequest() { this((long) 0L); }
 }

@@ -3,7 +3,7 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BluetoothCsipSetCoordinator implements android.bluetooth.BluetoothProfile, java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_CSIS_CONNECTION_STATE_CHANGED = "android.bluetooth.action.CSIS_CONNECTION_STATE_CHANGED";
     public static final java.lang.String ACTION_CSIS_DEVICE_AVAILABLE = "android.bluetooth.action.CSIS_DEVICE_AVAILABLE";
     public static final java.lang.String ACTION_CSIS_SET_MEMBER_AVAILABLE = "android.bluetooth.action.CSIS_SET_MEMBER_AVAILABLE";
@@ -13,9 +13,9 @@ public final class BluetoothCsipSetCoordinator implements android.bluetooth.Blue
     public static final int GROUP_ID_INVALID = -1;
     public void close() {}
     protected void finalize() {}
-    public android.bluetooth.BluetoothAdapter getAdapter() { return (android.bluetooth.BluetoothAdapter) megletProps.get("Adapter"); }
+    public android.bluetooth.BluetoothAdapter getAdapter() { return (android.bluetooth.BluetoothAdapter) meglerProps.get("Adapter"); }
     public java.util.List getAllGroupIds(android.os.ParcelUuid p0) { return new java.util.ArrayList(); }
-    public java.util.List getConnectedDevices() { return (megletProps.get("ConnectedDevices") != null ? (java.util.List) megletProps.get("ConnectedDevices") : new java.util.ArrayList()); }
+    public java.util.List getConnectedDevices() { return (meglerProps.get("ConnectedDevices") != null ? (java.util.List) meglerProps.get("ConnectedDevices") : new java.util.ArrayList()); }
     public int getConnectionPolicy(android.bluetooth.BluetoothDevice p0) { return 0; }
     public int getConnectionState(android.bluetooth.BluetoothDevice p0) { return 0; }
     public java.util.List getDevicesMatchingConnectionStates(int[] p0) { return new java.util.ArrayList(); }

@@ -3,17 +3,17 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class WebAddress {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public WebAddress(java.lang.String p0) {}
-    public java.lang.String getAuthInfo() { return (java.lang.String) megletProps.get("AuthInfo"); }
-    public java.lang.String getHost() { return (java.lang.String) megletProps.get("Host"); }
-    public java.lang.String getPath() { return (java.lang.String) megletProps.get("Path"); }
-    public int getPort() { return (megletProps.get("Port") instanceof Integer ? (Integer) megletProps.get("Port") : 0); }
-    public java.lang.String getScheme() { return (java.lang.String) megletProps.get("Scheme"); }
-    public void setAuthInfo(java.lang.String p0) { megletProps.put("AuthInfo", p0); }
-    public void setHost(java.lang.String p0) { megletProps.put("Host", p0); }
-    public void setPath(java.lang.String p0) { megletProps.put("Path", p0); }
-    public void setPort(int p0) { megletProps.put("Port", Integer.valueOf(p0)); }
-    public void setScheme(java.lang.String p0) { megletProps.put("Scheme", p0); }
+    public java.lang.String getAuthInfo() { return (java.lang.String) meglerProps.get("AuthInfo"); }
+    public java.lang.String getHost() { return (java.lang.String) meglerProps.get("Host"); }
+    public java.lang.String getPath() { return (java.lang.String) meglerProps.get("Path"); }
+    public int getPort() { return (meglerProps.get("Port") instanceof Integer ? (Integer) meglerProps.get("Port") : 0); }
+    public java.lang.String getScheme() { return (java.lang.String) meglerProps.get("Scheme"); }
+    public void setAuthInfo(java.lang.String p0) { meglerProps.put("AuthInfo", p0); }
+    public void setHost(java.lang.String p0) { meglerProps.put("Host", p0); }
+    public void setPath(java.lang.String p0) { meglerProps.put("Path", p0); }
+    public void setPort(int p0) { meglerProps.put("Port", Integer.valueOf(p0)); }
+    public void setScheme(java.lang.String p0) { meglerProps.put("Scheme", p0); }
     WebAddress() { this((java.lang.String) null); }
 }

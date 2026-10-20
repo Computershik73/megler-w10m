@@ -3,7 +3,7 @@ package android.media.tv.interactive;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class TvInteractiveAppService extends android.app.Service {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String COMMAND_PARAMETER_KEY_CHANGE_CHANNEL_QUIETLY = "command_change_channel_quietly";
     public static final java.lang.String COMMAND_PARAMETER_KEY_CHANNEL_URI = "command_channel_uri";
     public static final java.lang.String COMMAND_PARAMETER_KEY_INPUT_ID = "command_input_id";
@@ -40,9 +40,9 @@ public abstract class TvInteractiveAppService extends android.app.Service {
     public void onRegisterAppLinkInfo(android.media.tv.interactive.AppLinkInfo p0) {}
     public void onUnregisterAppLinkInfo(android.media.tv.interactive.AppLinkInfo p0) {}
     public static abstract class Session implements android.view.KeyEvent.Callback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Session(android.content.Context p0) {}
-        public boolean isMediaViewEnabled() { return (megletProps.get("MediaViewEnabled") instanceof Boolean ? (Boolean) megletProps.get("MediaViewEnabled") : false); }
+        public boolean isMediaViewEnabled() { return (meglerProps.get("MediaViewEnabled") instanceof Boolean ? (Boolean) meglerProps.get("MediaViewEnabled") : false); }
         public void layoutSurface(int p0, int p1, int p2, int p3) {}
         public void notifyAdBufferReady(android.media.tv.AdBuffer p0) {}
         public void notifyBiInteractiveAppCreated(android.net.Uri p0, java.lang.String p1) {}
@@ -127,9 +127,9 @@ public abstract class TvInteractiveAppService extends android.app.Service {
         public void requestTvRecordingInfoList(int p0) {}
         public void sendPlaybackCommandRequest(java.lang.String p0, android.os.Bundle p1) {}
         public void sendTimeShiftCommandRequest(java.lang.String p0, android.os.Bundle p1) {}
-        public void setMediaViewEnabled(boolean p0) { megletProps.put("MediaViewEnabled", Boolean.valueOf(p0)); }
+        public void setMediaViewEnabled(boolean p0) { meglerProps.put("MediaViewEnabled", Boolean.valueOf(p0)); }
         public void setTvRecordingInfo(java.lang.String p0, android.media.tv.TvRecordingInfo p1) {}
-        public void setVideoBounds(android.graphics.Rect p0) { megletProps.put("VideoBounds", p0); }
+        public void setVideoBounds(android.graphics.Rect p0) { meglerProps.put("VideoBounds", p0); }
         Session() { this((android.content.Context) null); }
     }
 }

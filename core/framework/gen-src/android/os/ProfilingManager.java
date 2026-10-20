@@ -3,7 +3,7 @@ package android.os;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ProfilingManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String KEY_BUFFER_FILL_POLICY = "KEY_BUFFER_FILL_POLICY";
     public static final java.lang.String KEY_DURATION_MS = "KEY_DURATION_MS";
     public static final java.lang.String KEY_FREQUENCY_HZ = "KEY_FREQUENCY_HZ";

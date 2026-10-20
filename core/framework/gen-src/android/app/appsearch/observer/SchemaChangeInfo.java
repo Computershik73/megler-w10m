@@ -3,10 +3,10 @@ package android.app.appsearch.observer;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SchemaChangeInfo {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public SchemaChangeInfo(java.lang.String p0, java.lang.String p1, java.util.Set p2) {}
-    public java.util.Set getChangedSchemaNames() { return (megletProps.get("ChangedSchemaNames") != null ? (java.util.Set) megletProps.get("ChangedSchemaNames") : new java.util.HashSet()); }
-    public java.lang.String getDatabaseName() { return (java.lang.String) megletProps.get("DatabaseName"); }
-    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
+    public java.util.Set getChangedSchemaNames() { return (meglerProps.get("ChangedSchemaNames") != null ? (java.util.Set) meglerProps.get("ChangedSchemaNames") : new java.util.HashSet()); }
+    public java.lang.String getDatabaseName() { return (java.lang.String) meglerProps.get("DatabaseName"); }
+    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
     SchemaChangeInfo() { this((java.lang.String) null, (java.lang.String) null, (java.util.Set) null); }
 }

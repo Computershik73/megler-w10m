@@ -3,7 +3,7 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TvInputInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String EXTRA_INPUT_ID = "android.media.tv.extra.INPUT_ID";
     public static final int TYPE_COMPONENT = 1004;
@@ -25,19 +25,19 @@ public final class TvInputInfo implements android.os.Parcelable {
     public android.content.Intent createSettingsIntent() { return null; }
     public android.content.Intent createSetupIntent() { return null; }
     public int describeContents() { return 0; }
-    public android.content.ComponentName getComponent() { return (android.content.ComponentName) megletProps.get("Component"); }
-    public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
-    public int getHdmiConnectionRelativePosition() { return (megletProps.get("HdmiConnectionRelativePosition") instanceof Integer ? (Integer) megletProps.get("HdmiConnectionRelativePosition") : 0); }
-    public android.hardware.hdmi.HdmiDeviceInfo getHdmiDeviceInfo() { return (android.hardware.hdmi.HdmiDeviceInfo) megletProps.get("HdmiDeviceInfo"); }
-    public java.lang.String getId() { return (java.lang.String) megletProps.get("Id"); }
-    public java.lang.String getParentId() { return (java.lang.String) megletProps.get("ParentId"); }
-    public android.content.pm.ServiceInfo getServiceInfo() { return (android.content.pm.ServiceInfo) megletProps.get("ServiceInfo"); }
-    public int getTunerCount() { return (megletProps.get("TunerCount") instanceof Integer ? (Integer) megletProps.get("TunerCount") : 0); }
-    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
-    public boolean isConnectedToHdmiSwitch() { return (megletProps.get("ConnectedToHdmiSwitch") instanceof Boolean ? (Boolean) megletProps.get("ConnectedToHdmiSwitch") : false); }
-    public boolean isHardwareInput() { return (megletProps.get("HardwareInput") instanceof Boolean ? (Boolean) megletProps.get("HardwareInput") : false); }
+    public android.content.ComponentName getComponent() { return (android.content.ComponentName) meglerProps.get("Component"); }
+    public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
+    public int getHdmiConnectionRelativePosition() { return (meglerProps.get("HdmiConnectionRelativePosition") instanceof Integer ? (Integer) meglerProps.get("HdmiConnectionRelativePosition") : 0); }
+    public android.hardware.hdmi.HdmiDeviceInfo getHdmiDeviceInfo() { return (android.hardware.hdmi.HdmiDeviceInfo) meglerProps.get("HdmiDeviceInfo"); }
+    public java.lang.String getId() { return (java.lang.String) meglerProps.get("Id"); }
+    public java.lang.String getParentId() { return (java.lang.String) meglerProps.get("ParentId"); }
+    public android.content.pm.ServiceInfo getServiceInfo() { return (android.content.pm.ServiceInfo) meglerProps.get("ServiceInfo"); }
+    public int getTunerCount() { return (meglerProps.get("TunerCount") instanceof Integer ? (Integer) meglerProps.get("TunerCount") : 0); }
+    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
+    public boolean isConnectedToHdmiSwitch() { return (meglerProps.get("ConnectedToHdmiSwitch") instanceof Boolean ? (Boolean) meglerProps.get("ConnectedToHdmiSwitch") : false); }
+    public boolean isHardwareInput() { return (meglerProps.get("HardwareInput") instanceof Boolean ? (Boolean) meglerProps.get("HardwareInput") : false); }
     public boolean isHidden(android.content.Context p0) { return false; }
-    public boolean isPassthroughInput() { return (megletProps.get("PassthroughInput") instanceof Boolean ? (Boolean) megletProps.get("PassthroughInput") : false); }
+    public boolean isPassthroughInput() { return (meglerProps.get("PassthroughInput") instanceof Boolean ? (Boolean) meglerProps.get("PassthroughInput") : false); }
     public java.lang.CharSequence loadCustomLabel(android.content.Context p0) { return null; }
     public android.graphics.drawable.Drawable loadIcon(android.content.Context p0) { return null; }
     public android.graphics.drawable.Drawable loadIcon(android.content.Context p0, int p1) { return null; }
@@ -45,25 +45,25 @@ public final class TvInputInfo implements android.os.Parcelable {
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected TvInputInfo() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.content.Context p0, android.content.ComponentName p1) {}
         public Builder(android.content.Context p0, android.content.pm.ResolveInfo p1) {}
-        public android.media.tv.TvInputInfo build() { android.media.tv.TvInputInfo x = new android.media.tv.TvInputInfo(); x.megletProps.putAll(megletProps); return x; }
-        public android.media.tv.TvInputInfo.Builder setCanPauseRecording(boolean p0) { megletProps.put("CanPauseRecording", Boolean.valueOf(p0)); return this; }
-        public android.media.tv.TvInputInfo.Builder setCanRecord(boolean p0) { megletProps.put("CanRecord", Boolean.valueOf(p0)); return this; }
-        public android.media.tv.TvInputInfo.Builder setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); return this; }
-        public android.media.tv.TvInputInfo.Builder setHdmiDeviceInfo(android.hardware.hdmi.HdmiDeviceInfo p0) { megletProps.put("HdmiDeviceInfo", p0); return this; }
-        public android.media.tv.TvInputInfo.Builder setIcon(android.graphics.drawable.Icon p0) { megletProps.put("Icon", p0); return this; }
+        public android.media.tv.TvInputInfo build() { android.media.tv.TvInputInfo x = new android.media.tv.TvInputInfo(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.media.tv.TvInputInfo.Builder setCanPauseRecording(boolean p0) { meglerProps.put("CanPauseRecording", Boolean.valueOf(p0)); return this; }
+        public android.media.tv.TvInputInfo.Builder setCanRecord(boolean p0) { meglerProps.put("CanRecord", Boolean.valueOf(p0)); return this; }
+        public android.media.tv.TvInputInfo.Builder setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); return this; }
+        public android.media.tv.TvInputInfo.Builder setHdmiDeviceInfo(android.hardware.hdmi.HdmiDeviceInfo p0) { meglerProps.put("HdmiDeviceInfo", p0); return this; }
+        public android.media.tv.TvInputInfo.Builder setIcon(android.graphics.drawable.Icon p0) { meglerProps.put("Icon", p0); return this; }
         public android.media.tv.TvInputInfo.Builder setIcon(android.graphics.drawable.Icon p0, int p1) { return this; }
-        public android.media.tv.TvInputInfo.Builder setLabel(int p0) { megletProps.put("Label", Integer.valueOf(p0)); return this; }
-        public android.media.tv.TvInputInfo.Builder setLabel(java.lang.CharSequence p0) { megletProps.put("Label", p0); return this; }
-        public android.media.tv.TvInputInfo.Builder setParentId(java.lang.String p0) { megletProps.put("ParentId", p0); return this; }
-        public android.media.tv.TvInputInfo.Builder setTunerCount(int p0) { megletProps.put("TunerCount", Integer.valueOf(p0)); return this; }
-        public android.media.tv.TvInputInfo.Builder setTvInputHardwareInfo(android.media.tv.TvInputHardwareInfo p0) { megletProps.put("TvInputHardwareInfo", p0); return this; }
+        public android.media.tv.TvInputInfo.Builder setLabel(int p0) { meglerProps.put("Label", Integer.valueOf(p0)); return this; }
+        public android.media.tv.TvInputInfo.Builder setLabel(java.lang.CharSequence p0) { meglerProps.put("Label", p0); return this; }
+        public android.media.tv.TvInputInfo.Builder setParentId(java.lang.String p0) { meglerProps.put("ParentId", p0); return this; }
+        public android.media.tv.TvInputInfo.Builder setTunerCount(int p0) { meglerProps.put("TunerCount", Integer.valueOf(p0)); return this; }
+        public android.media.tv.TvInputInfo.Builder setTvInputHardwareInfo(android.media.tv.TvInputHardwareInfo p0) { meglerProps.put("TvInputHardwareInfo", p0); return this; }
         Builder() { this((android.content.Context) null, (android.content.ComponentName) null); }
     }
     public static final class TvInputSettings {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static java.util.Map getCustomLabels(android.content.Context p0, int p1) { return new java.util.HashMap(); }
         public static java.util.Set getHiddenTvInputIds(android.content.Context p0, int p1) { return new java.util.HashSet(); }
         public static void putCustomLabels(android.content.Context p0, java.util.Map p1, int p2) {}

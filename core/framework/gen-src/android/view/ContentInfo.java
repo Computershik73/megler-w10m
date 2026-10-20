@@ -3,7 +3,7 @@ package android.view;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ContentInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int FLAG_CONVERT_TO_PLAIN_TEXT = 1;
     public static final int SOURCE_APP = 0;
@@ -13,27 +13,27 @@ public final class ContentInfo implements android.os.Parcelable {
     public static final int SOURCE_INPUT_METHOD = 2;
     public static final int SOURCE_PROCESS_TEXT = 5;
     public int describeContents() { return 0; }
-    public android.content.ClipData getClip() { return (android.content.ClipData) megletProps.get("Clip"); }
-    public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
-    public int getFlags() { return (megletProps.get("Flags") instanceof Integer ? (Integer) megletProps.get("Flags") : 0); }
-    public android.net.Uri getLinkUri() { return (android.net.Uri) megletProps.get("LinkUri"); }
-    public int getSource() { return (megletProps.get("Source") instanceof Integer ? (Integer) megletProps.get("Source") : 0); }
+    public android.content.ClipData getClip() { return (android.content.ClipData) meglerProps.get("Clip"); }
+    public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
+    public int getFlags() { return (meglerProps.get("Flags") instanceof Integer ? (Integer) meglerProps.get("Flags") : 0); }
+    public android.net.Uri getLinkUri() { return (android.net.Uri) meglerProps.get("LinkUri"); }
+    public int getSource() { return (meglerProps.get("Source") instanceof Integer ? (Integer) meglerProps.get("Source") : 0); }
     public android.util.Pair partition(java.util.function.Predicate p0) { return null; }
     public void releasePermissions() {}
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected ContentInfo() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.content.ClipData p0, int p1) {}
         public Builder(android.view.ContentInfo p0) {}
-        public android.view.ContentInfo build() { android.view.ContentInfo x = new android.view.ContentInfo(); x.megletProps.putAll(megletProps); return x; }
-        public android.view.ContentInfo.Builder setClip(android.content.ClipData p0) { megletProps.put("Clip", p0); return this; }
-        public android.view.ContentInfo.Builder setDragAndDropPermissions(android.view.DragAndDropPermissions p0) { megletProps.put("DragAndDropPermissions", p0); return this; }
-        public android.view.ContentInfo.Builder setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); return this; }
-        public android.view.ContentInfo.Builder setFlags(int p0) { megletProps.put("Flags", Integer.valueOf(p0)); return this; }
-        public android.view.ContentInfo.Builder setInputContentInfo(android.view.inputmethod.InputContentInfo p0) { megletProps.put("InputContentInfo", p0); return this; }
-        public android.view.ContentInfo.Builder setLinkUri(android.net.Uri p0) { megletProps.put("LinkUri", p0); return this; }
-        public android.view.ContentInfo.Builder setSource(int p0) { megletProps.put("Source", Integer.valueOf(p0)); return this; }
+        public android.view.ContentInfo build() { android.view.ContentInfo x = new android.view.ContentInfo(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.view.ContentInfo.Builder setClip(android.content.ClipData p0) { meglerProps.put("Clip", p0); return this; }
+        public android.view.ContentInfo.Builder setDragAndDropPermissions(android.view.DragAndDropPermissions p0) { meglerProps.put("DragAndDropPermissions", p0); return this; }
+        public android.view.ContentInfo.Builder setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); return this; }
+        public android.view.ContentInfo.Builder setFlags(int p0) { meglerProps.put("Flags", Integer.valueOf(p0)); return this; }
+        public android.view.ContentInfo.Builder setInputContentInfo(android.view.inputmethod.InputContentInfo p0) { meglerProps.put("InputContentInfo", p0); return this; }
+        public android.view.ContentInfo.Builder setLinkUri(android.net.Uri p0) { meglerProps.put("LinkUri", p0); return this; }
+        public android.view.ContentInfo.Builder setSource(int p0) { meglerProps.put("Source", Integer.valueOf(p0)); return this; }
         Builder() { this((android.view.ContentInfo) null); }
     }
 }

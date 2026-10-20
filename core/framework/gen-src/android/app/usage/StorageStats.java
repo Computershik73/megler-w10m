@@ -3,7 +3,7 @@ package android.app.usage;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class StorageStats implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int APP_DATA_TYPE_FILE_TYPE_APK = 3;
     public static final int APP_DATA_TYPE_FILE_TYPE_CURRENT_PROFILE = 2;
     public static final int APP_DATA_TYPE_FILE_TYPE_DEXOPT_ARTIFACT = 0;
@@ -27,10 +27,10 @@ public final class StorageStats implements android.os.Parcelable {
     public StorageStats() {}
     public StorageStats(android.os.Parcel p0) {}
     public int describeContents() { return 0; }
-    public long getAppBytes() { return (megletProps.get("AppBytes") instanceof Long ? (Long) megletProps.get("AppBytes") : 0L); }
+    public long getAppBytes() { return (meglerProps.get("AppBytes") instanceof Long ? (Long) meglerProps.get("AppBytes") : 0L); }
     public long getAppBytesByDataType(int p0) { return 0L; }
-    public long getCacheBytes() { return (megletProps.get("CacheBytes") instanceof Long ? (Long) megletProps.get("CacheBytes") : 0L); }
-    public long getDataBytes() { return (megletProps.get("DataBytes") instanceof Long ? (Long) megletProps.get("DataBytes") : 0L); }
-    public long getExternalCacheBytes() { return (megletProps.get("ExternalCacheBytes") instanceof Long ? (Long) megletProps.get("ExternalCacheBytes") : 0L); }
+    public long getCacheBytes() { return (meglerProps.get("CacheBytes") instanceof Long ? (Long) meglerProps.get("CacheBytes") : 0L); }
+    public long getDataBytes() { return (meglerProps.get("DataBytes") instanceof Long ? (Long) meglerProps.get("DataBytes") : 0L); }
+    public long getExternalCacheBytes() { return (meglerProps.get("ExternalCacheBytes") instanceof Long ? (Long) meglerProps.get("ExternalCacheBytes") : 0L); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
 }

@@ -9,13 +9,13 @@ public class TextAppearanceSpan extends MetricAffectingSpan {
     private final String mFamily; private final int mStyle, mSize; private final ColorStateList mColor, mLinkColor;
     public TextAppearanceSpan(Context c, int appearance) { this(c, appearance, -1); }
     public TextAppearanceSpan(Context c, int appearance, int colorList) {
-        TypedArray a = c.obtainStyledAttributes(appearance, meglet.S.TextAppearance);
-        ColorStateList col = a.getColorStateList(meglet.S.TextAppearance_textColor);
-        mLinkColor = a.getColorStateList(meglet.S.TextAppearance_textColorLink);
-        mSize = a.getDimensionPixelSize(meglet.S.TextAppearance_textSize, -1);
-        mStyle = a.getInt(meglet.S.TextAppearance_textStyle, 0);
-        String fam = a.getString(meglet.S.TextAppearance_fontFamily);
-        if (fam == null) { int tf = a.getInt(meglet.S.TextAppearance_typeface, 0); fam = tf == 1 ? "sans" : tf == 2 ? "serif" : tf == 3 ? "monospace" : null; }
+        TypedArray a = c.obtainStyledAttributes(appearance, megler.S.TextAppearance);
+        ColorStateList col = a.getColorStateList(megler.S.TextAppearance_textColor);
+        mLinkColor = a.getColorStateList(megler.S.TextAppearance_textColorLink);
+        mSize = a.getDimensionPixelSize(megler.S.TextAppearance_textSize, -1);
+        mStyle = a.getInt(megler.S.TextAppearance_textStyle, 0);
+        String fam = a.getString(megler.S.TextAppearance_fontFamily);
+        if (fam == null) { int tf = a.getInt(megler.S.TextAppearance_typeface, 0); fam = tf == 1 ? "sans" : tf == 2 ? "serif" : tf == 3 ? "monospace" : null; }
         mFamily = fam;
         a.recycle();
         mColor = col;

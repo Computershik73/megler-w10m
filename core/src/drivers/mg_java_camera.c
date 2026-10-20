@@ -1,7 +1,7 @@
 /*
- * Cameras for Java apps' android.hardware.Camera: meglet.CameraNative's natives, which the framework's Camera (the overlay's,
- * core/framework-overlay/android/hardware/Camera.java) works through. The camera proper is the shell's (meglet_camera_host in
- * meglet.h: Windows.Media.Capture on a phone). What is here:
+ * Cameras for Java apps' android.hardware.Camera: megler.CameraNative's natives, which the framework's Camera (the overlay's,
+ * core/framework-overlay/android/hardware/Camera.java) works through. The camera proper is the shell's (megler_camera_host in
+ * megler.h: Windows.Media.Capture on a phone). What is here:
  *
  * - The cameras as the app asks for them: how many, which way each faces and how far its picture is turned, and the
  *   package manager's features (a camera, one at the back, one at the front, autofocus, a flash).
@@ -29,9 +29,9 @@
 #define N(name) static void name(mg_jcall *c)
 
 /* The shell's cameras: set when the app starts, before any of its code runs. */
-static meglet_camera_host g_host;
+static megler_camera_host g_host;
 
-void mg_java_camera_set_host(const meglet_camera_host *host)
+void mg_java_camera_set_host(const megler_camera_host *host)
 {
     if (host) g_host = *host;
     else memset(&g_host, 0, sizeof(g_host));
@@ -52,7 +52,7 @@ typedef struct picture {
 struct mg_jcamera {
     int index;
     void *cam;                         /* the shell's; NULL once closed */
-    meglet_camera_caps caps;
+    megler_camera_caps caps;
     mg_lock host_lock;                 /* the shell's calls for this camera, one at a time */
     mg_lock lock;                      /* everything below */
     mg_cond news;
@@ -73,7 +73,7 @@ struct mg_jcamera {
 static mg_lock g_open_lock = MG_LOCK_INIT;
 static mg_jcamera *g_open[MAX_OPEN];
 
-static const char *facing_name(int facing) { return facing == MEGLET_CAMERA_FRONT ? "front" : "back"; }
+static const char *facing_name(int facing) { return facing == MEGLER_CAMERA_FRONT ? "front" : "back"; }
 
 int mg_jcamera_count(void)
 {
@@ -83,11 +83,11 @@ int mg_jcamera_count(void)
     return n > 0 ? n : 0;
 }
 
-bool mg_jcamera_info(int index, meglet_camera_info *out)
+bool mg_jcamera_info(int index, megler_camera_info *out)
 {
     memset(out, 0, sizeof(*out));
     if (!host_usable() || index < 0 || index >= mg_jcamera_count() || !g_host.info(g_host.user, index, out)) return false;
-    if (out->facing != MEGLET_CAMERA_FRONT) out->facing = MEGLET_CAMERA_BACK;
+    if (out->facing != MEGLER_CAMERA_FRONT) out->facing = MEGLER_CAMERA_BACK;
     out->orientation = ((out->orientation % 360) + 360) % 360 / 90 * 90;
     out->name[sizeof(out->name) - 1] = 0;
     return true;
@@ -95,17 +95,17 @@ bool mg_jcamera_info(int index, meglet_camera_info *out)
 
 /*
  * What the package manager says about cameras (PackageManager.hasSystemFeature). A back camera's focus and light may not be
- * known before it has been opened once (meglet_camera_info's -1): focus is then taken as there, as nearly every phone's back
+ * known before it has been opened once (megler_camera_info's -1): focus is then taken as there, as nearly every phone's back
  * camera has it, and a light as not, which an app learns otherwise from the camera's parameters once it opens it.
  */
 int mg_jcamera_features(void)
 {
     int n = mg_jcamera_count(), i, f = 0;
     for (i = 0; i < n; i++) {
-        meglet_camera_info info;
+        megler_camera_info info;
         if (!mg_jcamera_info(i, &info)) continue;
         f |= MG_JCAMERA_ANY;
-        if (info.facing == MEGLET_CAMERA_FRONT) {
+        if (info.facing == MEGLER_CAMERA_FRONT) {
             f |= MG_JCAMERA_HAS_FRONT;
         } else {
             f |= MG_JCAMERA_HAS_BACK;
@@ -135,12 +135,12 @@ static void remember(mg_jcamera *c, bool on)
 
 mg_jcamera *mg_jcamera_open(int index, int *error)
 {
-    meglet_camera_info info;
-    meglet_camera_caps caps;
+    megler_camera_info info;
+    megler_camera_caps caps;
     mg_jcamera *c;
     void *cam;
-    int err = MEGLET_CAMERA_FAILED, i;
-    if (error) *error = MEGLET_CAMERA_FAILED;
+    int err = MEGLER_CAMERA_FAILED, i;
+    if (error) *error = MEGLER_CAMERA_FAILED;
     if (!mg_jcamera_info(index, &info)) {
         mg_warn("camera: there is no camera %d (%d cameras)", index, mg_jcamera_count());
         return NULL;
@@ -152,14 +152,14 @@ mg_jcamera *mg_jcamera_open(int index, int *error)
     if (!cam) {
         if (error) *error = err;
         mg_warn("camera: camera %d could not be opened: %s%s%s", index,
-                err == MEGLET_CAMERA_DENIED ? "the user or the system refused Meglet the camera"
-                : err == MEGLET_CAMERA_BUSY ? "something else has the camera"
+                err == MEGLER_CAMERA_DENIED ? "the user or the system refused Megler the camera"
+                : err == MEGLER_CAMERA_BUSY ? "something else has the camera"
                                           : "the shell could not open it",
                 caps.why[0] ? ": " : "", caps.why);
         return NULL;
     }
     if (caps.size_count < 0) caps.size_count = 0;
-    if (caps.size_count > MEGLET_CAMERA_MAX_SIZES) caps.size_count = MEGLET_CAMERA_MAX_SIZES;
+    if (caps.size_count > MEGLER_CAMERA_MAX_SIZES) caps.size_count = MEGLER_CAMERA_MAX_SIZES;
     for (i = 0; i < caps.size_count; i++) {
         if (caps.sizes[i].max_fps <= 0) caps.sizes[i].max_fps = 30;
         if (caps.sizes[i].min_fps <= 0 || caps.sizes[i].min_fps > caps.sizes[i].max_fps) caps.sizes[i].min_fps = caps.sizes[i].max_fps;
@@ -172,7 +172,7 @@ mg_jcamera *mg_jcamera_open(int index, int *error)
     mg_lock_init(&c->lock);
     mg_cond_init(&c->news);
     remember(c, true);
-    if (error) *error = MEGLET_CAMERA_OK;
+    if (error) *error = MEGLER_CAMERA_OK;
     mg_info("camera: camera %d open: %d sizes, the largest %dx%d at %d to %d frames a second%s%s%s", index, caps.size_count,
             caps.size_count ? caps.sizes[0].width : 0, caps.size_count ? caps.sizes[0].height : 0, caps.size_count ? caps.sizes[0].min_fps : 0,
             caps.size_count ? caps.sizes[0].max_fps : 0, caps.focus ? ", focuses" : ", fixed focus", caps.macro ? ", close up too" : "",
@@ -180,10 +180,10 @@ mg_jcamera *mg_jcamera_open(int index, int *error)
     return c;
 }
 
-const meglet_camera_caps *mg_jcamera_caps(mg_jcamera *c) { return c ? &c->caps : NULL; }
+const megler_camera_caps *mg_jcamera_caps(mg_jcamera *c) { return c ? &c->caps : NULL; }
 
 /* A picture from the shell, on its thread: NV12 into the spare buffer as NV21, which then becomes the latest. */
-static void on_frame(void *core, const meglet_camera_frame *f)
+static void on_frame(void *core, const megler_camera_frame *f)
 {
     mg_jcamera *c = (mg_jcamera *)core;
     picture *s = &c->spare, t;
@@ -294,7 +294,7 @@ void mg_jcamera_stop(mg_jcamera *c)
         mg_lock_release(&c->host_lock);
         return;
     }
-    if (g_host.focus) g_host.focus(g_host.user, c->cam, MEGLET_CAMERA_FOCUS_NONE, NULL, NULL);
+    if (g_host.focus) g_host.focus(g_host.user, c->cam, MEGLER_CAMERA_FOCUS_NONE, NULL, NULL);
     g_host.stop(g_host.user, c->cam);
     c->streaming = false;
     mg_lock_release(&c->host_lock);
@@ -458,14 +458,14 @@ bool mg_jcamera_focus(mg_jcamera *c, int mode)
     if (!c || !c->cam || !g_host.focus) return false;
     mg_lock_acquire(&c->host_lock);
     if (c->streaming) {
-        if (mode == MEGLET_CAMERA_FOCUS_NONE) {
+        if (mode == MEGLER_CAMERA_FOCUS_NONE) {
             mg_lock_acquire(&c->lock);
             c->focus_news = 0;
             mg_lock_release(&c->lock);
         }
         ok = g_host.focus(g_host.user, c->cam, mode, on_focus, c);
         /* (What a focus asked before this one said, if it came after the cancel, is not this one's answer.) */
-        if (mode == MEGLET_CAMERA_FOCUS_NONE) {
+        if (mode == MEGLER_CAMERA_FOCUS_NONE) {
             mg_lock_acquire(&c->lock);
             c->focus_news = 0;
             mg_lock_release(&c->lock);
@@ -536,7 +536,7 @@ N(Camera_count) { c->ret.i = mg_jcamera_count(); }
 /* info(int index, int[] out) -> false for no such camera; out = { facing, orientation, focus, light } */
 N(Camera_info)
 {
-    meglet_camera_info info;
+    megler_camera_info info;
     mg_jobj *a = c->args[1].l;
     c->ret.i = 0;
     if (!mg_jcamera_info(c->args[0].i, &info)) return;
@@ -558,7 +558,7 @@ N(Camera_open) { c->ret.j = (i64)(mg_addr)mg_jcamera_open(c->args[0].i, NULL); }
 /* caps(long h) -> { focus, macro, torch, n, then width, height, min fps, max fps for each of the n sizes } */
 N(Camera_caps)
 {
-    const meglet_camera_caps *k = mg_jcamera_caps(CAMERA);
+    const megler_camera_caps *k = mg_jcamera_caps(CAMERA);
     mg_jobj *a;
     i32 *v;
     int i;
@@ -619,21 +619,21 @@ N(Camera_torch) { mg_jcamera_torch(CAMERA, c->args[1].i != 0); }
 N(Camera_close) { mg_jcamera_close(CAMERA); }
 
 static const mg_jhle k_camera[] = {
-    { "meglet/CameraNative", "count", NULL, Camera_count },
-    { "meglet/CameraNative", "info", NULL, Camera_info },
-    { "meglet/CameraNative", "features", NULL, Camera_features },
-    { "meglet/CameraNative", "open", NULL, Camera_open },
-    { "meglet/CameraNative", "caps", NULL, Camera_caps },
-    { "meglet/CameraNative", "start", NULL, Camera_start },
-    { "meglet/CameraNative", "stop", NULL, Camera_stop },
-    { "meglet/CameraNative", "waitNews", NULL, Camera_waitNews },
-    { "meglet/CameraNative", "frameSize", NULL, Camera_frameSize },
-    { "meglet/CameraNative", "frameBytes", NULL, Camera_frameBytes },
-    { "meglet/CameraNative", "copyFrame", NULL, Camera_copyFrame },
-    { "meglet/CameraNative", "render", NULL, Camera_render },
-    { "meglet/CameraNative", "focus", NULL, Camera_focus },
-    { "meglet/CameraNative", "torch", NULL, Camera_torch },
-    { "meglet/CameraNative", "close", NULL, Camera_close },
+    { "megler/CameraNative", "count", NULL, Camera_count },
+    { "megler/CameraNative", "info", NULL, Camera_info },
+    { "megler/CameraNative", "features", NULL, Camera_features },
+    { "megler/CameraNative", "open", NULL, Camera_open },
+    { "megler/CameraNative", "caps", NULL, Camera_caps },
+    { "megler/CameraNative", "start", NULL, Camera_start },
+    { "megler/CameraNative", "stop", NULL, Camera_stop },
+    { "megler/CameraNative", "waitNews", NULL, Camera_waitNews },
+    { "megler/CameraNative", "frameSize", NULL, Camera_frameSize },
+    { "megler/CameraNative", "frameBytes", NULL, Camera_frameBytes },
+    { "megler/CameraNative", "copyFrame", NULL, Camera_copyFrame },
+    { "megler/CameraNative", "render", NULL, Camera_render },
+    { "megler/CameraNative", "focus", NULL, Camera_focus },
+    { "megler/CameraNative", "torch", NULL, Camera_torch },
+    { "megler/CameraNative", "close", NULL, Camera_close },
     { NULL, NULL, NULL, NULL },
 };
 

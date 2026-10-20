@@ -7,7 +7,7 @@ import java.util.List;
 
 /**
  * The phone's motion sensors. Listeners get events on their handler's thread (the main thread by default) at about the rate they
- * asked for: one sensor thread polls meglet.Sensors for new samples and posts them. TYPE_ORIENTATION is computed from gravity and the
+ * asked for: one sensor thread polls megler.Sensors for new samples and posts them. TYPE_ORIENTATION is computed from gravity and the
  * magnetic field, as Android computes it. The static math (rotation matrices, orientation) is Android's.
  */
 public class SensorManager {
@@ -29,9 +29,9 @@ public class SensorManager {
         add(Sensor.TYPE_LINEAR_ACCELERATION, "Linear Acceleration", Sensor.STRING_TYPE_LINEAR_ACCELERATION, 156.9f, 0.0024f);
         add(Sensor.TYPE_ROTATION_VECTOR, "Rotation Vector", Sensor.STRING_TYPE_ROTATION_VECTOR, 1f, 5.96e-8f);
         add(Sensor.TYPE_GAME_ROTATION_VECTOR, "Game Rotation Vector", Sensor.STRING_TYPE_GAME_ROTATION_VECTOR, 1f, 5.96e-8f);
-        if (meglet.Sensors.available(Sensor.TYPE_GRAVITY) && meglet.Sensors.available(Sensor.TYPE_MAGNETIC_FIELD)) sSensors.add(new Sensor(Sensor.TYPE_ORIENTATION, "Orientation", Sensor.STRING_TYPE_ORIENTATION, 360f, 0.01f));
+        if (megler.Sensors.available(Sensor.TYPE_GRAVITY) && megler.Sensors.available(Sensor.TYPE_MAGNETIC_FIELD)) sSensors.add(new Sensor(Sensor.TYPE_ORIENTATION, "Orientation", Sensor.STRING_TYPE_ORIENTATION, 360f, 0.01f));
     }
-    private static void add(int type, String name, String st, float range, float res) { if (meglet.Sensors.available(type)) sSensors.add(new Sensor(type, name, st, range, res)); }
+    private static void add(int type, String name, String st, float range, float res) { if (megler.Sensors.available(type)) sSensors.add(new Sensor(type, name, st, range, res)); }
 
     private static final class Reg { SensorEventListener l; Sensor s; int periodUs; Handler h; long last; long lastPost; }
     private static final ArrayList<Reg> sRegs = new ArrayList<>();
@@ -65,7 +65,7 @@ public class SensorManager {
             r.l = l; r.s = s; r.periodUs = periodUs(delay);
             r.h = h != null ? h : new Handler(Looper.getMainLooper());
             sRegs.add(r);
-            for (int t : sources(s.getType())) meglet.Sensors.start(t, r.periodUs);
+            for (int t : sources(s.getType())) megler.Sensors.start(t, r.periodUs);
             if (sThread == null) { sThread = new Thread(SensorManager::loop, "SensorThread"); sThread.setDaemon(true); sThread.start(); }
             sRegs.notifyAll();
         }
@@ -78,7 +78,7 @@ public class SensorManager {
         synchronized (sRegs) {
             for (int i = sRegs.size() - 1; i >= 0; i--) {
                 Reg r = sRegs.get(i);
-                if (r.l == l && (s == null || r.s == s)) { sRegs.remove(i); for (int t : sources(r.s.getType())) meglet.Sensors.stop(t); }
+                if (r.l == l && (s == null || r.s == s)) { sRegs.remove(i); for (int t : sources(r.s.getType())) megler.Sensors.stop(t); }
             }
         }
     }
@@ -102,13 +102,13 @@ public class SensorManager {
                 int type = r.s.getType();
                 float[] values; long ts;
                 if (type == Sensor.TYPE_ORIENTATION) {
-                    long t1 = meglet.Sensors.read(Sensor.TYPE_GRAVITY, g), t2 = meglet.Sensors.read(Sensor.TYPE_MAGNETIC_FIELD, m);
+                    long t1 = megler.Sensors.read(Sensor.TYPE_GRAVITY, g), t2 = megler.Sensors.read(Sensor.TYPE_MAGNETIC_FIELD, m);
                     ts = Math.max(t1, t2);
                     if (t1 == 0 || t2 == 0 || ts == r.last || !getRotationMatrix(R, null, g, m)) continue;
                     getOrientation(R, o);
                     values = new float[] { (float) ((Math.toDegrees(o[0]) + 360) % 360), (float) Math.toDegrees(o[1]), (float) Math.toDegrees(o[2]) };
                 } else {
-                    ts = meglet.Sensors.read(type, buf);
+                    ts = megler.Sensors.read(type, buf);
                     if (ts == 0 || ts == r.last) continue;
                     int n = type == Sensor.TYPE_ROTATION_VECTOR ? 5 : type == Sensor.TYPE_GAME_ROTATION_VECTOR ? 4 : 3;
                     values = java.util.Arrays.copyOf(buf, n);

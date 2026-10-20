@@ -3,14 +3,14 @@ package android.os;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class TokenWatcher {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public TokenWatcher(android.os.Handler p0, java.lang.String p1) {}
     public void acquire(android.os.IBinder p0, java.lang.String p1) {}
     public abstract void acquired();
     public void cleanup(android.os.IBinder p0, boolean p1) {}
     public void dump() {}
     public void dump(java.io.PrintWriter p0) {}
-    public boolean isAcquired() { return (megletProps.get("Acquired") instanceof Boolean ? (Boolean) megletProps.get("Acquired") : false); }
+    public boolean isAcquired() { return (meglerProps.get("Acquired") instanceof Boolean ? (Boolean) meglerProps.get("Acquired") : false); }
     public void release(android.os.IBinder p0) {}
     public abstract void released();
     TokenWatcher() { this((android.os.Handler) null, (java.lang.String) null); }

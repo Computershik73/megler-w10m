@@ -1,6 +1,6 @@
 package android.hardware;
 
-/** A sensor of the phone's (CoreMotion's, through meglet.Sensors), described as Android describes it. */
+/** A sensor of the phone's (CoreMotion's, through megler.Sensors), described as Android describes it. */
 public final class Sensor {
     public static final int TYPE_ACCELEROMETER = 1, TYPE_MAGNETIC_FIELD = 2, TYPE_ORIENTATION = 3, TYPE_GYROSCOPE = 4, TYPE_LIGHT = 5, TYPE_PRESSURE = 6, TYPE_TEMPERATURE = 7,
         TYPE_PROXIMITY = 8, TYPE_GRAVITY = 9, TYPE_LINEAR_ACCELERATION = 10, TYPE_ROTATION_VECTOR = 11, TYPE_RELATIVE_HUMIDITY = 12, TYPE_AMBIENT_TEMPERATURE = 13,

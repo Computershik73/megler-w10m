@@ -3,7 +3,7 @@ package android.os.health;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class UidHealthStats {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.health.HealthKeys.Constants CONSTANTS;
     public static final int MEASUREMENT_BLUETOOTH_IDLE_MS = 10020;
     public static final int MEASUREMENT_BLUETOOTH_POWER_MAMS = 10023;

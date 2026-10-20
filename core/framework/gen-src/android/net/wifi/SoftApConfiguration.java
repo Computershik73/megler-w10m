@@ -3,7 +3,7 @@ package android.net.wifi;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SoftApConfiguration implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int BAND_2GHZ = 1;
     public static final int BAND_5GHZ = 2;
     public static final int BAND_60GHZ = 8;
@@ -24,76 +24,76 @@ public final class SoftApConfiguration implements android.os.Parcelable {
     public static final int SECURITY_TYPE_WPA3_SAE_TRANSITION = 2;
     public int describeContents() { return 0; }
     public int[] getAllowedAcsChannels(int p0) { return null; }
-    public java.util.List getAllowedClientList() { return (megletProps.get("AllowedClientList") != null ? (java.util.List) megletProps.get("AllowedClientList") : new java.util.ArrayList()); }
-    public int getBand() { return (megletProps.get("Band") instanceof Integer ? (Integer) megletProps.get("Band") : 0); }
-    public int[] getBands() { return (int[]) megletProps.get("Bands"); }
-    public java.util.List getBlockedClientList() { return (megletProps.get("BlockedClientList") != null ? (java.util.List) megletProps.get("BlockedClientList") : new java.util.ArrayList()); }
-    public long getBridgedModeOpportunisticShutdownTimeoutMillis() { return (megletProps.get("BridgedModeOpportunisticShutdownTimeoutMillis") instanceof Long ? (Long) megletProps.get("BridgedModeOpportunisticShutdownTimeoutMillis") : 0L); }
-    public long getBridgedModeOpportunisticShutdownTimeoutMillisInternal() { return (megletProps.get("BridgedModeOpportunisticShutdownTimeoutMillisInternal") instanceof Long ? (Long) megletProps.get("BridgedModeOpportunisticShutdownTimeoutMillisInternal") : 0L); }
-    public android.net.MacAddress getBssid() { return (android.net.MacAddress) megletProps.get("Bssid"); }
-    public int getChannel() { return (megletProps.get("Channel") instanceof Integer ? (Integer) megletProps.get("Channel") : 0); }
-    public android.util.SparseIntArray getChannels() { return (android.util.SparseIntArray) megletProps.get("Channels"); }
-    public int getMacRandomizationSetting() { return (megletProps.get("MacRandomizationSetting") instanceof Integer ? (Integer) megletProps.get("MacRandomizationSetting") : 0); }
-    public int getMacRandomizationSettingInternal() { return (megletProps.get("MacRandomizationSettingInternal") instanceof Integer ? (Integer) megletProps.get("MacRandomizationSettingInternal") : 0); }
-    public int getMaxChannelBandwidth() { return (megletProps.get("MaxChannelBandwidth") instanceof Integer ? (Integer) megletProps.get("MaxChannelBandwidth") : 0); }
-    public int getMaxNumberOfClients() { return (megletProps.get("MaxNumberOfClients") instanceof Integer ? (Integer) megletProps.get("MaxNumberOfClients") : 0); }
-    public java.lang.String getPassphrase() { return (java.lang.String) megletProps.get("Passphrase"); }
-    public android.net.MacAddress getPersistentRandomizedMacAddress() { return (android.net.MacAddress) megletProps.get("PersistentRandomizedMacAddress"); }
-    public int getSecurityType() { return (megletProps.get("SecurityType") instanceof Integer ? (Integer) megletProps.get("SecurityType") : 0); }
-    public long getShutdownTimeoutMillis() { return (megletProps.get("ShutdownTimeoutMillis") instanceof Long ? (Long) megletProps.get("ShutdownTimeoutMillis") : 0L); }
-    public java.lang.String getSsid() { return (java.lang.String) megletProps.get("Ssid"); }
-    public java.util.List getVendorData() { return (megletProps.get("VendorData") != null ? (java.util.List) megletProps.get("VendorData") : new java.util.ArrayList()); }
-    public java.util.List getVendorElements() { return (megletProps.get("VendorElements") != null ? (java.util.List) megletProps.get("VendorElements") : new java.util.ArrayList()); }
-    public java.util.List getVendorElementsInternal() { return (megletProps.get("VendorElementsInternal") != null ? (java.util.List) megletProps.get("VendorElementsInternal") : new java.util.ArrayList()); }
-    public android.net.wifi.WifiSsid getWifiSsid() { return (android.net.wifi.WifiSsid) megletProps.get("WifiSsid"); }
-    public boolean isAutoShutdownEnabled() { return (megletProps.get("AutoShutdownEnabled") instanceof Boolean ? (Boolean) megletProps.get("AutoShutdownEnabled") : false); }
-    public boolean isBandOptimizationEnabled() { return (megletProps.get("BandOptimizationEnabled") instanceof Boolean ? (Boolean) megletProps.get("BandOptimizationEnabled") : false); }
-    public boolean isBridgedModeOpportunisticShutdownEnabled() { return (megletProps.get("BridgedModeOpportunisticShutdownEnabled") instanceof Boolean ? (Boolean) megletProps.get("BridgedModeOpportunisticShutdownEnabled") : false); }
-    public boolean isBridgedModeOpportunisticShutdownEnabledInternal() { return (megletProps.get("BridgedModeOpportunisticShutdownEnabledInternal") instanceof Boolean ? (Boolean) megletProps.get("BridgedModeOpportunisticShutdownEnabledInternal") : false); }
-    public boolean isClientControlByUserEnabled() { return (megletProps.get("ClientControlByUserEnabled") instanceof Boolean ? (Boolean) megletProps.get("ClientControlByUserEnabled") : false); }
-    public boolean isClientIsolationEnabled() { return (megletProps.get("ClientIsolationEnabled") instanceof Boolean ? (Boolean) megletProps.get("ClientIsolationEnabled") : false); }
-    public boolean isHiddenSsid() { return (megletProps.get("HiddenSsid") instanceof Boolean ? (Boolean) megletProps.get("HiddenSsid") : false); }
-    public boolean isIeee80211axEnabled() { return (megletProps.get("Ieee80211axEnabled") instanceof Boolean ? (Boolean) megletProps.get("Ieee80211axEnabled") : false); }
-    public boolean isIeee80211axEnabledInternal() { return (megletProps.get("Ieee80211axEnabledInternal") instanceof Boolean ? (Boolean) megletProps.get("Ieee80211axEnabledInternal") : false); }
-    public boolean isIeee80211beEnabled() { return (megletProps.get("Ieee80211beEnabled") instanceof Boolean ? (Boolean) megletProps.get("Ieee80211beEnabled") : false); }
-    public boolean isUserConfiguration() { return (megletProps.get("UserConfiguration") instanceof Boolean ? (Boolean) megletProps.get("UserConfiguration") : false); }
-    public boolean isUserConfigurationInternal() { return (megletProps.get("UserConfigurationInternal") instanceof Boolean ? (Boolean) megletProps.get("UserConfigurationInternal") : false); }
+    public java.util.List getAllowedClientList() { return (meglerProps.get("AllowedClientList") != null ? (java.util.List) meglerProps.get("AllowedClientList") : new java.util.ArrayList()); }
+    public int getBand() { return (meglerProps.get("Band") instanceof Integer ? (Integer) meglerProps.get("Band") : 0); }
+    public int[] getBands() { return (int[]) meglerProps.get("Bands"); }
+    public java.util.List getBlockedClientList() { return (meglerProps.get("BlockedClientList") != null ? (java.util.List) meglerProps.get("BlockedClientList") : new java.util.ArrayList()); }
+    public long getBridgedModeOpportunisticShutdownTimeoutMillis() { return (meglerProps.get("BridgedModeOpportunisticShutdownTimeoutMillis") instanceof Long ? (Long) meglerProps.get("BridgedModeOpportunisticShutdownTimeoutMillis") : 0L); }
+    public long getBridgedModeOpportunisticShutdownTimeoutMillisInternal() { return (meglerProps.get("BridgedModeOpportunisticShutdownTimeoutMillisInternal") instanceof Long ? (Long) meglerProps.get("BridgedModeOpportunisticShutdownTimeoutMillisInternal") : 0L); }
+    public android.net.MacAddress getBssid() { return (android.net.MacAddress) meglerProps.get("Bssid"); }
+    public int getChannel() { return (meglerProps.get("Channel") instanceof Integer ? (Integer) meglerProps.get("Channel") : 0); }
+    public android.util.SparseIntArray getChannels() { return (android.util.SparseIntArray) meglerProps.get("Channels"); }
+    public int getMacRandomizationSetting() { return (meglerProps.get("MacRandomizationSetting") instanceof Integer ? (Integer) meglerProps.get("MacRandomizationSetting") : 0); }
+    public int getMacRandomizationSettingInternal() { return (meglerProps.get("MacRandomizationSettingInternal") instanceof Integer ? (Integer) meglerProps.get("MacRandomizationSettingInternal") : 0); }
+    public int getMaxChannelBandwidth() { return (meglerProps.get("MaxChannelBandwidth") instanceof Integer ? (Integer) meglerProps.get("MaxChannelBandwidth") : 0); }
+    public int getMaxNumberOfClients() { return (meglerProps.get("MaxNumberOfClients") instanceof Integer ? (Integer) meglerProps.get("MaxNumberOfClients") : 0); }
+    public java.lang.String getPassphrase() { return (java.lang.String) meglerProps.get("Passphrase"); }
+    public android.net.MacAddress getPersistentRandomizedMacAddress() { return (android.net.MacAddress) meglerProps.get("PersistentRandomizedMacAddress"); }
+    public int getSecurityType() { return (meglerProps.get("SecurityType") instanceof Integer ? (Integer) meglerProps.get("SecurityType") : 0); }
+    public long getShutdownTimeoutMillis() { return (meglerProps.get("ShutdownTimeoutMillis") instanceof Long ? (Long) meglerProps.get("ShutdownTimeoutMillis") : 0L); }
+    public java.lang.String getSsid() { return (java.lang.String) meglerProps.get("Ssid"); }
+    public java.util.List getVendorData() { return (meglerProps.get("VendorData") != null ? (java.util.List) meglerProps.get("VendorData") : new java.util.ArrayList()); }
+    public java.util.List getVendorElements() { return (meglerProps.get("VendorElements") != null ? (java.util.List) meglerProps.get("VendorElements") : new java.util.ArrayList()); }
+    public java.util.List getVendorElementsInternal() { return (meglerProps.get("VendorElementsInternal") != null ? (java.util.List) meglerProps.get("VendorElementsInternal") : new java.util.ArrayList()); }
+    public android.net.wifi.WifiSsid getWifiSsid() { return (android.net.wifi.WifiSsid) meglerProps.get("WifiSsid"); }
+    public boolean isAutoShutdownEnabled() { return (meglerProps.get("AutoShutdownEnabled") instanceof Boolean ? (Boolean) meglerProps.get("AutoShutdownEnabled") : false); }
+    public boolean isBandOptimizationEnabled() { return (meglerProps.get("BandOptimizationEnabled") instanceof Boolean ? (Boolean) meglerProps.get("BandOptimizationEnabled") : false); }
+    public boolean isBridgedModeOpportunisticShutdownEnabled() { return (meglerProps.get("BridgedModeOpportunisticShutdownEnabled") instanceof Boolean ? (Boolean) meglerProps.get("BridgedModeOpportunisticShutdownEnabled") : false); }
+    public boolean isBridgedModeOpportunisticShutdownEnabledInternal() { return (meglerProps.get("BridgedModeOpportunisticShutdownEnabledInternal") instanceof Boolean ? (Boolean) meglerProps.get("BridgedModeOpportunisticShutdownEnabledInternal") : false); }
+    public boolean isClientControlByUserEnabled() { return (meglerProps.get("ClientControlByUserEnabled") instanceof Boolean ? (Boolean) meglerProps.get("ClientControlByUserEnabled") : false); }
+    public boolean isClientIsolationEnabled() { return (meglerProps.get("ClientIsolationEnabled") instanceof Boolean ? (Boolean) meglerProps.get("ClientIsolationEnabled") : false); }
+    public boolean isHiddenSsid() { return (meglerProps.get("HiddenSsid") instanceof Boolean ? (Boolean) meglerProps.get("HiddenSsid") : false); }
+    public boolean isIeee80211axEnabled() { return (meglerProps.get("Ieee80211axEnabled") instanceof Boolean ? (Boolean) meglerProps.get("Ieee80211axEnabled") : false); }
+    public boolean isIeee80211axEnabledInternal() { return (meglerProps.get("Ieee80211axEnabledInternal") instanceof Boolean ? (Boolean) meglerProps.get("Ieee80211axEnabledInternal") : false); }
+    public boolean isIeee80211beEnabled() { return (meglerProps.get("Ieee80211beEnabled") instanceof Boolean ? (Boolean) meglerProps.get("Ieee80211beEnabled") : false); }
+    public boolean isUserConfiguration() { return (meglerProps.get("UserConfiguration") instanceof Boolean ? (Boolean) meglerProps.get("UserConfiguration") : false); }
+    public boolean isUserConfigurationInternal() { return (meglerProps.get("UserConfigurationInternal") instanceof Boolean ? (Boolean) meglerProps.get("UserConfigurationInternal") : false); }
     public android.net.wifi.WifiConfiguration toWifiConfiguration() { return null; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected SoftApConfiguration() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.net.wifi.SoftApConfiguration p0) {}
-        public android.net.wifi.SoftApConfiguration build() { android.net.wifi.SoftApConfiguration x = new android.net.wifi.SoftApConfiguration(); x.megletProps.putAll(megletProps); return x; }
+        public android.net.wifi.SoftApConfiguration build() { android.net.wifi.SoftApConfiguration x = new android.net.wifi.SoftApConfiguration(); x.meglerProps.putAll(meglerProps); return x; }
         public android.net.wifi.SoftApConfiguration buildWithoutCheck() { return null; }
         public android.net.wifi.SoftApConfiguration.Builder setAllowedAcsChannels(int p0, int[] p1) { return this; }
-        public android.net.wifi.SoftApConfiguration.Builder setAllowedClientList(java.util.List p0) { megletProps.put("AllowedClientList", p0); return this; }
-        public android.net.wifi.SoftApConfiguration.Builder setAutoShutdownEnabled(boolean p0) { megletProps.put("AutoShutdownEnabled", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.SoftApConfiguration.Builder setBand(int p0) { megletProps.put("Band", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.SoftApConfiguration.Builder setBandOptimizationEnabled(boolean p0) { megletProps.put("BandOptimizationEnabled", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.SoftApConfiguration.Builder setBands(int[] p0) { megletProps.put("Bands", p0); return this; }
-        public android.net.wifi.SoftApConfiguration.Builder setBlockedClientList(java.util.List p0) { megletProps.put("BlockedClientList", p0); return this; }
-        public android.net.wifi.SoftApConfiguration.Builder setBridgedModeOpportunisticShutdownEnabled(boolean p0) { megletProps.put("BridgedModeOpportunisticShutdownEnabled", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.SoftApConfiguration.Builder setBridgedModeOpportunisticShutdownTimeoutMillis(long p0) { megletProps.put("BridgedModeOpportunisticShutdownTimeoutMillis", Long.valueOf(p0)); return this; }
-        public android.net.wifi.SoftApConfiguration.Builder setBssid(android.net.MacAddress p0) { megletProps.put("Bssid", p0); return this; }
+        public android.net.wifi.SoftApConfiguration.Builder setAllowedClientList(java.util.List p0) { meglerProps.put("AllowedClientList", p0); return this; }
+        public android.net.wifi.SoftApConfiguration.Builder setAutoShutdownEnabled(boolean p0) { meglerProps.put("AutoShutdownEnabled", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.SoftApConfiguration.Builder setBand(int p0) { meglerProps.put("Band", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.SoftApConfiguration.Builder setBandOptimizationEnabled(boolean p0) { meglerProps.put("BandOptimizationEnabled", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.SoftApConfiguration.Builder setBands(int[] p0) { meglerProps.put("Bands", p0); return this; }
+        public android.net.wifi.SoftApConfiguration.Builder setBlockedClientList(java.util.List p0) { meglerProps.put("BlockedClientList", p0); return this; }
+        public android.net.wifi.SoftApConfiguration.Builder setBridgedModeOpportunisticShutdownEnabled(boolean p0) { meglerProps.put("BridgedModeOpportunisticShutdownEnabled", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.SoftApConfiguration.Builder setBridgedModeOpportunisticShutdownTimeoutMillis(long p0) { meglerProps.put("BridgedModeOpportunisticShutdownTimeoutMillis", Long.valueOf(p0)); return this; }
+        public android.net.wifi.SoftApConfiguration.Builder setBssid(android.net.MacAddress p0) { meglerProps.put("Bssid", p0); return this; }
         public android.net.wifi.SoftApConfiguration.Builder setChannel(int p0, int p1) { return this; }
-        public android.net.wifi.SoftApConfiguration.Builder setChannels(android.util.SparseIntArray p0) { megletProps.put("Channels", p0); return this; }
-        public android.net.wifi.SoftApConfiguration.Builder setClientControlByUserEnabled(boolean p0) { megletProps.put("ClientControlByUserEnabled", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.SoftApConfiguration.Builder setClientIsolationEnabled(boolean p0) { megletProps.put("ClientIsolationEnabled", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.SoftApConfiguration.Builder setHiddenSsid(boolean p0) { megletProps.put("HiddenSsid", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.SoftApConfiguration.Builder setIeee80211axEnabled(boolean p0) { megletProps.put("Ieee80211axEnabled", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.SoftApConfiguration.Builder setIeee80211beEnabled(boolean p0) { megletProps.put("Ieee80211beEnabled", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.SoftApConfiguration.Builder setMacRandomizationSetting(int p0) { megletProps.put("MacRandomizationSetting", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.SoftApConfiguration.Builder setMaxChannelBandwidth(int p0) { megletProps.put("MaxChannelBandwidth", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.SoftApConfiguration.Builder setMaxNumberOfClients(int p0) { megletProps.put("MaxNumberOfClients", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.SoftApConfiguration.Builder setChannels(android.util.SparseIntArray p0) { meglerProps.put("Channels", p0); return this; }
+        public android.net.wifi.SoftApConfiguration.Builder setClientControlByUserEnabled(boolean p0) { meglerProps.put("ClientControlByUserEnabled", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.SoftApConfiguration.Builder setClientIsolationEnabled(boolean p0) { meglerProps.put("ClientIsolationEnabled", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.SoftApConfiguration.Builder setHiddenSsid(boolean p0) { meglerProps.put("HiddenSsid", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.SoftApConfiguration.Builder setIeee80211axEnabled(boolean p0) { meglerProps.put("Ieee80211axEnabled", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.SoftApConfiguration.Builder setIeee80211beEnabled(boolean p0) { meglerProps.put("Ieee80211beEnabled", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.SoftApConfiguration.Builder setMacRandomizationSetting(int p0) { meglerProps.put("MacRandomizationSetting", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.SoftApConfiguration.Builder setMaxChannelBandwidth(int p0) { meglerProps.put("MaxChannelBandwidth", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.SoftApConfiguration.Builder setMaxNumberOfClients(int p0) { meglerProps.put("MaxNumberOfClients", Integer.valueOf(p0)); return this; }
         public android.net.wifi.SoftApConfiguration.Builder setPassphrase(java.lang.String p0, int p1) { return this; }
-        public android.net.wifi.SoftApConfiguration.Builder setRandomizedMacAddress(android.net.MacAddress p0) { megletProps.put("RandomizedMacAddress", p0); return this; }
-        public android.net.wifi.SoftApConfiguration.Builder setShutdownTimeoutMillis(long p0) { megletProps.put("ShutdownTimeoutMillis", Long.valueOf(p0)); return this; }
-        public android.net.wifi.SoftApConfiguration.Builder setSsid(java.lang.String p0) { megletProps.put("Ssid", p0); return this; }
-        public android.net.wifi.SoftApConfiguration.Builder setUserConfiguration(boolean p0) { megletProps.put("UserConfiguration", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.SoftApConfiguration.Builder setVendorData(java.util.List p0) { megletProps.put("VendorData", p0); return this; }
-        public android.net.wifi.SoftApConfiguration.Builder setVendorElements(java.util.List p0) { megletProps.put("VendorElements", p0); return this; }
-        public android.net.wifi.SoftApConfiguration.Builder setWifiSsid(android.net.wifi.WifiSsid p0) { megletProps.put("WifiSsid", p0); return this; }
+        public android.net.wifi.SoftApConfiguration.Builder setRandomizedMacAddress(android.net.MacAddress p0) { meglerProps.put("RandomizedMacAddress", p0); return this; }
+        public android.net.wifi.SoftApConfiguration.Builder setShutdownTimeoutMillis(long p0) { meglerProps.put("ShutdownTimeoutMillis", Long.valueOf(p0)); return this; }
+        public android.net.wifi.SoftApConfiguration.Builder setSsid(java.lang.String p0) { meglerProps.put("Ssid", p0); return this; }
+        public android.net.wifi.SoftApConfiguration.Builder setUserConfiguration(boolean p0) { meglerProps.put("UserConfiguration", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.SoftApConfiguration.Builder setVendorData(java.util.List p0) { meglerProps.put("VendorData", p0); return this; }
+        public android.net.wifi.SoftApConfiguration.Builder setVendorElements(java.util.List p0) { meglerProps.put("VendorElements", p0); return this; }
+        public android.net.wifi.SoftApConfiguration.Builder setWifiSsid(android.net.wifi.WifiSsid p0) { meglerProps.put("WifiSsid", p0); return this; }
     }
 }

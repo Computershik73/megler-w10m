@@ -3,12 +3,12 @@ package android.graphics.pdf.content;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PdfPageLinkContent implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public PdfPageLinkContent(java.util.List p0, android.net.Uri p1) {}
     public int describeContents() { return 0; }
-    public java.util.List getBounds() { return (megletProps.get("Bounds") != null ? (java.util.List) megletProps.get("Bounds") : new java.util.ArrayList()); }
-    public android.net.Uri getUri() { return (android.net.Uri) megletProps.get("Uri"); }
+    public java.util.List getBounds() { return (meglerProps.get("Bounds") != null ? (java.util.List) meglerProps.get("Bounds") : new java.util.ArrayList()); }
+    public android.net.Uri getUri() { return (android.net.Uri) meglerProps.get("Uri"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     PdfPageLinkContent() { this((java.util.List) null, (android.net.Uri) null); }
 }

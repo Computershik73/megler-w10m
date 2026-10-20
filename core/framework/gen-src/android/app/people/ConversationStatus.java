@@ -3,7 +3,7 @@ package android.app.people;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ConversationStatus implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int ACTIVITY_ANNIVERSARY = 2;
     public static final int ACTIVITY_AUDIO = 4;
     public static final int ACTIVITY_BIRTHDAY = 1;
@@ -19,24 +19,24 @@ public final class ConversationStatus implements android.os.Parcelable {
     public static final int AVAILABILITY_UNKNOWN = -1;
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public int getActivity() { return (megletProps.get("Activity") instanceof Integer ? (Integer) megletProps.get("Activity") : 0); }
-    public int getAvailability() { return (megletProps.get("Availability") instanceof Integer ? (Integer) megletProps.get("Availability") : 0); }
-    public java.lang.CharSequence getDescription() { return (java.lang.CharSequence) megletProps.get("Description"); }
-    public long getEndTimeMillis() { return (megletProps.get("EndTimeMillis") instanceof Long ? (Long) megletProps.get("EndTimeMillis") : 0L); }
-    public android.graphics.drawable.Icon getIcon() { return (android.graphics.drawable.Icon) megletProps.get("Icon"); }
-    public java.lang.String getId() { return (java.lang.String) megletProps.get("Id"); }
-    public long getStartTimeMillis() { return (megletProps.get("StartTimeMillis") instanceof Long ? (Long) megletProps.get("StartTimeMillis") : 0L); }
+    public int getActivity() { return (meglerProps.get("Activity") instanceof Integer ? (Integer) meglerProps.get("Activity") : 0); }
+    public int getAvailability() { return (meglerProps.get("Availability") instanceof Integer ? (Integer) meglerProps.get("Availability") : 0); }
+    public java.lang.CharSequence getDescription() { return (java.lang.CharSequence) meglerProps.get("Description"); }
+    public long getEndTimeMillis() { return (meglerProps.get("EndTimeMillis") instanceof Long ? (Long) meglerProps.get("EndTimeMillis") : 0L); }
+    public android.graphics.drawable.Icon getIcon() { return (android.graphics.drawable.Icon) meglerProps.get("Icon"); }
+    public java.lang.String getId() { return (java.lang.String) meglerProps.get("Id"); }
+    public long getStartTimeMillis() { return (meglerProps.get("StartTimeMillis") instanceof Long ? (Long) meglerProps.get("StartTimeMillis") : 0L); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected ConversationStatus() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(java.lang.String p0, int p1) {}
-        public android.app.people.ConversationStatus build() { android.app.people.ConversationStatus x = new android.app.people.ConversationStatus(); x.megletProps.putAll(megletProps); return x; }
-        public android.app.people.ConversationStatus.Builder setAvailability(int p0) { megletProps.put("Availability", Integer.valueOf(p0)); return this; }
-        public android.app.people.ConversationStatus.Builder setDescription(java.lang.CharSequence p0) { megletProps.put("Description", p0); return this; }
-        public android.app.people.ConversationStatus.Builder setEndTimeMillis(long p0) { megletProps.put("EndTimeMillis", Long.valueOf(p0)); return this; }
-        public android.app.people.ConversationStatus.Builder setIcon(android.graphics.drawable.Icon p0) { megletProps.put("Icon", p0); return this; }
-        public android.app.people.ConversationStatus.Builder setStartTimeMillis(long p0) { megletProps.put("StartTimeMillis", Long.valueOf(p0)); return this; }
+        public android.app.people.ConversationStatus build() { android.app.people.ConversationStatus x = new android.app.people.ConversationStatus(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.app.people.ConversationStatus.Builder setAvailability(int p0) { meglerProps.put("Availability", Integer.valueOf(p0)); return this; }
+        public android.app.people.ConversationStatus.Builder setDescription(java.lang.CharSequence p0) { meglerProps.put("Description", p0); return this; }
+        public android.app.people.ConversationStatus.Builder setEndTimeMillis(long p0) { meglerProps.put("EndTimeMillis", Long.valueOf(p0)); return this; }
+        public android.app.people.ConversationStatus.Builder setIcon(android.graphics.drawable.Icon p0) { meglerProps.put("Icon", p0); return this; }
+        public android.app.people.ConversationStatus.Builder setStartTimeMillis(long p0) { meglerProps.put("StartTimeMillis", Long.valueOf(p0)); return this; }
         Builder() { this((java.lang.String) null, (int) 0); }
     }
 }

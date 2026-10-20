@@ -18,8 +18,8 @@ public class Matrix {
     public void reset() { m[0] = 1; m[1] = 0; m[2] = 0; m[3] = 0; m[4] = 1; m[5] = 0; m[6] = 0; m[7] = 0; m[8] = 1; }
     public void getValues(float[] v) { System.arraycopy(m, 0, v, 0, 9); }
     public void setValues(float[] v) { System.arraycopy(v, 0, m, 0, 9); }
-    /** The affine part, as meglet.Gfx takes it. */
-    public float[] megletAffine() { return new float[] { m[0], m[1], m[2], m[3], m[4], m[5] }; }
+    /** The affine part, as megler.Gfx takes it. */
+    public float[] meglerAffine() { return new float[] { m[0], m[1], m[2], m[3], m[4], m[5] }; }
 
     private static void mul(float[] out, float[] a, float[] b) {
         float[] r = new float[9];

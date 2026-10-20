@@ -3,7 +3,7 @@ package android.net.wifi;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class WifiNetworkSuggestion implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int RANDOMIZATION_NON_PERSISTENT = 1;
     public static int RANDOMIZATION_PERSISTENT;
@@ -17,68 +17,68 @@ public final class WifiNetworkSuggestion implements android.os.Parcelable {
     public WifiNetworkSuggestion() {}
     public WifiNetworkSuggestion(android.net.wifi.WifiConfiguration p0, android.net.wifi.hotspot2.PasspointConfiguration p1, boolean p2, boolean p3, boolean p4, boolean p5, int p6) {}
     public int describeContents() { return 0; }
-    public android.net.MacAddress getBssid() { return (android.net.MacAddress) megletProps.get("Bssid"); }
-    public int getCarrierId() { return (megletProps.get("CarrierId") instanceof Integer ? (Integer) megletProps.get("CarrierId") : 0); }
-    public android.net.wifi.WifiEnterpriseConfig getEnterpriseConfig() { return (android.net.wifi.WifiEnterpriseConfig) megletProps.get("EnterpriseConfig"); }
-    public int getMacRandomizationSetting() { return (megletProps.get("MacRandomizationSetting") instanceof Integer ? (Integer) megletProps.get("MacRandomizationSetting") : 0); }
-    public java.lang.String getPassphrase() { return (java.lang.String) megletProps.get("Passphrase"); }
-    public android.net.wifi.hotspot2.PasspointConfiguration getPasspointConfig() { return (android.net.wifi.hotspot2.PasspointConfiguration) megletProps.get("PasspointConfig"); }
-    public int getPriority() { return (megletProps.get("Priority") instanceof Integer ? (Integer) megletProps.get("Priority") : 0); }
-    public int getPriorityGroup() { return (megletProps.get("PriorityGroup") instanceof Integer ? (Integer) megletProps.get("PriorityGroup") : 0); }
-    public java.lang.String getSsid() { return (java.lang.String) megletProps.get("Ssid"); }
-    public android.os.ParcelUuid getSubscriptionGroup() { return (android.os.ParcelUuid) megletProps.get("SubscriptionGroup"); }
-    public int getSubscriptionId() { return (megletProps.get("SubscriptionId") instanceof Integer ? (Integer) megletProps.get("SubscriptionId") : 0); }
-    public android.net.wifi.WifiConfiguration getWifiConfiguration() { return (android.net.wifi.WifiConfiguration) megletProps.get("WifiConfiguration"); }
-    public android.net.wifi.WifiSsid getWifiSsid() { return (android.net.wifi.WifiSsid) megletProps.get("WifiSsid"); }
-    public boolean isAppInteractionRequired() { return (megletProps.get("AppInteractionRequired") instanceof Boolean ? (Boolean) megletProps.get("AppInteractionRequired") : false); }
-    public boolean isCarrierMerged() { return (megletProps.get("CarrierMerged") instanceof Boolean ? (Boolean) megletProps.get("CarrierMerged") : false); }
-    public boolean isCredentialSharedWithUser() { return (megletProps.get("CredentialSharedWithUser") instanceof Boolean ? (Boolean) megletProps.get("CredentialSharedWithUser") : false); }
-    public boolean isEnhancedOpen() { return (megletProps.get("EnhancedOpen") instanceof Boolean ? (Boolean) megletProps.get("EnhancedOpen") : false); }
-    public boolean isHiddenSsid() { return (megletProps.get("HiddenSsid") instanceof Boolean ? (Boolean) megletProps.get("HiddenSsid") : false); }
-    public boolean isInitialAutojoinEnabled() { return (megletProps.get("InitialAutojoinEnabled") instanceof Boolean ? (Boolean) megletProps.get("InitialAutojoinEnabled") : false); }
-    public boolean isMetered() { return (megletProps.get("Metered") instanceof Boolean ? (Boolean) megletProps.get("Metered") : false); }
-    public boolean isOemPaid() { return (megletProps.get("OemPaid") instanceof Boolean ? (Boolean) megletProps.get("OemPaid") : false); }
-    public boolean isOemPrivate() { return (megletProps.get("OemPrivate") instanceof Boolean ? (Boolean) megletProps.get("OemPrivate") : false); }
-    public boolean isRestricted() { return (megletProps.get("Restricted") instanceof Boolean ? (Boolean) megletProps.get("Restricted") : false); }
-    public boolean isUntrusted() { return (megletProps.get("Untrusted") instanceof Boolean ? (Boolean) megletProps.get("Untrusted") : false); }
-    public boolean isUserInteractionRequired() { return (megletProps.get("UserInteractionRequired") instanceof Boolean ? (Boolean) megletProps.get("UserInteractionRequired") : false); }
-    public boolean isWifi7Enabled() { return (megletProps.get("Wifi7Enabled") instanceof Boolean ? (Boolean) megletProps.get("Wifi7Enabled") : false); }
+    public android.net.MacAddress getBssid() { return (android.net.MacAddress) meglerProps.get("Bssid"); }
+    public int getCarrierId() { return (meglerProps.get("CarrierId") instanceof Integer ? (Integer) meglerProps.get("CarrierId") : 0); }
+    public android.net.wifi.WifiEnterpriseConfig getEnterpriseConfig() { return (android.net.wifi.WifiEnterpriseConfig) meglerProps.get("EnterpriseConfig"); }
+    public int getMacRandomizationSetting() { return (meglerProps.get("MacRandomizationSetting") instanceof Integer ? (Integer) meglerProps.get("MacRandomizationSetting") : 0); }
+    public java.lang.String getPassphrase() { return (java.lang.String) meglerProps.get("Passphrase"); }
+    public android.net.wifi.hotspot2.PasspointConfiguration getPasspointConfig() { return (android.net.wifi.hotspot2.PasspointConfiguration) meglerProps.get("PasspointConfig"); }
+    public int getPriority() { return (meglerProps.get("Priority") instanceof Integer ? (Integer) meglerProps.get("Priority") : 0); }
+    public int getPriorityGroup() { return (meglerProps.get("PriorityGroup") instanceof Integer ? (Integer) meglerProps.get("PriorityGroup") : 0); }
+    public java.lang.String getSsid() { return (java.lang.String) meglerProps.get("Ssid"); }
+    public android.os.ParcelUuid getSubscriptionGroup() { return (android.os.ParcelUuid) meglerProps.get("SubscriptionGroup"); }
+    public int getSubscriptionId() { return (meglerProps.get("SubscriptionId") instanceof Integer ? (Integer) meglerProps.get("SubscriptionId") : 0); }
+    public android.net.wifi.WifiConfiguration getWifiConfiguration() { return (android.net.wifi.WifiConfiguration) meglerProps.get("WifiConfiguration"); }
+    public android.net.wifi.WifiSsid getWifiSsid() { return (android.net.wifi.WifiSsid) meglerProps.get("WifiSsid"); }
+    public boolean isAppInteractionRequired() { return (meglerProps.get("AppInteractionRequired") instanceof Boolean ? (Boolean) meglerProps.get("AppInteractionRequired") : false); }
+    public boolean isCarrierMerged() { return (meglerProps.get("CarrierMerged") instanceof Boolean ? (Boolean) meglerProps.get("CarrierMerged") : false); }
+    public boolean isCredentialSharedWithUser() { return (meglerProps.get("CredentialSharedWithUser") instanceof Boolean ? (Boolean) meglerProps.get("CredentialSharedWithUser") : false); }
+    public boolean isEnhancedOpen() { return (meglerProps.get("EnhancedOpen") instanceof Boolean ? (Boolean) meglerProps.get("EnhancedOpen") : false); }
+    public boolean isHiddenSsid() { return (meglerProps.get("HiddenSsid") instanceof Boolean ? (Boolean) meglerProps.get("HiddenSsid") : false); }
+    public boolean isInitialAutojoinEnabled() { return (meglerProps.get("InitialAutojoinEnabled") instanceof Boolean ? (Boolean) meglerProps.get("InitialAutojoinEnabled") : false); }
+    public boolean isMetered() { return (meglerProps.get("Metered") instanceof Boolean ? (Boolean) meglerProps.get("Metered") : false); }
+    public boolean isOemPaid() { return (meglerProps.get("OemPaid") instanceof Boolean ? (Boolean) meglerProps.get("OemPaid") : false); }
+    public boolean isOemPrivate() { return (meglerProps.get("OemPrivate") instanceof Boolean ? (Boolean) meglerProps.get("OemPrivate") : false); }
+    public boolean isRestricted() { return (meglerProps.get("Restricted") instanceof Boolean ? (Boolean) meglerProps.get("Restricted") : false); }
+    public boolean isUntrusted() { return (meglerProps.get("Untrusted") instanceof Boolean ? (Boolean) meglerProps.get("Untrusted") : false); }
+    public boolean isUserInteractionRequired() { return (meglerProps.get("UserInteractionRequired") instanceof Boolean ? (Boolean) meglerProps.get("UserInteractionRequired") : false); }
+    public boolean isWifi7Enabled() { return (meglerProps.get("Wifi7Enabled") instanceof Boolean ? (Boolean) meglerProps.get("Wifi7Enabled") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.net.wifi.WifiNetworkSuggestion build() { android.net.wifi.WifiNetworkSuggestion x = new android.net.wifi.WifiNetworkSuggestion(); x.megletProps.putAll(megletProps); return x; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setBssid(android.net.MacAddress p0) { megletProps.put("Bssid", p0); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setCarrierId(int p0) { megletProps.put("CarrierId", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setCarrierMerged(boolean p0) { megletProps.put("CarrierMerged", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setCredentialSharedWithUser(boolean p0) { megletProps.put("CredentialSharedWithUser", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setIsAppInteractionRequired(boolean p0) { megletProps.put("IsAppInteractionRequired", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setIsEnhancedOpen(boolean p0) { megletProps.put("IsEnhancedOpen", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setIsHiddenSsid(boolean p0) { megletProps.put("IsHiddenSsid", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setIsInitialAutojoinEnabled(boolean p0) { megletProps.put("IsInitialAutojoinEnabled", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setIsMetered(boolean p0) { megletProps.put("IsMetered", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setIsUserInteractionRequired(boolean p0) { megletProps.put("IsUserInteractionRequired", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setIsWpa3SaeH2eOnlyModeEnabled(boolean p0) { megletProps.put("IsWpa3SaeH2eOnlyModeEnabled", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setMacRandomizationSetting(int p0) { megletProps.put("MacRandomizationSetting", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setOemPaid(boolean p0) { megletProps.put("OemPaid", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setOemPrivate(boolean p0) { megletProps.put("OemPrivate", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setPasspointConfig(android.net.wifi.hotspot2.PasspointConfiguration p0) { megletProps.put("PasspointConfig", p0); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setPriority(int p0) { megletProps.put("Priority", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setPriorityGroup(int p0) { megletProps.put("PriorityGroup", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setRestricted(boolean p0) { megletProps.put("Restricted", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setSsid(java.lang.String p0) { megletProps.put("Ssid", p0); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setSubscriptionGroup(android.os.ParcelUuid p0) { megletProps.put("SubscriptionGroup", p0); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setSubscriptionId(int p0) { megletProps.put("SubscriptionId", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setUntrusted(boolean p0) { megletProps.put("Untrusted", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setWapiEnterpriseConfig(android.net.wifi.WifiEnterpriseConfig p0) { megletProps.put("WapiEnterpriseConfig", p0); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setWapiPassphrase(java.lang.String p0) { megletProps.put("WapiPassphrase", p0); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setWifi7Enabled(boolean p0) { megletProps.put("Wifi7Enabled", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setWifiSsid(android.net.wifi.WifiSsid p0) { megletProps.put("WifiSsid", p0); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setWpa2EnterpriseConfig(android.net.wifi.WifiEnterpriseConfig p0) { megletProps.put("Wpa2EnterpriseConfig", p0); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setWpa2Passphrase(java.lang.String p0) { megletProps.put("Wpa2Passphrase", p0); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setWpa3Enterprise192BitModeConfig(android.net.wifi.WifiEnterpriseConfig p0) { megletProps.put("Wpa3Enterprise192BitModeConfig", p0); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setWpa3EnterpriseConfig(android.net.wifi.WifiEnterpriseConfig p0) { megletProps.put("Wpa3EnterpriseConfig", p0); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setWpa3EnterpriseStandardModeConfig(android.net.wifi.WifiEnterpriseConfig p0) { megletProps.put("Wpa3EnterpriseStandardModeConfig", p0); return this; }
-        public android.net.wifi.WifiNetworkSuggestion.Builder setWpa3Passphrase(java.lang.String p0) { megletProps.put("Wpa3Passphrase", p0); return this; }
+        public android.net.wifi.WifiNetworkSuggestion build() { android.net.wifi.WifiNetworkSuggestion x = new android.net.wifi.WifiNetworkSuggestion(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setBssid(android.net.MacAddress p0) { meglerProps.put("Bssid", p0); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setCarrierId(int p0) { meglerProps.put("CarrierId", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setCarrierMerged(boolean p0) { meglerProps.put("CarrierMerged", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setCredentialSharedWithUser(boolean p0) { meglerProps.put("CredentialSharedWithUser", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setIsAppInteractionRequired(boolean p0) { meglerProps.put("IsAppInteractionRequired", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setIsEnhancedOpen(boolean p0) { meglerProps.put("IsEnhancedOpen", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setIsHiddenSsid(boolean p0) { meglerProps.put("IsHiddenSsid", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setIsInitialAutojoinEnabled(boolean p0) { meglerProps.put("IsInitialAutojoinEnabled", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setIsMetered(boolean p0) { meglerProps.put("IsMetered", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setIsUserInteractionRequired(boolean p0) { meglerProps.put("IsUserInteractionRequired", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setIsWpa3SaeH2eOnlyModeEnabled(boolean p0) { meglerProps.put("IsWpa3SaeH2eOnlyModeEnabled", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setMacRandomizationSetting(int p0) { meglerProps.put("MacRandomizationSetting", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setOemPaid(boolean p0) { meglerProps.put("OemPaid", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setOemPrivate(boolean p0) { meglerProps.put("OemPrivate", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setPasspointConfig(android.net.wifi.hotspot2.PasspointConfiguration p0) { meglerProps.put("PasspointConfig", p0); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setPriority(int p0) { meglerProps.put("Priority", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setPriorityGroup(int p0) { meglerProps.put("PriorityGroup", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setRestricted(boolean p0) { meglerProps.put("Restricted", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setSsid(java.lang.String p0) { meglerProps.put("Ssid", p0); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setSubscriptionGroup(android.os.ParcelUuid p0) { meglerProps.put("SubscriptionGroup", p0); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setSubscriptionId(int p0) { meglerProps.put("SubscriptionId", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setUntrusted(boolean p0) { meglerProps.put("Untrusted", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setWapiEnterpriseConfig(android.net.wifi.WifiEnterpriseConfig p0) { meglerProps.put("WapiEnterpriseConfig", p0); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setWapiPassphrase(java.lang.String p0) { meglerProps.put("WapiPassphrase", p0); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setWifi7Enabled(boolean p0) { meglerProps.put("Wifi7Enabled", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setWifiSsid(android.net.wifi.WifiSsid p0) { meglerProps.put("WifiSsid", p0); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setWpa2EnterpriseConfig(android.net.wifi.WifiEnterpriseConfig p0) { meglerProps.put("Wpa2EnterpriseConfig", p0); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setWpa2Passphrase(java.lang.String p0) { meglerProps.put("Wpa2Passphrase", p0); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setWpa3Enterprise192BitModeConfig(android.net.wifi.WifiEnterpriseConfig p0) { meglerProps.put("Wpa3Enterprise192BitModeConfig", p0); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setWpa3EnterpriseConfig(android.net.wifi.WifiEnterpriseConfig p0) { meglerProps.put("Wpa3EnterpriseConfig", p0); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setWpa3EnterpriseStandardModeConfig(android.net.wifi.WifiEnterpriseConfig p0) { meglerProps.put("Wpa3EnterpriseStandardModeConfig", p0); return this; }
+        public android.net.wifi.WifiNetworkSuggestion.Builder setWpa3Passphrase(java.lang.String p0) { meglerProps.put("Wpa3Passphrase", p0); return this; }
     }
 }

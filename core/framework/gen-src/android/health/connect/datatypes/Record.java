@@ -3,9 +3,9 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class Record {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public android.health.connect.datatypes.Metadata getMetadata() { return (android.health.connect.datatypes.Metadata) megletProps.get("Metadata"); }
-    public int getRecordType() { return (megletProps.get("RecordType") instanceof Integer ? (Integer) megletProps.get("RecordType") : 0); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public android.health.connect.datatypes.Metadata getMetadata() { return (android.health.connect.datatypes.Metadata) meglerProps.get("Metadata"); }
+    public int getRecordType() { return (meglerProps.get("RecordType") instanceof Integer ? (Integer) meglerProps.get("RecordType") : 0); }
     public abstract android.health.connect.internal.datatypes.RecordInternal toRecordInternal();
     protected Record() {}
 }

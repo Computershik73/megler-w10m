@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class RoutingSessionInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int RELEASE_TYPE_CASTING = 1;
     public static final int RELEASE_TYPE_SHARING = 2;
@@ -13,29 +13,29 @@ public final class RoutingSessionInfo implements android.os.Parcelable {
     public static final int TRANSFER_REASON_SYSTEM_REQUEST = 1;
     public int describeContents() { return 0; }
     public void dump(java.io.PrintWriter p0, java.lang.String p1) {}
-    public java.lang.String getClientPackageName() { return (java.lang.String) megletProps.get("ClientPackageName"); }
-    public android.os.Bundle getControlHints() { return (android.os.Bundle) megletProps.get("ControlHints"); }
-    public java.util.List getDeselectableRoutes() { return (megletProps.get("DeselectableRoutes") != null ? (java.util.List) megletProps.get("DeselectableRoutes") : new java.util.ArrayList()); }
-    public java.lang.String getId() { return (java.lang.String) megletProps.get("Id"); }
-    public java.lang.CharSequence getName() { return (java.lang.CharSequence) megletProps.get("Name"); }
-    public java.lang.String getOriginalId() { return (java.lang.String) megletProps.get("OriginalId"); }
-    public java.lang.String getOwnerPackageName() { return (java.lang.String) megletProps.get("OwnerPackageName"); }
-    public java.lang.String getProviderId() { return (java.lang.String) megletProps.get("ProviderId"); }
-    public int getReleaseType() { return (megletProps.get("ReleaseType") instanceof Integer ? (Integer) megletProps.get("ReleaseType") : 0); }
-    public java.util.List getSelectableRoutes() { return (megletProps.get("SelectableRoutes") != null ? (java.util.List) megletProps.get("SelectableRoutes") : new java.util.ArrayList()); }
-    public java.util.List getSelectedRoutes() { return (megletProps.get("SelectedRoutes") != null ? (java.util.List) megletProps.get("SelectedRoutes") : new java.util.ArrayList()); }
-    public java.lang.String getTransferInitiatorPackageName() { return (java.lang.String) megletProps.get("TransferInitiatorPackageName"); }
-    public android.os.UserHandle getTransferInitiatorUserHandle() { return (android.os.UserHandle) megletProps.get("TransferInitiatorUserHandle"); }
-    public int getTransferReason() { return (megletProps.get("TransferReason") instanceof Integer ? (Integer) megletProps.get("TransferReason") : 0); }
-    public java.util.List getTransferableRoutes() { return (megletProps.get("TransferableRoutes") != null ? (java.util.List) megletProps.get("TransferableRoutes") : new java.util.ArrayList()); }
-    public int getVolume() { return (megletProps.get("Volume") instanceof Integer ? (Integer) megletProps.get("Volume") : 0); }
-    public int getVolumeHandling() { return (megletProps.get("VolumeHandling") instanceof Integer ? (Integer) megletProps.get("VolumeHandling") : 0); }
-    public int getVolumeMax() { return (megletProps.get("VolumeMax") instanceof Integer ? (Integer) megletProps.get("VolumeMax") : 0); }
-    public boolean isSystemSession() { return (megletProps.get("SystemSession") instanceof Boolean ? (Boolean) megletProps.get("SystemSession") : false); }
+    public java.lang.String getClientPackageName() { return (java.lang.String) meglerProps.get("ClientPackageName"); }
+    public android.os.Bundle getControlHints() { return (android.os.Bundle) meglerProps.get("ControlHints"); }
+    public java.util.List getDeselectableRoutes() { return (meglerProps.get("DeselectableRoutes") != null ? (java.util.List) meglerProps.get("DeselectableRoutes") : new java.util.ArrayList()); }
+    public java.lang.String getId() { return (java.lang.String) meglerProps.get("Id"); }
+    public java.lang.CharSequence getName() { return (java.lang.CharSequence) meglerProps.get("Name"); }
+    public java.lang.String getOriginalId() { return (java.lang.String) meglerProps.get("OriginalId"); }
+    public java.lang.String getOwnerPackageName() { return (java.lang.String) meglerProps.get("OwnerPackageName"); }
+    public java.lang.String getProviderId() { return (java.lang.String) meglerProps.get("ProviderId"); }
+    public int getReleaseType() { return (meglerProps.get("ReleaseType") instanceof Integer ? (Integer) meglerProps.get("ReleaseType") : 0); }
+    public java.util.List getSelectableRoutes() { return (meglerProps.get("SelectableRoutes") != null ? (java.util.List) meglerProps.get("SelectableRoutes") : new java.util.ArrayList()); }
+    public java.util.List getSelectedRoutes() { return (meglerProps.get("SelectedRoutes") != null ? (java.util.List) meglerProps.get("SelectedRoutes") : new java.util.ArrayList()); }
+    public java.lang.String getTransferInitiatorPackageName() { return (java.lang.String) meglerProps.get("TransferInitiatorPackageName"); }
+    public android.os.UserHandle getTransferInitiatorUserHandle() { return (android.os.UserHandle) meglerProps.get("TransferInitiatorUserHandle"); }
+    public int getTransferReason() { return (meglerProps.get("TransferReason") instanceof Integer ? (Integer) meglerProps.get("TransferReason") : 0); }
+    public java.util.List getTransferableRoutes() { return (meglerProps.get("TransferableRoutes") != null ? (java.util.List) meglerProps.get("TransferableRoutes") : new java.util.ArrayList()); }
+    public int getVolume() { return (meglerProps.get("Volume") instanceof Integer ? (Integer) meglerProps.get("Volume") : 0); }
+    public int getVolumeHandling() { return (meglerProps.get("VolumeHandling") instanceof Integer ? (Integer) meglerProps.get("VolumeHandling") : 0); }
+    public int getVolumeMax() { return (meglerProps.get("VolumeMax") instanceof Integer ? (Integer) meglerProps.get("VolumeMax") : 0); }
+    public boolean isSystemSession() { return (meglerProps.get("SystemSession") instanceof Boolean ? (Boolean) meglerProps.get("SystemSession") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected RoutingSessionInfo() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.media.RoutingSessionInfo p0) {}
         public Builder(android.media.RoutingSessionInfo p0, java.lang.String p1) {}
         public Builder(java.lang.String p0, java.lang.String p1) {}
@@ -43,7 +43,7 @@ public final class RoutingSessionInfo implements android.os.Parcelable {
         public android.media.RoutingSessionInfo.Builder addSelectableRoute(java.lang.String p0) { return this; }
         public android.media.RoutingSessionInfo.Builder addSelectedRoute(java.lang.String p0) { return this; }
         public android.media.RoutingSessionInfo.Builder addTransferableRoute(java.lang.String p0) { return this; }
-        public android.media.RoutingSessionInfo build() { android.media.RoutingSessionInfo x = new android.media.RoutingSessionInfo(); x.megletProps.putAll(megletProps); return x; }
+        public android.media.RoutingSessionInfo build() { android.media.RoutingSessionInfo x = new android.media.RoutingSessionInfo(); x.meglerProps.putAll(meglerProps); return x; }
         public android.media.RoutingSessionInfo.Builder clearDeselectableRoutes() { return this; }
         public android.media.RoutingSessionInfo.Builder clearSelectableRoutes() { return this; }
         public android.media.RoutingSessionInfo.Builder clearSelectedRoutes() { return this; }
@@ -52,18 +52,18 @@ public final class RoutingSessionInfo implements android.os.Parcelable {
         public android.media.RoutingSessionInfo.Builder removeSelectableRoute(java.lang.String p0) { return this; }
         public android.media.RoutingSessionInfo.Builder removeSelectedRoute(java.lang.String p0) { return this; }
         public android.media.RoutingSessionInfo.Builder removeTransferableRoute(java.lang.String p0) { return this; }
-        public android.media.RoutingSessionInfo.Builder setClientPackageName(java.lang.String p0) { megletProps.put("ClientPackageName", p0); return this; }
-        public android.media.RoutingSessionInfo.Builder setControlHints(android.os.Bundle p0) { megletProps.put("ControlHints", p0); return this; }
-        public android.media.RoutingSessionInfo.Builder setName(java.lang.CharSequence p0) { megletProps.put("Name", p0); return this; }
-        public android.media.RoutingSessionInfo.Builder setOwnerPackageName(java.lang.String p0) { megletProps.put("OwnerPackageName", p0); return this; }
-        public android.media.RoutingSessionInfo.Builder setProviderId(java.lang.String p0) { megletProps.put("ProviderId", p0); return this; }
-        public android.media.RoutingSessionInfo.Builder setReleaseType(int p0) { megletProps.put("ReleaseType", Integer.valueOf(p0)); return this; }
-        public android.media.RoutingSessionInfo.Builder setSystemSession(boolean p0) { megletProps.put("SystemSession", Boolean.valueOf(p0)); return this; }
+        public android.media.RoutingSessionInfo.Builder setClientPackageName(java.lang.String p0) { meglerProps.put("ClientPackageName", p0); return this; }
+        public android.media.RoutingSessionInfo.Builder setControlHints(android.os.Bundle p0) { meglerProps.put("ControlHints", p0); return this; }
+        public android.media.RoutingSessionInfo.Builder setName(java.lang.CharSequence p0) { meglerProps.put("Name", p0); return this; }
+        public android.media.RoutingSessionInfo.Builder setOwnerPackageName(java.lang.String p0) { meglerProps.put("OwnerPackageName", p0); return this; }
+        public android.media.RoutingSessionInfo.Builder setProviderId(java.lang.String p0) { meglerProps.put("ProviderId", p0); return this; }
+        public android.media.RoutingSessionInfo.Builder setReleaseType(int p0) { meglerProps.put("ReleaseType", Integer.valueOf(p0)); return this; }
+        public android.media.RoutingSessionInfo.Builder setSystemSession(boolean p0) { meglerProps.put("SystemSession", Boolean.valueOf(p0)); return this; }
         public android.media.RoutingSessionInfo.Builder setTransferInitiator(android.os.UserHandle p0, java.lang.String p1) { return this; }
-        public android.media.RoutingSessionInfo.Builder setTransferReason(int p0) { megletProps.put("TransferReason", Integer.valueOf(p0)); return this; }
-        public android.media.RoutingSessionInfo.Builder setVolume(int p0) { megletProps.put("Volume", Integer.valueOf(p0)); return this; }
-        public android.media.RoutingSessionInfo.Builder setVolumeHandling(int p0) { megletProps.put("VolumeHandling", Integer.valueOf(p0)); return this; }
-        public android.media.RoutingSessionInfo.Builder setVolumeMax(int p0) { megletProps.put("VolumeMax", Integer.valueOf(p0)); return this; }
+        public android.media.RoutingSessionInfo.Builder setTransferReason(int p0) { meglerProps.put("TransferReason", Integer.valueOf(p0)); return this; }
+        public android.media.RoutingSessionInfo.Builder setVolume(int p0) { meglerProps.put("Volume", Integer.valueOf(p0)); return this; }
+        public android.media.RoutingSessionInfo.Builder setVolumeHandling(int p0) { meglerProps.put("VolumeHandling", Integer.valueOf(p0)); return this; }
+        public android.media.RoutingSessionInfo.Builder setVolumeMax(int p0) { meglerProps.put("VolumeMax", Integer.valueOf(p0)); return this; }
         Builder() { this((android.media.RoutingSessionInfo) null); }
     }
 }

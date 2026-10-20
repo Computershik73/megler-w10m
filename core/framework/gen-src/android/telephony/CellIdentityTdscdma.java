@@ -3,23 +3,23 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CellIdentityTdscdma extends android.telephony.CellIdentity {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public CellIdentityTdscdma() { super((java.lang.String) null, (int) 0, (android.os.Parcel) null); }
     public CellIdentityTdscdma(java.lang.String p0, java.lang.String p1, int p2, int p3, int p4, int p5, java.lang.String p6, java.lang.String p7, java.util.Collection p8, android.telephony.ClosedSubscriberGroupInfo p9) { super((java.lang.String) null, (int) 0, (android.os.Parcel) null); }
     protected static android.telephony.CellIdentityTdscdma createFromParcelBody(android.os.Parcel p0) { return new CellIdentityTdscdma(); }
     public android.telephony.gsm.GsmCellLocation asCellLocation() { return null; }
     public int describeContents() { return 0; }
-    public java.util.Set getAdditionalPlmns() { return (megletProps.get("AdditionalPlmns") != null ? (java.util.Set) megletProps.get("AdditionalPlmns") : new java.util.HashSet()); }
-    public int getChannelNumber() { return (megletProps.get("ChannelNumber") instanceof Integer ? (Integer) megletProps.get("ChannelNumber") : 0); }
-    public int getCid() { return (megletProps.get("Cid") instanceof Integer ? (Integer) megletProps.get("Cid") : 0); }
-    public android.telephony.ClosedSubscriberGroupInfo getClosedSubscriberGroupInfo() { return (android.telephony.ClosedSubscriberGroupInfo) megletProps.get("ClosedSubscriberGroupInfo"); }
-    public int getCpid() { return (megletProps.get("Cpid") instanceof Integer ? (Integer) megletProps.get("Cpid") : 0); }
-    public int getLac() { return (megletProps.get("Lac") instanceof Integer ? (Integer) megletProps.get("Lac") : 0); }
-    public java.lang.String getMccString() { return (java.lang.String) megletProps.get("MccString"); }
-    public java.lang.String getMncString() { return (java.lang.String) megletProps.get("MncString"); }
-    public java.lang.String getMobileNetworkOperator() { return (java.lang.String) megletProps.get("MobileNetworkOperator"); }
-    public int getUarfcn() { return (megletProps.get("Uarfcn") instanceof Integer ? (Integer) megletProps.get("Uarfcn") : 0); }
+    public java.util.Set getAdditionalPlmns() { return (meglerProps.get("AdditionalPlmns") != null ? (java.util.Set) meglerProps.get("AdditionalPlmns") : new java.util.HashSet()); }
+    public int getChannelNumber() { return (meglerProps.get("ChannelNumber") instanceof Integer ? (Integer) meglerProps.get("ChannelNumber") : 0); }
+    public int getCid() { return (meglerProps.get("Cid") instanceof Integer ? (Integer) meglerProps.get("Cid") : 0); }
+    public android.telephony.ClosedSubscriberGroupInfo getClosedSubscriberGroupInfo() { return (android.telephony.ClosedSubscriberGroupInfo) meglerProps.get("ClosedSubscriberGroupInfo"); }
+    public int getCpid() { return (meglerProps.get("Cpid") instanceof Integer ? (Integer) meglerProps.get("Cpid") : 0); }
+    public int getLac() { return (meglerProps.get("Lac") instanceof Integer ? (Integer) meglerProps.get("Lac") : 0); }
+    public java.lang.String getMccString() { return (java.lang.String) meglerProps.get("MccString"); }
+    public java.lang.String getMncString() { return (java.lang.String) meglerProps.get("MncString"); }
+    public java.lang.String getMobileNetworkOperator() { return (java.lang.String) meglerProps.get("MobileNetworkOperator"); }
+    public int getUarfcn() { return (meglerProps.get("Uarfcn") instanceof Integer ? (Integer) meglerProps.get("Uarfcn") : 0); }
     public android.telephony.CellIdentityTdscdma sanitizeLocationInfo() { return this; }
     protected void updateGlobalCellId() {}
     public void writeToParcel(android.os.Parcel p0, int p1) {}

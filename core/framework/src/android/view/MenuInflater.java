@@ -51,7 +51,7 @@ public class MenuInflater {
                     a.recycle();
                     last = item;
                 } else if ("menu".equals(n) && last != null) {
-                    SubMenu sm = ((meglet.MenuImpl.Item) last).megletSubMenu();
+                    SubMenu sm = ((megler.MenuImpl.Item) last).meglerSubMenu();
                     menus.push(sm);
                 }
             } else if (t == XmlPullParser.END_TAG) {

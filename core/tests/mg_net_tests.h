@@ -19,7 +19,7 @@ extern "C" {
 int mg_net_tests_run(mg_test_sink sink, void *user, int *checks);
 
 /*
- * The check a phone runs (meglet_net_check in meglet.h): `public_host` is
+ * The check a phone runs (megler_net_check in megler.h): `public_host` is
  * resolved, a TCP connection made to its port 80, a HEAD request sent for
  * `path` and the status line read; then the same against a server of the
  * check's own on loopback, and a UDP round trip on loopback; and what

@@ -3,13 +3,13 @@ package android.net.ipsec.ike;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TunnelModeChildSessionParams extends android.net.ipsec.ike.ChildSessionParams {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.net.ipsec.ike.TunnelModeChildSessionParams fromPersistableBundle(android.os.PersistableBundle p0) { return new TunnelModeChildSessionParams(); }
-    public java.util.List getConfigurationRequests() { return (megletProps.get("ConfigurationRequests") != null ? (java.util.List) megletProps.get("ConfigurationRequests") : new java.util.ArrayList()); }
+    public java.util.List getConfigurationRequests() { return (meglerProps.get("ConfigurationRequests") != null ? (java.util.List) meglerProps.get("ConfigurationRequests") : new java.util.ArrayList()); }
     public android.os.PersistableBundle toPersistableBundle() { return null; }
     protected TunnelModeChildSessionParams() { super((android.net.ipsec.ike.IkeTrafficSelector[]) null, (android.net.ipsec.ike.IkeTrafficSelector[]) null, (android.net.ipsec.ike.ChildSaProposal[]) null, (int) 0, (int) 0, (boolean) false); }
     public static final class Builder extends android.net.ipsec.ike.ChildSessionParams.Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() { super(); }
         public Builder(android.net.ipsec.ike.TunnelModeChildSessionParams p0) { super(); }
         public android.net.ipsec.ike.TunnelModeChildSessionParams.Builder addChildSaProposal(android.net.ipsec.ike.ChildSaProposal p0) { return this; }
@@ -23,7 +23,7 @@ public final class TunnelModeChildSessionParams extends android.net.ipsec.ike.Ch
         public android.net.ipsec.ike.TunnelModeChildSessionParams.Builder addInternalDnsServerRequest(java.net.InetAddress p0) { return this; }
         public android.net.ipsec.ike.TunnelModeChildSessionParams.Builder addOutboundTrafficSelectors(android.net.ipsec.ike.IkeTrafficSelector p0) { return this; }
         public android.net.ipsec.ike.TunnelModeChildSessionParams.Builder addSaProposal(android.net.ipsec.ike.ChildSaProposal p0) { return this; }
-        public android.net.ipsec.ike.TunnelModeChildSessionParams build() { android.net.ipsec.ike.TunnelModeChildSessionParams x = new android.net.ipsec.ike.TunnelModeChildSessionParams(); x.megletProps.putAll(megletProps); return x; }
+        public android.net.ipsec.ike.TunnelModeChildSessionParams build() { android.net.ipsec.ike.TunnelModeChildSessionParams x = new android.net.ipsec.ike.TunnelModeChildSessionParams(); x.meglerProps.putAll(meglerProps); return x; }
         public android.net.ipsec.ike.TunnelModeChildSessionParams.Builder setLifetimeSeconds(int p0, int p1) { return this; }
     }
     public interface ConfigRequestIpv4Address extends android.net.ipsec.ike.TunnelModeChildSessionParams.TunnelModeChildConfigRequest {

@@ -3,7 +3,7 @@ package android.provider;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class VoicemailContract {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_FETCH_VOICEMAIL = "android.intent.action.FETCH_VOICEMAIL";
     public static final java.lang.String ACTION_NEW_VOICEMAIL = "android.intent.action.NEW_VOICEMAIL";
     public static final java.lang.String ACTION_SYNC_VOICEMAIL = "android.provider.action.SYNC_VOICEMAIL";
@@ -17,7 +17,7 @@ public class VoicemailContract {
     public static final java.lang.String SOURCE_PACKAGE_FIELD = "source_package";
     protected VoicemailContract() {}
     public static final class Status implements android.provider.BaseColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String CONFIGURATION_STATE = "configuration_state";
         public static final int CONFIGURATION_STATE_CAN_BE_CONFIGURED = 2;
         public static final int CONFIGURATION_STATE_CONFIGURING = 3;
@@ -53,7 +53,7 @@ public class VoicemailContract {
         protected Status() {}
     }
     public static final class Voicemails implements android.provider.BaseColumns, android.provider.OpenableColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String ARCHIVED = "archived";
         public static final java.lang.String BACKED_UP = "backed_up";
         public static android.net.Uri CONTENT_URI;

@@ -3,12 +3,12 @@ package android.se.omapi;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Channel implements java.nio.channels.Channel {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public void close() {}
-    public byte[] getSelectResponse() { return (byte[]) megletProps.get("SelectResponse"); }
-    public android.se.omapi.Session getSession() { return (android.se.omapi.Session) megletProps.get("Session"); }
-    public boolean isBasicChannel() { return (megletProps.get("BasicChannel") instanceof Boolean ? (Boolean) megletProps.get("BasicChannel") : false); }
-    public boolean isOpen() { return (megletProps.get("Open") instanceof Boolean ? (Boolean) megletProps.get("Open") : false); }
+    public byte[] getSelectResponse() { return (byte[]) meglerProps.get("SelectResponse"); }
+    public android.se.omapi.Session getSession() { return (android.se.omapi.Session) meglerProps.get("Session"); }
+    public boolean isBasicChannel() { return (meglerProps.get("BasicChannel") instanceof Boolean ? (Boolean) meglerProps.get("BasicChannel") : false); }
+    public boolean isOpen() { return (meglerProps.get("Open") instanceof Boolean ? (Boolean) meglerProps.get("Open") : false); }
     public boolean selectNext() { return false; }
     public byte[] transmit(byte[] p0) { return null; }
     protected Channel() {}

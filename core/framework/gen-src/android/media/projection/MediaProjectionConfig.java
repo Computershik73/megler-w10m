@@ -3,7 +3,7 @@ package android.media.projection;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MediaProjectionConfig implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int CAPTURE_REGION_FIXED_DISPLAY = 1;
     public static final int CAPTURE_REGION_USER_CHOICE = 0;
     public static android.os.Parcelable.Creator CREATOR;
@@ -15,22 +15,22 @@ public final class MediaProjectionConfig implements android.os.Parcelable {
     public static android.media.projection.MediaProjectionConfig createConfigForDefaultDisplay() { return new MediaProjectionConfig(); }
     public static android.media.projection.MediaProjectionConfig createConfigForUserChoice() { return new MediaProjectionConfig(); }
     public int describeContents() { return 0; }
-    public int getDisplayToCapture() { return (megletProps.get("DisplayToCapture") instanceof Integer ? (Integer) megletProps.get("DisplayToCapture") : 0); }
-    public int getInitiallySelectedSource() { return (megletProps.get("InitiallySelectedSource") instanceof Integer ? (Integer) megletProps.get("InitiallySelectedSource") : 0); }
-    public int getProjectionSources() { return (megletProps.get("ProjectionSources") instanceof Integer ? (Integer) megletProps.get("ProjectionSources") : 0); }
-    public int getRegionToCapture() { return (megletProps.get("RegionToCapture") instanceof Integer ? (Integer) megletProps.get("RegionToCapture") : 0); }
-    public java.lang.CharSequence getRequesterHint() { return (java.lang.CharSequence) megletProps.get("RequesterHint"); }
-    public boolean isOwnAppContentProvided() { return (megletProps.get("OwnAppContentProvided") instanceof Boolean ? (Boolean) megletProps.get("OwnAppContentProvided") : false); }
+    public int getDisplayToCapture() { return (meglerProps.get("DisplayToCapture") instanceof Integer ? (Integer) meglerProps.get("DisplayToCapture") : 0); }
+    public int getInitiallySelectedSource() { return (meglerProps.get("InitiallySelectedSource") instanceof Integer ? (Integer) meglerProps.get("InitiallySelectedSource") : 0); }
+    public int getProjectionSources() { return (meglerProps.get("ProjectionSources") instanceof Integer ? (Integer) meglerProps.get("ProjectionSources") : 0); }
+    public int getRegionToCapture() { return (meglerProps.get("RegionToCapture") instanceof Integer ? (Integer) meglerProps.get("RegionToCapture") : 0); }
+    public java.lang.CharSequence getRequesterHint() { return (java.lang.CharSequence) meglerProps.get("RequesterHint"); }
+    public boolean isOwnAppContentProvided() { return (meglerProps.get("OwnAppContentProvided") instanceof Boolean ? (Boolean) meglerProps.get("OwnAppContentProvided") : false); }
     public boolean isSourceEnabled(int p0) { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected MediaProjectionConfig() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.media.projection.MediaProjectionConfig build() { android.media.projection.MediaProjectionConfig x = new android.media.projection.MediaProjectionConfig(); x.megletProps.putAll(megletProps); return x; }
-        public android.media.projection.MediaProjectionConfig.Builder setInitiallySelectedSource(int p0) { megletProps.put("InitiallySelectedSource", Integer.valueOf(p0)); return this; }
+        public android.media.projection.MediaProjectionConfig build() { android.media.projection.MediaProjectionConfig x = new android.media.projection.MediaProjectionConfig(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.media.projection.MediaProjectionConfig.Builder setInitiallySelectedSource(int p0) { meglerProps.put("InitiallySelectedSource", Integer.valueOf(p0)); return this; }
         public android.media.projection.MediaProjectionConfig.Builder setOwnAppContentProvided(android.content.Context p0, boolean p1) { return this; }
-        public android.media.projection.MediaProjectionConfig.Builder setRequesterHint(java.lang.String p0) { megletProps.put("RequesterHint", p0); return this; }
+        public android.media.projection.MediaProjectionConfig.Builder setRequesterHint(java.lang.String p0) { meglerProps.put("RequesterHint", p0); return this; }
         public android.media.projection.MediaProjectionConfig.Builder setSourceEnabled(int p0, boolean p1) { return this; }
     }
 }

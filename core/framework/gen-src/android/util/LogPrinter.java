@@ -3,7 +3,7 @@ package android.util;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class LogPrinter implements android.util.Printer {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public LogPrinter(int p0, java.lang.String p1) {}
     public LogPrinter(int p0, java.lang.String p1, int p2) {}
     public void println(java.lang.String p0) {}

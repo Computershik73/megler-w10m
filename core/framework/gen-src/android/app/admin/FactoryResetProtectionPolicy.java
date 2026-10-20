@@ -3,20 +3,20 @@ package android.app.admin;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class FactoryResetProtectionPolicy implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
     public void dump(android.util.IndentingPrintWriter p0) {}
-    public java.util.List getFactoryResetProtectionAccounts() { return (megletProps.get("FactoryResetProtectionAccounts") != null ? (java.util.List) megletProps.get("FactoryResetProtectionAccounts") : new java.util.ArrayList()); }
-    public boolean isFactoryResetProtectionEnabled() { return (megletProps.get("FactoryResetProtectionEnabled") instanceof Boolean ? (Boolean) megletProps.get("FactoryResetProtectionEnabled") : false); }
-    public boolean isNotEmpty() { return (megletProps.get("NotEmpty") instanceof Boolean ? (Boolean) megletProps.get("NotEmpty") : false); }
+    public java.util.List getFactoryResetProtectionAccounts() { return (meglerProps.get("FactoryResetProtectionAccounts") != null ? (java.util.List) meglerProps.get("FactoryResetProtectionAccounts") : new java.util.ArrayList()); }
+    public boolean isFactoryResetProtectionEnabled() { return (meglerProps.get("FactoryResetProtectionEnabled") instanceof Boolean ? (Boolean) meglerProps.get("FactoryResetProtectionEnabled") : false); }
+    public boolean isNotEmpty() { return (meglerProps.get("NotEmpty") instanceof Boolean ? (Boolean) meglerProps.get("NotEmpty") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected FactoryResetProtectionPolicy() {}
     public static class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.app.admin.FactoryResetProtectionPolicy build() { android.app.admin.FactoryResetProtectionPolicy x = new android.app.admin.FactoryResetProtectionPolicy(); x.megletProps.putAll(megletProps); return x; }
-        public android.app.admin.FactoryResetProtectionPolicy.Builder setFactoryResetProtectionAccounts(java.util.List p0) { megletProps.put("FactoryResetProtectionAccounts", p0); return this; }
-        public android.app.admin.FactoryResetProtectionPolicy.Builder setFactoryResetProtectionEnabled(boolean p0) { megletProps.put("FactoryResetProtectionEnabled", Boolean.valueOf(p0)); return this; }
+        public android.app.admin.FactoryResetProtectionPolicy build() { android.app.admin.FactoryResetProtectionPolicy x = new android.app.admin.FactoryResetProtectionPolicy(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.app.admin.FactoryResetProtectionPolicy.Builder setFactoryResetProtectionAccounts(java.util.List p0) { meglerProps.put("FactoryResetProtectionAccounts", p0); return this; }
+        public android.app.admin.FactoryResetProtectionPolicy.Builder setFactoryResetProtectionEnabled(boolean p0) { meglerProps.put("FactoryResetProtectionEnabled", Boolean.valueOf(p0)); return this; }
     }
 }

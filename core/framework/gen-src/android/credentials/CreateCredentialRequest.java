@@ -3,24 +3,24 @@ package android.credentials;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CreateCredentialRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public boolean alwaysSendAppInfoToProvider() { return false; }
     public int describeContents() { return 0; }
-    public android.os.Bundle getCandidateQueryData() { return (android.os.Bundle) megletProps.get("CandidateQueryData"); }
-    public android.os.Bundle getCredentialData() { return (android.os.Bundle) megletProps.get("CredentialData"); }
-    public java.lang.String getOrigin() { return (java.lang.String) megletProps.get("Origin"); }
-    public java.lang.String getType() { return (java.lang.String) megletProps.get("Type"); }
-    public boolean isSystemProviderRequired() { return (megletProps.get("SystemProviderRequired") instanceof Boolean ? (Boolean) megletProps.get("SystemProviderRequired") : false); }
+    public android.os.Bundle getCandidateQueryData() { return (android.os.Bundle) meglerProps.get("CandidateQueryData"); }
+    public android.os.Bundle getCredentialData() { return (android.os.Bundle) meglerProps.get("CredentialData"); }
+    public java.lang.String getOrigin() { return (java.lang.String) meglerProps.get("Origin"); }
+    public java.lang.String getType() { return (java.lang.String) meglerProps.get("Type"); }
+    public boolean isSystemProviderRequired() { return (meglerProps.get("SystemProviderRequired") instanceof Boolean ? (Boolean) meglerProps.get("SystemProviderRequired") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected CreateCredentialRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(java.lang.String p0, android.os.Bundle p1, android.os.Bundle p2) {}
-        public android.credentials.CreateCredentialRequest build() { android.credentials.CreateCredentialRequest x = new android.credentials.CreateCredentialRequest(); x.megletProps.putAll(megletProps); return x; }
-        public android.credentials.CreateCredentialRequest.Builder setAlwaysSendAppInfoToProvider(boolean p0) { megletProps.put("AlwaysSendAppInfoToProvider", Boolean.valueOf(p0)); return this; }
-        public android.credentials.CreateCredentialRequest.Builder setIsSystemProviderRequired(boolean p0) { megletProps.put("IsSystemProviderRequired", Boolean.valueOf(p0)); return this; }
-        public android.credentials.CreateCredentialRequest.Builder setOrigin(java.lang.String p0) { megletProps.put("Origin", p0); return this; }
+        public android.credentials.CreateCredentialRequest build() { android.credentials.CreateCredentialRequest x = new android.credentials.CreateCredentialRequest(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.credentials.CreateCredentialRequest.Builder setAlwaysSendAppInfoToProvider(boolean p0) { meglerProps.put("AlwaysSendAppInfoToProvider", Boolean.valueOf(p0)); return this; }
+        public android.credentials.CreateCredentialRequest.Builder setIsSystemProviderRequired(boolean p0) { meglerProps.put("IsSystemProviderRequired", Boolean.valueOf(p0)); return this; }
+        public android.credentials.CreateCredentialRequest.Builder setOrigin(java.lang.String p0) { meglerProps.put("Origin", p0); return this; }
         Builder() { this((java.lang.String) null, (android.os.Bundle) null, (android.os.Bundle) null); }
     }
 }

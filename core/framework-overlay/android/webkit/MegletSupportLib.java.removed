@@ -1,4 +1,0 @@
-// Meglet: the original's MegletSupportLib is not compiled (tools/build-framework.sh, "A third kind").
-// It answered androidx.webkit's calls for the original's WebView over WKWebView. android.webkit here is AOSP's and a
-// WebView is Chromium's (docs/JAVA.md, "The WebView"): androidx.webkit finds the WebView APK's own support-library glue
-// (org.chromium.support_lib_glue.SupportLibReflectionUtil) through WebView.getWebViewClassLoader(), as on Android.

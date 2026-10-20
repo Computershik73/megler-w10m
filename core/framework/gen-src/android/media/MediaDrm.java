@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MediaDrm implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int CERTIFICATE_TYPE_NONE = 0;
     public static final int CERTIFICATE_TYPE_X509 = 1;
     public static final int EVENT_KEY_EXPIRED = 3;
@@ -51,23 +51,23 @@ public final class MediaDrm implements java.lang.AutoCloseable {
     public void closeSession(byte[] p0) {}
     protected void finalize() {}
     public android.media.MediaDrm.CertificateRequest getCertificateRequest(int p0, java.lang.String p1) { return null; }
-    public int getConnectedHdcpLevel() { return (megletProps.get("ConnectedHdcpLevel") instanceof Integer ? (Integer) megletProps.get("ConnectedHdcpLevel") : 0); }
+    public int getConnectedHdcpLevel() { return (meglerProps.get("ConnectedHdcpLevel") instanceof Integer ? (Integer) meglerProps.get("ConnectedHdcpLevel") : 0); }
     public android.media.MediaDrm.CryptoSession getCryptoSession(byte[] p0, java.lang.String p1, java.lang.String p2) { return null; }
     public android.media.MediaDrm.KeyRequest getKeyRequest(byte[] p0, byte[] p1, java.lang.String p2, int p3, java.util.HashMap p4) { return null; }
-    public java.util.List getLogMessages() { return (megletProps.get("LogMessages") != null ? (java.util.List) megletProps.get("LogMessages") : new java.util.ArrayList()); }
-    public int getMaxHdcpLevel() { return (megletProps.get("MaxHdcpLevel") instanceof Integer ? (Integer) megletProps.get("MaxHdcpLevel") : 0); }
-    public int getMaxSessionCount() { return (megletProps.get("MaxSessionCount") instanceof Integer ? (Integer) megletProps.get("MaxSessionCount") : 0); }
-    public android.os.PersistableBundle getMetrics() { return (android.os.PersistableBundle) megletProps.get("Metrics"); }
-    public java.util.List getOfflineLicenseKeySetIds() { return (megletProps.get("OfflineLicenseKeySetIds") != null ? (java.util.List) megletProps.get("OfflineLicenseKeySetIds") : new java.util.ArrayList()); }
+    public java.util.List getLogMessages() { return (meglerProps.get("LogMessages") != null ? (java.util.List) meglerProps.get("LogMessages") : new java.util.ArrayList()); }
+    public int getMaxHdcpLevel() { return (meglerProps.get("MaxHdcpLevel") instanceof Integer ? (Integer) meglerProps.get("MaxHdcpLevel") : 0); }
+    public int getMaxSessionCount() { return (meglerProps.get("MaxSessionCount") instanceof Integer ? (Integer) meglerProps.get("MaxSessionCount") : 0); }
+    public android.os.PersistableBundle getMetrics() { return (android.os.PersistableBundle) meglerProps.get("Metrics"); }
+    public java.util.List getOfflineLicenseKeySetIds() { return (meglerProps.get("OfflineLicenseKeySetIds") != null ? (java.util.List) meglerProps.get("OfflineLicenseKeySetIds") : new java.util.ArrayList()); }
     public int getOfflineLicenseState(byte[] p0) { return 0; }
-    public int getOpenSessionCount() { return (megletProps.get("OpenSessionCount") instanceof Integer ? (Integer) megletProps.get("OpenSessionCount") : 0); }
+    public int getOpenSessionCount() { return (meglerProps.get("OpenSessionCount") instanceof Integer ? (Integer) meglerProps.get("OpenSessionCount") : 0); }
     public android.media.MediaDrm.PlaybackComponent getPlaybackComponent(byte[] p0) { return null; }
     public byte[] getPropertyByteArray(java.lang.String p0) { return null; }
     public java.lang.String getPropertyString(java.lang.String p0) { return null; }
-    public android.media.MediaDrm.ProvisionRequest getProvisionRequest() { return (android.media.MediaDrm.ProvisionRequest) megletProps.get("ProvisionRequest"); }
+    public android.media.MediaDrm.ProvisionRequest getProvisionRequest() { return (android.media.MediaDrm.ProvisionRequest) meglerProps.get("ProvisionRequest"); }
     public byte[] getSecureStop(byte[] p0) { return null; }
-    public java.util.List getSecureStopIds() { return (megletProps.get("SecureStopIds") != null ? (java.util.List) megletProps.get("SecureStopIds") : new java.util.ArrayList()); }
-    public java.util.List getSecureStops() { return (megletProps.get("SecureStops") != null ? (java.util.List) megletProps.get("SecureStops") : new java.util.ArrayList()); }
+    public java.util.List getSecureStopIds() { return (meglerProps.get("SecureStopIds") != null ? (java.util.List) meglerProps.get("SecureStopIds") : new java.util.ArrayList()); }
+    public java.util.List getSecureStops() { return (meglerProps.get("SecureStops") != null ? (java.util.List) meglerProps.get("SecureStops") : new java.util.ArrayList()); }
     public int getSecurityLevel(byte[] p0) { return 0; }
     public void native_release() {}
     public byte[] openSession() { return null; }
@@ -86,7 +86,7 @@ public final class MediaDrm implements java.lang.AutoCloseable {
     public boolean requiresSecureDecoder(java.lang.String p0) { return false; }
     public boolean requiresSecureDecoder(java.lang.String p0, int p1) { return false; }
     public void restoreKeys(byte[] p0, byte[] p1) {}
-    public void setOnEventListener(android.media.MediaDrm.OnEventListener p0) { megletProps.put("OnEventListener", p0); }
+    public void setOnEventListener(android.media.MediaDrm.OnEventListener p0) { meglerProps.put("OnEventListener", p0); }
     public void setOnEventListener(android.media.MediaDrm.OnEventListener p0, android.os.Handler p1) {}
     public void setOnEventListener(java.util.concurrent.Executor p0, android.media.MediaDrm.OnEventListener p1) {}
     public void setOnExpirationUpdateListener(android.media.MediaDrm.OnExpirationUpdateListener p0, android.os.Handler p1) {}
@@ -100,19 +100,19 @@ public final class MediaDrm implements java.lang.AutoCloseable {
     public byte[] signRSA(byte[] p0, java.lang.String p1, byte[] p2, byte[] p3) { return null; }
     MediaDrm() { this((java.util.UUID) null); }
     public static final class Certificate {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public byte[] getContent() { return (byte[]) megletProps.get("Content"); }
-        public byte[] getWrappedPrivateKey() { return (byte[]) megletProps.get("WrappedPrivateKey"); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public byte[] getContent() { return (byte[]) meglerProps.get("Content"); }
+        public byte[] getWrappedPrivateKey() { return (byte[]) meglerProps.get("WrappedPrivateKey"); }
         protected Certificate() {}
     }
     public static final class CertificateRequest {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public byte[] getData() { return (byte[]) megletProps.get("Data"); }
-        public java.lang.String getDefaultUrl() { return (java.lang.String) megletProps.get("DefaultUrl"); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public byte[] getData() { return (byte[]) meglerProps.get("Data"); }
+        public java.lang.String getDefaultUrl() { return (java.lang.String) meglerProps.get("DefaultUrl"); }
         protected CertificateRequest() {}
     }
     public static final class CryptoSession {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public byte[] decrypt(byte[] p0, byte[] p1, byte[] p2) { return null; }
         public byte[] encrypt(byte[] p0, byte[] p1, byte[] p2) { return null; }
         public byte[] sign(byte[] p0, byte[] p1) { return null; }
@@ -120,7 +120,7 @@ public final class MediaDrm implements java.lang.AutoCloseable {
         protected CryptoSession() {}
     }
     public static final class ErrorCodes {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int ERROR_CERTIFICATE_MALFORMED = 10;
         public static final int ERROR_CERTIFICATE_MISSING = 11;
         public static final int ERROR_CRYPTO_LIBRARY = 12;
@@ -158,50 +158,50 @@ public final class MediaDrm implements java.lang.AutoCloseable {
         protected ErrorCodes() {}
     }
     public static final class KeyRequest {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int REQUEST_TYPE_INITIAL = 0;
         public static final int REQUEST_TYPE_NONE = 3;
         public static final int REQUEST_TYPE_RELEASE = 2;
         public static final int REQUEST_TYPE_RENEWAL = 1;
         public static final int REQUEST_TYPE_UPDATE = 4;
-        public byte[] getData() { return (byte[]) megletProps.get("Data"); }
-        public java.lang.String getDefaultUrl() { return (java.lang.String) megletProps.get("DefaultUrl"); }
-        public int getRequestType() { return (megletProps.get("RequestType") instanceof Integer ? (Integer) megletProps.get("RequestType") : 0); }
+        public byte[] getData() { return (byte[]) meglerProps.get("Data"); }
+        public java.lang.String getDefaultUrl() { return (java.lang.String) meglerProps.get("DefaultUrl"); }
+        public int getRequestType() { return (meglerProps.get("RequestType") instanceof Integer ? (Integer) meglerProps.get("RequestType") : 0); }
         protected KeyRequest() {}
     }
     public static final class KeyStatus {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int STATUS_EXPIRED = 1;
         public static final int STATUS_INTERNAL_ERROR = 4;
         public static final int STATUS_OUTPUT_NOT_ALLOWED = 2;
         public static final int STATUS_PENDING = 3;
         public static final int STATUS_USABLE = 0;
         public static final int STATUS_USABLE_IN_FUTURE = 5;
-        public byte[] getKeyId() { return (byte[]) megletProps.get("KeyId"); }
-        public int getStatusCode() { return (megletProps.get("StatusCode") instanceof Integer ? (Integer) megletProps.get("StatusCode") : 0); }
+        public byte[] getKeyId() { return (byte[]) meglerProps.get("KeyId"); }
+        public int getStatusCode() { return (meglerProps.get("StatusCode") instanceof Integer ? (Integer) meglerProps.get("StatusCode") : 0); }
         protected KeyStatus() {}
     }
     public static final class LogMessage {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public java.lang.String getMessage() { return (java.lang.String) megletProps.get("Message"); }
-        public int getPriority() { return (megletProps.get("Priority") instanceof Integer ? (Integer) megletProps.get("Priority") : 0); }
-        public long getTimestampMillis() { return (megletProps.get("TimestampMillis") instanceof Long ? (Long) megletProps.get("TimestampMillis") : 0L); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public java.lang.String getMessage() { return (java.lang.String) meglerProps.get("Message"); }
+        public int getPriority() { return (meglerProps.get("Priority") instanceof Integer ? (Integer) meglerProps.get("Priority") : 0); }
+        public long getTimestampMillis() { return (meglerProps.get("TimestampMillis") instanceof Long ? (Long) meglerProps.get("TimestampMillis") : 0L); }
         protected LogMessage() {}
     }
     public static final class MediaDrmStateException extends java.lang.IllegalStateException implements android.media.MediaDrmThrowable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public MediaDrmStateException(int p0, java.lang.String p1) { super(); }
         public MediaDrmStateException(java.lang.String p0, int p1, int p2, int p3, int p4) { super(); }
-        public java.lang.String getDiagnosticInfo() { return (java.lang.String) megletProps.get("DiagnosticInfo"); }
-        public int getErrorCode() { return (megletProps.get("ErrorCode") instanceof Integer ? (Integer) megletProps.get("ErrorCode") : 0); }
-        public int getErrorContext() { return (megletProps.get("ErrorContext") instanceof Integer ? (Integer) megletProps.get("ErrorContext") : 0); }
-        public int getOemError() { return (megletProps.get("OemError") instanceof Integer ? (Integer) megletProps.get("OemError") : 0); }
-        public int getVendorError() { return (megletProps.get("VendorError") instanceof Integer ? (Integer) megletProps.get("VendorError") : 0); }
-        public boolean isTransient() { return (megletProps.get("Transient") instanceof Boolean ? (Boolean) megletProps.get("Transient") : false); }
+        public java.lang.String getDiagnosticInfo() { return (java.lang.String) meglerProps.get("DiagnosticInfo"); }
+        public int getErrorCode() { return (meglerProps.get("ErrorCode") instanceof Integer ? (Integer) meglerProps.get("ErrorCode") : 0); }
+        public int getErrorContext() { return (meglerProps.get("ErrorContext") instanceof Integer ? (Integer) meglerProps.get("ErrorContext") : 0); }
+        public int getOemError() { return (meglerProps.get("OemError") instanceof Integer ? (Integer) meglerProps.get("OemError") : 0); }
+        public int getVendorError() { return (meglerProps.get("VendorError") instanceof Integer ? (Integer) meglerProps.get("VendorError") : 0); }
+        public boolean isTransient() { return (meglerProps.get("Transient") instanceof Boolean ? (Boolean) meglerProps.get("Transient") : false); }
         MediaDrmStateException() { this((int) 0, (java.lang.String) null); }
     }
     public static final class MetricsConstants {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String CLOSE_SESSION_ERROR_COUNT = "drm.mediadrm.close_session.error.count";
         public static final java.lang.String CLOSE_SESSION_ERROR_LIST = "drm.mediadrm.close_session.error.list";
         public static final java.lang.String CLOSE_SESSION_OK_COUNT = "drm.mediadrm.close_session.ok.count";
@@ -252,29 +252,29 @@ public final class MediaDrm implements java.lang.AutoCloseable {
         void onSessionLostState(android.media.MediaDrm p0, byte[] p1);
     }
     public static final class PlaybackComponent {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public PlaybackComponent(android.media.MediaDrm p0, byte[] p1) {}
-        public android.media.metrics.LogSessionId getLogSessionId() { return (android.media.metrics.LogSessionId) megletProps.get("LogSessionId"); }
-        public void setLogSessionId(android.media.metrics.LogSessionId p0) { megletProps.put("LogSessionId", p0); }
+        public android.media.metrics.LogSessionId getLogSessionId() { return (android.media.metrics.LogSessionId) meglerProps.get("LogSessionId"); }
+        public void setLogSessionId(android.media.metrics.LogSessionId p0) { meglerProps.put("LogSessionId", p0); }
         PlaybackComponent() { this((android.media.MediaDrm) null, (byte[]) null); }
     }
     public static final class ProvisionRequest {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public byte[] getData() { return (byte[]) megletProps.get("Data"); }
-        public java.lang.String getDefaultUrl() { return (java.lang.String) megletProps.get("DefaultUrl"); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public byte[] getData() { return (byte[]) meglerProps.get("Data"); }
+        public java.lang.String getDefaultUrl() { return (java.lang.String) meglerProps.get("DefaultUrl"); }
         protected ProvisionRequest() {}
     }
     public static final class SessionException extends java.lang.RuntimeException implements android.media.MediaDrmThrowable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int ERROR_RESOURCE_CONTENTION = 1;
         public static int ERROR_UNKNOWN;
         public SessionException(int p0, java.lang.String p1) { super(); }
         public SessionException(java.lang.String p0, int p1, int p2, int p3, int p4) { super(); }
-        public int getErrorCode() { return (megletProps.get("ErrorCode") instanceof Integer ? (Integer) megletProps.get("ErrorCode") : 0); }
-        public int getErrorContext() { return (megletProps.get("ErrorContext") instanceof Integer ? (Integer) megletProps.get("ErrorContext") : 0); }
-        public int getOemError() { return (megletProps.get("OemError") instanceof Integer ? (Integer) megletProps.get("OemError") : 0); }
-        public int getVendorError() { return (megletProps.get("VendorError") instanceof Integer ? (Integer) megletProps.get("VendorError") : 0); }
-        public boolean isTransient() { return (megletProps.get("Transient") instanceof Boolean ? (Boolean) megletProps.get("Transient") : false); }
+        public int getErrorCode() { return (meglerProps.get("ErrorCode") instanceof Integer ? (Integer) meglerProps.get("ErrorCode") : 0); }
+        public int getErrorContext() { return (meglerProps.get("ErrorContext") instanceof Integer ? (Integer) meglerProps.get("ErrorContext") : 0); }
+        public int getOemError() { return (meglerProps.get("OemError") instanceof Integer ? (Integer) meglerProps.get("OemError") : 0); }
+        public int getVendorError() { return (meglerProps.get("VendorError") instanceof Integer ? (Integer) meglerProps.get("VendorError") : 0); }
+        public boolean isTransient() { return (meglerProps.get("Transient") instanceof Boolean ? (Boolean) meglerProps.get("Transient") : false); }
         SessionException() { this((int) 0, (java.lang.String) null); }
     }
 }

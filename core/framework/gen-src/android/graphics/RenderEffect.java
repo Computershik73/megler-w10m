@@ -3,7 +3,7 @@ package android.graphics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class RenderEffect {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.graphics.RenderEffect createBitmapEffect(android.graphics.Bitmap p0) { return new RenderEffect(); }
     public static android.graphics.RenderEffect createBitmapEffect(android.graphics.Bitmap p0, android.graphics.Rect p1, android.graphics.Rect p2) { return new RenderEffect(); }
     public static android.graphics.RenderEffect createBlendModeEffect(android.graphics.RenderEffect p0, android.graphics.RenderEffect p1, android.graphics.BlendMode p2) { return new RenderEffect(); }

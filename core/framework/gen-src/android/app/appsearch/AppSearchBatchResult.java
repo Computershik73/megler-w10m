@@ -3,18 +3,18 @@ package android.app.appsearch;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AppSearchBatchResult {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public void checkSuccess() {}
-    public java.util.Map getAll() { return (megletProps.get("All") != null ? (java.util.Map) megletProps.get("All") : new java.util.HashMap()); }
-    public java.util.Map getFailures() { return (megletProps.get("Failures") != null ? (java.util.Map) megletProps.get("Failures") : new java.util.HashMap()); }
-    public java.util.Map getSuccesses() { return (megletProps.get("Successes") != null ? (java.util.Map) megletProps.get("Successes") : new java.util.HashMap()); }
-    public boolean isSuccess() { return (megletProps.get("Success") instanceof Boolean ? (Boolean) megletProps.get("Success") : false); }
+    public java.util.Map getAll() { return (meglerProps.get("All") != null ? (java.util.Map) meglerProps.get("All") : new java.util.HashMap()); }
+    public java.util.Map getFailures() { return (meglerProps.get("Failures") != null ? (java.util.Map) meglerProps.get("Failures") : new java.util.HashMap()); }
+    public java.util.Map getSuccesses() { return (meglerProps.get("Successes") != null ? (java.util.Map) meglerProps.get("Successes") : new java.util.HashMap()); }
+    public boolean isSuccess() { return (meglerProps.get("Success") instanceof Boolean ? (Boolean) meglerProps.get("Success") : false); }
     protected AppSearchBatchResult() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.app.appsearch.AppSearchBatchResult p0) {}
-        public android.app.appsearch.AppSearchBatchResult build() { android.app.appsearch.AppSearchBatchResult x = new android.app.appsearch.AppSearchBatchResult(); x.megletProps.putAll(megletProps); return x; }
+        public android.app.appsearch.AppSearchBatchResult build() { android.app.appsearch.AppSearchBatchResult x = new android.app.appsearch.AppSearchBatchResult(); x.meglerProps.putAll(meglerProps); return x; }
         public android.app.appsearch.AppSearchBatchResult.Builder setFailure(java.lang.Object p0, int p1, java.lang.String p2) { return this; }
         public android.app.appsearch.AppSearchBatchResult.Builder setResult(java.lang.Object p0, android.app.appsearch.AppSearchResult p1) { return this; }
         public android.app.appsearch.AppSearchBatchResult.Builder setSuccess(java.lang.Object p0, java.lang.Object p1) { return this; }

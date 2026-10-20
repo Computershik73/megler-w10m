@@ -3,11 +3,11 @@ package android.app.sdksandbox;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class SandboxedSdkProvider {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public SandboxedSdkProvider() {}
     public void attachContext(android.content.Context p0) {}
     public void beforeUnloadSdk() {}
-    public android.content.Context getContext() { return (android.content.Context) megletProps.get("Context"); }
+    public android.content.Context getContext() { return (android.content.Context) meglerProps.get("Context"); }
     public abstract android.view.View getView(android.content.Context p0, android.os.Bundle p1, int p2, int p3);
     public abstract android.app.sdksandbox.SandboxedSdk onLoadSdk(android.os.Bundle p0);
 }

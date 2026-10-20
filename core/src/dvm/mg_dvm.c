@@ -182,7 +182,7 @@ void mg_dvm_set_app_loader(mg_jobj *loader)
 
 bool mg_dvm_start_android(const char *root)
 {
-    static const char *const names[] = { "meglet-libcore", "core-oj", "core-libart", "conscrypt", "okhttp", "bouncycastle", "apache-xml" };
+    static const char *const names[] = { "megler-libcore", "core-oj", "core-libart", "conscrypt", "okhttp", "bouncycastle", "apache-xml" };
     const char *paths[MG_COUNT(names)];
     char *made[MG_COUNT(names)], *crypto;
     mg_stat st;

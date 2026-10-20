@@ -1,5 +1,5 @@
 /*
- * The second library of the test app `natives` (meglet.test.natives.Windows): native code on SurfaceViews, as a game engine
+ * The second library of the test app `natives` (megler.test.natives.Windows): native code on SurfaceViews, as a game engine
  * draws on the one its Java hands it -- Asphalt 9's way: ANativeWindow_fromSurface in surfaceChanged on the main thread, the
  * window handed to a render thread of the library's own (a pthread, never attached to Java), which picks an EGL
  * configuration out of eglGetConfigs, makes an OpenGL ES 3 context, gives the window its buffers' geometry, makes a window
@@ -180,7 +180,7 @@ static void *render_main(void *arg)
 /* -------------------------------------------------------------- from Java */
 
 /* surfaceChanged of the EGL view: the window of its Surface, handed to the renderer when it is a new one. */
-JNIEXPORT jstring JNICALL Java_meglet_test_natives_Windows_surfaceChanged(JNIEnv *env, jclass cls, jobject surface, jint w, jint h)
+JNIEXPORT jstring JNICALL Java_megler_test_natives_Windows_surfaceChanged(JNIEnv *env, jclass cls, jobject surface, jint w, jint h)
 {
     ANativeWindow *win = ANativeWindow_fromSurface(env, surface);
     int same, number, width = win ? ANativeWindow_getWidth(win) : -1, height = win ? ANativeWindow_getHeight(win) : -1, format = win ? ANativeWindow_getFormat(win) : -1;
@@ -211,7 +211,7 @@ JNIEXPORT jstring JNICALL Java_meglet_test_natives_Windows_surfaceChanged(JNIEnv
 }
 
 /* surfaceDestroyed: the window let go of at once, as Asphalt 9 does; the renderer is not waited for. */
-JNIEXPORT void JNICALL Java_meglet_test_natives_Windows_surfaceDestroyed(JNIEnv *env, jclass cls)
+JNIEXPORT void JNICALL Java_megler_test_natives_Windows_surfaceDestroyed(JNIEnv *env, jclass cls)
 {
     (void)env; (void)cls;
     pthread_mutex_lock(&g_lock);
@@ -220,14 +220,14 @@ JNIEXPORT void JNICALL Java_meglet_test_natives_Windows_surfaceDestroyed(JNIEnv 
     pthread_mutex_unlock(&g_lock);
 }
 
-JNIEXPORT jint JNICALL Java_meglet_test_natives_Windows_phase(JNIEnv *env, jclass cls)
+JNIEXPORT jint JNICALL Java_megler_test_natives_Windows_phase(JNIEnv *env, jclass cls)
 {
     (void)env; (void)cls;
     return g_phase;
 }
 
 /* The activity ends: the renderer finishes what it is doing and ends; waited for. */
-JNIEXPORT void JNICALL Java_meglet_test_natives_Windows_stop(JNIEnv *env, jclass cls)
+JNIEXPORT void JNICALL Java_megler_test_natives_Windows_stop(JNIEnv *env, jclass cls)
 {
     int started;
     (void)env; (void)cls;
@@ -246,7 +246,7 @@ static int quarter_of(int x, int y, int width, int height) { return (y < height 
  * A TextureView's surface (a Surface made on its SurfaceTexture) drawn in software: RGBX_8888 at the texture's size, in the
  * four quarters' colours, R, G, B and a byte the window ignores.
  */
-JNIEXPORT jstring JNICALL Java_meglet_test_natives_Windows_textureLock(JNIEnv *env, jclass cls, jobject surface)
+JNIEXPORT jstring JNICALL Java_megler_test_natives_Windows_textureLock(JNIEnv *env, jclass cls, jobject surface)
 {
     static const uint8_t colours[4][3] = { { 255, 0, 0 }, { 0, 255, 0 }, { 0, 0, 255 }, { 255, 255, 255 } };
     ANativeWindow *win = ANativeWindow_fromSurface(env, surface);
@@ -277,7 +277,7 @@ JNIEXPORT jstring JNICALL Java_meglet_test_natives_Windows_textureLock(JNIEnv *e
  * The same TextureView's surface drawn once with EGL, on the calling thread (the main one): an OpenGL ES 2 context, a window
  * surface at the texture's size, the frame cleared to green with its top left quarter red, one swap, all of it ended.
  */
-JNIEXPORT jstring JNICALL Java_meglet_test_natives_Windows_textureEgl(JNIEnv *env, jclass cls, jobject surface)
+JNIEXPORT jstring JNICALL Java_megler_test_natives_Windows_textureEgl(JNIEnv *env, jclass cls, jobject surface)
 {
     static const EGLint es2[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
     static const GLfloat quarter[] = { -1, 0, 0, 0, 0, 1, -1, 0, 0, 1, -1, 1 }, red[] = { 1, 0, 0, 1 };
@@ -327,7 +327,7 @@ JNIEXPORT jstring JNICALL Java_meglet_test_natives_Windows_textureEgl(JNIEnv *en
  * The lock view's surface, drawn in software: RGB 565 at 32 x 16 whatever the view's size, in the quarters' colours, written
  * row by row at the buffer's stride, then posted.
  */
-JNIEXPORT jstring JNICALL Java_meglet_test_natives_Windows_lockPaint(JNIEnv *env, jclass cls, jobject surface)
+JNIEXPORT jstring JNICALL Java_megler_test_natives_Windows_lockPaint(JNIEnv *env, jclass cls, jobject surface)
 {
     ANativeWindow *win = ANativeWindow_fromSurface(env, surface);
     ANativeWindow_Buffer buffer;

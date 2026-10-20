@@ -3,7 +3,7 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BluetoothHidDevice implements android.bluetooth.BluetoothProfile {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_CONNECTION_STATE_CHANGED = "android.bluetooth.hiddevice.profile.action.CONNECTION_STATE_CHANGED";
     public static final byte ERROR_RSP_INVALID_PARAM = (byte) 4;
     public static final byte ERROR_RSP_INVALID_RPT_ID = (byte) 2;
@@ -29,11 +29,11 @@ public final class BluetoothHidDevice implements android.bluetooth.BluetoothProf
     public static byte SUBCLASS2_UNCATEGORIZED;
     public boolean connect(android.bluetooth.BluetoothDevice p0) { return false; }
     public boolean disconnect(android.bluetooth.BluetoothDevice p0) { return false; }
-    public android.bluetooth.BluetoothAdapter getAdapter() { return (android.bluetooth.BluetoothAdapter) megletProps.get("Adapter"); }
-    public java.util.List getConnectedDevices() { return (megletProps.get("ConnectedDevices") != null ? (java.util.List) megletProps.get("ConnectedDevices") : new java.util.ArrayList()); }
+    public android.bluetooth.BluetoothAdapter getAdapter() { return (android.bluetooth.BluetoothAdapter) meglerProps.get("Adapter"); }
+    public java.util.List getConnectedDevices() { return (meglerProps.get("ConnectedDevices") != null ? (java.util.List) meglerProps.get("ConnectedDevices") : new java.util.ArrayList()); }
     public int getConnectionState(android.bluetooth.BluetoothDevice p0) { return 0; }
     public java.util.List getDevicesMatchingConnectionStates(int[] p0) { return new java.util.ArrayList(); }
-    public java.lang.String getUserAppName() { return (java.lang.String) megletProps.get("UserAppName"); }
+    public java.lang.String getUserAppName() { return (java.lang.String) meglerProps.get("UserAppName"); }
     public void onServiceConnected(android.os.IBinder p0) {}
     public void onServiceDisconnected() {}
     public boolean registerApp(android.bluetooth.BluetoothHidDeviceAppSdpSettings p0, android.bluetooth.BluetoothHidDeviceAppQosSettings p1, android.bluetooth.BluetoothHidDeviceAppQosSettings p2, java.util.concurrent.Executor p3, android.bluetooth.BluetoothHidDevice.Callback p4) { return false; }
@@ -44,7 +44,7 @@ public final class BluetoothHidDevice implements android.bluetooth.BluetoothProf
     public boolean unregisterApp() { return false; }
     protected BluetoothHidDevice() {}
     public static abstract class Callback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Callback() {}
         public void onAppStatusChanged(android.bluetooth.BluetoothDevice p0, boolean p1) {}
         public void onConnectionStateChanged(android.bluetooth.BluetoothDevice p0, int p1) {}

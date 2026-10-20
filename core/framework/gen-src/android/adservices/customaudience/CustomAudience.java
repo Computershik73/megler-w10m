@@ -3,41 +3,41 @@ package android.adservices.customaudience;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CustomAudience implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int FLAG_AUCTION_SERVER_REQUEST_DEFAULT = 0;
     public static final int FLAG_AUCTION_SERVER_REQUEST_OMIT_ADS = 1;
     public static double PRIORITY_DEFAULT;
     public int describeContents() { return 0; }
-    public java.time.Instant getActivationTime() { return (java.time.Instant) megletProps.get("ActivationTime"); }
-    public java.util.List getAds() { return (megletProps.get("Ads") != null ? (java.util.List) megletProps.get("Ads") : new java.util.ArrayList()); }
-    public int getAuctionServerRequestFlags() { return (megletProps.get("AuctionServerRequestFlags") instanceof Integer ? (Integer) megletProps.get("AuctionServerRequestFlags") : 0); }
-    public android.net.Uri getBiddingLogicUri() { return (android.net.Uri) megletProps.get("BiddingLogicUri"); }
-    public android.adservices.common.AdTechIdentifier getBuyer() { return (android.adservices.common.AdTechIdentifier) megletProps.get("Buyer"); }
-    public java.util.List getComponentAds() { return (megletProps.get("ComponentAds") != null ? (java.util.List) megletProps.get("ComponentAds") : new java.util.ArrayList()); }
-    public android.net.Uri getDailyUpdateUri() { return (android.net.Uri) megletProps.get("DailyUpdateUri"); }
-    public java.time.Instant getExpirationTime() { return (java.time.Instant) megletProps.get("ExpirationTime"); }
-    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
-    public double getPriority() { return (megletProps.get("Priority") instanceof Double ? (Double) megletProps.get("Priority") : 0d); }
-    public android.adservices.customaudience.TrustedBiddingData getTrustedBiddingData() { return (android.adservices.customaudience.TrustedBiddingData) megletProps.get("TrustedBiddingData"); }
-    public android.adservices.common.AdSelectionSignals getUserBiddingSignals() { return (android.adservices.common.AdSelectionSignals) megletProps.get("UserBiddingSignals"); }
+    public java.time.Instant getActivationTime() { return (java.time.Instant) meglerProps.get("ActivationTime"); }
+    public java.util.List getAds() { return (meglerProps.get("Ads") != null ? (java.util.List) meglerProps.get("Ads") : new java.util.ArrayList()); }
+    public int getAuctionServerRequestFlags() { return (meglerProps.get("AuctionServerRequestFlags") instanceof Integer ? (Integer) meglerProps.get("AuctionServerRequestFlags") : 0); }
+    public android.net.Uri getBiddingLogicUri() { return (android.net.Uri) meglerProps.get("BiddingLogicUri"); }
+    public android.adservices.common.AdTechIdentifier getBuyer() { return (android.adservices.common.AdTechIdentifier) meglerProps.get("Buyer"); }
+    public java.util.List getComponentAds() { return (meglerProps.get("ComponentAds") != null ? (java.util.List) meglerProps.get("ComponentAds") : new java.util.ArrayList()); }
+    public android.net.Uri getDailyUpdateUri() { return (android.net.Uri) meglerProps.get("DailyUpdateUri"); }
+    public java.time.Instant getExpirationTime() { return (java.time.Instant) meglerProps.get("ExpirationTime"); }
+    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
+    public double getPriority() { return (meglerProps.get("Priority") instanceof Double ? (Double) meglerProps.get("Priority") : 0d); }
+    public android.adservices.customaudience.TrustedBiddingData getTrustedBiddingData() { return (android.adservices.customaudience.TrustedBiddingData) meglerProps.get("TrustedBiddingData"); }
+    public android.adservices.common.AdSelectionSignals getUserBiddingSignals() { return (android.adservices.common.AdSelectionSignals) meglerProps.get("UserBiddingSignals"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected CustomAudience() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.adservices.customaudience.CustomAudience build() { android.adservices.customaudience.CustomAudience x = new android.adservices.customaudience.CustomAudience(); x.megletProps.putAll(megletProps); return x; }
-        public android.adservices.customaudience.CustomAudience.Builder setActivationTime(java.time.Instant p0) { megletProps.put("ActivationTime", p0); return this; }
-        public android.adservices.customaudience.CustomAudience.Builder setAds(java.util.List p0) { megletProps.put("Ads", p0); return this; }
-        public android.adservices.customaudience.CustomAudience.Builder setAuctionServerRequestFlags(int p0) { megletProps.put("AuctionServerRequestFlags", Integer.valueOf(p0)); return this; }
-        public android.adservices.customaudience.CustomAudience.Builder setBiddingLogicUri(android.net.Uri p0) { megletProps.put("BiddingLogicUri", p0); return this; }
-        public android.adservices.customaudience.CustomAudience.Builder setBuyer(android.adservices.common.AdTechIdentifier p0) { megletProps.put("Buyer", p0); return this; }
-        public android.adservices.customaudience.CustomAudience.Builder setComponentAds(java.util.List p0) { megletProps.put("ComponentAds", p0); return this; }
-        public android.adservices.customaudience.CustomAudience.Builder setDailyUpdateUri(android.net.Uri p0) { megletProps.put("DailyUpdateUri", p0); return this; }
-        public android.adservices.customaudience.CustomAudience.Builder setExpirationTime(java.time.Instant p0) { megletProps.put("ExpirationTime", p0); return this; }
-        public android.adservices.customaudience.CustomAudience.Builder setName(java.lang.String p0) { megletProps.put("Name", p0); return this; }
-        public android.adservices.customaudience.CustomAudience.Builder setPriority(double p0) { megletProps.put("Priority", Double.valueOf(p0)); return this; }
-        public android.adservices.customaudience.CustomAudience.Builder setTrustedBiddingData(android.adservices.customaudience.TrustedBiddingData p0) { megletProps.put("TrustedBiddingData", p0); return this; }
-        public android.adservices.customaudience.CustomAudience.Builder setUserBiddingSignals(android.adservices.common.AdSelectionSignals p0) { megletProps.put("UserBiddingSignals", p0); return this; }
+        public android.adservices.customaudience.CustomAudience build() { android.adservices.customaudience.CustomAudience x = new android.adservices.customaudience.CustomAudience(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.adservices.customaudience.CustomAudience.Builder setActivationTime(java.time.Instant p0) { meglerProps.put("ActivationTime", p0); return this; }
+        public android.adservices.customaudience.CustomAudience.Builder setAds(java.util.List p0) { meglerProps.put("Ads", p0); return this; }
+        public android.adservices.customaudience.CustomAudience.Builder setAuctionServerRequestFlags(int p0) { meglerProps.put("AuctionServerRequestFlags", Integer.valueOf(p0)); return this; }
+        public android.adservices.customaudience.CustomAudience.Builder setBiddingLogicUri(android.net.Uri p0) { meglerProps.put("BiddingLogicUri", p0); return this; }
+        public android.adservices.customaudience.CustomAudience.Builder setBuyer(android.adservices.common.AdTechIdentifier p0) { meglerProps.put("Buyer", p0); return this; }
+        public android.adservices.customaudience.CustomAudience.Builder setComponentAds(java.util.List p0) { meglerProps.put("ComponentAds", p0); return this; }
+        public android.adservices.customaudience.CustomAudience.Builder setDailyUpdateUri(android.net.Uri p0) { meglerProps.put("DailyUpdateUri", p0); return this; }
+        public android.adservices.customaudience.CustomAudience.Builder setExpirationTime(java.time.Instant p0) { meglerProps.put("ExpirationTime", p0); return this; }
+        public android.adservices.customaudience.CustomAudience.Builder setName(java.lang.String p0) { meglerProps.put("Name", p0); return this; }
+        public android.adservices.customaudience.CustomAudience.Builder setPriority(double p0) { meglerProps.put("Priority", Double.valueOf(p0)); return this; }
+        public android.adservices.customaudience.CustomAudience.Builder setTrustedBiddingData(android.adservices.customaudience.TrustedBiddingData p0) { meglerProps.put("TrustedBiddingData", p0); return this; }
+        public android.adservices.customaudience.CustomAudience.Builder setUserBiddingSignals(android.adservices.common.AdSelectionSignals p0) { meglerProps.put("UserBiddingSignals", p0); return this; }
     }
 }

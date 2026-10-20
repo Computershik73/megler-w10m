@@ -3,7 +3,7 @@ package android.content.pm.verify.domain;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DomainVerificationUserState implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int DOMAIN_STATE_NONE = 0;
     public static final int DOMAIN_STATE_SELECTED = 1;
@@ -11,11 +11,11 @@ public final class DomainVerificationUserState implements android.os.Parcelable 
     public DomainVerificationUserState(java.util.UUID p0, java.lang.String p1, android.os.UserHandle p2, boolean p3, java.util.Map p4) {}
     public static java.lang.String domainStateToString(int p0) { return null; }
     public int describeContents() { return 0; }
-    public java.util.Map getHostToStateMap() { return (megletProps.get("HostToStateMap") != null ? (java.util.Map) megletProps.get("HostToStateMap") : new java.util.HashMap()); }
-    public java.util.UUID getIdentifier() { return (java.util.UUID) megletProps.get("Identifier"); }
-    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
-    public android.os.UserHandle getUser() { return (android.os.UserHandle) megletProps.get("User"); }
-    public boolean isLinkHandlingAllowed() { return (megletProps.get("LinkHandlingAllowed") instanceof Boolean ? (Boolean) megletProps.get("LinkHandlingAllowed") : false); }
+    public java.util.Map getHostToStateMap() { return (meglerProps.get("HostToStateMap") != null ? (java.util.Map) meglerProps.get("HostToStateMap") : new java.util.HashMap()); }
+    public java.util.UUID getIdentifier() { return (java.util.UUID) meglerProps.get("Identifier"); }
+    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
+    public android.os.UserHandle getUser() { return (android.os.UserHandle) meglerProps.get("User"); }
+    public boolean isLinkHandlingAllowed() { return (meglerProps.get("LinkHandlingAllowed") instanceof Boolean ? (Boolean) meglerProps.get("LinkHandlingAllowed") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     DomainVerificationUserState() { this((java.util.UUID) null, (java.lang.String) null, (android.os.UserHandle) null, (boolean) false, (java.util.Map) null); }
 }

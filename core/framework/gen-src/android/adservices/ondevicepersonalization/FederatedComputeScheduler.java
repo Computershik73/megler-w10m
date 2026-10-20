@@ -3,16 +3,16 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class FederatedComputeScheduler {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public FederatedComputeScheduler(android.adservices.ondevicepersonalization.aidl.IFederatedComputeService p0, android.adservices.ondevicepersonalization.aidl.IDataAccessService p1) {}
     public void cancel(android.adservices.ondevicepersonalization.FederatedComputeInput p0) {}
     public void schedule(android.adservices.ondevicepersonalization.FederatedComputeScheduleRequest p0, java.util.concurrent.Executor p1, android.os.OutcomeReceiver p2) {}
     public void schedule(android.adservices.ondevicepersonalization.FederatedComputeScheduler.Params p0, android.adservices.ondevicepersonalization.FederatedComputeInput p1) {}
     FederatedComputeScheduler() { this((android.adservices.ondevicepersonalization.aidl.IFederatedComputeService) null, (android.adservices.ondevicepersonalization.aidl.IDataAccessService) null); }
     public static class Params {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Params(android.adservices.ondevicepersonalization.TrainingInterval p0) {}
-        public android.adservices.ondevicepersonalization.TrainingInterval getTrainingInterval() { return (android.adservices.ondevicepersonalization.TrainingInterval) megletProps.get("TrainingInterval"); }
+        public android.adservices.ondevicepersonalization.TrainingInterval getTrainingInterval() { return (android.adservices.ondevicepersonalization.TrainingInterval) meglerProps.get("TrainingInterval"); }
         Params() { this((android.adservices.ondevicepersonalization.TrainingInterval) null); }
     }
 }

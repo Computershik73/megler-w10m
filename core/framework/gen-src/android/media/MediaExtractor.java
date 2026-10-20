@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MediaExtractor {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int SAMPLE_FLAG_ENCRYPTED = 2;
     public static final int SAMPLE_FLAG_PARTIAL_FRAME = 4;
     public static final int SAMPLE_FLAG_SYNC = 1;
@@ -14,18 +14,18 @@ public final class MediaExtractor {
     public boolean advance() { return false; }
     protected void finalize() {}
     public java.util.List getAudioPresentations(int p0) { return new java.util.ArrayList(); }
-    public long getCachedDuration() { return (megletProps.get("CachedDuration") instanceof Long ? (Long) megletProps.get("CachedDuration") : 0L); }
+    public long getCachedDuration() { return (meglerProps.get("CachedDuration") instanceof Long ? (Long) meglerProps.get("CachedDuration") : 0L); }
     public android.media.MediaExtractor.CasInfo getCasInfo(int p0) { return null; }
-    public android.media.DrmInitData getDrmInitData() { return (android.media.DrmInitData) megletProps.get("DrmInitData"); }
-    public android.media.metrics.LogSessionId getLogSessionId() { return (android.media.metrics.LogSessionId) megletProps.get("LogSessionId"); }
-    public android.os.PersistableBundle getMetrics() { return (android.os.PersistableBundle) megletProps.get("Metrics"); }
-    public java.util.Map getPsshInfo() { return (megletProps.get("PsshInfo") != null ? (java.util.Map) megletProps.get("PsshInfo") : new java.util.HashMap()); }
+    public android.media.DrmInitData getDrmInitData() { return (android.media.DrmInitData) meglerProps.get("DrmInitData"); }
+    public android.media.metrics.LogSessionId getLogSessionId() { return (android.media.metrics.LogSessionId) meglerProps.get("LogSessionId"); }
+    public android.os.PersistableBundle getMetrics() { return (android.os.PersistableBundle) meglerProps.get("Metrics"); }
+    public java.util.Map getPsshInfo() { return (meglerProps.get("PsshInfo") != null ? (java.util.Map) meglerProps.get("PsshInfo") : new java.util.HashMap()); }
     public boolean getSampleCryptoInfo(android.media.MediaCodec.CryptoInfo p0) { return false; }
-    public int getSampleFlags() { return (megletProps.get("SampleFlags") instanceof Integer ? (Integer) megletProps.get("SampleFlags") : 0); }
-    public long getSampleSize() { return (megletProps.get("SampleSize") instanceof Long ? (Long) megletProps.get("SampleSize") : 0L); }
-    public long getSampleTime() { return (megletProps.get("SampleTime") instanceof Long ? (Long) megletProps.get("SampleTime") : 0L); }
-    public int getSampleTrackIndex() { return (megletProps.get("SampleTrackIndex") instanceof Integer ? (Integer) megletProps.get("SampleTrackIndex") : 0); }
-    public int getTrackCount() { return (megletProps.get("TrackCount") instanceof Integer ? (Integer) megletProps.get("TrackCount") : 0); }
+    public int getSampleFlags() { return (meglerProps.get("SampleFlags") instanceof Integer ? (Integer) meglerProps.get("SampleFlags") : 0); }
+    public long getSampleSize() { return (meglerProps.get("SampleSize") instanceof Long ? (Long) meglerProps.get("SampleSize") : 0L); }
+    public long getSampleTime() { return (meglerProps.get("SampleTime") instanceof Long ? (Long) meglerProps.get("SampleTime") : 0L); }
+    public int getSampleTrackIndex() { return (meglerProps.get("SampleTrackIndex") instanceof Integer ? (Integer) meglerProps.get("SampleTrackIndex") : 0); }
+    public int getTrackCount() { return (meglerProps.get("TrackCount") instanceof Integer ? (Integer) meglerProps.get("TrackCount") : 0); }
     public android.media.MediaFormat getTrackFormat(int p0) { return null; }
     public boolean hasCacheReachedEndOfStream() { return false; }
     public int readSampleData(java.nio.ByteBuffer p0, int p1) { return 0; }
@@ -33,24 +33,24 @@ public final class MediaExtractor {
     public void seekTo(long p0, int p1) {}
     public void selectTrack(int p0) {}
     public void setDataSource(android.content.Context p0, android.net.Uri p1, java.util.Map p2) {}
-    public void setDataSource(android.content.res.AssetFileDescriptor p0) { megletProps.put("DataSource", p0); }
-    public void setDataSource(android.media.MediaDataSource p0) { megletProps.put("DataSource", p0); }
-    public void setDataSource(java.io.FileDescriptor p0) { megletProps.put("DataSource", p0); }
+    public void setDataSource(android.content.res.AssetFileDescriptor p0) { meglerProps.put("DataSource", p0); }
+    public void setDataSource(android.media.MediaDataSource p0) { meglerProps.put("DataSource", p0); }
+    public void setDataSource(java.io.FileDescriptor p0) { meglerProps.put("DataSource", p0); }
     public void setDataSource(java.io.FileDescriptor p0, long p1, long p2) {}
-    public void setDataSource(java.lang.String p0) { megletProps.put("DataSource", p0); }
+    public void setDataSource(java.lang.String p0) { meglerProps.put("DataSource", p0); }
     public void setDataSource(java.lang.String p0, java.util.Map p1) {}
-    public void setLogSessionId(android.media.metrics.LogSessionId p0) { megletProps.put("LogSessionId", p0); }
-    public void setMediaCas(android.media.MediaCas p0) { megletProps.put("MediaCas", p0); }
+    public void setLogSessionId(android.media.metrics.LogSessionId p0) { meglerProps.put("LogSessionId", p0); }
+    public void setMediaCas(android.media.MediaCas p0) { meglerProps.put("MediaCas", p0); }
     public void unselectTrack(int p0) {}
     public static final class CasInfo {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public byte[] getPrivateData() { return (byte[]) megletProps.get("PrivateData"); }
-        public android.media.MediaCas.Session getSession() { return (android.media.MediaCas.Session) megletProps.get("Session"); }
-        public int getSystemId() { return (megletProps.get("SystemId") instanceof Integer ? (Integer) megletProps.get("SystemId") : 0); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public byte[] getPrivateData() { return (byte[]) meglerProps.get("PrivateData"); }
+        public android.media.MediaCas.Session getSession() { return (android.media.MediaCas.Session) meglerProps.get("Session"); }
+        public int getSystemId() { return (meglerProps.get("SystemId") instanceof Integer ? (Integer) meglerProps.get("SystemId") : 0); }
         protected CasInfo() {}
     }
     public static final class MetricsConstants {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String FORMAT = "android.media.mediaextractor.fmt";
         public static final java.lang.String MIME_TYPE = "android.media.mediaextractor.mime";
         public static final java.lang.String TRACKS = "android.media.mediaextractor.ntrk";

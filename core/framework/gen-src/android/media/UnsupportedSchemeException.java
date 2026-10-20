@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class UnsupportedSchemeException extends android.media.MediaDrmException {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public UnsupportedSchemeException(java.lang.String p0) { super(p0); }
     UnsupportedSchemeException() { this((java.lang.String) null); }
 }

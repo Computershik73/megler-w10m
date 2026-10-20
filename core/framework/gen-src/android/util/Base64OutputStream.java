@@ -3,7 +3,7 @@ package android.util;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Base64OutputStream extends java.io.FilterOutputStream {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public Base64OutputStream(java.io.OutputStream p0, int p1) { super((java.io.OutputStream) null); }
     public Base64OutputStream(java.io.OutputStream p0, int p1, boolean p2) { super((java.io.OutputStream) null); }
     public void close() {}

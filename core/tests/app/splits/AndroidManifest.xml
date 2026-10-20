@@ -3,7 +3,7 @@
      .xapk: see the file `splits` beside this one). The base has no native library and none of the pictures that are for one density or
      the strings that are for one language: those are in its splits. It says in the log what Android would tell it of its splits and
      whether each part of it was found. -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="meglet.test.splits" android:versionCode="7" android:versionName="1.7"
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="megler.test.splits" android:versionCode="7" android:versionName="1.7"
           android:isSplitRequired="true">
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />
     <application android:label="@string/app_name" android:icon="@drawable/icon">

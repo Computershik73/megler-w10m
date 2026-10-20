@@ -3,7 +3,7 @@ package android.net.wifi;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class WifiSsid implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String NONE = "<unknown ssid>";
     public java.io.ByteArrayOutputStream octets;
@@ -12,9 +12,9 @@ public final class WifiSsid implements android.os.Parcelable {
     public static android.net.wifi.WifiSsid fromString(java.lang.String p0) { return new WifiSsid(); }
     public static android.net.wifi.WifiSsid fromUtf8Text(java.lang.CharSequence p0) { return new WifiSsid(); }
     public int describeContents() { return 0; }
-    public byte[] getBytes() { return (byte[]) megletProps.get("Bytes"); }
-    public byte[] getOctets() { return (byte[]) megletProps.get("Octets"); }
-    public java.lang.CharSequence getUtf8Text() { return (java.lang.CharSequence) megletProps.get("Utf8Text"); }
+    public byte[] getBytes() { return (byte[]) meglerProps.get("Bytes"); }
+    public byte[] getOctets() { return (byte[]) meglerProps.get("Octets"); }
+    public java.lang.CharSequence getUtf8Text() { return (java.lang.CharSequence) meglerProps.get("Utf8Text"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected WifiSsid() {}
 }

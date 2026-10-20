@@ -3,14 +3,14 @@ package android.location;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class LocationProvider {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int AVAILABLE = 2;
     public static final int OUT_OF_SERVICE = 0;
     public static final int TEMPORARILY_UNAVAILABLE = 1;
     public static boolean propertiesMeetCriteria(java.lang.String p0, android.location.provider.ProviderProperties p1, android.location.Criteria p2) { return false; }
-    public int getAccuracy() { return (megletProps.get("Accuracy") instanceof Integer ? (Integer) megletProps.get("Accuracy") : 0); }
-    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
-    public int getPowerRequirement() { return (megletProps.get("PowerRequirement") instanceof Integer ? (Integer) megletProps.get("PowerRequirement") : 0); }
+    public int getAccuracy() { return (meglerProps.get("Accuracy") instanceof Integer ? (Integer) meglerProps.get("Accuracy") : 0); }
+    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
+    public int getPowerRequirement() { return (meglerProps.get("PowerRequirement") instanceof Integer ? (Integer) meglerProps.get("PowerRequirement") : 0); }
     public boolean hasMonetaryCost() { return false; }
     public boolean meetsCriteria(android.location.Criteria p0) { return false; }
     public boolean requiresCell() { return false; }

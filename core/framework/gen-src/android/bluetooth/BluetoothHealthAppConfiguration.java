@@ -3,12 +3,12 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BluetoothHealthAppConfiguration implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public int getDataType() { return (megletProps.get("DataType") instanceof Integer ? (Integer) megletProps.get("DataType") : 0); }
-    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
-    public int getRole() { return (megletProps.get("Role") instanceof Integer ? (Integer) megletProps.get("Role") : 0); }
+    public int getDataType() { return (meglerProps.get("DataType") instanceof Integer ? (Integer) meglerProps.get("DataType") : 0); }
+    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
+    public int getRole() { return (meglerProps.get("Role") instanceof Integer ? (Integer) meglerProps.get("Role") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected BluetoothHealthAppConfiguration() {}
 }

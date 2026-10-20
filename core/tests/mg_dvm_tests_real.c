@@ -13,7 +13,7 @@
 #include <stdio.h>
 
 #include "../src/dvm/mg_dvm_internal.h"
-#include "../include/meglet.h"
+#include "../include/megler.h"
 #include "mg_dvm_tests.h"
 
 typedef struct tally {
@@ -147,13 +147,13 @@ void test_real_apk(const char *apk)
     say("a real app's DEX (%s)", apk);
     {
         /* And one thing of its manifest, while the file is at hand: how its launcher activity asks to be held. */
-        char *report = meglet_apk_report(apk);
+        char *report = megler_apk_report(apk);
         const char *o = report ? strstr(report, "\"orientation\":\"") : NULL;
         char word[24] = "";
         if (o) sscanf(o + 15, "%23[a-z]", word);
         say("  its launcher activity asks to be held: %s", word[0] ? word : "(the report does not say)");
         CHECK(!strcmp(word, "landscape") || !strcmp(word, "portrait") || !strcmp(word, "unspecified"));
-        meglet_free(report);
+        megler_free(report);
     }
     added = mg_dvm_add_apk(apk);
     CHECK(added >= 1);

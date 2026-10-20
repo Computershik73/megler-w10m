@@ -3,7 +3,7 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class PlatformVpnProfile {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int MAX_MTU_DEFAULT = 1360;
     public static final int TYPE_IKEV2_IPSEC_PSK = 7;
     public static final int TYPE_IKEV2_IPSEC_RSA = 8;
@@ -12,8 +12,8 @@ public abstract class PlatformVpnProfile {
     protected boolean mRequiresInternetValidation;
     protected int mType;
     public boolean areLocalRoutesExcluded() { return false; }
-    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
-    public java.lang.String getTypeString() { return (java.lang.String) megletProps.get("TypeString"); }
-    public boolean isInternetValidationRequired() { return (megletProps.get("InternetValidationRequired") instanceof Boolean ? (Boolean) megletProps.get("InternetValidationRequired") : false); }
+    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
+    public java.lang.String getTypeString() { return (java.lang.String) meglerProps.get("TypeString"); }
+    public boolean isInternetValidationRequired() { return (meglerProps.get("InternetValidationRequired") instanceof Boolean ? (Boolean) meglerProps.get("InternetValidationRequired") : false); }
     protected PlatformVpnProfile() {}
 }

@@ -3,7 +3,7 @@ package android.adservices.common;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class KeyedFrequencyCap implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String AD_COUNTER_KEY_FIELD_NAME = "ad_counter_key";
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String INTERVAL_FIELD_NAME = "interval_in_seconds";
@@ -15,20 +15,20 @@ public final class KeyedFrequencyCap implements android.os.Parcelable {
     public static final java.lang.String MAX_INTERVAL_EXCEEDED_FORMAT = "KeyedFrequencyCap interval %s must be no greater than %s";
     public static android.adservices.common.KeyedFrequencyCap fromJson(org.json.JSONObject p0) { return new KeyedFrequencyCap(); }
     public int describeContents() { return 0; }
-    public int getAdCounterKey() { return (megletProps.get("AdCounterKey") instanceof Integer ? (Integer) megletProps.get("AdCounterKey") : 0); }
-    public java.time.Duration getInterval() { return (java.time.Duration) megletProps.get("Interval"); }
-    public int getMaxCount() { return (megletProps.get("MaxCount") instanceof Integer ? (Integer) megletProps.get("MaxCount") : 0); }
-    public int getSizeInBytes() { return (megletProps.get("SizeInBytes") instanceof Integer ? (Integer) megletProps.get("SizeInBytes") : 0); }
+    public int getAdCounterKey() { return (meglerProps.get("AdCounterKey") instanceof Integer ? (Integer) meglerProps.get("AdCounterKey") : 0); }
+    public java.time.Duration getInterval() { return (java.time.Duration) meglerProps.get("Interval"); }
+    public int getMaxCount() { return (meglerProps.get("MaxCount") instanceof Integer ? (Integer) meglerProps.get("MaxCount") : 0); }
+    public int getSizeInBytes() { return (meglerProps.get("SizeInBytes") instanceof Integer ? (Integer) meglerProps.get("SizeInBytes") : 0); }
     public org.json.JSONObject toJson() { return null; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected KeyedFrequencyCap() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(int p0, int p1, java.time.Duration p2) {}
-        public android.adservices.common.KeyedFrequencyCap build() { android.adservices.common.KeyedFrequencyCap x = new android.adservices.common.KeyedFrequencyCap(); x.megletProps.putAll(megletProps); return x; }
-        public android.adservices.common.KeyedFrequencyCap.Builder setAdCounterKey(int p0) { megletProps.put("AdCounterKey", Integer.valueOf(p0)); return this; }
-        public android.adservices.common.KeyedFrequencyCap.Builder setInterval(java.time.Duration p0) { megletProps.put("Interval", p0); return this; }
-        public android.adservices.common.KeyedFrequencyCap.Builder setMaxCount(int p0) { megletProps.put("MaxCount", Integer.valueOf(p0)); return this; }
+        public android.adservices.common.KeyedFrequencyCap build() { android.adservices.common.KeyedFrequencyCap x = new android.adservices.common.KeyedFrequencyCap(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.adservices.common.KeyedFrequencyCap.Builder setAdCounterKey(int p0) { meglerProps.put("AdCounterKey", Integer.valueOf(p0)); return this; }
+        public android.adservices.common.KeyedFrequencyCap.Builder setInterval(java.time.Duration p0) { meglerProps.put("Interval", p0); return this; }
+        public android.adservices.common.KeyedFrequencyCap.Builder setMaxCount(int p0) { meglerProps.put("MaxCount", Integer.valueOf(p0)); return this; }
         Builder() { this((int) 0, (int) 0, (java.time.Duration) null); }
     }
 }

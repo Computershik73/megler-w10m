@@ -3,28 +3,28 @@ package android.net.http;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SslCertificate {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public SslCertificate(java.lang.String p0, java.lang.String p1, java.lang.String p2, java.lang.String p3) {}
     public SslCertificate(java.lang.String p0, java.lang.String p1, java.util.Date p2, java.util.Date p3) {}
     public SslCertificate(java.security.cert.X509Certificate p0) {}
     public static android.net.http.SslCertificate restoreState(android.os.Bundle p0) { return new SslCertificate(); }
     public static android.os.Bundle saveState(android.net.http.SslCertificate p0) { return null; }
-    public android.net.http.SslCertificate.DName getIssuedBy() { return (android.net.http.SslCertificate.DName) megletProps.get("IssuedBy"); }
-    public android.net.http.SslCertificate.DName getIssuedTo() { return (android.net.http.SslCertificate.DName) megletProps.get("IssuedTo"); }
-    public java.lang.String getValidNotAfter() { return (java.lang.String) megletProps.get("ValidNotAfter"); }
-    public java.util.Date getValidNotAfterDate() { return (java.util.Date) megletProps.get("ValidNotAfterDate"); }
-    public java.lang.String getValidNotBefore() { return (java.lang.String) megletProps.get("ValidNotBefore"); }
-    public java.util.Date getValidNotBeforeDate() { return (java.util.Date) megletProps.get("ValidNotBeforeDate"); }
-    public java.security.cert.X509Certificate getX509Certificate() { return (java.security.cert.X509Certificate) megletProps.get("X509Certificate"); }
+    public android.net.http.SslCertificate.DName getIssuedBy() { return (android.net.http.SslCertificate.DName) meglerProps.get("IssuedBy"); }
+    public android.net.http.SslCertificate.DName getIssuedTo() { return (android.net.http.SslCertificate.DName) meglerProps.get("IssuedTo"); }
+    public java.lang.String getValidNotAfter() { return (java.lang.String) meglerProps.get("ValidNotAfter"); }
+    public java.util.Date getValidNotAfterDate() { return (java.util.Date) meglerProps.get("ValidNotAfterDate"); }
+    public java.lang.String getValidNotBefore() { return (java.lang.String) meglerProps.get("ValidNotBefore"); }
+    public java.util.Date getValidNotBeforeDate() { return (java.util.Date) meglerProps.get("ValidNotBeforeDate"); }
+    public java.security.cert.X509Certificate getX509Certificate() { return (java.security.cert.X509Certificate) meglerProps.get("X509Certificate"); }
     public android.view.View inflateCertificateView(android.content.Context p0) { return null; }
     SslCertificate() { this((java.security.cert.X509Certificate) null); }
     public static class DName {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public DName(android.net.http.SslCertificate p0, java.lang.String p1) {}
-        public java.lang.String getCName() { return (java.lang.String) megletProps.get("CName"); }
-        public java.lang.String getDName() { return (java.lang.String) megletProps.get("DName"); }
-        public java.lang.String getOName() { return (java.lang.String) megletProps.get("OName"); }
-        public java.lang.String getUName() { return (java.lang.String) megletProps.get("UName"); }
+        public java.lang.String getCName() { return (java.lang.String) meglerProps.get("CName"); }
+        public java.lang.String getDName() { return (java.lang.String) meglerProps.get("DName"); }
+        public java.lang.String getOName() { return (java.lang.String) meglerProps.get("OName"); }
+        public java.lang.String getUName() { return (java.lang.String) meglerProps.get("UName"); }
         DName() { this((android.net.http.SslCertificate) null, (java.lang.String) null); }
     }
 }

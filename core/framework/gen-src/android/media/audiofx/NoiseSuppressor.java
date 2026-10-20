@@ -3,7 +3,7 @@ package android.media.audiofx;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class NoiseSuppressor extends android.media.audiofx.AudioEffect {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.media.audiofx.NoiseSuppressor create(int p0) { return new NoiseSuppressor(); }
     public static boolean isAvailable() { return false; }
     protected NoiseSuppressor() { super((java.util.UUID) null, (android.media.AudioDeviceAttributes) null); }

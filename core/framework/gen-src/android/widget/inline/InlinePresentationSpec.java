@@ -3,24 +3,24 @@ package android.widget.inline;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class InlinePresentationSpec implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
     public void filterContentTypes() {}
-    public android.util.Size getMaxSize() { return (android.util.Size) megletProps.get("MaxSize"); }
-    public android.util.Size getMinSize() { return (android.util.Size) megletProps.get("MinSize"); }
-    public android.os.Bundle getStyle() { return (android.os.Bundle) megletProps.get("Style"); }
+    public android.util.Size getMaxSize() { return (android.util.Size) meglerProps.get("MaxSize"); }
+    public android.util.Size getMinSize() { return (android.util.Size) meglerProps.get("MinSize"); }
+    public android.os.Bundle getStyle() { return (android.os.Bundle) meglerProps.get("Style"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected InlinePresentationSpec() {}
     public static abstract class BaseBuilder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         protected BaseBuilder() {}
     }
     public static final class Builder extends android.widget.inline.InlinePresentationSpec.BaseBuilder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.util.Size p0, android.util.Size p1) { super(); }
-        public android.widget.inline.InlinePresentationSpec build() { android.widget.inline.InlinePresentationSpec x = new android.widget.inline.InlinePresentationSpec(); x.megletProps.putAll(megletProps); return x; }
-        public android.widget.inline.InlinePresentationSpec.Builder setStyle(android.os.Bundle p0) { megletProps.put("Style", p0); return this; }
+        public android.widget.inline.InlinePresentationSpec build() { android.widget.inline.InlinePresentationSpec x = new android.widget.inline.InlinePresentationSpec(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.widget.inline.InlinePresentationSpec.Builder setStyle(android.os.Bundle p0) { meglerProps.put("Style", p0); return this; }
         Builder() { this((android.util.Size) null, (android.util.Size) null); }
     }
 }

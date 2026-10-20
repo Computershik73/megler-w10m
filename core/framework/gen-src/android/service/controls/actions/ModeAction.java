@@ -3,10 +3,10 @@ package android.service.controls.actions;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ModeAction extends android.service.controls.actions.ControlAction {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ModeAction(java.lang.String p0, int p1) { super(); }
     public ModeAction(java.lang.String p0, int p1, java.lang.String p2) { super(); }
-    public int getActionType() { return (megletProps.get("ActionType") instanceof Integer ? (Integer) megletProps.get("ActionType") : 0); }
-    public int getNewMode() { return (megletProps.get("NewMode") instanceof Integer ? (Integer) megletProps.get("NewMode") : 0); }
+    public int getActionType() { return (meglerProps.get("ActionType") instanceof Integer ? (Integer) meglerProps.get("ActionType") : 0); }
+    public int getNewMode() { return (meglerProps.get("NewMode") instanceof Integer ? (Integer) meglerProps.get("NewMode") : 0); }
     ModeAction() { this((java.lang.String) null, (int) 0); }
 }

@@ -3,17 +3,17 @@ package android.accessibilityservice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class InputMethod {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public InputMethod(android.accessibilityservice.AccessibilityService p0) {}
-    public android.accessibilityservice.InputMethod.AccessibilityInputConnection getCurrentInputConnection() { return (android.accessibilityservice.InputMethod.AccessibilityInputConnection) megletProps.get("CurrentInputConnection"); }
-    public android.view.inputmethod.EditorInfo getCurrentInputEditorInfo() { return (android.view.inputmethod.EditorInfo) megletProps.get("CurrentInputEditorInfo"); }
-    public boolean getCurrentInputStarted() { return (megletProps.get("CurrentInputStarted") instanceof Boolean ? (Boolean) megletProps.get("CurrentInputStarted") : false); }
+    public android.accessibilityservice.InputMethod.AccessibilityInputConnection getCurrentInputConnection() { return (android.accessibilityservice.InputMethod.AccessibilityInputConnection) meglerProps.get("CurrentInputConnection"); }
+    public android.view.inputmethod.EditorInfo getCurrentInputEditorInfo() { return (android.view.inputmethod.EditorInfo) meglerProps.get("CurrentInputEditorInfo"); }
+    public boolean getCurrentInputStarted() { return (meglerProps.get("CurrentInputStarted") instanceof Boolean ? (Boolean) meglerProps.get("CurrentInputStarted") : false); }
     public void onFinishInput() {}
     public void onStartInput(android.view.inputmethod.EditorInfo p0, boolean p1) {}
     public void onUpdateSelection(int p0, int p1, int p2, int p3, int p4, int p5) {}
     InputMethod() { this((android.accessibilityservice.AccessibilityService) null); }
     public static final class AccessibilityInputConnection {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public void clearMetaKeyStates(int p0) {}
         public void commitText(java.lang.CharSequence p0, int p1, android.view.inputmethod.TextAttribute p2) {}
         public void deleteSurroundingText(int p0, int p1) {}

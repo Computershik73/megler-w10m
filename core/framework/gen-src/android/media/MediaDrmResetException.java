@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MediaDrmResetException extends java.lang.IllegalStateException implements android.media.MediaDrmThrowable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public MediaDrmResetException(java.lang.String p0) { super(); }
     MediaDrmResetException() { this((java.lang.String) null); }
 }

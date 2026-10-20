@@ -3,7 +3,7 @@ package android.devicelock;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DeviceLockManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int DEVICE_LOCK_ROLE_FINANCING = 0;
     public static final int ENROLLMENT_TYPE_FINANCE = 1;
     public static final int ENROLLMENT_TYPE_NONE = 0;
@@ -14,7 +14,7 @@ public final class DeviceLockManager {
     public void getDeviceId(java.util.concurrent.Executor p0, android.os.OutcomeReceiver p1) {}
     public void getEnrollmentType(java.util.concurrent.Executor p0, android.os.OutcomeReceiver p1) {}
     public void getKioskApps(java.util.concurrent.Executor p0, android.os.OutcomeReceiver p1) {}
-    public android.devicelock.IDeviceLockService getService() { return (android.devicelock.IDeviceLockService) megletProps.get("Service"); }
+    public android.devicelock.IDeviceLockService getService() { return (android.devicelock.IDeviceLockService) meglerProps.get("Service"); }
     public void isDeviceLocked(java.util.concurrent.Executor p0, android.os.OutcomeReceiver p1) {}
     public void lockDevice(java.util.concurrent.Executor p0, android.os.OutcomeReceiver p1) {}
     public void notifyKioskSetupFinished(java.util.concurrent.Executor p0, android.os.OutcomeReceiver p1) {}

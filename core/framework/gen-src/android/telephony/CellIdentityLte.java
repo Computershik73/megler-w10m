@@ -3,27 +3,27 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CellIdentityLte extends android.telephony.CellIdentity {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public CellIdentityLte() { super((java.lang.String) null, (int) 0, (android.os.Parcel) null); }
     public CellIdentityLte(int p0, int p1, int p2, int p3, int p4) { super((java.lang.String) null, (int) 0, (android.os.Parcel) null); }
     public CellIdentityLte(int p0, int p1, int p2, int p3, int[] p4, int p5, java.lang.String p6, java.lang.String p7, java.lang.String p8, java.lang.String p9, java.util.Collection p10, android.telephony.ClosedSubscriberGroupInfo p11) { super((java.lang.String) null, (int) 0, (android.os.Parcel) null); }
     protected static android.telephony.CellIdentityLte createFromParcelBody(android.os.Parcel p0) { return new CellIdentityLte(); }
     public android.telephony.gsm.GsmCellLocation asCellLocation() { return null; }
-    public java.util.Set getAdditionalPlmns() { return (megletProps.get("AdditionalPlmns") != null ? (java.util.Set) megletProps.get("AdditionalPlmns") : new java.util.HashSet()); }
-    public int[] getBands() { return (int[]) megletProps.get("Bands"); }
-    public int getBandwidth() { return (megletProps.get("Bandwidth") instanceof Integer ? (Integer) megletProps.get("Bandwidth") : 0); }
-    public int getChannelNumber() { return (megletProps.get("ChannelNumber") instanceof Integer ? (Integer) megletProps.get("ChannelNumber") : 0); }
-    public int getCi() { return (megletProps.get("Ci") instanceof Integer ? (Integer) megletProps.get("Ci") : 0); }
-    public android.telephony.ClosedSubscriberGroupInfo getClosedSubscriberGroupInfo() { return (android.telephony.ClosedSubscriberGroupInfo) megletProps.get("ClosedSubscriberGroupInfo"); }
-    public int getEarfcn() { return (megletProps.get("Earfcn") instanceof Integer ? (Integer) megletProps.get("Earfcn") : 0); }
-    public int getMcc() { return (megletProps.get("Mcc") instanceof Integer ? (Integer) megletProps.get("Mcc") : 0); }
-    public java.lang.String getMccString() { return (java.lang.String) megletProps.get("MccString"); }
-    public int getMnc() { return (megletProps.get("Mnc") instanceof Integer ? (Integer) megletProps.get("Mnc") : 0); }
-    public java.lang.String getMncString() { return (java.lang.String) megletProps.get("MncString"); }
-    public java.lang.String getMobileNetworkOperator() { return (java.lang.String) megletProps.get("MobileNetworkOperator"); }
-    public int getPci() { return (megletProps.get("Pci") instanceof Integer ? (Integer) megletProps.get("Pci") : 0); }
-    public int getTac() { return (megletProps.get("Tac") instanceof Integer ? (Integer) megletProps.get("Tac") : 0); }
+    public java.util.Set getAdditionalPlmns() { return (meglerProps.get("AdditionalPlmns") != null ? (java.util.Set) meglerProps.get("AdditionalPlmns") : new java.util.HashSet()); }
+    public int[] getBands() { return (int[]) meglerProps.get("Bands"); }
+    public int getBandwidth() { return (meglerProps.get("Bandwidth") instanceof Integer ? (Integer) meglerProps.get("Bandwidth") : 0); }
+    public int getChannelNumber() { return (meglerProps.get("ChannelNumber") instanceof Integer ? (Integer) meglerProps.get("ChannelNumber") : 0); }
+    public int getCi() { return (meglerProps.get("Ci") instanceof Integer ? (Integer) meglerProps.get("Ci") : 0); }
+    public android.telephony.ClosedSubscriberGroupInfo getClosedSubscriberGroupInfo() { return (android.telephony.ClosedSubscriberGroupInfo) meglerProps.get("ClosedSubscriberGroupInfo"); }
+    public int getEarfcn() { return (meglerProps.get("Earfcn") instanceof Integer ? (Integer) meglerProps.get("Earfcn") : 0); }
+    public int getMcc() { return (meglerProps.get("Mcc") instanceof Integer ? (Integer) meglerProps.get("Mcc") : 0); }
+    public java.lang.String getMccString() { return (java.lang.String) meglerProps.get("MccString"); }
+    public int getMnc() { return (meglerProps.get("Mnc") instanceof Integer ? (Integer) meglerProps.get("Mnc") : 0); }
+    public java.lang.String getMncString() { return (java.lang.String) meglerProps.get("MncString"); }
+    public java.lang.String getMobileNetworkOperator() { return (java.lang.String) meglerProps.get("MobileNetworkOperator"); }
+    public int getPci() { return (meglerProps.get("Pci") instanceof Integer ? (Integer) meglerProps.get("Pci") : 0); }
+    public int getTac() { return (meglerProps.get("Tac") instanceof Integer ? (Integer) meglerProps.get("Tac") : 0); }
     public android.telephony.CellIdentityLte sanitizeLocationInfo() { return this; }
     protected void updateGlobalCellId() {}
     public void writeToParcel(android.os.Parcel p0, int p1) {}

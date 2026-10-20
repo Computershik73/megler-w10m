@@ -3,7 +3,7 @@ package android.view.translation;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TranslationRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int FLAG_DICTIONARY_RESULT = 2;
     public static final int FLAG_PARTIAL_RESPONSES = 8;
@@ -11,25 +11,25 @@ public final class TranslationRequest implements android.os.Parcelable {
     public static final int FLAG_TRANSLITERATION_RESULT = 4;
     public static java.lang.String requestFlagsToString(int p0) { return null; }
     public int describeContents() { return 0; }
-    public int getFlags() { return (megletProps.get("Flags") instanceof Integer ? (Integer) megletProps.get("Flags") : 0); }
-    public java.util.List getTranslationRequestValues() { return (megletProps.get("TranslationRequestValues") != null ? (java.util.List) megletProps.get("TranslationRequestValues") : new java.util.ArrayList()); }
-    public java.util.List getViewTranslationRequests() { return (megletProps.get("ViewTranslationRequests") != null ? (java.util.List) megletProps.get("ViewTranslationRequests") : new java.util.ArrayList()); }
+    public int getFlags() { return (meglerProps.get("Flags") instanceof Integer ? (Integer) meglerProps.get("Flags") : 0); }
+    public java.util.List getTranslationRequestValues() { return (meglerProps.get("TranslationRequestValues") != null ? (java.util.List) meglerProps.get("TranslationRequestValues") : new java.util.ArrayList()); }
+    public java.util.List getViewTranslationRequests() { return (meglerProps.get("ViewTranslationRequests") != null ? (java.util.List) meglerProps.get("ViewTranslationRequests") : new java.util.ArrayList()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected TranslationRequest() {}
     public static abstract class BaseBuilder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public abstract android.view.translation.TranslationRequest.Builder addTranslationRequestValue(android.view.translation.TranslationRequestValue p0);
         public abstract android.view.translation.TranslationRequest.Builder addViewTranslationRequest(android.view.translation.ViewTranslationRequest p0);
         protected BaseBuilder() {}
     }
     public static final class Builder extends android.view.translation.TranslationRequest.BaseBuilder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() { super(); }
         public android.view.translation.TranslationRequest.Builder addTranslationRequestValue(android.view.translation.TranslationRequestValue p0) { return this; }
         public android.view.translation.TranslationRequest.Builder addViewTranslationRequest(android.view.translation.ViewTranslationRequest p0) { return this; }
-        public android.view.translation.TranslationRequest build() { android.view.translation.TranslationRequest x = new android.view.translation.TranslationRequest(); x.megletProps.putAll(megletProps); return x; }
-        public android.view.translation.TranslationRequest.Builder setFlags(int p0) { megletProps.put("Flags", Integer.valueOf(p0)); return this; }
-        public android.view.translation.TranslationRequest.Builder setTranslationRequestValues(java.util.List p0) { megletProps.put("TranslationRequestValues", p0); return this; }
-        public android.view.translation.TranslationRequest.Builder setViewTranslationRequests(java.util.List p0) { megletProps.put("ViewTranslationRequests", p0); return this; }
+        public android.view.translation.TranslationRequest build() { android.view.translation.TranslationRequest x = new android.view.translation.TranslationRequest(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.view.translation.TranslationRequest.Builder setFlags(int p0) { meglerProps.put("Flags", Integer.valueOf(p0)); return this; }
+        public android.view.translation.TranslationRequest.Builder setTranslationRequestValues(java.util.List p0) { meglerProps.put("TranslationRequestValues", p0); return this; }
+        public android.view.translation.TranslationRequest.Builder setViewTranslationRequests(java.util.List p0) { meglerProps.put("ViewTranslationRequests", p0); return this; }
     }
 }

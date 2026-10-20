@@ -3,7 +3,7 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BluetoothHeadset implements android.bluetooth.BluetoothProfile {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_ACTIVE_DEVICE_CHANGED = "android.bluetooth.headset.profile.action.ACTIVE_DEVICE_CHANGED";
     public static final java.lang.String ACTION_AUDIO_STATE_CHANGED = "android.bluetooth.headset.profile.action.AUDIO_STATE_CHANGED";
     public static final java.lang.String ACTION_CONNECTION_STATE_CHANGED = "android.bluetooth.headset.profile.action.CONNECTION_STATE_CHANGED";
@@ -41,16 +41,16 @@ public final class BluetoothHeadset implements android.bluetooth.BluetoothProfil
     public boolean disconnect(android.bluetooth.BluetoothDevice p0) { return false; }
     public int disconnectAudio() { return 0; }
     protected void finalize() {}
-    public android.bluetooth.BluetoothDevice getActiveDevice() { return (android.bluetooth.BluetoothDevice) megletProps.get("ActiveDevice"); }
-    public android.bluetooth.BluetoothAdapter getAdapter() { return (android.bluetooth.BluetoothAdapter) megletProps.get("Adapter"); }
-    public int getAudioRouteAllowed() { return (megletProps.get("AudioRouteAllowed") instanceof Integer ? (Integer) megletProps.get("AudioRouteAllowed") : 0); }
+    public android.bluetooth.BluetoothDevice getActiveDevice() { return (android.bluetooth.BluetoothDevice) meglerProps.get("ActiveDevice"); }
+    public android.bluetooth.BluetoothAdapter getAdapter() { return (android.bluetooth.BluetoothAdapter) meglerProps.get("Adapter"); }
+    public int getAudioRouteAllowed() { return (meglerProps.get("AudioRouteAllowed") instanceof Integer ? (Integer) meglerProps.get("AudioRouteAllowed") : 0); }
     public int getAudioState(android.bluetooth.BluetoothDevice p0) { return 0; }
-    public java.util.List getConnectedDevices() { return (megletProps.get("ConnectedDevices") != null ? (java.util.List) megletProps.get("ConnectedDevices") : new java.util.ArrayList()); }
+    public java.util.List getConnectedDevices() { return (meglerProps.get("ConnectedDevices") != null ? (java.util.List) meglerProps.get("ConnectedDevices") : new java.util.ArrayList()); }
     public int getConnectionPolicy(android.bluetooth.BluetoothDevice p0) { return 0; }
     public int getConnectionState(android.bluetooth.BluetoothDevice p0) { return 0; }
     public java.util.List getDevicesMatchingConnectionStates(int[] p0) { return new java.util.ArrayList(); }
     public boolean isAudioConnected(android.bluetooth.BluetoothDevice p0) { return false; }
-    public boolean isInbandRingingEnabled() { return (megletProps.get("InbandRingingEnabled") instanceof Boolean ? (Boolean) megletProps.get("InbandRingingEnabled") : false); }
+    public boolean isInbandRingingEnabled() { return (meglerProps.get("InbandRingingEnabled") instanceof Boolean ? (Boolean) meglerProps.get("InbandRingingEnabled") : false); }
     public boolean isNoiseReductionSupported(android.bluetooth.BluetoothDevice p0) { return false; }
     public boolean isVoiceRecognitionSupported(android.bluetooth.BluetoothDevice p0) { return false; }
     public void onServiceConnected(android.os.IBinder p0) {}
@@ -59,7 +59,7 @@ public final class BluetoothHeadset implements android.bluetooth.BluetoothProfil
     public boolean setActiveDevice(android.bluetooth.BluetoothDevice p0) { return false; }
     public int setAudioRouteAllowed(boolean p0) { return 0; }
     public boolean setConnectionPolicy(android.bluetooth.BluetoothDevice p0, int p1) { return false; }
-    public void setForceScoAudio(boolean p0) { megletProps.put("ForceScoAudio", Boolean.valueOf(p0)); }
+    public void setForceScoAudio(boolean p0) { meglerProps.put("ForceScoAudio", Boolean.valueOf(p0)); }
     public boolean startScoUsingVirtualVoiceCall() { return false; }
     public boolean startVoiceRecognition(android.bluetooth.BluetoothDevice p0) { return false; }
     public boolean stopScoUsingVirtualVoiceCall() { return false; }

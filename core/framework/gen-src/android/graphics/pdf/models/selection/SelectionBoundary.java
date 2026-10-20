@@ -3,16 +3,16 @@ package android.graphics.pdf.models.selection;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SelectionBoundary implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public SelectionBoundary(int p0) {}
     public SelectionBoundary(int p0, boolean p1) {}
     public SelectionBoundary(android.graphics.Point p0) {}
     public SelectionBoundary(android.graphics.Point p0, boolean p1) {}
     public int describeContents() { return 0; }
-    public int getIndex() { return (megletProps.get("Index") instanceof Integer ? (Integer) megletProps.get("Index") : 0); }
-    public boolean getIsRtl() { return (megletProps.get("IsRtl") instanceof Boolean ? (Boolean) megletProps.get("IsRtl") : false); }
-    public android.graphics.Point getPoint() { return (android.graphics.Point) megletProps.get("Point"); }
+    public int getIndex() { return (meglerProps.get("Index") instanceof Integer ? (Integer) meglerProps.get("Index") : 0); }
+    public boolean getIsRtl() { return (meglerProps.get("IsRtl") instanceof Boolean ? (Boolean) meglerProps.get("IsRtl") : false); }
+    public android.graphics.Point getPoint() { return (android.graphics.Point) meglerProps.get("Point"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     SelectionBoundary() { this((int) 0); }
 }

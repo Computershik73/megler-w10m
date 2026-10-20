@@ -3,10 +3,10 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MediaFeature {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public MediaFeature() {}
     public static final class HdrType {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String DOLBY_VISION = "android.media.feature.hdr.dolby_vision";
         public static final java.lang.String HDR10 = "android.media.feature.hdr.hdr10";
         public static final java.lang.String HDR10_PLUS = "android.media.feature.hdr.hdr10_plus";

@@ -3,12 +3,12 @@ package android.adservices.adselection;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AdWithBid implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public AdWithBid(android.adservices.common.AdData p0, double p1) {}
     public int describeContents() { return 0; }
-    public android.adservices.common.AdData getAdData() { return (android.adservices.common.AdData) megletProps.get("AdData"); }
-    public double getBid() { return (megletProps.get("Bid") instanceof Double ? (Double) megletProps.get("Bid") : 0d); }
+    public android.adservices.common.AdData getAdData() { return (android.adservices.common.AdData) meglerProps.get("AdData"); }
+    public double getBid() { return (meglerProps.get("Bid") instanceof Double ? (Double) meglerProps.get("Bid") : 0d); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     AdWithBid() { this((android.adservices.common.AdData) null, (double) 0d); }
 }

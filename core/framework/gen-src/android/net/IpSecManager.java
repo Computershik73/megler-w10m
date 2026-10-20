@@ -3,7 +3,7 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class IpSecManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int DIRECTION_FWD = 2;
     public static final int DIRECTION_IN = 0;
     public static final int DIRECTION_OUT = 1;
@@ -30,31 +30,31 @@ public class IpSecManager {
     public void startTunnelModeTransformMigration(android.net.IpSecTransform p0, java.net.InetAddress p1, java.net.InetAddress p2) {}
     IpSecManager() { this((android.content.Context) null, (android.net.IIpSecService) null); }
     public static final class IpSecTunnelInterface implements java.lang.AutoCloseable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public void addAddress(java.net.InetAddress p0, int p1) {}
         public void close() {}
         protected void finalize() {}
-        public java.lang.String getInterfaceName() { return (java.lang.String) megletProps.get("InterfaceName"); }
-        public int getResourceId() { return (megletProps.get("ResourceId") instanceof Integer ? (Integer) megletProps.get("ResourceId") : 0); }
+        public java.lang.String getInterfaceName() { return (java.lang.String) meglerProps.get("InterfaceName"); }
+        public int getResourceId() { return (meglerProps.get("ResourceId") instanceof Integer ? (Integer) meglerProps.get("ResourceId") : 0); }
         public void removeAddress(java.net.InetAddress p0, int p1) {}
-        public void setUnderlyingNetwork(android.net.Network p0) { megletProps.put("UnderlyingNetwork", p0); }
+        public void setUnderlyingNetwork(android.net.Network p0) { meglerProps.put("UnderlyingNetwork", p0); }
         protected IpSecTunnelInterface() {}
     }
     public static final class ResourceUnavailableException extends android.util.AndroidException {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         protected ResourceUnavailableException() { super(); }
     }
     public static final class SecurityParameterIndex implements java.lang.AutoCloseable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public void close() {}
         protected void finalize() {}
-        public int getResourceId() { return (megletProps.get("ResourceId") instanceof Integer ? (Integer) megletProps.get("ResourceId") : 0); }
-        public int getSpi() { return (megletProps.get("Spi") instanceof Integer ? (Integer) megletProps.get("Spi") : 0); }
+        public int getResourceId() { return (meglerProps.get("ResourceId") instanceof Integer ? (Integer) meglerProps.get("ResourceId") : 0); }
+        public int getSpi() { return (meglerProps.get("Spi") instanceof Integer ? (Integer) meglerProps.get("Spi") : 0); }
         protected SecurityParameterIndex() {}
     }
     public static final class SpiUnavailableException extends android.util.AndroidException {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public int getSpi() { return (megletProps.get("Spi") instanceof Integer ? (Integer) megletProps.get("Spi") : 0); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public int getSpi() { return (meglerProps.get("Spi") instanceof Integer ? (Integer) meglerProps.get("Spi") : 0); }
         protected SpiUnavailableException() { super(); }
     }
     public interface Status {

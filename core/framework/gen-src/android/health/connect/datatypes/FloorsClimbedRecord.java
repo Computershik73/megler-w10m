@@ -3,20 +3,20 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class FloorsClimbedRecord extends android.health.connect.datatypes.IntervalRecord {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.health.connect.datatypes.AggregationType FLOORS_CLIMBED_TOTAL;
-    public double getFloors() { return (megletProps.get("Floors") instanceof Double ? (Double) megletProps.get("Floors") : 0d); }
+    public double getFloors() { return (meglerProps.get("Floors") instanceof Double ? (Double) meglerProps.get("Floors") : 0d); }
     public android.health.connect.internal.datatypes.FloorsClimbedRecordInternal toRecordInternal() { return null; }
     protected FloorsClimbedRecord() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.health.connect.datatypes.Metadata p0, java.time.Instant p1, java.time.Instant p2, double p3) {}
-        public android.health.connect.datatypes.FloorsClimbedRecord build() { android.health.connect.datatypes.FloorsClimbedRecord x = new android.health.connect.datatypes.FloorsClimbedRecord(); x.megletProps.putAll(megletProps); return x; }
+        public android.health.connect.datatypes.FloorsClimbedRecord build() { android.health.connect.datatypes.FloorsClimbedRecord x = new android.health.connect.datatypes.FloorsClimbedRecord(); x.meglerProps.putAll(meglerProps); return x; }
         public android.health.connect.datatypes.FloorsClimbedRecord buildWithoutValidation() { return null; }
         public android.health.connect.datatypes.FloorsClimbedRecord.Builder clearEndZoneOffset() { return this; }
         public android.health.connect.datatypes.FloorsClimbedRecord.Builder clearStartZoneOffset() { return this; }
-        public android.health.connect.datatypes.FloorsClimbedRecord.Builder setEndZoneOffset(java.time.ZoneOffset p0) { megletProps.put("EndZoneOffset", p0); return this; }
-        public android.health.connect.datatypes.FloorsClimbedRecord.Builder setStartZoneOffset(java.time.ZoneOffset p0) { megletProps.put("StartZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.FloorsClimbedRecord.Builder setEndZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("EndZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.FloorsClimbedRecord.Builder setStartZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("StartZoneOffset", p0); return this; }
         Builder() { this((android.health.connect.datatypes.Metadata) null, (java.time.Instant) null, (java.time.Instant) null, (double) 0d); }
     }
 }

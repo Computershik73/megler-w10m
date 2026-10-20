@@ -3,7 +3,7 @@ package android.opengl;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ETC1Util {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ETC1Util() {}
     public static android.opengl.ETC1Util.ETC1Texture compressTexture(java.nio.Buffer p0, int p1, int p2, int p3, int p4) { return null; }
     public static android.opengl.ETC1Util.ETC1Texture createTexture(java.io.InputStream p0) { return null; }
@@ -12,11 +12,11 @@ public class ETC1Util {
     public static void loadTexture(int p0, int p1, int p2, int p3, int p4, java.io.InputStream p5) {}
     public static void writeTexture(android.opengl.ETC1Util.ETC1Texture p0, java.io.OutputStream p1) {}
     public static class ETC1Texture {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public ETC1Texture(int p0, int p1, java.nio.ByteBuffer p2) {}
-        public java.nio.ByteBuffer getData() { return (java.nio.ByteBuffer) megletProps.get("Data"); }
-        public int getHeight() { return (megletProps.get("Height") instanceof Integer ? (Integer) megletProps.get("Height") : 0); }
-        public int getWidth() { return (megletProps.get("Width") instanceof Integer ? (Integer) megletProps.get("Width") : 0); }
+        public java.nio.ByteBuffer getData() { return (java.nio.ByteBuffer) meglerProps.get("Data"); }
+        public int getHeight() { return (meglerProps.get("Height") instanceof Integer ? (Integer) meglerProps.get("Height") : 0); }
+        public int getWidth() { return (meglerProps.get("Width") instanceof Integer ? (Integer) meglerProps.get("Width") : 0); }
         ETC1Texture() { this((int) 0, (int) 0, (java.nio.ByteBuffer) null); }
     }
 }

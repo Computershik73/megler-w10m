@@ -3,9 +3,9 @@ package android.app.job;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class JobServiceEngine {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public JobServiceEngine(android.app.Service p0) {}
-    public android.os.IBinder getBinder() { return (android.os.IBinder) megletProps.get("Binder"); }
+    public android.os.IBinder getBinder() { return (android.os.IBinder) meglerProps.get("Binder"); }
     public long getTransferredDownloadBytes(android.app.job.JobParameters p0, android.app.job.JobWorkItem p1) { return 0L; }
     public long getTransferredUploadBytes(android.app.job.JobParameters p0, android.app.job.JobWorkItem p1) { return 0L; }
     public void jobFinished(android.app.job.JobParameters p0, boolean p1) {}

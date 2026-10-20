@@ -3,7 +3,7 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BluetoothCodecType implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final long CODEC_ID_AAC = 2L;
     public static final long CODEC_ID_APTX = 16797695L;
     public static final long CODEC_ID_APTX_HD = 604035071L;
@@ -16,10 +16,10 @@ public final class BluetoothCodecType implements android.os.Parcelable {
     public static android.bluetooth.BluetoothCodecType createFromParcel(android.os.Parcel p0) { return new BluetoothCodecType(); }
     public static android.bluetooth.BluetoothCodecType createFromType(int p0) { return new BluetoothCodecType(); }
     public int describeContents() { return 0; }
-    public long getCodecId() { return (megletProps.get("CodecId") instanceof Long ? (Long) megletProps.get("CodecId") : 0L); }
-    public java.lang.String getCodecName() { return (java.lang.String) megletProps.get("CodecName"); }
-    public int getNativeCodecType() { return (megletProps.get("NativeCodecType") instanceof Integer ? (Integer) megletProps.get("NativeCodecType") : 0); }
-    public boolean isMandatoryCodec() { return (megletProps.get("MandatoryCodec") instanceof Boolean ? (Boolean) megletProps.get("MandatoryCodec") : false); }
+    public long getCodecId() { return (meglerProps.get("CodecId") instanceof Long ? (Long) meglerProps.get("CodecId") : 0L); }
+    public java.lang.String getCodecName() { return (java.lang.String) meglerProps.get("CodecName"); }
+    public int getNativeCodecType() { return (meglerProps.get("NativeCodecType") instanceof Integer ? (Integer) meglerProps.get("NativeCodecType") : 0); }
+    public boolean isMandatoryCodec() { return (meglerProps.get("MandatoryCodec") instanceof Boolean ? (Boolean) meglerProps.get("MandatoryCodec") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     BluetoothCodecType() { this((int) 0, (long) 0L, (java.lang.String) null); }
 }

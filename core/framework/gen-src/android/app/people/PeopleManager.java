@@ -3,7 +3,7 @@ package android.app.people;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PeopleManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public java.util.Map mConversationListeners;
     public PeopleManager(android.content.Context p0) {}
     public PeopleManager(android.content.Context p0, android.app.people.IPeopleManager p1) {}

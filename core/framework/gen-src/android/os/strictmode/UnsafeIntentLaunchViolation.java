@@ -3,9 +3,9 @@ package android.os.strictmode;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class UnsafeIntentLaunchViolation extends android.os.strictmode.Violation {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public UnsafeIntentLaunchViolation(android.content.Intent p0) { super(); }
     public UnsafeIntentLaunchViolation(android.content.Intent p0, java.lang.String p1) { super(); }
-    public android.content.Intent getIntent() { return (android.content.Intent) megletProps.get("Intent"); }
+    public android.content.Intent getIntent() { return (android.content.Intent) meglerProps.get("Intent"); }
     UnsafeIntentLaunchViolation() { this((android.content.Intent) null); }
 }

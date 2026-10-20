@@ -1,7 +1,7 @@
 /*
  * A whole app, start to end (included by mg_tests.c).
  *
- * native-test.apk through meglet_run: its manifest read, its library loaded,
+ * native-test.apk through megler_run: its manifest read, its library loaded,
  * the NativeActivity driver playing Android's part, the app's own thread
  * running a looper, bringing up EGL and drawing. OpenGL ES is a stand-in here
  * that records what it was called with -- with real floats, as ANGLE would
@@ -158,22 +158,22 @@ static void app_exited(void *user, int status, const char *reason)
 static void test_app(const char *libdir)
 {
     char *apk = mg_sprintf("%s/native-test.apk", libdir), *report, *saved;
-    meglet_run_config cfg;
+    megler_run_config cfg;
     volatile struct t_native_state *s;
     mg_lib *lib;
     mg_stat st;
     int frames;
     say("an app, start to end (NativeActivity)");
-    if (!meglet_data_dir()[0]) {
-        say("  (skipped: no data directory -- meglet_init was not called)");
+    if (!megler_data_dir()[0]) {
+        say("  (skipped: no data directory -- megler_init was not called)");
         free(apk);
         return;
     }
-    report = meglet_apk_report(apk);
+    report = megler_apk_report(apk);
     CHECK(report && strstr(report, "\"ok\":true"));
     if (report) {
-        CHECK(strstr(report, "\"package\":\"org.meglet.test.native\""));
-        CHECK(strstr(report, "\"label\":\"Meglet Native Test\""));
+        CHECK(strstr(report, "\"package\":\"org.megler.test.native\""));
+        CHECK(strstr(report, "\"label\":\"Megler Native Test\""));
         CHECK(strstr(report, "\"versionName\":\"1.2\"") && strstr(report, "\"versionCode\":7"));
         CHECK(strstr(report, "\"minSdk\":16") && strstr(report, "\"targetSdk\":28"));
         CHECK(strstr(report, "\"abi\":\"armeabi-v7a\""));
@@ -183,7 +183,7 @@ static void test_app(const char *libdir)
         CHECK(strstr(report, "\"nativeLibrary\":\"native-test\""));
         CHECK(strstr(report, "\"name\":\"libnative-test.so\"") && strstr(report, "\"importsNotInSystem\":0"));
         CHECK(strstr(report, "\"runnable\":true"));
-        meglet_free(report);
+        megler_free(report);
     }
 
     memset(&M, 0, sizeof(M));
@@ -197,9 +197,9 @@ static void test_app(const char *libdir)
     cfg.audio.open = audio_open;
     cfg.audio.write = audio_write;
     memset(&G_AUDIO, 0, sizeof(G_AUDIO));
-    CHECK(meglet_run(&cfg));
-    if (!meglet_running()) {
-        say("  not running: %s", meglet_last_error());
+    CHECK(megler_run(&cfg));
+    if (!megler_running()) {
+        say("  not running: %s", megler_last_error());
         free(apk);
         return;
     }
@@ -211,8 +211,8 @@ static void test_app(const char *libdir)
         free(apk);
         return;
     }
-    WAIT_FOR(meglet_frames() >= 5 && s->focused);
-    CHECK(meglet_frames() >= 5);
+    WAIT_FOR(megler_frames() >= 5 && s->focused);
+    CHECK(megler_frames() >= 5);
 
     /* What the app was told and what it found out for itself. */
     CHECK_INT(s->started, 1);
@@ -248,48 +248,48 @@ static void test_app(const char *libdir)
     CHECK(G_AUDIO.peak >= 8188 && G_AUDIO.peak <= 8192 && G_AUDIO.mismatched == 0);
 
     /* Touch, with a second finger; the event's floats go back to the guest as bits. */
-    meglet_touch(0, 7, 100.5f, 50.25f);
+    megler_touch(0, 7, 100.5f, 50.25f);
     WAIT_FOR(s->touches >= 1);
     CHECK(s->touches == 1 && s->last_action == 0 && s->pointers == 1 && s->last_x == 100.5f && s->last_y == 50.25f);
-    meglet_touch(0, 9, 300.0f, 200.0f);
+    megler_touch(0, 9, 300.0f, 200.0f);
     WAIT_FOR(s->touches >= 2);
     CHECK(s->last_action == (5 | (1 << 8)) && s->pointers == 2);
-    meglet_touch(1, 7, 110.0f, 60.0f);
+    megler_touch(1, 7, 110.0f, 60.0f);
     WAIT_FOR(s->touches >= 3);
     CHECK(s->last_action == 2 && s->last_x == 110.0f && s->last_y == 60.0f);
-    meglet_touch(2, 9, 300.0f, 200.0f);
+    megler_touch(2, 9, 300.0f, 200.0f);
     WAIT_FOR(s->touches >= 4);
     CHECK(s->last_action == (6 | (1 << 8)));
-    meglet_touch(2, 7, 110.0f, 60.0f);
+    megler_touch(2, 7, 110.0f, 60.0f);
     WAIT_FOR(s->touches >= 5);
     CHECK(s->last_action == 1 && s->pointers == 1);
 
     /* Losing focus stops its drawing; getting it back starts it again. */
-    meglet_set_focused(false);
+    megler_set_focused(false);
     WAIT_FOR(!s->focused);
     mg_sleep_ns(30000000ull);
-    frames = (int)meglet_frames();
+    frames = (int)megler_frames();
     mg_sleep_ns(60000000ull);
-    CHECK_INT(meglet_frames(), frames);
-    meglet_set_paused(true);
+    CHECK_INT(megler_frames(), frames);
+    megler_set_paused(true);
     WAIT_FOR(s->paused >= 1);
-    meglet_set_paused(false);
+    megler_set_paused(false);
     WAIT_FOR(s->resumed >= 2);
-    meglet_set_focused(true);
-    WAIT_FOR((int)meglet_frames() > frames + 2);
-    CHECK((int)meglet_frames() > frames + 2);
+    megler_set_focused(true);
+    WAIT_FOR((int)megler_frames() > frames + 2);
+    CHECK((int)megler_frames() > frames + 2);
     CHECK(s->paused == 1 && s->resumed == 2);
 
     /* Back: the app asks to finish, and is taken down the way an activity is. */
-    meglet_key(4, true);
+    megler_key(4, true);
     WAIT_FOR(g_app_exited);
     CHECK(g_app_exited && g_app_status == 0);
     CHECK(s->keys == 1 && s->last_key == 4);
     CHECK(s->paused == 2 && s->stopped == 1 && s->destroyed == 1 && s->finished_drawing == 1);
-    CHECK(!meglet_running());
+    CHECK(!megler_running());
 
     /* What it saved is where this layer keeps the app's files. */
-    saved = mg_sprintf("%s/apps/org.meglet.test.native/data/files/save.dat", meglet_data_dir());
+    saved = mg_sprintf("%s/apps/org.megler.test.native/data/files/save.dat", megler_data_dir());
     CHECK(mg_path_stat(saved, &st, NULL) && st.size == 5);
     free(saved);
     mg_egl_set_provider(NULL);
@@ -303,7 +303,7 @@ static void test_app(const char *libdir)
  */
 int mg_tests_smoke_run(const char *apk, int milliseconds)
 {
-    meglet_run_config cfg;
+    megler_run_config cfg;
     int i;
     g_sink = NULL;
     memset(&M, 0, sizeof(M));
@@ -317,25 +317,25 @@ int mg_tests_smoke_run(const char *apk, int milliseconds)
     cfg.on_exit = app_exited;
     cfg.audio.open = audio_open;
     cfg.audio.write = audio_write;
-    if (!meglet_run(&cfg) || !meglet_running()) {
-        say("not running: %s", meglet_last_error());
+    if (!megler_run(&cfg) || !megler_running()) {
+        say("not running: %s", megler_last_error());
         return 1;
     }
-    WAIT_FOR(meglet_frames() >= 5 || g_app_exited);
-    say("%d frames after the start", (int)meglet_frames());
-    meglet_touch(0, 1, 200.0f, 100.0f);
-    meglet_touch(0, 2, 900.0f, 500.0f);
+    WAIT_FOR(megler_frames() >= 5 || g_app_exited);
+    say("%d frames after the start", (int)megler_frames());
+    megler_touch(0, 1, 200.0f, 100.0f);
+    megler_touch(0, 2, 900.0f, 500.0f);
     for (i = 0; i < milliseconds / 20 && !g_app_exited; i++) {
-        meglet_touch(1, 1, 200.0f + (float)i, 100.0f);
+        megler_touch(1, 1, 200.0f + (float)i, 100.0f);
         mg_sleep_ns(20000000ull);
     }
-    meglet_touch(2, 2, 900.0f, 500.0f);
-    meglet_touch(2, 1, 200.0f, 100.0f);
+    megler_touch(2, 2, 900.0f, 500.0f);
+    megler_touch(2, 1, 200.0f, 100.0f);
     mg_sleep_ns(100000000ull);
-    say("%d frames, %d draw calls (the last of %d vertices), %d clears", (int)meglet_frames(), M.draws, M.draw_count, M.clears);
+    say("%d frames, %d draw calls (the last of %d vertices), %d clears", (int)megler_frames(), M.draws, M.draw_count, M.clears);
     say("sound: %d frames at %d Hz, %d of them not silent, peak %d", G_AUDIO.frames, G_AUDIO.rate, G_AUDIO.loud, G_AUDIO.peak);
-    meglet_key(4, true);
-    meglet_key(4, false);
+    megler_key(4, true);
+    megler_key(4, false);
     WAIT_FOR(g_app_exited);
     say(g_app_exited ? "ended with status %d" : "did not end after Back", g_app_status);
     mg_egl_set_provider(NULL);

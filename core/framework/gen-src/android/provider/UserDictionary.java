@@ -3,12 +3,12 @@ package android.provider;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class UserDictionary {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String AUTHORITY = "user_dictionary";
     public static android.net.Uri CONTENT_URI = android.net.Uri.parse("content://user_dictionary");
     public UserDictionary() {}
     public static class Words implements android.provider.BaseColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String APP_ID = "appid";
         public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/vnd.google.userword";
         public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/vnd.google.userword";

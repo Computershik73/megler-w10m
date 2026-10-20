@@ -3,18 +3,18 @@ package android.app.appsearch;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ReportSystemUsageRequest {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public java.lang.String getDatabaseName() { return (java.lang.String) megletProps.get("DatabaseName"); }
-    public java.lang.String getDocumentId() { return (java.lang.String) megletProps.get("DocumentId"); }
-    public java.lang.String getNamespace() { return (java.lang.String) megletProps.get("Namespace"); }
-    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
-    public long getUsageTimestampMillis() { return (megletProps.get("UsageTimestampMillis") instanceof Long ? (Long) megletProps.get("UsageTimestampMillis") : 0L); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public java.lang.String getDatabaseName() { return (java.lang.String) meglerProps.get("DatabaseName"); }
+    public java.lang.String getDocumentId() { return (java.lang.String) meglerProps.get("DocumentId"); }
+    public java.lang.String getNamespace() { return (java.lang.String) meglerProps.get("Namespace"); }
+    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
+    public long getUsageTimestampMillis() { return (meglerProps.get("UsageTimestampMillis") instanceof Long ? (Long) meglerProps.get("UsageTimestampMillis") : 0L); }
     protected ReportSystemUsageRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(java.lang.String p0, java.lang.String p1, java.lang.String p2, java.lang.String p3) {}
-        public android.app.appsearch.ReportSystemUsageRequest build() { android.app.appsearch.ReportSystemUsageRequest x = new android.app.appsearch.ReportSystemUsageRequest(); x.megletProps.putAll(megletProps); return x; }
-        public android.app.appsearch.ReportSystemUsageRequest.Builder setUsageTimestampMillis(long p0) { megletProps.put("UsageTimestampMillis", Long.valueOf(p0)); return this; }
+        public android.app.appsearch.ReportSystemUsageRequest build() { android.app.appsearch.ReportSystemUsageRequest x = new android.app.appsearch.ReportSystemUsageRequest(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.app.appsearch.ReportSystemUsageRequest.Builder setUsageTimestampMillis(long p0) { meglerProps.put("UsageTimestampMillis", Long.valueOf(p0)); return this; }
         Builder() { this((java.lang.String) null, (java.lang.String) null, (java.lang.String) null, (java.lang.String) null); }
     }
 }

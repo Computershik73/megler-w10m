@@ -3,7 +3,7 @@ package android.location;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Location implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String EXTRA_NO_GPS_LOCATION = "noGPSLocation";
     public static final int FORMAT_DEGREES = 0;
@@ -18,25 +18,25 @@ public class Location implements android.os.Parcelable {
     public int describeContents() { return 0; }
     public float distanceTo(android.location.Location p0) { return 0f; }
     public void dump(android.util.Printer p0, java.lang.String p1) {}
-    public float getAccuracy() { return (megletProps.get("Accuracy") instanceof Float ? (Float) megletProps.get("Accuracy") : 0f); }
-    public double getAltitude() { return (megletProps.get("Altitude") instanceof Double ? (Double) megletProps.get("Altitude") : 0d); }
-    public float getBearing() { return (megletProps.get("Bearing") instanceof Float ? (Float) megletProps.get("Bearing") : 0f); }
-    public float getBearingAccuracyDegrees() { return (megletProps.get("BearingAccuracyDegrees") instanceof Float ? (Float) megletProps.get("BearingAccuracyDegrees") : 0f); }
-    public long getElapsedRealtimeAgeMillis() { return (megletProps.get("ElapsedRealtimeAgeMillis") instanceof Long ? (Long) megletProps.get("ElapsedRealtimeAgeMillis") : 0L); }
+    public float getAccuracy() { return (meglerProps.get("Accuracy") instanceof Float ? (Float) meglerProps.get("Accuracy") : 0f); }
+    public double getAltitude() { return (meglerProps.get("Altitude") instanceof Double ? (Double) meglerProps.get("Altitude") : 0d); }
+    public float getBearing() { return (meglerProps.get("Bearing") instanceof Float ? (Float) meglerProps.get("Bearing") : 0f); }
+    public float getBearingAccuracyDegrees() { return (meglerProps.get("BearingAccuracyDegrees") instanceof Float ? (Float) meglerProps.get("BearingAccuracyDegrees") : 0f); }
+    public long getElapsedRealtimeAgeMillis() { return (meglerProps.get("ElapsedRealtimeAgeMillis") instanceof Long ? (Long) meglerProps.get("ElapsedRealtimeAgeMillis") : 0L); }
     public long getElapsedRealtimeAgeMillis(long p0) { return 0L; }
-    public long getElapsedRealtimeMillis() { return (megletProps.get("ElapsedRealtimeMillis") instanceof Long ? (Long) megletProps.get("ElapsedRealtimeMillis") : 0L); }
-    public long getElapsedRealtimeNanos() { return (megletProps.get("ElapsedRealtimeNanos") instanceof Long ? (Long) megletProps.get("ElapsedRealtimeNanos") : 0L); }
-    public double getElapsedRealtimeUncertaintyNanos() { return (megletProps.get("ElapsedRealtimeUncertaintyNanos") instanceof Double ? (Double) megletProps.get("ElapsedRealtimeUncertaintyNanos") : 0d); }
-    public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
-    public double getLatitude() { return (megletProps.get("Latitude") instanceof Double ? (Double) megletProps.get("Latitude") : 0d); }
-    public double getLongitude() { return (megletProps.get("Longitude") instanceof Double ? (Double) megletProps.get("Longitude") : 0d); }
-    public float getMslAltitudeAccuracyMeters() { return (megletProps.get("MslAltitudeAccuracyMeters") instanceof Float ? (Float) megletProps.get("MslAltitudeAccuracyMeters") : 0f); }
-    public double getMslAltitudeMeters() { return (megletProps.get("MslAltitudeMeters") instanceof Double ? (Double) megletProps.get("MslAltitudeMeters") : 0d); }
-    public java.lang.String getProvider() { return (java.lang.String) megletProps.get("Provider"); }
-    public float getSpeed() { return (megletProps.get("Speed") instanceof Float ? (Float) megletProps.get("Speed") : 0f); }
-    public float getSpeedAccuracyMetersPerSecond() { return (megletProps.get("SpeedAccuracyMetersPerSecond") instanceof Float ? (Float) megletProps.get("SpeedAccuracyMetersPerSecond") : 0f); }
-    public long getTime() { return (megletProps.get("Time") instanceof Long ? (Long) megletProps.get("Time") : 0L); }
-    public float getVerticalAccuracyMeters() { return (megletProps.get("VerticalAccuracyMeters") instanceof Float ? (Float) megletProps.get("VerticalAccuracyMeters") : 0f); }
+    public long getElapsedRealtimeMillis() { return (meglerProps.get("ElapsedRealtimeMillis") instanceof Long ? (Long) meglerProps.get("ElapsedRealtimeMillis") : 0L); }
+    public long getElapsedRealtimeNanos() { return (meglerProps.get("ElapsedRealtimeNanos") instanceof Long ? (Long) meglerProps.get("ElapsedRealtimeNanos") : 0L); }
+    public double getElapsedRealtimeUncertaintyNanos() { return (meglerProps.get("ElapsedRealtimeUncertaintyNanos") instanceof Double ? (Double) meglerProps.get("ElapsedRealtimeUncertaintyNanos") : 0d); }
+    public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
+    public double getLatitude() { return (meglerProps.get("Latitude") instanceof Double ? (Double) meglerProps.get("Latitude") : 0d); }
+    public double getLongitude() { return (meglerProps.get("Longitude") instanceof Double ? (Double) meglerProps.get("Longitude") : 0d); }
+    public float getMslAltitudeAccuracyMeters() { return (meglerProps.get("MslAltitudeAccuracyMeters") instanceof Float ? (Float) meglerProps.get("MslAltitudeAccuracyMeters") : 0f); }
+    public double getMslAltitudeMeters() { return (meglerProps.get("MslAltitudeMeters") instanceof Double ? (Double) meglerProps.get("MslAltitudeMeters") : 0d); }
+    public java.lang.String getProvider() { return (java.lang.String) meglerProps.get("Provider"); }
+    public float getSpeed() { return (meglerProps.get("Speed") instanceof Float ? (Float) meglerProps.get("Speed") : 0f); }
+    public float getSpeedAccuracyMetersPerSecond() { return (meglerProps.get("SpeedAccuracyMetersPerSecond") instanceof Float ? (Float) meglerProps.get("SpeedAccuracyMetersPerSecond") : 0f); }
+    public long getTime() { return (meglerProps.get("Time") instanceof Long ? (Long) meglerProps.get("Time") : 0L); }
+    public float getVerticalAccuracyMeters() { return (meglerProps.get("VerticalAccuracyMeters") instanceof Float ? (Float) meglerProps.get("VerticalAccuracyMeters") : 0f); }
     public boolean hasAccuracy() { return false; }
     public boolean hasAltitude() { return false; }
     public boolean hasBearing() { return false; }
@@ -47,9 +47,9 @@ public class Location implements android.os.Parcelable {
     public boolean hasSpeed() { return false; }
     public boolean hasSpeedAccuracy() { return false; }
     public boolean hasVerticalAccuracy() { return false; }
-    public boolean isComplete() { return (megletProps.get("Complete") instanceof Boolean ? (Boolean) megletProps.get("Complete") : false); }
-    public boolean isFromMockProvider() { return (megletProps.get("FromMockProvider") instanceof Boolean ? (Boolean) megletProps.get("FromMockProvider") : false); }
-    public boolean isMock() { return (megletProps.get("Mock") instanceof Boolean ? (Boolean) megletProps.get("Mock") : false); }
+    public boolean isComplete() { return (meglerProps.get("Complete") instanceof Boolean ? (Boolean) meglerProps.get("Complete") : false); }
+    public boolean isFromMockProvider() { return (meglerProps.get("FromMockProvider") instanceof Boolean ? (Boolean) meglerProps.get("FromMockProvider") : false); }
+    public boolean isMock() { return (meglerProps.get("Mock") instanceof Boolean ? (Boolean) meglerProps.get("Mock") : false); }
     public void makeComplete() {}
     public void removeAccuracy() {}
     public void removeAltitude() {}
@@ -63,24 +63,24 @@ public class Location implements android.os.Parcelable {
     public void removeVerticalAccuracy() {}
     public void reset() {}
     public void set(android.location.Location p0) {}
-    public void setAccuracy(float p0) { megletProps.put("Accuracy", Float.valueOf(p0)); }
-    public void setAltitude(double p0) { megletProps.put("Altitude", Double.valueOf(p0)); }
-    public void setBearing(float p0) { megletProps.put("Bearing", Float.valueOf(p0)); }
-    public void setBearingAccuracyDegrees(float p0) { megletProps.put("BearingAccuracyDegrees", Float.valueOf(p0)); }
-    public void setElapsedRealtimeNanos(long p0) { megletProps.put("ElapsedRealtimeNanos", Long.valueOf(p0)); }
-    public void setElapsedRealtimeUncertaintyNanos(double p0) { megletProps.put("ElapsedRealtimeUncertaintyNanos", Double.valueOf(p0)); }
-    public void setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); }
-    public void setIsFromMockProvider(boolean p0) { megletProps.put("IsFromMockProvider", Boolean.valueOf(p0)); }
-    public void setLatitude(double p0) { megletProps.put("Latitude", Double.valueOf(p0)); }
-    public void setLongitude(double p0) { megletProps.put("Longitude", Double.valueOf(p0)); }
-    public void setMock(boolean p0) { megletProps.put("Mock", Boolean.valueOf(p0)); }
-    public void setMslAltitudeAccuracyMeters(float p0) { megletProps.put("MslAltitudeAccuracyMeters", Float.valueOf(p0)); }
-    public void setMslAltitudeMeters(double p0) { megletProps.put("MslAltitudeMeters", Double.valueOf(p0)); }
-    public void setProvider(java.lang.String p0) { megletProps.put("Provider", p0); }
-    public void setSpeed(float p0) { megletProps.put("Speed", Float.valueOf(p0)); }
-    public void setSpeedAccuracyMetersPerSecond(float p0) { megletProps.put("SpeedAccuracyMetersPerSecond", Float.valueOf(p0)); }
-    public void setTime(long p0) { megletProps.put("Time", Long.valueOf(p0)); }
-    public void setVerticalAccuracyMeters(float p0) { megletProps.put("VerticalAccuracyMeters", Float.valueOf(p0)); }
+    public void setAccuracy(float p0) { meglerProps.put("Accuracy", Float.valueOf(p0)); }
+    public void setAltitude(double p0) { meglerProps.put("Altitude", Double.valueOf(p0)); }
+    public void setBearing(float p0) { meglerProps.put("Bearing", Float.valueOf(p0)); }
+    public void setBearingAccuracyDegrees(float p0) { meglerProps.put("BearingAccuracyDegrees", Float.valueOf(p0)); }
+    public void setElapsedRealtimeNanos(long p0) { meglerProps.put("ElapsedRealtimeNanos", Long.valueOf(p0)); }
+    public void setElapsedRealtimeUncertaintyNanos(double p0) { meglerProps.put("ElapsedRealtimeUncertaintyNanos", Double.valueOf(p0)); }
+    public void setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); }
+    public void setIsFromMockProvider(boolean p0) { meglerProps.put("IsFromMockProvider", Boolean.valueOf(p0)); }
+    public void setLatitude(double p0) { meglerProps.put("Latitude", Double.valueOf(p0)); }
+    public void setLongitude(double p0) { meglerProps.put("Longitude", Double.valueOf(p0)); }
+    public void setMock(boolean p0) { meglerProps.put("Mock", Boolean.valueOf(p0)); }
+    public void setMslAltitudeAccuracyMeters(float p0) { meglerProps.put("MslAltitudeAccuracyMeters", Float.valueOf(p0)); }
+    public void setMslAltitudeMeters(double p0) { meglerProps.put("MslAltitudeMeters", Double.valueOf(p0)); }
+    public void setProvider(java.lang.String p0) { meglerProps.put("Provider", p0); }
+    public void setSpeed(float p0) { meglerProps.put("Speed", Float.valueOf(p0)); }
+    public void setSpeedAccuracyMetersPerSecond(float p0) { meglerProps.put("SpeedAccuracyMetersPerSecond", Float.valueOf(p0)); }
+    public void setTime(long p0) { meglerProps.put("Time", Long.valueOf(p0)); }
+    public void setVerticalAccuracyMeters(float p0) { meglerProps.put("VerticalAccuracyMeters", Float.valueOf(p0)); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     Location() { this((android.location.Location) null); }
 }

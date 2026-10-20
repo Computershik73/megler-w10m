@@ -3,30 +3,30 @@ package android.net.wifi.hotspot2.pps;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class HomeSp implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public HomeSp() {}
     public HomeSp(android.net.wifi.hotspot2.pps.HomeSp p0) {}
     public int describeContents() { return 0; }
-    public java.lang.String getFqdn() { return (java.lang.String) megletProps.get("Fqdn"); }
-    public java.lang.String getFriendlyName() { return (java.lang.String) megletProps.get("FriendlyName"); }
-    public java.util.Map getHomeNetworkIds() { return (megletProps.get("HomeNetworkIds") != null ? (java.util.Map) megletProps.get("HomeNetworkIds") : new java.util.HashMap()); }
-    public java.lang.String getIconUrl() { return (java.lang.String) megletProps.get("IconUrl"); }
-    public long[] getMatchAllOis() { return (long[]) megletProps.get("MatchAllOis"); }
-    public long[] getMatchAnyOis() { return (long[]) megletProps.get("MatchAnyOis"); }
-    public java.lang.String[] getOtherHomePartners() { return (java.lang.String[]) megletProps.get("OtherHomePartners"); }
-    public java.util.Collection getOtherHomePartnersList() { return (megletProps.get("OtherHomePartnersList") != null ? (java.util.Collection) megletProps.get("OtherHomePartnersList") : new java.util.ArrayList()); }
-    public long[] getRoamingConsortiumOis() { return (long[]) megletProps.get("RoamingConsortiumOis"); }
-    public int getUniqueId() { return (megletProps.get("UniqueId") instanceof Integer ? (Integer) megletProps.get("UniqueId") : 0); }
-    public void setFqdn(java.lang.String p0) { megletProps.put("Fqdn", p0); }
-    public void setFriendlyName(java.lang.String p0) { megletProps.put("FriendlyName", p0); }
-    public void setHomeNetworkIds(java.util.Map p0) { megletProps.put("HomeNetworkIds", p0); }
-    public void setIconUrl(java.lang.String p0) { megletProps.put("IconUrl", p0); }
-    public void setMatchAllOis(long[] p0) { megletProps.put("MatchAllOis", p0); }
-    public void setMatchAnyOis(long[] p0) { megletProps.put("MatchAnyOis", p0); }
-    public void setOtherHomePartners(java.lang.String[] p0) { megletProps.put("OtherHomePartners", p0); }
-    public void setOtherHomePartnersList(java.util.Collection p0) { megletProps.put("OtherHomePartnersList", p0); }
-    public void setRoamingConsortiumOis(long[] p0) { megletProps.put("RoamingConsortiumOis", p0); }
+    public java.lang.String getFqdn() { return (java.lang.String) meglerProps.get("Fqdn"); }
+    public java.lang.String getFriendlyName() { return (java.lang.String) meglerProps.get("FriendlyName"); }
+    public java.util.Map getHomeNetworkIds() { return (meglerProps.get("HomeNetworkIds") != null ? (java.util.Map) meglerProps.get("HomeNetworkIds") : new java.util.HashMap()); }
+    public java.lang.String getIconUrl() { return (java.lang.String) meglerProps.get("IconUrl"); }
+    public long[] getMatchAllOis() { return (long[]) meglerProps.get("MatchAllOis"); }
+    public long[] getMatchAnyOis() { return (long[]) meglerProps.get("MatchAnyOis"); }
+    public java.lang.String[] getOtherHomePartners() { return (java.lang.String[]) meglerProps.get("OtherHomePartners"); }
+    public java.util.Collection getOtherHomePartnersList() { return (meglerProps.get("OtherHomePartnersList") != null ? (java.util.Collection) meglerProps.get("OtherHomePartnersList") : new java.util.ArrayList()); }
+    public long[] getRoamingConsortiumOis() { return (long[]) meglerProps.get("RoamingConsortiumOis"); }
+    public int getUniqueId() { return (meglerProps.get("UniqueId") instanceof Integer ? (Integer) meglerProps.get("UniqueId") : 0); }
+    public void setFqdn(java.lang.String p0) { meglerProps.put("Fqdn", p0); }
+    public void setFriendlyName(java.lang.String p0) { meglerProps.put("FriendlyName", p0); }
+    public void setHomeNetworkIds(java.util.Map p0) { meglerProps.put("HomeNetworkIds", p0); }
+    public void setIconUrl(java.lang.String p0) { meglerProps.put("IconUrl", p0); }
+    public void setMatchAllOis(long[] p0) { meglerProps.put("MatchAllOis", p0); }
+    public void setMatchAnyOis(long[] p0) { meglerProps.put("MatchAnyOis", p0); }
+    public void setOtherHomePartners(java.lang.String[] p0) { meglerProps.put("OtherHomePartners", p0); }
+    public void setOtherHomePartnersList(java.util.Collection p0) { meglerProps.put("OtherHomePartnersList", p0); }
+    public void setRoamingConsortiumOis(long[] p0) { meglerProps.put("RoamingConsortiumOis", p0); }
     public boolean validate() { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
 }

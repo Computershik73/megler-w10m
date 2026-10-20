@@ -3,7 +3,7 @@ package android.telecom;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class QueryLocationException extends java.lang.RuntimeException implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int ERROR_NOT_ALLOWED_FOR_NON_EMERGENCY_CONNECTIONS = 4;
     public static final int ERROR_NOT_PERMITTED = 3;
@@ -16,7 +16,7 @@ public final class QueryLocationException extends java.lang.RuntimeException imp
     public QueryLocationException(java.lang.String p0, int p1) { super(); }
     public QueryLocationException(java.lang.String p0, int p1, java.lang.Throwable p2) { super(); }
     public int describeContents() { return 0; }
-    public int getCode() { return (megletProps.get("Code") instanceof Integer ? (Integer) megletProps.get("Code") : 0); }
+    public int getCode() { return (meglerProps.get("Code") instanceof Integer ? (Integer) meglerProps.get("Code") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     QueryLocationException() { this((java.lang.String) null); }
 }

@@ -7,7 +7,7 @@ GLES20, GLES30, GLES31 and GLES32 as the framework declares them, each a call of
 
 Two lists are matched. The Java declarations are the framework's own (core/framework/src/android/opengl/GLES*.java,
 or the overlay's copy where there is one). The C prototypes are Khronos' headers as the NDK ships
-them (MEGLET_NDK: sysroot/usr/include/GLES, GLES2, GLES3), which say what each parameter is in C: a value, or memory.
+them (MEGLER_NDK: sysroot/usr/include/GLES, GLES2, GLES3), which say what each parameter is in C: a value, or memory.
 A Java method's parameters are then laid onto the C function's in order, the way Android's own generator does:
 
     a value               int, float, boolean, byte, short, long: passed as it is (a float as a float: the caller is the
@@ -53,12 +53,12 @@ def framework_dir():
 
 
 def ndk_include():
-    ndk = msys_path(os.environ.get('MEGLET_NDK', ''))
+    ndk = msys_path(os.environ.get('MEGLER_NDK', ''))
     if not ndk:
         ndk = os.path.join(os.path.expanduser('~'), 'Documents', 'android-ndk-r21e')
     inc = os.path.join(ndk, 'sysroot', 'usr', 'include')
     if not os.path.isfile(os.path.join(inc, 'GLES2', 'gl2.h')):
-        sys.exit('no %s/GLES2/gl2.h: Khronos\' headers come from the NDK (MEGLET_NDK)' % inc)
+        sys.exit('no %s/GLES2/gl2.h: Khronos\' headers come from the NDK (MEGLER_NDK)' % inc)
     return inc
 
 

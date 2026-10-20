@@ -3,7 +3,7 @@ package android.net.wifi.hotspot2;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ConfigParser {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ConfigParser() {}
     public static android.net.wifi.hotspot2.PasspointConfiguration parsePasspointConfig(java.lang.String p0, byte[] p1) { return null; }
 }

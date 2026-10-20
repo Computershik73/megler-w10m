@@ -3,7 +3,7 @@ package android.location;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GnssMeasurement implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int ADR_STATE_ALL = 31;
     public static final int ADR_STATE_CYCLE_SLIP = 4;
     public static final int ADR_STATE_HALF_CYCLE_REPORTED = 16;
@@ -35,33 +35,33 @@ public final class GnssMeasurement implements android.os.Parcelable {
     public static int STATE_UNKNOWN;
     public GnssMeasurement() {}
     public int describeContents() { return 0; }
-    public double getAccumulatedDeltaRangeMeters() { return (megletProps.get("AccumulatedDeltaRangeMeters") instanceof Double ? (Double) megletProps.get("AccumulatedDeltaRangeMeters") : 0d); }
-    public int getAccumulatedDeltaRangeState() { return (megletProps.get("AccumulatedDeltaRangeState") instanceof Integer ? (Integer) megletProps.get("AccumulatedDeltaRangeState") : 0); }
-    public double getAccumulatedDeltaRangeUncertaintyMeters() { return (megletProps.get("AccumulatedDeltaRangeUncertaintyMeters") instanceof Double ? (Double) megletProps.get("AccumulatedDeltaRangeUncertaintyMeters") : 0d); }
-    public double getAutomaticGainControlLevelDb() { return (megletProps.get("AutomaticGainControlLevelDb") instanceof Double ? (Double) megletProps.get("AutomaticGainControlLevelDb") : 0d); }
-    public double getBasebandCn0DbHz() { return (megletProps.get("BasebandCn0DbHz") instanceof Double ? (Double) megletProps.get("BasebandCn0DbHz") : 0d); }
-    public long getCarrierCycles() { return (megletProps.get("CarrierCycles") instanceof Long ? (Long) megletProps.get("CarrierCycles") : 0L); }
-    public float getCarrierFrequencyHz() { return (megletProps.get("CarrierFrequencyHz") instanceof Float ? (Float) megletProps.get("CarrierFrequencyHz") : 0f); }
-    public double getCarrierPhase() { return (megletProps.get("CarrierPhase") instanceof Double ? (Double) megletProps.get("CarrierPhase") : 0d); }
-    public double getCarrierPhaseUncertainty() { return (megletProps.get("CarrierPhaseUncertainty") instanceof Double ? (Double) megletProps.get("CarrierPhaseUncertainty") : 0d); }
-    public double getCn0DbHz() { return (megletProps.get("Cn0DbHz") instanceof Double ? (Double) megletProps.get("Cn0DbHz") : 0d); }
-    public java.lang.String getCodeType() { return (java.lang.String) megletProps.get("CodeType"); }
-    public int getConstellationType() { return (megletProps.get("ConstellationType") instanceof Integer ? (Integer) megletProps.get("ConstellationType") : 0); }
-    public java.util.Collection getCorrelationVectors() { return (megletProps.get("CorrelationVectors") != null ? (java.util.Collection) megletProps.get("CorrelationVectors") : new java.util.ArrayList()); }
-    public double getFullInterSignalBiasNanos() { return (megletProps.get("FullInterSignalBiasNanos") instanceof Double ? (Double) megletProps.get("FullInterSignalBiasNanos") : 0d); }
-    public double getFullInterSignalBiasUncertaintyNanos() { return (megletProps.get("FullInterSignalBiasUncertaintyNanos") instanceof Double ? (Double) megletProps.get("FullInterSignalBiasUncertaintyNanos") : 0d); }
-    public int getMultipathIndicator() { return (megletProps.get("MultipathIndicator") instanceof Integer ? (Integer) megletProps.get("MultipathIndicator") : 0); }
-    public double getPseudorangeRateMetersPerSecond() { return (megletProps.get("PseudorangeRateMetersPerSecond") instanceof Double ? (Double) megletProps.get("PseudorangeRateMetersPerSecond") : 0d); }
-    public double getPseudorangeRateUncertaintyMetersPerSecond() { return (megletProps.get("PseudorangeRateUncertaintyMetersPerSecond") instanceof Double ? (Double) megletProps.get("PseudorangeRateUncertaintyMetersPerSecond") : 0d); }
-    public long getReceivedSvTimeNanos() { return (megletProps.get("ReceivedSvTimeNanos") instanceof Long ? (Long) megletProps.get("ReceivedSvTimeNanos") : 0L); }
-    public long getReceivedSvTimeUncertaintyNanos() { return (megletProps.get("ReceivedSvTimeUncertaintyNanos") instanceof Long ? (Long) megletProps.get("ReceivedSvTimeUncertaintyNanos") : 0L); }
-    public double getSatelliteInterSignalBiasNanos() { return (megletProps.get("SatelliteInterSignalBiasNanos") instanceof Double ? (Double) megletProps.get("SatelliteInterSignalBiasNanos") : 0d); }
-    public double getSatelliteInterSignalBiasUncertaintyNanos() { return (megletProps.get("SatelliteInterSignalBiasUncertaintyNanos") instanceof Double ? (Double) megletProps.get("SatelliteInterSignalBiasUncertaintyNanos") : 0d); }
-    public android.location.SatellitePvt getSatellitePvt() { return (android.location.SatellitePvt) megletProps.get("SatellitePvt"); }
-    public double getSnrInDb() { return (megletProps.get("SnrInDb") instanceof Double ? (Double) megletProps.get("SnrInDb") : 0d); }
-    public int getState() { return (megletProps.get("State") instanceof Integer ? (Integer) megletProps.get("State") : 0); }
-    public int getSvid() { return (megletProps.get("Svid") instanceof Integer ? (Integer) megletProps.get("Svid") : 0); }
-    public double getTimeOffsetNanos() { return (megletProps.get("TimeOffsetNanos") instanceof Double ? (Double) megletProps.get("TimeOffsetNanos") : 0d); }
+    public double getAccumulatedDeltaRangeMeters() { return (meglerProps.get("AccumulatedDeltaRangeMeters") instanceof Double ? (Double) meglerProps.get("AccumulatedDeltaRangeMeters") : 0d); }
+    public int getAccumulatedDeltaRangeState() { return (meglerProps.get("AccumulatedDeltaRangeState") instanceof Integer ? (Integer) meglerProps.get("AccumulatedDeltaRangeState") : 0); }
+    public double getAccumulatedDeltaRangeUncertaintyMeters() { return (meglerProps.get("AccumulatedDeltaRangeUncertaintyMeters") instanceof Double ? (Double) meglerProps.get("AccumulatedDeltaRangeUncertaintyMeters") : 0d); }
+    public double getAutomaticGainControlLevelDb() { return (meglerProps.get("AutomaticGainControlLevelDb") instanceof Double ? (Double) meglerProps.get("AutomaticGainControlLevelDb") : 0d); }
+    public double getBasebandCn0DbHz() { return (meglerProps.get("BasebandCn0DbHz") instanceof Double ? (Double) meglerProps.get("BasebandCn0DbHz") : 0d); }
+    public long getCarrierCycles() { return (meglerProps.get("CarrierCycles") instanceof Long ? (Long) meglerProps.get("CarrierCycles") : 0L); }
+    public float getCarrierFrequencyHz() { return (meglerProps.get("CarrierFrequencyHz") instanceof Float ? (Float) meglerProps.get("CarrierFrequencyHz") : 0f); }
+    public double getCarrierPhase() { return (meglerProps.get("CarrierPhase") instanceof Double ? (Double) meglerProps.get("CarrierPhase") : 0d); }
+    public double getCarrierPhaseUncertainty() { return (meglerProps.get("CarrierPhaseUncertainty") instanceof Double ? (Double) meglerProps.get("CarrierPhaseUncertainty") : 0d); }
+    public double getCn0DbHz() { return (meglerProps.get("Cn0DbHz") instanceof Double ? (Double) meglerProps.get("Cn0DbHz") : 0d); }
+    public java.lang.String getCodeType() { return (java.lang.String) meglerProps.get("CodeType"); }
+    public int getConstellationType() { return (meglerProps.get("ConstellationType") instanceof Integer ? (Integer) meglerProps.get("ConstellationType") : 0); }
+    public java.util.Collection getCorrelationVectors() { return (meglerProps.get("CorrelationVectors") != null ? (java.util.Collection) meglerProps.get("CorrelationVectors") : new java.util.ArrayList()); }
+    public double getFullInterSignalBiasNanos() { return (meglerProps.get("FullInterSignalBiasNanos") instanceof Double ? (Double) meglerProps.get("FullInterSignalBiasNanos") : 0d); }
+    public double getFullInterSignalBiasUncertaintyNanos() { return (meglerProps.get("FullInterSignalBiasUncertaintyNanos") instanceof Double ? (Double) meglerProps.get("FullInterSignalBiasUncertaintyNanos") : 0d); }
+    public int getMultipathIndicator() { return (meglerProps.get("MultipathIndicator") instanceof Integer ? (Integer) meglerProps.get("MultipathIndicator") : 0); }
+    public double getPseudorangeRateMetersPerSecond() { return (meglerProps.get("PseudorangeRateMetersPerSecond") instanceof Double ? (Double) meglerProps.get("PseudorangeRateMetersPerSecond") : 0d); }
+    public double getPseudorangeRateUncertaintyMetersPerSecond() { return (meglerProps.get("PseudorangeRateUncertaintyMetersPerSecond") instanceof Double ? (Double) meglerProps.get("PseudorangeRateUncertaintyMetersPerSecond") : 0d); }
+    public long getReceivedSvTimeNanos() { return (meglerProps.get("ReceivedSvTimeNanos") instanceof Long ? (Long) meglerProps.get("ReceivedSvTimeNanos") : 0L); }
+    public long getReceivedSvTimeUncertaintyNanos() { return (meglerProps.get("ReceivedSvTimeUncertaintyNanos") instanceof Long ? (Long) meglerProps.get("ReceivedSvTimeUncertaintyNanos") : 0L); }
+    public double getSatelliteInterSignalBiasNanos() { return (meglerProps.get("SatelliteInterSignalBiasNanos") instanceof Double ? (Double) meglerProps.get("SatelliteInterSignalBiasNanos") : 0d); }
+    public double getSatelliteInterSignalBiasUncertaintyNanos() { return (meglerProps.get("SatelliteInterSignalBiasUncertaintyNanos") instanceof Double ? (Double) meglerProps.get("SatelliteInterSignalBiasUncertaintyNanos") : 0d); }
+    public android.location.SatellitePvt getSatellitePvt() { return (android.location.SatellitePvt) meglerProps.get("SatellitePvt"); }
+    public double getSnrInDb() { return (meglerProps.get("SnrInDb") instanceof Double ? (Double) meglerProps.get("SnrInDb") : 0d); }
+    public int getState() { return (meglerProps.get("State") instanceof Integer ? (Integer) meglerProps.get("State") : 0); }
+    public int getSvid() { return (meglerProps.get("Svid") instanceof Integer ? (Integer) meglerProps.get("Svid") : 0); }
+    public double getTimeOffsetNanos() { return (meglerProps.get("TimeOffsetNanos") instanceof Double ? (Double) meglerProps.get("TimeOffsetNanos") : 0d); }
     public boolean hasAutomaticGainControlLevelDb() { return false; }
     public boolean hasBasebandCn0DbHz() { return false; }
     public boolean hasCarrierCycles() { return false; }
@@ -92,32 +92,32 @@ public final class GnssMeasurement implements android.os.Parcelable {
     public void resetSatellitePvt() {}
     public void resetSnrInDb() {}
     public void set(android.location.GnssMeasurement p0) {}
-    public void setAccumulatedDeltaRangeMeters(double p0) { megletProps.put("AccumulatedDeltaRangeMeters", Double.valueOf(p0)); }
-    public void setAccumulatedDeltaRangeState(int p0) { megletProps.put("AccumulatedDeltaRangeState", Integer.valueOf(p0)); }
-    public void setAccumulatedDeltaRangeUncertaintyMeters(double p0) { megletProps.put("AccumulatedDeltaRangeUncertaintyMeters", Double.valueOf(p0)); }
-    public void setAutomaticGainControlLevelInDb(double p0) { megletProps.put("AutomaticGainControlLevelInDb", Double.valueOf(p0)); }
-    public void setBasebandCn0DbHz(double p0) { megletProps.put("BasebandCn0DbHz", Double.valueOf(p0)); }
-    public void setCarrierCycles(long p0) { megletProps.put("CarrierCycles", Long.valueOf(p0)); }
-    public void setCarrierFrequencyHz(float p0) { megletProps.put("CarrierFrequencyHz", Float.valueOf(p0)); }
-    public void setCarrierPhase(double p0) { megletProps.put("CarrierPhase", Double.valueOf(p0)); }
-    public void setCarrierPhaseUncertainty(double p0) { megletProps.put("CarrierPhaseUncertainty", Double.valueOf(p0)); }
-    public void setCn0DbHz(double p0) { megletProps.put("Cn0DbHz", Double.valueOf(p0)); }
-    public void setCodeType(java.lang.String p0) { megletProps.put("CodeType", p0); }
-    public void setConstellationType(int p0) { megletProps.put("ConstellationType", Integer.valueOf(p0)); }
-    public void setCorrelationVectors(java.util.Collection p0) { megletProps.put("CorrelationVectors", p0); }
-    public void setFullInterSignalBiasNanos(double p0) { megletProps.put("FullInterSignalBiasNanos", Double.valueOf(p0)); }
-    public void setFullInterSignalBiasUncertaintyNanos(double p0) { megletProps.put("FullInterSignalBiasUncertaintyNanos", Double.valueOf(p0)); }
-    public void setMultipathIndicator(int p0) { megletProps.put("MultipathIndicator", Integer.valueOf(p0)); }
-    public void setPseudorangeRateMetersPerSecond(double p0) { megletProps.put("PseudorangeRateMetersPerSecond", Double.valueOf(p0)); }
-    public void setPseudorangeRateUncertaintyMetersPerSecond(double p0) { megletProps.put("PseudorangeRateUncertaintyMetersPerSecond", Double.valueOf(p0)); }
-    public void setReceivedSvTimeNanos(long p0) { megletProps.put("ReceivedSvTimeNanos", Long.valueOf(p0)); }
-    public void setReceivedSvTimeUncertaintyNanos(long p0) { megletProps.put("ReceivedSvTimeUncertaintyNanos", Long.valueOf(p0)); }
-    public void setSatelliteInterSignalBiasNanos(double p0) { megletProps.put("SatelliteInterSignalBiasNanos", Double.valueOf(p0)); }
-    public void setSatelliteInterSignalBiasUncertaintyNanos(double p0) { megletProps.put("SatelliteInterSignalBiasUncertaintyNanos", Double.valueOf(p0)); }
-    public void setSatellitePvt(android.location.SatellitePvt p0) { megletProps.put("SatellitePvt", p0); }
-    public void setSnrInDb(double p0) { megletProps.put("SnrInDb", Double.valueOf(p0)); }
-    public void setState(int p0) { megletProps.put("State", Integer.valueOf(p0)); }
-    public void setSvid(int p0) { megletProps.put("Svid", Integer.valueOf(p0)); }
-    public void setTimeOffsetNanos(double p0) { megletProps.put("TimeOffsetNanos", Double.valueOf(p0)); }
+    public void setAccumulatedDeltaRangeMeters(double p0) { meglerProps.put("AccumulatedDeltaRangeMeters", Double.valueOf(p0)); }
+    public void setAccumulatedDeltaRangeState(int p0) { meglerProps.put("AccumulatedDeltaRangeState", Integer.valueOf(p0)); }
+    public void setAccumulatedDeltaRangeUncertaintyMeters(double p0) { meglerProps.put("AccumulatedDeltaRangeUncertaintyMeters", Double.valueOf(p0)); }
+    public void setAutomaticGainControlLevelInDb(double p0) { meglerProps.put("AutomaticGainControlLevelInDb", Double.valueOf(p0)); }
+    public void setBasebandCn0DbHz(double p0) { meglerProps.put("BasebandCn0DbHz", Double.valueOf(p0)); }
+    public void setCarrierCycles(long p0) { meglerProps.put("CarrierCycles", Long.valueOf(p0)); }
+    public void setCarrierFrequencyHz(float p0) { meglerProps.put("CarrierFrequencyHz", Float.valueOf(p0)); }
+    public void setCarrierPhase(double p0) { meglerProps.put("CarrierPhase", Double.valueOf(p0)); }
+    public void setCarrierPhaseUncertainty(double p0) { meglerProps.put("CarrierPhaseUncertainty", Double.valueOf(p0)); }
+    public void setCn0DbHz(double p0) { meglerProps.put("Cn0DbHz", Double.valueOf(p0)); }
+    public void setCodeType(java.lang.String p0) { meglerProps.put("CodeType", p0); }
+    public void setConstellationType(int p0) { meglerProps.put("ConstellationType", Integer.valueOf(p0)); }
+    public void setCorrelationVectors(java.util.Collection p0) { meglerProps.put("CorrelationVectors", p0); }
+    public void setFullInterSignalBiasNanos(double p0) { meglerProps.put("FullInterSignalBiasNanos", Double.valueOf(p0)); }
+    public void setFullInterSignalBiasUncertaintyNanos(double p0) { meglerProps.put("FullInterSignalBiasUncertaintyNanos", Double.valueOf(p0)); }
+    public void setMultipathIndicator(int p0) { meglerProps.put("MultipathIndicator", Integer.valueOf(p0)); }
+    public void setPseudorangeRateMetersPerSecond(double p0) { meglerProps.put("PseudorangeRateMetersPerSecond", Double.valueOf(p0)); }
+    public void setPseudorangeRateUncertaintyMetersPerSecond(double p0) { meglerProps.put("PseudorangeRateUncertaintyMetersPerSecond", Double.valueOf(p0)); }
+    public void setReceivedSvTimeNanos(long p0) { meglerProps.put("ReceivedSvTimeNanos", Long.valueOf(p0)); }
+    public void setReceivedSvTimeUncertaintyNanos(long p0) { meglerProps.put("ReceivedSvTimeUncertaintyNanos", Long.valueOf(p0)); }
+    public void setSatelliteInterSignalBiasNanos(double p0) { meglerProps.put("SatelliteInterSignalBiasNanos", Double.valueOf(p0)); }
+    public void setSatelliteInterSignalBiasUncertaintyNanos(double p0) { meglerProps.put("SatelliteInterSignalBiasUncertaintyNanos", Double.valueOf(p0)); }
+    public void setSatellitePvt(android.location.SatellitePvt p0) { meglerProps.put("SatellitePvt", p0); }
+    public void setSnrInDb(double p0) { meglerProps.put("SnrInDb", Double.valueOf(p0)); }
+    public void setState(int p0) { meglerProps.put("State", Integer.valueOf(p0)); }
+    public void setSvid(int p0) { meglerProps.put("Svid", Integer.valueOf(p0)); }
+    public void setTimeOffsetNanos(double p0) { meglerProps.put("TimeOffsetNanos", Double.valueOf(p0)); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
 }

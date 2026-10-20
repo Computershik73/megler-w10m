@@ -1,4 +1,4 @@
-# meglet.security.NoTlsContext: SSLContext "TLS", "Default", "TLSv1.2" and their kin while there is no TLS -- while
+# megler.security.NoTlsContext: SSLContext "TLS", "Default", "TLSv1.2" and their kin while there is no TLS -- while
 # conscrypt's native library is not in the Android root (mg_dvm_art.c, "the security providers").
 #
 # Why it is there at all. Without any SSLContext an app that opens an https URL does not get a failed connection: Android's
@@ -9,7 +9,7 @@
 #
 # init() takes anything and does nothing; there are no sessions to keep; an SSLEngine or a server socket factory is
 # UnsupportedOperationException, saying why.
-.class public final Lmeglet/security/NoTlsContext;
+.class public final Lmegler/security/NoTlsContext;
 .super Ljavax/net/ssl/SSLContextSpi;
 
 .method public constructor <init>()V
@@ -25,8 +25,8 @@
 
 .method protected engineGetSocketFactory()Ljavax/net/ssl/SSLSocketFactory;
     .registers 2
-    new-instance v0, Lmeglet/security/NoTlsSocketFactory;
-    invoke-direct {v0}, Lmeglet/security/NoTlsSocketFactory;-><init>()V
+    new-instance v0, Lmegler/security/NoTlsSocketFactory;
+    invoke-direct {v0}, Lmegler/security/NoTlsSocketFactory;-><init>()V
     return-object v0
 .end method
 
@@ -40,21 +40,21 @@
 
 .method protected engineGetServerSocketFactory()Ljavax/net/ssl/SSLServerSocketFactory;
     .registers 2
-    invoke-static {}, Lmeglet/security/NoTlsContext;->unsupported()Ljava/lang/UnsupportedOperationException;
+    invoke-static {}, Lmegler/security/NoTlsContext;->unsupported()Ljava/lang/UnsupportedOperationException;
     move-result-object v0
     throw v0
 .end method
 
 .method protected engineCreateSSLEngine()Ljavax/net/ssl/SSLEngine;
     .registers 2
-    invoke-static {}, Lmeglet/security/NoTlsContext;->unsupported()Ljava/lang/UnsupportedOperationException;
+    invoke-static {}, Lmegler/security/NoTlsContext;->unsupported()Ljava/lang/UnsupportedOperationException;
     move-result-object v0
     throw v0
 .end method
 
 .method protected engineCreateSSLEngine(Ljava/lang/String;I)Ljavax/net/ssl/SSLEngine;
     .registers 4
-    invoke-static {}, Lmeglet/security/NoTlsContext;->unsupported()Ljava/lang/UnsupportedOperationException;
+    invoke-static {}, Lmegler/security/NoTlsContext;->unsupported()Ljava/lang/UnsupportedOperationException;
     move-result-object v0
     throw v0
 .end method

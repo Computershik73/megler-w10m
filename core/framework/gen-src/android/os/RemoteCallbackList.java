@@ -3,7 +3,7 @@ package android.os;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class RemoteCallbackList {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int FROZEN_CALLEE_POLICY_DROP = 3;
     public static final int FROZEN_CALLEE_POLICY_ENQUEUE_ALL = 1;
     public static final int FROZEN_CALLEE_POLICY_ENQUEUE_MOST_RECENT = 2;
@@ -17,11 +17,11 @@ public class RemoteCallbackList {
     public void finishBroadcast() {}
     public java.lang.Object getBroadcastCookie(int p0) { return null; }
     public android.os.IInterface getBroadcastItem(int p0) { return null; }
-    public java.util.concurrent.Executor getExecutor() { return (java.util.concurrent.Executor) megletProps.get("Executor"); }
-    public int getFrozenCalleePolicy() { return (megletProps.get("FrozenCalleePolicy") instanceof Integer ? (Integer) megletProps.get("FrozenCalleePolicy") : 0); }
-    public int getMaxQueueSize() { return (megletProps.get("MaxQueueSize") instanceof Integer ? (Integer) megletProps.get("MaxQueueSize") : 0); }
+    public java.util.concurrent.Executor getExecutor() { return (java.util.concurrent.Executor) meglerProps.get("Executor"); }
+    public int getFrozenCalleePolicy() { return (meglerProps.get("FrozenCalleePolicy") instanceof Integer ? (Integer) meglerProps.get("FrozenCalleePolicy") : 0); }
+    public int getMaxQueueSize() { return (meglerProps.get("MaxQueueSize") instanceof Integer ? (Integer) meglerProps.get("MaxQueueSize") : 0); }
     public java.lang.Object getRegisteredCallbackCookie(int p0) { return null; }
-    public int getRegisteredCallbackCount() { return (megletProps.get("RegisteredCallbackCount") instanceof Integer ? (Integer) megletProps.get("RegisteredCallbackCount") : 0); }
+    public int getRegisteredCallbackCount() { return (meglerProps.get("RegisteredCallbackCount") instanceof Integer ? (Integer) meglerProps.get("RegisteredCallbackCount") : 0); }
     public android.os.IInterface getRegisteredCallbackItem(int p0) { return null; }
     public void kill() {}
     public void onCallbackDied(android.os.IInterface p0) {}
@@ -30,12 +30,12 @@ public class RemoteCallbackList {
     public boolean register(android.os.IInterface p0, java.lang.Object p1) { return false; }
     public boolean unregister(android.os.IInterface p0) { return false; }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(int p0) {}
-        public android.os.RemoteCallbackList build() { android.os.RemoteCallbackList x = new android.os.RemoteCallbackList(); x.megletProps.putAll(megletProps); return x; }
-        public android.os.RemoteCallbackList.Builder setExecutor(java.util.concurrent.Executor p0) { megletProps.put("Executor", p0); return this; }
-        public android.os.RemoteCallbackList.Builder setInterfaceDiedCallback(android.os.RemoteCallbackList.Builder.InterfaceDiedCallback p0) { megletProps.put("InterfaceDiedCallback", p0); return this; }
-        public android.os.RemoteCallbackList.Builder setMaxQueueSize(int p0) { megletProps.put("MaxQueueSize", Integer.valueOf(p0)); return this; }
+        public android.os.RemoteCallbackList build() { android.os.RemoteCallbackList x = new android.os.RemoteCallbackList(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.os.RemoteCallbackList.Builder setExecutor(java.util.concurrent.Executor p0) { meglerProps.put("Executor", p0); return this; }
+        public android.os.RemoteCallbackList.Builder setInterfaceDiedCallback(android.os.RemoteCallbackList.Builder.InterfaceDiedCallback p0) { meglerProps.put("InterfaceDiedCallback", p0); return this; }
+        public android.os.RemoteCallbackList.Builder setMaxQueueSize(int p0) { meglerProps.put("MaxQueueSize", Integer.valueOf(p0)); return this; }
         Builder() { this((int) 0); }
         public interface InterfaceDiedCallback {
             void onInterfaceDied(android.os.RemoteCallbackList p0, android.os.IInterface p1, java.lang.Object p2);

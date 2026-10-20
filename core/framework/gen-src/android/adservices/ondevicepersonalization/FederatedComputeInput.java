@@ -3,13 +3,13 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class FederatedComputeInput {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public java.lang.String getPopulationName() { return (java.lang.String) megletProps.get("PopulationName"); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public java.lang.String getPopulationName() { return (java.lang.String) meglerProps.get("PopulationName"); }
     protected FederatedComputeInput() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.adservices.ondevicepersonalization.FederatedComputeInput build() { android.adservices.ondevicepersonalization.FederatedComputeInput x = new android.adservices.ondevicepersonalization.FederatedComputeInput(); x.megletProps.putAll(megletProps); return x; }
-        public android.adservices.ondevicepersonalization.FederatedComputeInput.Builder setPopulationName(java.lang.String p0) { megletProps.put("PopulationName", p0); return this; }
+        public android.adservices.ondevicepersonalization.FederatedComputeInput build() { android.adservices.ondevicepersonalization.FederatedComputeInput x = new android.adservices.ondevicepersonalization.FederatedComputeInput(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.adservices.ondevicepersonalization.FederatedComputeInput.Builder setPopulationName(java.lang.String p0) { meglerProps.put("PopulationName", p0); return this; }
     }
 }

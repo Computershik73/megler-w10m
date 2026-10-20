@@ -3,7 +3,7 @@ package android.net.vcn;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class VcnUnderlyingNetworkTemplate {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int DEFAULT_MIN_BANDWIDTH_KBPS = 0;
     public static final int MATCH_ANY = 0;
     public static final int MATCH_FORBIDDEN = 2;
@@ -11,11 +11,11 @@ public abstract class VcnUnderlyingNetworkTemplate {
     public static android.net.vcn.VcnUnderlyingNetworkTemplate fromPersistableBundle(android.os.PersistableBundle p0) { return null; }
     public void dump(android.net.connectivity.android.util.IndentingPrintWriter p0) {}
     public abstract java.util.Map getCapabilitiesMatchCriteria();
-    public int getMetered() { return (megletProps.get("Metered") instanceof Integer ? (Integer) megletProps.get("Metered") : 0); }
-    public int getMinEntryDownstreamBandwidthKbps() { return (megletProps.get("MinEntryDownstreamBandwidthKbps") instanceof Integer ? (Integer) megletProps.get("MinEntryDownstreamBandwidthKbps") : 0); }
-    public int getMinEntryUpstreamBandwidthKbps() { return (megletProps.get("MinEntryUpstreamBandwidthKbps") instanceof Integer ? (Integer) megletProps.get("MinEntryUpstreamBandwidthKbps") : 0); }
-    public int getMinExitDownstreamBandwidthKbps() { return (megletProps.get("MinExitDownstreamBandwidthKbps") instanceof Integer ? (Integer) megletProps.get("MinExitDownstreamBandwidthKbps") : 0); }
-    public int getMinExitUpstreamBandwidthKbps() { return (megletProps.get("MinExitUpstreamBandwidthKbps") instanceof Integer ? (Integer) megletProps.get("MinExitUpstreamBandwidthKbps") : 0); }
+    public int getMetered() { return (meglerProps.get("Metered") instanceof Integer ? (Integer) meglerProps.get("Metered") : 0); }
+    public int getMinEntryDownstreamBandwidthKbps() { return (meglerProps.get("MinEntryDownstreamBandwidthKbps") instanceof Integer ? (Integer) meglerProps.get("MinEntryDownstreamBandwidthKbps") : 0); }
+    public int getMinEntryUpstreamBandwidthKbps() { return (meglerProps.get("MinEntryUpstreamBandwidthKbps") instanceof Integer ? (Integer) meglerProps.get("MinEntryUpstreamBandwidthKbps") : 0); }
+    public int getMinExitDownstreamBandwidthKbps() { return (meglerProps.get("MinExitDownstreamBandwidthKbps") instanceof Integer ? (Integer) meglerProps.get("MinExitDownstreamBandwidthKbps") : 0); }
+    public int getMinExitUpstreamBandwidthKbps() { return (meglerProps.get("MinExitUpstreamBandwidthKbps") instanceof Integer ? (Integer) meglerProps.get("MinExitUpstreamBandwidthKbps") : 0); }
     protected void validate() {}
     protected VcnUnderlyingNetworkTemplate() {}
 }

@@ -279,7 +279,7 @@ static int g_uname(g_utsname *u)
     memset(u, 0, sizeof(*u));
     strcpy(u->sysname, "Linux");
     strcpy(u->nodename, "localhost");
-    strcpy(u->release, "4.4.0-meglet");
+    strcpy(u->release, "4.4.0-megler");
     strcpy(u->version, "#1 SMP PREEMPT");
     strcpy(u->machine, "armv7l");
     strcpy(u->domainname, "localdomain");

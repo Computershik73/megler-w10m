@@ -3,12 +3,12 @@ package android.view.translation;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TranslationRequestValue implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public TranslationRequestValue(java.lang.CharSequence p0) {}
     public static android.view.translation.TranslationRequestValue forText(java.lang.CharSequence p0) { return new TranslationRequestValue(); }
     public int describeContents() { return 0; }
-    public java.lang.CharSequence getText() { return (java.lang.CharSequence) megletProps.get("Text"); }
+    public java.lang.CharSequence getText() { return (java.lang.CharSequence) meglerProps.get("Text"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     TranslationRequestValue() { this((java.lang.CharSequence) null); }
 }

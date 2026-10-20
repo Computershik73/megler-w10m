@@ -3,16 +3,16 @@ package android.os.health;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SystemHealthManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public SystemHealthManager() {}
     public static android.os.health.SystemHealthManager from(android.content.Context p0) { return new SystemHealthManager(); }
     public float getCpuHeadroom(android.os.CpuHeadroomParams p0) { return 0f; }
-    public android.util.Pair getCpuHeadroomCalculationWindowRange() { return (android.util.Pair) megletProps.get("CpuHeadroomCalculationWindowRange"); }
-    public long getCpuHeadroomMinIntervalMillis() { return (megletProps.get("CpuHeadroomMinIntervalMillis") instanceof Long ? (Long) megletProps.get("CpuHeadroomMinIntervalMillis") : 0L); }
+    public android.util.Pair getCpuHeadroomCalculationWindowRange() { return (android.util.Pair) meglerProps.get("CpuHeadroomCalculationWindowRange"); }
+    public long getCpuHeadroomMinIntervalMillis() { return (meglerProps.get("CpuHeadroomMinIntervalMillis") instanceof Long ? (Long) meglerProps.get("CpuHeadroomMinIntervalMillis") : 0L); }
     public float getGpuHeadroom(android.os.GpuHeadroomParams p0) { return 0f; }
-    public android.util.Pair getGpuHeadroomCalculationWindowRange() { return (android.util.Pair) megletProps.get("GpuHeadroomCalculationWindowRange"); }
-    public long getGpuHeadroomMinIntervalMillis() { return (megletProps.get("GpuHeadroomMinIntervalMillis") instanceof Long ? (Long) megletProps.get("GpuHeadroomMinIntervalMillis") : 0L); }
-    public int getMaxCpuHeadroomTidsSize() { return (megletProps.get("MaxCpuHeadroomTidsSize") instanceof Integer ? (Integer) megletProps.get("MaxCpuHeadroomTidsSize") : 0); }
+    public android.util.Pair getGpuHeadroomCalculationWindowRange() { return (android.util.Pair) meglerProps.get("GpuHeadroomCalculationWindowRange"); }
+    public long getGpuHeadroomMinIntervalMillis() { return (meglerProps.get("GpuHeadroomMinIntervalMillis") instanceof Long ? (Long) meglerProps.get("GpuHeadroomMinIntervalMillis") : 0L); }
+    public int getMaxCpuHeadroomTidsSize() { return (meglerProps.get("MaxCpuHeadroomTidsSize") instanceof Integer ? (Integer) meglerProps.get("MaxCpuHeadroomTidsSize") : 0); }
     public void getPowerMonitorReadings(java.util.List p0, java.util.concurrent.Executor p1, android.os.OutcomeReceiver p2) {}
     public void getSupportedPowerMonitors(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
     public android.os.health.HealthStats takeMyUidSnapshot() { return null; }

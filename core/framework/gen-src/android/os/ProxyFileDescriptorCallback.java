@@ -3,7 +3,7 @@ package android.os;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class ProxyFileDescriptorCallback {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ProxyFileDescriptorCallback() {}
     public void onFsync() {}
     public long onGetSize() { return 0L; }

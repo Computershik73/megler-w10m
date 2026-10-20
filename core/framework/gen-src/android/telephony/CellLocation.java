@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class CellLocation {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public CellLocation() {}
     public static android.telephony.CellLocation getEmpty() { return null; }
     public static android.telephony.CellLocation newFromBundle(android.os.Bundle p0) { return null; }

@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# Builds, packs and signs the Meglet app package.
+# Builds, packs and signs the Megler app package.
 #
 #   tools/build-appx.sh [arm|x64] [--auto MODES] [--libcore] [--java] [--clean] [--no-pack]
 #
 #   arm        (default) the shipping package for Windows 10 Mobile, ARM32
 #   x64        the same shell for this PC, to compile and look at; it carries
 #              no ANGLE (there is none to take) and runs no Android code
-#   --auto MODES  an unattended on-device run at start-up (app/Meglet/auto,
-#              tools/phone.py auto): `probe` runs meglet_probe, `selftest` runs
-#              meglet_selftest, or `probe,selftest`; `gfx` draws the scenes of
+#   --auto MODES  an unattended on-device run at start-up (app/Megler/auto,
+#              tools/phone.py auto): `probe` runs megler_probe, `selftest` runs
+#              megler_selftest, or `probe,selftest`; `gfx` draws the scenes of
 #              core/tests/mg_gfx_scenes.c with the shell's own Direct2D,
 #              DirectWrite and WIC (player/GfxHost.cpp), checks them, and
 #              leaves them in LocalState as shot-gfx-*.bmp; `storage` goes
 #              through the phone's folders in an app's storage as an app
-#              would (player/StorageHost.cpp, meglet_storage_check), in a
+#              would (player/StorageHost.cpp, megler_storage_check), in a
 #              folder of its own that it removes again; `net` goes through
-#              the network as an app would (meglet_net_check): a public name,
+#              the network as an app would (megler_net_check): a public name,
 #              a connection to its port 80 and a HEAD request, the same
 #              against a server of its own on loopback, a UDP round trip on
 #              loopback, and the interfaces; `codec` runs the decoders a
@@ -37,7 +37,7 @@
 #              package some 20 MB larger; and Android's System WebView where
 #              tools/webview-fetch.sh has fetched it, 87 MB more). An app that
 #              is Java alone can then
-#              be started (meglet_run finds the folder there), and the
+#              be started (megler_run finds the folder there), and the
 #              Self-test runs the Dalvik runtime's tests on that libcore;
 #              without it they run on the runtime's built-in java.lang and
 #              a Java app is told what is missing.
@@ -50,10 +50,10 @@
 #   --clean    recompile everything
 #   --no-pack  stop after staging (no makeappx, no signing)
 #
-# The output: app/Meglet/AppPackages/Meglet_<version>_<ARCH>.appx, the
-# certificate to trust (Meglet.cer) beside it, the staged folder under
+# The output: app/Megler/AppPackages/Megler_<version>_<ARCH>.appx, the
+# certificate to trust (Megler.cer) beside it, the staged folder under
 # build/appx-<arch>/stage, and the linker map kept as
-# build/maps/Meglet_<version>.map.
+# build/maps/Megler_<version>.map.
 #
 # Why a script and not MSBuild (podium-w10m's and gecko-w10m's tools/build-appx.sh
 # learned it first): MSBuild's appx signing fails here with APPX0107, so the
@@ -65,38 +65,38 @@
 # libraries; the libraries the executable links against come from SDK
 # 10.0.15063.0, so it imports only api-sets a 1703 phone has.
 #
-# The C runtime is linked statically (/MT): Meglet.exe then imports nothing but
+# The C runtime is linked statically (/MT): Megler.exe then imports nothing but
 # OS api-sets, d3d11 and dxgi, and needs neither the VCLibs framework nor
 # app-local runtime DLLs of its own. (ANGLE's DLLs do need a runtime; see
 # "ANGLE" below.)
 #
 # All of core/ is compiled in, as C11: core/src/**/*.c, core/tests/*.c but
-# mg_tests_main.c (meglet_selftest calls the tests), and core/third_party/zlib/*.c
+# mg_tests_main.c (megler_selftest calls the tests), and core/third_party/zlib/*.c
 # but its gz*.c. The lists are globbed on every run, since the core is still
 # growing. Every object goes onto the link line, so a core file with an
 # unresolved symbol fails the build here, not on the phone.
 #
 # Environment:
-#   MEGLET_VC           MSVC toolset with ARM32 tools (newest under VS 2022)
-#   MEGLET_SDK          Windows Kits 10
-#   MEGLET_SDK_VERSION  SDK for headers and tools    (10.0.22621.0)
-#   MEGLET_SDK_LIB      SDK the executable links against (10.0.15063.0)
-#   MEGLET_JOBS         parallel compile jobs
-#   MEGLET_ANGLE        where libEGL.dll, libGLESv2.dll and mozglue.dll are
-#                          taken from (build/angle/dist, Meglet's own ANGLE, where
+#   MEGLER_VC           MSVC toolset with ARM32 tools (newest under VS 2022)
+#   MEGLER_SDK          Windows Kits 10
+#   MEGLER_SDK_VERSION  SDK for headers and tools    (10.0.22621.0)
+#   MEGLER_SDK_LIB      SDK the executable links against (10.0.15063.0)
+#   MEGLER_JOBS         parallel compile jobs
+#   MEGLER_ANGLE        where libEGL.dll, libGLESv2.dll and mozglue.dll are
+#                          taken from (build/angle/dist, Megler's own ANGLE, where
 #                          tools/build-angle.py has made it; else C:/rw-obj/dist/bin,
 #                          gecko-w10m's build)
-#   MEGLET_ANGLE_MAPS   ANGLE's linker maps (build/angle/maps for Meglet's own;
+#   MEGLER_ANGLE_MAPS   ANGLE's linker maps (build/angle/maps for Megler's own;
 #                          else <ANGLE>/../../third_party/angle)
-#   MEGLET_GECKO        gecko-w10m's checkout, for its packaging scripts
+#   MEGLER_GECKO        gecko-w10m's checkout, for its packaging scripts
 #                          (../gecko-w10m)
-#   MEGLET_LLVM         LLVM bin, for lld-link (C:/Program Files/LLVM/bin)
-#   MEGLET_PFX          the certificate to sign with, and
-#   MEGLET_PFX_PASSWORD its password (see "sign" below for the defaults)
+#   MEGLER_LLVM         LLVM bin, for lld-link (C:/Program Files/LLVM/bin)
+#   MEGLER_PFX          the certificate to sign with, and
+#   MEGLER_PFX_PASSWORD its password (see "sign" below for the defaults)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-APP="$ROOT/app/Meglet"
+APP="$ROOT/app/Megler"
 ARCH=arm
 CLEAN=0
 PACK=1
@@ -152,7 +152,7 @@ AUTO_MODES=""
 [ "$AUTO_CODEC" = 1 ] && AUTO_MODES="${AUTO_MODES:+$AUTO_MODES,}codec"
 [ "$AUTO_PLAY" = 1 ] && AUTO_MODES="${AUTO_MODES:+$AUTO_MODES,}play"
 [ "$AUTO_JAVA" = 1 ] && AUTO_MODES="${AUTO_MODES:+$AUTO_MODES,}java"
-# The self-test starts a small app of its own, and one app is all a start of Meglet can run.
+# The self-test starts a small app of its own, and one app is all a start of Megler can run.
 if [ "$AUTO_SELFTEST" = 1 ] && [ "$AUTO_PLAY" = 1 ]; then echo "--auto: selftest and play cannot go together" >&2; exit 2; fi
 if [ "$AUTO_JAVA" = 1 ] && { [ "$AUTO_SELFTEST" = 1 ] || [ "$AUTO_PLAY" = 1 ]; }; then echo "--auto: java cannot go with selftest or play" >&2; exit 2; fi
 # The Java test app is of no use without what it runs on.
@@ -161,19 +161,19 @@ if [ "$JAVA" = 1 ]; then LIBCORE=1; fi
 
 # MARK: Tools
 
-if [ -z "${MEGLET_VC:-}" ]; then
+if [ -z "${MEGLER_VC:-}" ]; then
   for cl in "/c/Program Files/Microsoft Visual Studio/2022/"*/VC/Tools/MSVC/*/bin/Hostx64/arm/cl.exe; do
-    [ -f "$cl" ] && MEGLET_VC="${cl%/bin/Hostx64/arm/cl.exe}"
+    [ -f "$cl" ] && MEGLER_VC="${cl%/bin/Hostx64/arm/cl.exe}"
   done
 fi
-VC="${MEGLET_VC:-}"
+VC="${MEGLER_VC:-}"
 if [ -z "$VC" ] || [ ! -f "$VC/bin/Hostx64/arm/cl.exe" ]; then
-  echo "No MSVC toolset with ARM32 tools (VS 2022 17.14 is the last to ship them); set MEGLET_VC." >&2
+  echo "No MSVC toolset with ARM32 tools (VS 2022 17.14 is the last to ship them); set MEGLER_VC." >&2
   exit 1
 fi
-SDK="${MEGLET_SDK:-/c/Program Files (x86)/Windows Kits/10}"
-SDKV="${MEGLET_SDK_VERSION:-10.0.22621.0}"
-SDKV_LIB="${MEGLET_SDK_LIB:-10.0.15063.0}"
+SDK="${MEGLER_SDK:-/c/Program Files (x86)/Windows Kits/10}"
+SDKV="${MEGLER_SDK_VERSION:-10.0.22621.0}"
+SDKV_LIB="${MEGLER_SDK_LIB:-10.0.15063.0}"
 SDKBIN="$SDK/bin/$SDKV/x64"
 CL="$VC/bin/Hostx64/$ARCH/cl.exe"
 LINK="$VC/bin/Hostx64/$ARCH/link.exe"
@@ -200,9 +200,9 @@ STAGE="$BUILD/stage"
 OUT="$APP/AppPackages"
 [ "$CLEAN" = 1 ] && rm -rf "$OBJ"
 mkdir -p "$OBJ" "$OUT"
-JOBS="${MEGLET_JOBS:-$(nproc 2>/dev/null || echo 4)}"
+JOBS="${MEGLER_JOBS:-$(nproc 2>/dev/null || echo 4)}"
 
-echo "=== Meglet for Windows 10 Mobile: $ARCH${AUTO_MODES:+, auto run: $AUTO_MODES} ==="
+echo "=== Megler for Windows 10 Mobile: $ARCH${AUTO_MODES:+, auto run: $AUTO_MODES} ==="
 echo "    MSVC $(basename "$VC"), headers SDK $SDKV, libraries SDK $SDKV_LIB"
 
 # MARK: Compile
@@ -294,7 +294,7 @@ for dir in "${CORE_DIRS[@]}"; do
   mapfile -t srcs < <(find "$dir" -maxdepth 1 -name '*.c' | sort)
   compile_group "$OBJ/core/${rel:-root}" "$CORE_HEADERS" "${CORE_FLAGS[@]}" -- "${srcs[@]}"
 done
-# The tests meglet_selftest runs; mg_tests_main.c is the command-line program's
+# The tests megler_selftest runs; mg_tests_main.c is the command-line program's
 # main, and core/tests/guest is Android code (tools/build-guest.sh).
 mapfile -t TEST_SRC < <(find "$TESTS" -maxdepth 1 -name '*.c' ! -name 'mg_tests_main.c' | sort)
 compile_group "$OBJ/tests" "$CORE_HEADERS" "${CORE_FLAGS[@]}" -- "${TEST_SRC[@]}"
@@ -304,7 +304,7 @@ echo "=== shell (C++/WinRT, C++20) ==="
 # change of modes recompiles what includes it and nothing else.
 AUTO_CONFIG="$OBJ/auto-config"
 mkdir -p "$AUTO_CONFIG"
-AUTO_HEADER="$(printf '#define MEGLET_AUTO_PROBE %s\n#define MEGLET_AUTO_SELFTEST %s\n#define MEGLET_AUTO_PLAY %s\n#define MEGLET_AUTO_JAVA %s\n#define MEGLET_AUTO_GFX %s\n#define MEGLET_AUTO_STORAGE %s\n#define MEGLET_AUTO_NET %s\n#define MEGLET_AUTO_CODEC %s\n' "$AUTO_PROBE" "$AUTO_SELFTEST" "$AUTO_PLAY" "$AUTO_JAVA" "$AUTO_GFX" "$AUTO_STORAGE" "$AUTO_NET" "$AUTO_CODEC")"
+AUTO_HEADER="$(printf '#define MEGLER_AUTO_PROBE %s\n#define MEGLER_AUTO_SELFTEST %s\n#define MEGLER_AUTO_PLAY %s\n#define MEGLER_AUTO_JAVA %s\n#define MEGLER_AUTO_GFX %s\n#define MEGLER_AUTO_STORAGE %s\n#define MEGLER_AUTO_NET %s\n#define MEGLER_AUTO_CODEC %s\n' "$AUTO_PROBE" "$AUTO_SELFTEST" "$AUTO_PLAY" "$AUTO_JAVA" "$AUTO_GFX" "$AUTO_STORAGE" "$AUTO_NET" "$AUTO_CODEC")"
 if [ "$(cat "$AUTO_CONFIG/AutoConfig.h" 2>/dev/null)" != "$AUTO_HEADER" ]; then
   echo "$AUTO_HEADER" > "$AUTO_CONFIG/AutoConfig.h"
   rm -f "$OBJ/shell/AutoRun.obj"
@@ -313,8 +313,8 @@ SHELL_FLAGS=("${CXX[@]}" /std:c++20 /W3 /bigobj "/I$(w "$APP")" "/I$(w "$ROOT/co
              "/Fp$(w "$OBJ/shell/pch.pch")")
 mkdir -p "$OBJ/shell"
 SHELL_HEADERS="$(newest_mtime "$APP" '*.h')"
-MEGLET_H="$(stat -c %Y "$ROOT/core/include/meglet.h")"
-[ "$MEGLET_H" -gt "$SHELL_HEADERS" ] && SHELL_HEADERS="$MEGLET_H"
+MEGLER_H="$(stat -c %Y "$ROOT/core/include/megler.h")"
+[ "$MEGLER_H" -gt "$SHELL_HEADERS" ] && SHELL_HEADERS="$MEGLER_H"
 if [ ! -f "$OBJ/shell/pch.pch" ] || [ "$APP/pch.h" -nt "$OBJ/shell/pch.pch" ]; then
   rm -f "$OBJ/shell/pch.pch"
   "$CL" "${COMMON[@]}" "${SHELL_FLAGS[@]}" /Yc"pch.h" "/Fo$(w "$OBJ/shell")\\pch.obj" \
@@ -333,7 +333,7 @@ compile_group "$OBJ/gfx" "$SHELL_HEADERS" "${CXX[@]}" /std:c++20 /W3 "/I$(w "$AP
 
 # MARK: Link
 
-echo "=== link Meglet.exe ==="
+echo "=== link Megler.exe ==="
 mapfile -t OBJS < <(find "$OBJ/zlib" "$OBJ/core" "$OBJ/tests" "$OBJ/shell" "$OBJ/gfx" -name '*.obj' | sort)
 OBJS_W=()
 for o in "${OBJS[@]}"; do OBJS_W+=("$(w "$o")"); done
@@ -358,8 +358,8 @@ rm -rf "$BUILD/link" && mkdir -p "$BUILD/link"
 # shifts the loop's head across a fetch window (docs/JAVA.md, the interpreter's speed). Pinned, a change elsewhere in the
 # program cannot make Java apps slower or faster on the phone.
 echo mg_dvm_interpret > "$BUILD/link/order.txt"
-"$LINK" /nologo "${OBJS_W[@]}" "/OUT:$(w "$BUILD/link/Meglet.exe")" "/PDB:$(w "$BUILD/link/Meglet.pdb")" \
-  "/MAP:$(w "$BUILD/link/Meglet.map")" "/ORDER:@$(w "$BUILD/link/order.txt")" /DEBUG /OPT:REF /OPT:ICF /INCREMENTAL:NO \
+"$LINK" /nologo "${OBJS_W[@]}" "/OUT:$(w "$BUILD/link/Megler.exe")" "/PDB:$(w "$BUILD/link/Megler.pdb")" \
+  "/MAP:$(w "$BUILD/link/Megler.map")" "/ORDER:@$(w "$BUILD/link/order.txt")" /DEBUG /OPT:REF /OPT:ICF /INCREMENTAL:NO \
   /APPCONTAINER /SUBSYSTEM:WINDOWS "/MACHINE:$MACHINE" /DYNAMICBASE /NXCOMPAT /MANIFEST:NO \
   WindowsApp.lib OneCoreUAP.lib d3d11.lib dxgi.lib mfplat.lib mfreadwrite.lib mfuuid.lib d2d1.lib dwrite.lib \
   /DELAYLOAD:oleaut32.dll /DELAYLOAD:xaudio2_9.dll /DELAYLOAD:mfplat.dll /DELAYLOAD:mfreadwrite.dll \
@@ -367,7 +367,7 @@ echo mg_dvm_interpret > "$BUILD/link/order.txt"
   /NODEFAULTLIB:kernel32.lib /NODEFAULTLIB:user32.lib /NODEFAULTLIB:advapi32.lib /NODEFAULTLIB:ole32.lib \
   /NODEFAULTLIB:oleaut32.lib /NODEFAULTLIB:shell32.lib /NODEFAULTLIB:gdi32.lib /NODEFAULTLIB:uuid.lib \
   /NODEFAULTLIB:runtimeobject.lib
-echo "    $(stat -c%s "$BUILD/link/Meglet.exe") bytes, ${#OBJS[@]} objects"
+echo "    $(stat -c%s "$BUILD/link/Megler.exe") bytes, ${#OBJS[@]} objects"
 # dependents <image> [2]: the DLL names its import table asks the loader for
 # when it is loaded -- or, with 2, those of its delay-load table, which are
 # only asked for when a function of theirs is first called. (The dumper lists
@@ -387,8 +387,8 @@ dependents() {
 # there is no api-set for Winsock or the IP helper, and WindowsApp.lib itself,
 # the app partition's library, imports them by these names; gecko-w10m's
 # xul.dll imports both too.
-mapfile -t DEPENDENTS < <(dependents "$BUILD/link/Meglet.exe")
-mapfile -t DELAYED < <(dependents "$BUILD/link/Meglet.exe" 2)
+mapfile -t DEPENDENTS < <(dependents "$BUILD/link/Megler.exe")
+mapfile -t DELAYED < <(dependents "$BUILD/link/Megler.exe" 2)
 ODD=()
 for dll in "${DEPENDENTS[@]}"; do
   case "${dll,,}" in
@@ -413,7 +413,7 @@ mkdir -p "$STAGE/Assets"
 
 # The build number: the version's fourth field. It only ever goes up --
 # Windows installs only a strictly higher version over an installed one -- so
-# app/Meglet/build-number.txt is committed and never reset.
+# app/Megler/build-number.txt is committed and never reset.
 COUNTER="$APP/build-number.txt"
 [ -f "$COUNTER" ] || echo 0 > "$COUNTER"
 BUILDNO="$(( $(tr -cd '0-9' < "$COUNTER") + 1 ))"
@@ -431,17 +431,17 @@ echo "=== stage: version $VERSION ($PKGARCH) ==="
 # The map of this very build, to put names to addresses in a phone's log, and
 # what it was built as.
 mkdir -p "$ROOT/build/maps"
-cp "$BUILD/link/Meglet.map" "$ROOT/build/maps/Meglet_$VERSION.map"
-echo "arch=$PKGARCH auto=${AUTO_MODES:-none} java=$JAVA libcore=$LIBCORE" > "$ROOT/build/maps/Meglet_$VERSION.txt"
-echo "    map: build/maps/Meglet_$VERSION.map"
+cp "$BUILD/link/Megler.map" "$ROOT/build/maps/Megler_$VERSION.map"
+echo "arch=$PKGARCH auto=${AUTO_MODES:-none} java=$JAVA libcore=$LIBCORE" > "$ROOT/build/maps/Megler_$VERSION.txt"
+echo "    map: build/maps/Megler_$VERSION.map"
 
-cp "$BUILD/link/Meglet.exe" "$STAGE/"
+cp "$BUILD/link/Megler.exe" "$STAGE/"
 cp "$APP/Assets/"*.png "$STAGE/Assets/"
 
-# The self-test's guest libraries: meglet_selftest loads them from
+# The self-test's guest libraries: megler_selftest loads them from
 # <package>/selftest (core/src/mg_diag.c).
 GUEST="$ROOT/build/guest/armeabi-v7a"
-DEMO="$ROOT/build/guest/demo/meglet-demo.apk"
+DEMO="$ROOT/build/guest/demo/megler-demo.apk"
 if ! ls "$GUEST"/*.so > /dev/null 2>&1 || [ ! -f "$DEMO" ] || [ "$ROOT/core/tests/guest/t_demo.c" -nt "$DEMO" ] \
    || [ ! -f "$GUEST/libt_jni.so" ] || [ "$ROOT/core/tests/guest/t_jni.c" -nt "$GUEST/libt_jni.so" ] \
    || [ ! -f "$GUEST/runtime/libt_ruser.so" ] \
@@ -468,16 +468,16 @@ if ls "$GUEST"/*.so > /dev/null 2>&1; then
       { echo "--java: the Java framework or the test apps could not be built (build/appx-$ARCH/build-java.log)" >&2; exit 1; }
   fi
   if [ "$LIBCORE" = 1 ]; then
-    # The Android root, where meglet_run looks for it (core/src/drivers/mg_java.c) and the runtime's tests do (core/tests/mg_tests.c).
+    # The Android root, where megler_run looks for it (core/src/drivers/mg_java.c) and the runtime's tests do (core/tests/mg_tests.c).
     bash "$ROOT/tools/dvm-android-root.sh" > /dev/null
     cp -r "$ROOT/build/android9/root" "$STAGE/android"
-    echo "    android: Android 9's libcore$([ -f "$STAGE/android/framework/meglet-framework.dex" ] && echo " and the Java framework"), $(find "$STAGE/android" -type f | wc -l) files, $(du -sk "$STAGE/android" | cut -f1) KB"
+    echo "    android: Android 9's libcore$([ -f "$STAGE/android/framework/megler-framework.dex" ] && echo " and the Java framework"), $(find "$STAGE/android" -type f | wc -l) files, $(du -sk "$STAGE/android" | cut -f1) KB"
   fi
   echo "    selftest: $(ls "$STAGE/selftest" | tr '\n' ' ')"
 else
   echo "    WARNING: no guest test libraries in build/guest/armeabi-v7a; the self-test will fail the tests that load them" >&2
 fi
-# What the auto run `codec` decodes (app/Meglet/auto/AutoRun.cpp): the data app's streams, and streams to time the
+# What the auto run `codec` decodes (app/Megler/auto/AutoRun.cpp): the data app's streams, and streams to time the
 # decoders by, made here with ffmpeg (they are not in the repository: 4 MB) -- without Python or ffmpeg, only the first.
 if [ "$AUTO_CODEC" = 1 ]; then
   mkdir -p "$STAGE/codec"
@@ -487,11 +487,11 @@ if [ "$AUTO_CODEC" = 1 ]; then
   fi
   echo "    codec: $(ls "$STAGE/codec" | tr '\n' ' ')"
 fi
-# The demo the library offers when it is empty (app/Meglet/library/Library.cpp).
+# The demo the library offers when it is empty (app/Megler/library/Library.cpp).
 if [ -f "$DEMO" ]; then
   mkdir -p "$STAGE/demo"
   cp "$DEMO" "$STAGE/demo/"
-  echo "    demo: meglet-demo.apk"
+  echo "    demo: megler-demo.apk"
 fi
 # The Java test apps beside it, which the library offers likewise and the auto run `java` starts.
 if [ "$JAVA" = 1 ]; then
@@ -501,7 +501,7 @@ if [ "$JAVA" = 1 ]; then
     cp "$ROOT/build/guest/java/$app.apk" "$STAGE/demo/"
   done
   echo "    demo: hello.apk, demos.apk, gl.apk, data.apk, network.apk, webview.apk (Java)"
-  for need in framework/core-oj.dex framework/meglet-framework.dex framework/framework-res.apk lib/libjavacore.so; do
+  for need in framework/core-oj.dex framework/megler-framework.dex framework/framework-res.apk lib/libjavacore.so; do
     [ -f "$STAGE/android/$need" ] || echo "    WARNING: no android/$need in the package: a Java app will not start, or will start bare" >&2
   done
 fi
@@ -545,29 +545,29 @@ fi
 # Without any of the pieces the package is built all the same, with no ANGLE:
 # the app then says "ANGLE missing" and nothing can draw.
 stage_angle() {
-  # Meglet's own ANGLE where tools/build-angle.py has made one (gecko-w10m's with Meglet's changes, angle/*.patch), else
+  # Megler's own ANGLE where tools/build-angle.py has made one (gecko-w10m's with Megler's changes, angle/*.patch), else
   # gecko-w10m's as its build left it.
   local own="$ROOT/build/angle/dist" angle maps_default
-  if [ -z "${MEGLET_ANGLE:-}" ] && [ -f "$own/libGLESv2.dll" ]; then
+  if [ -z "${MEGLER_ANGLE:-}" ] && [ -f "$own/libGLESv2.dll" ]; then
     angle="$own"
     maps_default="$ROOT/build/angle/maps"
   else
-    angle="${MEGLET_ANGLE:-/c/rw-obj/dist/bin}"
+    angle="${MEGLER_ANGLE:-/c/rw-obj/dist/bin}"
     maps_default="$angle/../../third_party/angle"
   fi
-  local gecko="${MEGLET_GECKO:-$(dirname "$ROOT")/gecko-w10m}"
-  local llvm="${MEGLET_LLVM:-/c/Program Files/LLVM/bin}"
-  local maps="${MEGLET_ANGLE_MAPS:-$maps_default}"
+  local gecko="${MEGLER_GECKO:-$(dirname "$ROOT")/gecko-w10m}"
+  local llvm="${MEGLER_LLVM:-/c/Program Files/LLVM/bin}"
+  local maps="${MEGLER_ANGLE_MAPS:-$maps_default}"
   local vclibs="/c/Program Files (x86)/Microsoft SDKs/Windows Kits/10/ExtensionSDKs/Microsoft.VCLibs/14.0/Appx/Retail/ARM/Microsoft.VCLibs.arm.14.00.appx"
   local dll script
   for dll in libEGL.dll libGLESv2.dll mozglue.dll; do
-    [ -f "$angle/$dll" ] || { ANGLE_WHY="no $dll in $angle (MEGLET_ANGLE)"; return 1; }
+    [ -f "$angle/$dll" ] || { ANGLE_WHY="no $dll in $angle (MEGLER_ANGLE)"; return 1; }
   done
   for script in gen-apiset-shims.py strip-cfg.py fix-thumb-pointers.py patch-vcall-thunks.py; do
-    [ -f "$gecko/tools/$script" ] || { ANGLE_WHY="no tools/$script in $gecko (MEGLET_GECKO)"; return 1; }
+    [ -f "$gecko/tools/$script" ] || { ANGLE_WHY="no tools/$script in $gecko (MEGLER_GECKO)"; return 1; }
   done
   command -v python > /dev/null || { ANGLE_WHY="no python for gecko-w10m's scripts"; return 1; }
-  [ -f "$llvm/lld-link.exe" ] || { ANGLE_WHY="no lld-link.exe in $llvm (MEGLET_LLVM)"; return 1; }
+  [ -f "$llvm/lld-link.exe" ] || { ANGLE_WHY="no lld-link.exe in $llvm (MEGLER_LLVM)"; return 1; }
   [ -f "$vclibs" ] || { ANGLE_WHY="no VCLibs ARM package for the C runtime ($vclibs)"; return 1; }
 
   cp "$angle/libEGL.dll" "$angle/libGLESv2.dll" "$angle/mozglue.dll" "$STAGE/"
@@ -601,7 +601,7 @@ PY
   local name map
   for name in libGLESv2 libEGL; do
     map="$maps/${name}_gn/${name}.map"
-    [ -f "$map" ] || { ANGLE_WHY="no linker map for $name.dll ($map; MEGLET_ANGLE_MAPS) -- its virtual-call thunks would stay broken"; return 1; }
+    [ -f "$map" ] || { ANGLE_WHY="no linker map for $name.dll ($map; MEGLER_ANGLE_MAPS) -- its virtual-call thunks would stay broken"; return 1; }
     python "$(w "$gecko/tools/patch-vcall-thunks.py")" "$(w "$STAGE/$name.dll")" "$(w "$map")" | sed 's/^/    /' ||
       { ANGLE_WHY="patch-vcall-thunks.py failed on $name.dll"; return 1; }
   done
@@ -650,15 +650,15 @@ cp "$STAGE/AppxManifest.xml" "$PRITMP/" && cp "$STAGE/Assets/"* "$PRITMP/Assets/
 rm -rf "$PRITMP"
 
 # The template of resources.pri for the package of one Android app (core/src/appx/mg_appx_pri.c, shell/AppPackage.cpp):
-# the resource map is named after the package, which is not Meglet's, and makepri is not on the phone. So one is made for
+# the resource map is named after the package, which is not Megler's, and makepri is not on the phone. So one is made for
 # a placeholder name of 50 characters (every app package's name has that length), and another for a name one character
 # apart, which tells where in the schema checksum's data the name sits (tools/pri-tails.py); the phone puts the name in
 # and corrects the checksum. appx-template\resources.txt says the placeholder and the two tails.
-PRI_PLACEHOLDER="MegletApp.00000000000000000000000000000000000000Xy"
-PRI_PROBE="MegletApp.10000000000000000000000000000000000000Xy"
+PRI_PLACEHOLDER="MeglerApp.00000000000000000000000000000000000000Xy"
+PRI_PROBE="MeglerApp.10000000000000000000000000000000000000Xy"
 make_pri() {  # <folder> <identity name> <out>
   rm -rf "$1" && mkdir -p "$1/Assets"
-  tr -d '\r' < "$STAGE/AppxManifest.xml" | sed -e "0,/Name=\"Meglet\"/s//Name=\"$2\"/" > "$1/AppxManifest.xml"
+  tr -d '\r' < "$STAGE/AppxManifest.xml" | sed -e "0,/Name=\"Megler\"/s//Name=\"$2\"/" > "$1/AppxManifest.xml"
   cp "$STAGE/Assets/"* "$1/Assets/"
   "$SDKBIN/makepri.exe" createconfig /cf "$(w "$1/priconfig.xml")" /dq en-US /pv 10.0.0 /o > /dev/null
   "$SDKBIN/makepri.exe" new /pr "$(w "$1")" /cf "$(w "$1/priconfig.xml")" /mn "$(w "$1/AppxManifest.xml")" /of "$(w "$3")" /o > /dev/null
@@ -675,7 +675,7 @@ echo "    staged $(find "$STAGE" -type f | wc -l) files, $(du -sk "$STAGE" | cut
 
 if [ "$PACK" = 1 ]; then
   ARCHNAME=$([ "$ARCH" = arm ] && echo ARM || echo x64)
-  PKG="$OUT/Meglet_${VERSION}_${ARCHNAME}.appx"
+  PKG="$OUT/Megler_${VERSION}_${ARCHNAME}.appx"
   echo "=== pack ==="
   rm -f "$PKG"
   "$SDKBIN/makeappx.exe" pack /d "$(w "$STAGE")" /p "$(w "$PKG")" /o /nv > /dev/null
@@ -683,31 +683,31 @@ if [ "$PACK" = 1 ]; then
   # The signer's subject must be the manifest's Publisher (CN=Computershik, as
   # podium-w10m's and gecko-w10m's packages), and a phone installs only what a
   # certificate it trusts signed. So a certificate the user's phones already
-  # trust is preferred to a new one: Meglet's own if there is one, then
+  # trust is preferred to a new one: Megler's own if there is one, then
   # Podium's, then Gecko's; only without any of them is a new self-signed one
-  # made (tools/sign-appx.ps1), as app/Meglet/Meglet.pfx.
+  # made (tools/sign-appx.ps1), as app/Megler/Megler.pfx.
   SIBLINGS="$(dirname "$ROOT")"
-  CERT="${MEGLET_PFX:-}"
-  PASSWORD="${MEGLET_PFX_PASSWORD:-}"
+  CERT="${MEGLER_PFX:-}"
+  PASSWORD="${MEGLER_PFX_PASSWORD:-}"
   if [ -z "$CERT" ]; then
-    if [ -f "$APP/Meglet.pfx" ]; then
-      CERT="$APP/Meglet.pfx"; : "${PASSWORD:=meglet}"
+    if [ -f "$APP/Megler.pfx" ]; then
+      CERT="$APP/Megler.pfx"; : "${PASSWORD:=megler}"
     elif [ -f "$SIBLINGS/podium-w10m/app/PodiumW10m/Podium.pfx" ]; then
       CERT="$SIBLINGS/podium-w10m/app/PodiumW10m/Podium.pfx"; : "${PASSWORD:=podium_w10m}"
     elif [ -f "$SIBLINGS/gecko-w10m/app/GeckoW10m/Gecko.pfx" ]; then
       CERT="$SIBLINGS/gecko-w10m/app/GeckoW10m/Gecko.pfx"; : "${PASSWORD:=gecko_w10m}"
     else
-      CERT="$APP/Meglet.pfx"
+      CERT="$APP/Megler.pfx"
     fi
   fi
-  : "${PASSWORD:=meglet}"
+  : "${PASSWORD:=megler}"
   echo "    certificate: $CERT"
   PUBLISHER="$(tr -d '\r' < "$STAGE/AppxManifest.xml" | sed -n '/<Identity/,/\/>/ s/.*Publisher="\([^"]*\)".*/\1/p' | head -1)"
   # Through PowerShell: msys2 hands its children an empty TEMP, and signtool
   # needs one to repack an appx (tools/sign-appx.ps1 explains).
   powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(w "$ROOT/tools/sign-appx.ps1")" \
     -Package "$(w "$PKG")" -Certificate "$(w "$CERT")" -Password "$PASSWORD" -Subject "$PUBLISHER" \
-    -CerOut "$(w "$OUT/Meglet.cer")" -SdkBin "$(w "$SDKBIN")"
+    -CerOut "$(w "$OUT/Megler.cer")" -SdkBin "$(w "$SDKBIN")"
   echo
   echo "PACKAGE: $PKG ($(( $(stat -c%s "$PKG") / 1024 )) KB)"
 fi

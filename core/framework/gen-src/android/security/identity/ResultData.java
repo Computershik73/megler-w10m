@@ -3,7 +3,7 @@ package android.security.identity;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class ResultData {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int STATUS_NOT_IN_REQUEST_MESSAGE = 3;
     public static final int STATUS_NOT_REQUESTED = 2;
     public static final int STATUS_NO_ACCESS_CONTROL_PROFILES = 6;

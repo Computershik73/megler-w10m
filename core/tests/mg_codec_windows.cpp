@@ -1,5 +1,5 @@
-// The test program's way to the shell's decoders: meglet_codec_host as
-// app/Meglet/player/CodecHost.cpp implements it over Media Foundation's
+// The test program's way to the shell's decoders: megler_codec_host as
+// app/Megler/player/CodecHost.cpp implements it over Media Foundation's
 // decoder transforms, for mg_tests --codec-windows (mg_tests_main.c), which
 // runs the codec's tests over real decoders (mg_codec_tests.c) with it.
 //
@@ -23,26 +23,26 @@
 extern "C" {
 
 /// The shell's decoders.
-const meglet_codec_host* mg_codec_windows_host(void) {
-    static meglet_codec_host host;
-    host = meglet::app::CodecHost::shared().callbacks();
+const megler_codec_host* mg_codec_windows_host(void) {
+    static megler_codec_host host;
+    host = megler::app::CodecHost::shared().callbacks();
     return &host;
 }
 
 /// P010 rather than NV12 from decoders that offer both (CodecHost::preferTenBits).
-void mg_codec_windows_ten_bits(int prefer) { meglet::app::CodecHost::shared().preferTenBits(prefer != 0); }
+void mg_codec_windows_ten_bits(int prefer) { megler::app::CodecHost::shared().preferTenBits(prefer != 0); }
 
 /// A decoder's call that does not return in time is given up on (CodecHost::checkCallLimit): 1 when it is.
-int mg_codec_windows_call_limit(void) { return meglet::app::CodecHost::checkCallLimit() ? 1 : 0; }
+int mg_codec_windows_call_limit(void) { return megler::app::CodecHost::checkCallLimit() ? 1 : 0; }
 
 /// The shell's reader of whole files (MediaHost), which a Java app's MediaPlayer and SoundPool hand MP3 and M4A files to.
-const meglet_media_host* mg_media_windows_host(void) {
-    static meglet_media_host host;
-    host = meglet::app::MediaHost::shared().callbacks();
+const megler_media_host* mg_media_windows_host(void) {
+    static megler_media_host host;
+    host = megler::app::MediaHost::shared().callbacks();
     return &host;
 }
 
 /// Which decoder Windows has for each kind, in a line.
-void mg_codec_windows_summary(char* out, size_t size) { snprintf(out, size, "%s", meglet::app::CodecHost::shared().summary().c_str()); }
+void mg_codec_windows_summary(char* out, size_t size) { snprintf(out, size, "%s", megler::app::CodecHost::shared().summary().c_str()); }
 
 } // extern "C"

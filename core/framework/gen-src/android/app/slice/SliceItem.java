@@ -3,7 +3,7 @@ package android.app.slice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SliceItem implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String FORMAT_ACTION = "action";
     public static final java.lang.String FORMAT_BUNDLE = "bundle";
@@ -19,18 +19,18 @@ public final class SliceItem implements android.os.Parcelable {
     public SliceItem(java.lang.Object p0, java.lang.String p1, java.lang.String p2, java.util.List p3) {}
     public SliceItem(java.lang.Object p0, java.lang.String p1, java.lang.String p2, java.lang.String[] p3) {}
     public int describeContents() { return 0; }
-    public android.app.PendingIntent getAction() { return (android.app.PendingIntent) megletProps.get("Action"); }
-    public android.os.Bundle getBundle() { return (android.os.Bundle) megletProps.get("Bundle"); }
-    public java.lang.String getFormat() { return (java.lang.String) megletProps.get("Format"); }
-    public java.util.List getHints() { return (megletProps.get("Hints") != null ? (java.util.List) megletProps.get("Hints") : new java.util.ArrayList()); }
-    public android.graphics.drawable.Icon getIcon() { return (android.graphics.drawable.Icon) megletProps.get("Icon"); }
-    public int getInt() { return (megletProps.get("Int") instanceof Integer ? (Integer) megletProps.get("Int") : 0); }
-    public long getLong() { return (megletProps.get("Long") instanceof Long ? (Long) megletProps.get("Long") : 0L); }
-    public android.app.RemoteInput getRemoteInput() { return (android.app.RemoteInput) megletProps.get("RemoteInput"); }
-    public android.widget.RemoteViews getRemoteView() { return (android.widget.RemoteViews) megletProps.get("RemoteView"); }
-    public android.app.slice.Slice getSlice() { return (android.app.slice.Slice) megletProps.get("Slice"); }
-    public java.lang.String getSubType() { return (java.lang.String) megletProps.get("SubType"); }
-    public java.lang.CharSequence getText() { return (java.lang.CharSequence) megletProps.get("Text"); }
+    public android.app.PendingIntent getAction() { return (android.app.PendingIntent) meglerProps.get("Action"); }
+    public android.os.Bundle getBundle() { return (android.os.Bundle) meglerProps.get("Bundle"); }
+    public java.lang.String getFormat() { return (java.lang.String) meglerProps.get("Format"); }
+    public java.util.List getHints() { return (meglerProps.get("Hints") != null ? (java.util.List) meglerProps.get("Hints") : new java.util.ArrayList()); }
+    public android.graphics.drawable.Icon getIcon() { return (android.graphics.drawable.Icon) meglerProps.get("Icon"); }
+    public int getInt() { return (meglerProps.get("Int") instanceof Integer ? (Integer) meglerProps.get("Int") : 0); }
+    public long getLong() { return (meglerProps.get("Long") instanceof Long ? (Long) meglerProps.get("Long") : 0L); }
+    public android.app.RemoteInput getRemoteInput() { return (android.app.RemoteInput) meglerProps.get("RemoteInput"); }
+    public android.widget.RemoteViews getRemoteView() { return (android.widget.RemoteViews) meglerProps.get("RemoteView"); }
+    public android.app.slice.Slice getSlice() { return (android.app.slice.Slice) meglerProps.get("Slice"); }
+    public java.lang.String getSubType() { return (java.lang.String) meglerProps.get("SubType"); }
+    public java.lang.CharSequence getText() { return (java.lang.CharSequence) meglerProps.get("Text"); }
     public boolean hasAnyHints(java.lang.String[] p0) { return false; }
     public boolean hasHint(java.lang.String p0) { return false; }
     public boolean hasHints(java.lang.String[] p0) { return false; }

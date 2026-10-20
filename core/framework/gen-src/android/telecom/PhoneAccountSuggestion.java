@@ -3,7 +3,7 @@ package android.telecom;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PhoneAccountSuggestion implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int REASON_FREQUENT = 2;
     public static final int REASON_INTRA_CARRIER = 1;
@@ -12,8 +12,8 @@ public final class PhoneAccountSuggestion implements android.os.Parcelable {
     public static final int REASON_USER_SET = 3;
     public PhoneAccountSuggestion(android.telecom.PhoneAccountHandle p0, int p1, boolean p2) {}
     public int describeContents() { return 0; }
-    public android.telecom.PhoneAccountHandle getPhoneAccountHandle() { return (android.telecom.PhoneAccountHandle) megletProps.get("PhoneAccountHandle"); }
-    public int getReason() { return (megletProps.get("Reason") instanceof Integer ? (Integer) megletProps.get("Reason") : 0); }
+    public android.telecom.PhoneAccountHandle getPhoneAccountHandle() { return (android.telecom.PhoneAccountHandle) meglerProps.get("PhoneAccountHandle"); }
+    public int getReason() { return (meglerProps.get("Reason") instanceof Integer ? (Integer) meglerProps.get("Reason") : 0); }
     public boolean shouldAutoSelect() { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     PhoneAccountSuggestion() { this((android.telecom.PhoneAccountHandle) null, (int) 0, (boolean) false); }

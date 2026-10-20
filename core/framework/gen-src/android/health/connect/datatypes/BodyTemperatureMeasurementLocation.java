@@ -3,7 +3,7 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BodyTemperatureMeasurementLocation {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int MEASUREMENT_LOCATION_ARMPIT = 1;
     public static final int MEASUREMENT_LOCATION_EAR = 8;
     public static final int MEASUREMENT_LOCATION_FINGER = 2;

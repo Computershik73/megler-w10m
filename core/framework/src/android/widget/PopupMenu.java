@@ -9,7 +9,7 @@ public class PopupMenu {
     public interface OnMenuItemClickListener { boolean onMenuItemClick(MenuItem item); }
     public interface OnDismissListener { void onDismiss(PopupMenu menu); }
     private final Context mContext;
-    private final meglet.MenuImpl mMenu;
+    private final megler.MenuImpl mMenu;
     private final View mAnchor;
     private int mGravity;
     private ListPopupWindow mPopup;
@@ -17,7 +17,7 @@ public class PopupMenu {
     private OnDismissListener mOnDismissListener;
     public PopupMenu(Context c, View anchor) { this(c, anchor, Gravity.NO_GRAVITY); }
     public PopupMenu(Context c, View anchor, int gravity) { this(c, anchor, gravity, android.R.attr.popupMenuStyle, 0); }
-    public PopupMenu(Context c, View anchor, int gravity, int popupStyleAttr, int popupStyleRes) { mContext = c; mAnchor = anchor; mGravity = gravity; mMenu = new meglet.MenuImpl(c); }
+    public PopupMenu(Context c, View anchor, int gravity, int popupStyleAttr, int popupStyleRes) { mContext = c; mAnchor = anchor; mGravity = gravity; mMenu = new megler.MenuImpl(c); }
     public void setGravity(int g) { mGravity = g; }
     public int getGravity() { return mGravity; }
     public View.OnTouchListener getDragToOpenListener() { return null; }
@@ -29,8 +29,8 @@ public class PopupMenu {
     public void dismiss() { if (mPopup != null) mPopup.dismiss(); }
     public void setOnMenuItemClickListener(OnMenuItemClickListener l) { mMenuItemClickListener = l; }
     public void setOnDismissListener(OnDismissListener l) { mOnDismissListener = l; }
-    /** Meglet: a menu's visible items in a list popup under the anchor; a pick goes to onClick (then the item's own listener / intent). */
-    public static ListPopupWindow showMenu(Context c, View anchor, meglet.MenuImpl menu, int gravity, java.util.function.Predicate<MenuItem> onClick, Runnable onDismiss) {
+    /** Megler: a menu's visible items in a list popup under the anchor; a pick goes to onClick (then the item's own listener / intent). */
+    public static ListPopupWindow showMenu(Context c, View anchor, megler.MenuImpl menu, int gravity, java.util.function.Predicate<MenuItem> onClick, Runnable onDismiss) {
         final ArrayList<MenuItem> items = new ArrayList<>();
         for (int i = 0; i < menu.size(); i++) if (menu.getItem(i).isVisible()) items.add(menu.getItem(i));
         if (items.isEmpty()) return null;
@@ -67,9 +67,9 @@ public class PopupMenu {
         p.setOnItemClickListener((parent, view, pos, id) -> {
             MenuItem it = items.get(pos);
             p.dismiss();
-            if (it.hasSubMenu()) { showMenu(c, anchor, (meglet.MenuImpl) it.getSubMenu(), gravity, onClick, onDismiss); return; }
+            if (it.hasSubMenu()) { showMenu(c, anchor, (megler.MenuImpl) it.getSubMenu(), gravity, onClick, onDismiss); return; }
             if (onClick.test(it)) return;
-            ((meglet.MenuImpl.Item) it).megletInvoke();
+            ((megler.MenuImpl.Item) it).meglerInvoke();
         });
         p.setOnDismissListener(() -> { if (onDismiss != null) onDismiss.run(); });
         p.show();

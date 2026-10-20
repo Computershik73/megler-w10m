@@ -3,7 +3,7 @@ package android.security;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class KeyStoreException extends java.lang.Exception {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int ERROR_ATTESTATION_CHALLENGE_TOO_LARGE = 9;
     public static final int ERROR_ATTESTATION_KEYS_UNAVAILABLE = 16;
     public static final int ERROR_DEVICE_REQUIRES_UPGRADE_FOR_ATTESTATION = 17;
@@ -34,11 +34,11 @@ public class KeyStoreException extends java.lang.Exception {
     public KeyStoreException(int p0, java.lang.String p1, int p2) { super(); }
     public KeyStoreException(int p0, java.lang.String p1, java.lang.String p2) { super(); }
     public static boolean hasFailureInfoForError(int p0) { return false; }
-    public int getErrorCode() { return (megletProps.get("ErrorCode") instanceof Integer ? (Integer) megletProps.get("ErrorCode") : 0); }
-    public int getNumericErrorCode() { return (megletProps.get("NumericErrorCode") instanceof Integer ? (Integer) megletProps.get("NumericErrorCode") : 0); }
-    public int getRetryPolicy() { return (megletProps.get("RetryPolicy") instanceof Integer ? (Integer) megletProps.get("RetryPolicy") : 0); }
-    public boolean isSystemError() { return (megletProps.get("SystemError") instanceof Boolean ? (Boolean) megletProps.get("SystemError") : false); }
-    public boolean isTransientFailure() { return (megletProps.get("TransientFailure") instanceof Boolean ? (Boolean) megletProps.get("TransientFailure") : false); }
+    public int getErrorCode() { return (meglerProps.get("ErrorCode") instanceof Integer ? (Integer) meglerProps.get("ErrorCode") : 0); }
+    public int getNumericErrorCode() { return (meglerProps.get("NumericErrorCode") instanceof Integer ? (Integer) meglerProps.get("NumericErrorCode") : 0); }
+    public int getRetryPolicy() { return (meglerProps.get("RetryPolicy") instanceof Integer ? (Integer) meglerProps.get("RetryPolicy") : 0); }
+    public boolean isSystemError() { return (meglerProps.get("SystemError") instanceof Boolean ? (Boolean) meglerProps.get("SystemError") : false); }
+    public boolean isTransientFailure() { return (meglerProps.get("TransientFailure") instanceof Boolean ? (Boolean) meglerProps.get("TransientFailure") : false); }
     public boolean requiresUserAuthentication() { return false; }
     KeyStoreException() { this((int) 0, (java.lang.String) null); }
 }

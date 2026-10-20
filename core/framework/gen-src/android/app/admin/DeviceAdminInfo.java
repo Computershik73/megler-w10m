@@ -3,7 +3,7 @@ package android.app.admin;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DeviceAdminInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int HEADLESS_DEVICE_OWNER_MODE_AFFILIATED = 1;
     public static final int HEADLESS_DEVICE_OWNER_MODE_SINGLE_USER = 2;
@@ -22,14 +22,14 @@ public final class DeviceAdminInfo implements android.os.Parcelable {
     public DeviceAdminInfo(android.content.Context p0, android.content.pm.ResolveInfo p1) {}
     public int describeContents() { return 0; }
     public void dump(android.util.Printer p0, java.lang.String p1) {}
-    public android.content.pm.ActivityInfo getActivityInfo() { return (android.content.pm.ActivityInfo) megletProps.get("ActivityInfo"); }
-    public android.content.ComponentName getComponent() { return (android.content.ComponentName) megletProps.get("Component"); }
-    public int getHeadlessDeviceOwnerMode() { return (megletProps.get("HeadlessDeviceOwnerMode") instanceof Integer ? (Integer) megletProps.get("HeadlessDeviceOwnerMode") : 0); }
-    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
-    public java.lang.String getReceiverName() { return (java.lang.String) megletProps.get("ReceiverName"); }
+    public android.content.pm.ActivityInfo getActivityInfo() { return (android.content.pm.ActivityInfo) meglerProps.get("ActivityInfo"); }
+    public android.content.ComponentName getComponent() { return (android.content.ComponentName) meglerProps.get("Component"); }
+    public int getHeadlessDeviceOwnerMode() { return (meglerProps.get("HeadlessDeviceOwnerMode") instanceof Integer ? (Integer) meglerProps.get("HeadlessDeviceOwnerMode") : 0); }
+    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
+    public java.lang.String getReceiverName() { return (java.lang.String) meglerProps.get("ReceiverName"); }
     public java.lang.String getTagForPolicy(int p0) { return null; }
-    public java.util.ArrayList getUsedPolicies() { return (megletProps.get("UsedPolicies") != null ? (java.util.ArrayList) megletProps.get("UsedPolicies") : new java.util.ArrayList()); }
-    public boolean isVisible() { return (megletProps.get("Visible") instanceof Boolean ? (Boolean) megletProps.get("Visible") : false); }
+    public java.util.ArrayList getUsedPolicies() { return (meglerProps.get("UsedPolicies") != null ? (java.util.ArrayList) meglerProps.get("UsedPolicies") : new java.util.ArrayList()); }
+    public boolean isVisible() { return (meglerProps.get("Visible") instanceof Boolean ? (Boolean) meglerProps.get("Visible") : false); }
     public java.lang.CharSequence loadDescription(android.content.pm.PackageManager p0) { return null; }
     public android.graphics.drawable.Drawable loadIcon(android.content.pm.PackageManager p0) { return null; }
     public java.lang.CharSequence loadLabel(android.content.pm.PackageManager p0) { return null; }
@@ -38,7 +38,7 @@ public final class DeviceAdminInfo implements android.os.Parcelable {
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     DeviceAdminInfo() { this((android.content.Context) null, (android.content.pm.ActivityInfo) null); }
     public static class PolicyInfo {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public int description;
         public int descriptionForSecondaryUsers;
         public int ident;

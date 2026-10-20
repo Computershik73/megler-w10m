@@ -3,7 +3,7 @@ package android.util;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class EventLog {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public EventLog() {}
     public static int getTagCode(java.lang.String p0) { return 0; }
     public static java.lang.String getTagName(int p0) { return null; }
@@ -15,17 +15,17 @@ public class EventLog {
     public static int writeEvent(int p0, java.lang.String p1) { return 0; }
     public static int writeEvent(int p0, java.lang.Object[] p1) { return 0; }
     public static final class Event {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.util.EventLog.Event fromBytes(byte[] p0) { return new Event(); }
         public void clearError() {}
-        public byte[] getBytes() { return (byte[]) megletProps.get("Bytes"); }
-        public java.lang.Object getData() { return (java.lang.Object) megletProps.get("Data"); }
-        public java.lang.Exception getLastError() { return (java.lang.Exception) megletProps.get("LastError"); }
-        public int getProcessId() { return (megletProps.get("ProcessId") instanceof Integer ? (Integer) megletProps.get("ProcessId") : 0); }
-        public int getTag() { return (megletProps.get("Tag") instanceof Integer ? (Integer) megletProps.get("Tag") : 0); }
-        public int getThreadId() { return (megletProps.get("ThreadId") instanceof Integer ? (Integer) megletProps.get("ThreadId") : 0); }
-        public long getTimeNanos() { return (megletProps.get("TimeNanos") instanceof Long ? (Long) megletProps.get("TimeNanos") : 0L); }
-        public int getUid() { return (megletProps.get("Uid") instanceof Integer ? (Integer) megletProps.get("Uid") : 0); }
+        public byte[] getBytes() { return (byte[]) meglerProps.get("Bytes"); }
+        public java.lang.Object getData() { return (java.lang.Object) meglerProps.get("Data"); }
+        public java.lang.Exception getLastError() { return (java.lang.Exception) meglerProps.get("LastError"); }
+        public int getProcessId() { return (meglerProps.get("ProcessId") instanceof Integer ? (Integer) meglerProps.get("ProcessId") : 0); }
+        public int getTag() { return (meglerProps.get("Tag") instanceof Integer ? (Integer) meglerProps.get("Tag") : 0); }
+        public int getThreadId() { return (meglerProps.get("ThreadId") instanceof Integer ? (Integer) meglerProps.get("ThreadId") : 0); }
+        public long getTimeNanos() { return (meglerProps.get("TimeNanos") instanceof Long ? (Long) meglerProps.get("TimeNanos") : 0L); }
+        public int getUid() { return (meglerProps.get("Uid") instanceof Integer ? (Integer) meglerProps.get("Uid") : 0); }
         public android.util.EventLog.Event withNewData(java.lang.Object p0) { return this; }
         protected Event() {}
     }

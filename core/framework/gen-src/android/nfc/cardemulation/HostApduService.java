@@ -3,7 +3,7 @@ package android.nfc.cardemulation;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class HostApduService extends android.app.Service {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int DEACTIVATION_DESELECTED = 1;
     public static final int DEACTIVATION_LINK_LOSS = 0;
     public static final java.lang.String KEY_DATA = "data";
@@ -19,19 +19,19 @@ public abstract class HostApduService extends android.app.Service {
     public static final java.lang.String SERVICE_INTERFACE = "android.nfc.cardemulation.action.HOST_APDU_SERVICE";
     public static final java.lang.String SERVICE_META_DATA = "android.nfc.cardemulation.host_apdu_service";
     public HostApduService() { super(); }
-    public java.util.Random getCookieRandom() { return (java.util.Random) megletProps.get("CookieRandom"); }
-    public android.os.Messenger getMessenger() { return (android.os.Messenger) megletProps.get("Messenger"); }
-    public android.nfc.cardemulation.HostApduService.MsgHandler getMsgHandler() { return (android.nfc.cardemulation.HostApduService.MsgHandler) megletProps.get("MsgHandler"); }
-    public android.os.Messenger getNfcService() { return (android.os.Messenger) megletProps.get("NfcService"); }
+    public java.util.Random getCookieRandom() { return (java.util.Random) meglerProps.get("CookieRandom"); }
+    public android.os.Messenger getMessenger() { return (android.os.Messenger) meglerProps.get("Messenger"); }
+    public android.nfc.cardemulation.HostApduService.MsgHandler getMsgHandler() { return (android.nfc.cardemulation.HostApduService.MsgHandler) meglerProps.get("MsgHandler"); }
+    public android.os.Messenger getNfcService() { return (android.os.Messenger) meglerProps.get("NfcService"); }
     public void notifyUnhandled() {}
     public android.os.IBinder onBind(android.content.Intent p0) { return null; }
     public abstract void onDeactivated(int p0);
     public abstract byte[] processCommandApdu(byte[] p0, android.os.Bundle p1);
     public void processPollingFrames(java.util.List p0) {}
     public void sendResponseApdu(byte[] p0) {}
-    public void setNfcService(android.os.Messenger p0) { megletProps.put("NfcService", p0); }
+    public void setNfcService(android.os.Messenger p0) { meglerProps.put("NfcService", p0); }
     public static final class MsgHandler extends android.os.Handler {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public void handleMessage(android.os.Message p0) {}
         protected MsgHandler() { super(); }
     }

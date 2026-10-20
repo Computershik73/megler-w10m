@@ -3,7 +3,7 @@ package android.util;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class StringBuilderPrinter implements android.util.Printer {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public StringBuilderPrinter(java.lang.StringBuilder p0) {}
     public void println(java.lang.String p0) {}
     StringBuilderPrinter() { this((java.lang.StringBuilder) null); }

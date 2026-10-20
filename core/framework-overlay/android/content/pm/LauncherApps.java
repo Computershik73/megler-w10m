@@ -1,6 +1,6 @@
 // Overlay of core/framework/gen-src/android/content/pm/LauncherApps.java (tools/build-framework.sh).
 // It differs in the members a launcher uses to list and start the apps it shows: the constructors keep their Context (the
-// one without arguments, which meglet.ContextImpl picks when it makes the service, takes the application's), and
+// one without arguments, which megler.ContextImpl picks when it makes the service, takes the application's), and
 // getActivityList, resolveActivity, isPackageEnabled, isActivityEnabled, getApplicationInfo and startMainActivity answer from
 // the framework's PackageManager, where they were generated signatures answering nothing.
 //
@@ -15,46 +15,46 @@ package android.content.pm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class LauncherApps {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_CONFIRM_PIN_APPWIDGET = "android.content.pm.action.CONFIRM_PIN_APPWIDGET";
     public static final java.lang.String ACTION_CONFIRM_PIN_SHORTCUT = "android.content.pm.action.CONFIRM_PIN_SHORTCUT";
     public static final java.lang.String EXTRA_PIN_ITEM_REQUEST = "android.content.pm.extra.PIN_ITEM_REQUEST";
     public static final int FLAG_CACHE_BUBBLE_SHORTCUTS = 1;
     public static final int FLAG_CACHE_NOTIFICATION_SHORTCUTS = 0;
     public static final int FLAG_CACHE_PEOPLE_TILE_SHORTCUTS = 2;
-    private android.content.Context megletContext;
-    public LauncherApps(android.content.Context p0) { megletContext = p0; }
-    public LauncherApps(android.content.Context p0, android.content.pm.ILauncherApps p1) { megletContext = p0; }
-    private PackageManager megletPm() { return megletContext.getPackageManager(); }
-    private static android.content.Intent megletLauncherIntent() {
+    private android.content.Context meglerContext;
+    public LauncherApps(android.content.Context p0) { meglerContext = p0; }
+    public LauncherApps(android.content.Context p0, android.content.pm.ILauncherApps p1) { meglerContext = p0; }
+    private PackageManager meglerPm() { return meglerContext.getPackageManager(); }
+    private static android.content.Intent meglerLauncherIntent() {
         return new android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_LAUNCHER);
     }
-    private static android.os.UserHandle megletUser(android.os.UserHandle u) { return u != null ? u : android.os.Process.myUserHandle(); }
+    private static android.os.UserHandle meglerUser(android.os.UserHandle u) { return u != null ? u : android.os.Process.myUserHandle(); }
     public void cacheShortcuts(java.lang.String p0, java.util.List p1, android.os.UserHandle p2, int p3) {}
     public java.util.Map getActivityLaunchIntentForAllApps(android.os.UserHandle p0) { return new java.util.HashMap(); }
     /** The activities with MAIN and LAUNCHER, of one package or of all, as the PackageManager here resolves them. */
     public java.util.List getActivityList(java.lang.String p0, android.os.UserHandle p1) {
-        android.content.Intent i = megletLauncherIntent();
+        android.content.Intent i = meglerLauncherIntent();
         if (p0 != null) i.setPackage(p0);
         java.util.ArrayList<LauncherActivityInfo> l = new java.util.ArrayList<>();
-        for (ResolveInfo r : megletPm().queryIntentActivities(i, 0))
-            if (r.activityInfo != null && (p0 == null || p0.equals(r.activityInfo.packageName))) l.add(new LauncherActivityInfo(megletContext, r.activityInfo, megletUser(p1)));
+        for (ResolveInfo r : meglerPm().queryIntentActivities(i, 0))
+            if (r.activityInfo != null && (p0 == null || p0.equals(r.activityInfo.packageName))) l.add(new LauncherActivityInfo(meglerContext, r.activityInfo, meglerUser(p1)));
         return l;
     }
-    public java.util.Map getActivityOverrides() { return (megletProps.get("ActivityOverrides") != null ? (java.util.Map) megletProps.get("ActivityOverrides") : new java.util.HashMap()); }
-    public java.util.List getAllPackageInstallerSessions() { return (megletProps.get("AllPackageInstallerSessions") != null ? (java.util.List) megletProps.get("AllPackageInstallerSessions") : new java.util.ArrayList()); }
+    public java.util.Map getActivityOverrides() { return (meglerProps.get("ActivityOverrides") != null ? (java.util.Map) meglerProps.get("ActivityOverrides") : new java.util.HashMap()); }
+    public java.util.List getAllPackageInstallerSessions() { return (meglerProps.get("AllPackageInstallerSessions") != null ? (java.util.List) meglerProps.get("AllPackageInstallerSessions") : new java.util.ArrayList()); }
     public android.content.IntentSender getAppMarketActivityIntent(java.lang.String p0, android.os.UserHandle p1) { return null; }
     public android.content.pm.LauncherApps.AppUsageLimit getAppUsageLimit(java.lang.String p0, android.os.UserHandle p1) { return null; }
     public android.content.pm.ApplicationInfo getApplicationInfo(java.lang.String p0, int p1, android.os.UserHandle p2) throws PackageManager.NameNotFoundException {
-        return megletPm().getApplicationInfo(p0, p1);
+        return meglerPm().getApplicationInfo(p0, p1);
     }
     public java.util.List getAvailableShortcuts(android.os.UserHandle p0) { return new java.util.ArrayList(); }
     public android.content.pm.LauncherUserInfo getLauncherUserInfo(android.os.UserHandle p0) { return null; }
     public android.app.PendingIntent getMainActivityLaunchIntent(android.content.ComponentName p0, android.os.Bundle p1, android.os.UserHandle p2) { return null; }
     public android.content.pm.LauncherApps.PinItemRequest getPinItemRequest(android.content.Intent p0) { return null; }
     public java.util.List getPreInstalledSystemPackages(android.os.UserHandle p0) { return new java.util.ArrayList(); }
-    public android.content.IntentSender getPrivateSpaceSettingsIntent() { return (android.content.IntentSender) megletProps.get("PrivateSpaceSettingsIntent"); }
-    public java.util.List getProfiles() { return (megletProps.get("Profiles") != null ? (java.util.List) megletProps.get("Profiles") : new java.util.ArrayList()); }
+    public android.content.IntentSender getPrivateSpaceSettingsIntent() { return (android.content.IntentSender) meglerProps.get("PrivateSpaceSettingsIntent"); }
+    public java.util.List getProfiles() { return (meglerProps.get("Profiles") != null ? (java.util.List) meglerProps.get("Profiles") : new java.util.ArrayList()); }
     public android.graphics.drawable.Drawable getShortcutBadgedIconDrawable(android.content.pm.ShortcutInfo p0, int p1) { return null; }
     public android.content.IntentSender getShortcutConfigActivityIntent(android.content.pm.LauncherActivityInfo p0) { return null; }
     public java.util.List getShortcutConfigActivityList(java.lang.String p0, android.os.UserHandle p1) { return new java.util.ArrayList(); }
@@ -71,10 +71,10 @@ public class LauncherApps {
     public android.os.ParcelFileDescriptor getUriShortcutIconFd(android.content.pm.ShortcutInfo p0) { return null; }
     public boolean hasShortcutHostPermission() { return false; }
     public boolean isActivityEnabled(android.content.ComponentName p0, android.os.UserHandle p1) {
-        return p0 != null && !megletPm().queryIntentActivities(new android.content.Intent().setComponent(p0), 0).isEmpty();
+        return p0 != null && !meglerPm().queryIntentActivities(new android.content.Intent().setComponent(p0), 0).isEmpty();
     }
     public boolean isPackageEnabled(java.lang.String p0, android.os.UserHandle p1) {
-        try { return p0 != null && megletPm().getApplicationInfo(p0, 0).enabled; } catch (PackageManager.NameNotFoundException e) { return false; }
+        try { return p0 != null && meglerPm().getApplicationInfo(p0, 0).enabled; } catch (PackageManager.NameNotFoundException e) { return false; }
     }
     public void pinShortcuts(java.lang.String p0, java.util.List p1, android.os.UserHandle p2) {}
     public void registerCallback(android.content.pm.LauncherApps.Callback p0) {}
@@ -83,17 +83,17 @@ public class LauncherApps {
     public void registerPackageInstallerSessionCallback(java.util.concurrent.Executor p0, android.content.pm.PackageInstaller.SessionCallback p1) {}
     public void registerShortcutChangeCallback(android.content.pm.LauncherApps.ShortcutChangeCallback p0, android.content.pm.LauncherApps.ShortcutQuery p1, java.util.concurrent.Executor p2) {}
     public android.content.pm.LauncherActivityInfo resolveActivity(android.content.Intent p0, android.os.UserHandle p1) {
-        ResolveInfo r = megletPm().resolveActivity(p0, 0);
-        return r != null && r.activityInfo != null ? new LauncherActivityInfo(megletContext, r.activityInfo, megletUser(p1)) : null;
+        ResolveInfo r = meglerPm().resolveActivity(p0, 0);
+        return r != null && r.activityInfo != null ? new LauncherActivityInfo(meglerContext, r.activityInfo, meglerUser(p1)) : null;
     }
     public void saveViewCaptureData() {}
-    public void setArchiveCompatibility(android.content.pm.LauncherApps.ArchiveCompatibilityParams p0) { megletProps.put("ArchiveCompatibility", p0); }
+    public void setArchiveCompatibility(android.content.pm.LauncherApps.ArchiveCompatibilityParams p0) { meglerProps.put("ArchiveCompatibility", p0); }
     public boolean shouldHideFromSuggestions(java.lang.String p0, android.os.UserHandle p1) { return false; }
     public void startAppDetailsActivity(android.content.ComponentName p0, android.os.UserHandle p1, android.graphics.Rect p2, android.os.Bundle p3) {}
     public void startMainActivity(android.content.ComponentName p0, android.os.UserHandle p1, android.graphics.Rect p2, android.os.Bundle p3) {
-        android.content.Intent i = megletLauncherIntent().setComponent(p0).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+        android.content.Intent i = meglerLauncherIntent().setComponent(p0).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
         if (p2 != null) i.setSourceBounds(p2);
-        megletContext.startActivity(i, p3);
+        meglerContext.startActivity(i, p3);
     }
     public void startPackageInstallerSessionDetailsActivity(android.content.pm.PackageInstaller.SessionInfo p0, android.graphics.Rect p1, android.os.Bundle p2) {}
     public void startShortcut(android.content.pm.ShortcutInfo p0, android.graphics.Rect p1, android.os.Bundle p2) {}
@@ -104,27 +104,27 @@ public class LauncherApps {
     public void unregisterPackageInstallerSessionCallback(android.content.pm.PackageInstaller.SessionCallback p0) {}
     public void unregisterShortcutChangeCallback(android.content.pm.LauncherApps.ShortcutChangeCallback p0) {}
     /* The context asks for its services by the constructor with the fewest arguments: this one, which must still know the app. */
-    LauncherApps() { this(meglet.ContextImpl.app()); }
+    LauncherApps() { this(megler.ContextImpl.app()); }
     public static final class AppUsageLimit implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public AppUsageLimit(long p0, long p1) {}
         public int describeContents() { return 0; }
-        public long getTotalUsageLimit() { return (megletProps.get("TotalUsageLimit") instanceof Long ? (Long) megletProps.get("TotalUsageLimit") : 0L); }
-        public long getUsageRemaining() { return (megletProps.get("UsageRemaining") instanceof Long ? (Long) megletProps.get("UsageRemaining") : 0L); }
+        public long getTotalUsageLimit() { return (meglerProps.get("TotalUsageLimit") instanceof Long ? (Long) meglerProps.get("TotalUsageLimit") : 0L); }
+        public long getUsageRemaining() { return (meglerProps.get("UsageRemaining") instanceof Long ? (Long) meglerProps.get("UsageRemaining") : 0L); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         AppUsageLimit() { this((long) 0L, (long) 0L); }
     }
     public static class ArchiveCompatibilityParams {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public ArchiveCompatibilityParams() {}
-        public boolean isEnableIconOverlay() { return (megletProps.get("EnableIconOverlay") instanceof Boolean ? (Boolean) megletProps.get("EnableIconOverlay") : false); }
-        public boolean isEnableUnarchivalConfirmation() { return (megletProps.get("EnableUnarchivalConfirmation") instanceof Boolean ? (Boolean) megletProps.get("EnableUnarchivalConfirmation") : false); }
-        public void setEnableIconOverlay(boolean p0) { megletProps.put("EnableIconOverlay", Boolean.valueOf(p0)); }
-        public void setEnableUnarchivalConfirmation(boolean p0) { megletProps.put("EnableUnarchivalConfirmation", Boolean.valueOf(p0)); }
+        public boolean isEnableIconOverlay() { return (meglerProps.get("EnableIconOverlay") instanceof Boolean ? (Boolean) meglerProps.get("EnableIconOverlay") : false); }
+        public boolean isEnableUnarchivalConfirmation() { return (meglerProps.get("EnableUnarchivalConfirmation") instanceof Boolean ? (Boolean) meglerProps.get("EnableUnarchivalConfirmation") : false); }
+        public void setEnableIconOverlay(boolean p0) { meglerProps.put("EnableIconOverlay", Boolean.valueOf(p0)); }
+        public void setEnableUnarchivalConfirmation(boolean p0) { meglerProps.put("EnableUnarchivalConfirmation", Boolean.valueOf(p0)); }
     }
     public static abstract class Callback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Callback() {}
         public abstract void onPackageAdded(java.lang.String p0, android.os.UserHandle p1);
         public abstract void onPackageChanged(java.lang.String p0, android.os.UserHandle p1);
@@ -139,7 +139,7 @@ public class LauncherApps {
         public void onUserConfigChanged(android.content.pm.LauncherUserInfo p0) {}
     }
     public static final class PinItemRequest implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public static final int REQUEST_TYPE_APPWIDGET = 2;
         public static final int REQUEST_TYPE_SHORTCUT = 1;
@@ -148,10 +148,10 @@ public class LauncherApps {
         public boolean accept(android.os.Bundle p0) { return false; }
         public int describeContents() { return 0; }
         public android.appwidget.AppWidgetProviderInfo getAppWidgetProviderInfo(android.content.Context p0) { return null; }
-        public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
-        public int getRequestType() { return (megletProps.get("RequestType") instanceof Integer ? (Integer) megletProps.get("RequestType") : 0); }
-        public android.content.pm.ShortcutInfo getShortcutInfo() { return (android.content.pm.ShortcutInfo) megletProps.get("ShortcutInfo"); }
-        public boolean isValid() { return (megletProps.get("Valid") instanceof Boolean ? (Boolean) megletProps.get("Valid") : false); }
+        public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
+        public int getRequestType() { return (meglerProps.get("RequestType") instanceof Integer ? (Integer) meglerProps.get("RequestType") : 0); }
+        public android.content.pm.ShortcutInfo getShortcutInfo() { return (android.content.pm.ShortcutInfo) meglerProps.get("ShortcutInfo"); }
+        public boolean isValid() { return (meglerProps.get("Valid") instanceof Boolean ? (Boolean) meglerProps.get("Valid") : false); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         PinItemRequest() { this((android.content.pm.IPinItemRequest) null, (int) 0); }
     }
@@ -160,7 +160,7 @@ public class LauncherApps {
         default void onShortcutsRemoved(java.lang.String p0, java.util.List p1, android.os.UserHandle p2) {}
     }
     public static class ShortcutQuery {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int FLAG_GET_ALL_KINDS = 27;
         public static final int FLAG_GET_DYNAMIC = 1;
         public static final int FLAG_GET_KEY_FIELDS_ONLY = 4;
@@ -176,11 +176,11 @@ public class LauncherApps {
         public static final int FLAG_MATCH_PINNED = 2;
         public static final int FLAG_MATCH_PINNED_BY_ANY_LAUNCHER = 1024;
         public ShortcutQuery() {}
-        public android.content.pm.LauncherApps.ShortcutQuery setActivity(android.content.ComponentName p0) { megletProps.put("Activity", p0); return this; }
-        public android.content.pm.LauncherApps.ShortcutQuery setChangedSince(long p0) { megletProps.put("ChangedSince", Long.valueOf(p0)); return this; }
-        public android.content.pm.LauncherApps.ShortcutQuery setLocusIds(java.util.List p0) { megletProps.put("LocusIds", p0); return this; }
-        public android.content.pm.LauncherApps.ShortcutQuery setPackage(java.lang.String p0) { megletProps.put("Package", p0); return this; }
-        public android.content.pm.LauncherApps.ShortcutQuery setQueryFlags(int p0) { megletProps.put("QueryFlags", Integer.valueOf(p0)); return this; }
-        public android.content.pm.LauncherApps.ShortcutQuery setShortcutIds(java.util.List p0) { megletProps.put("ShortcutIds", p0); return this; }
+        public android.content.pm.LauncherApps.ShortcutQuery setActivity(android.content.ComponentName p0) { meglerProps.put("Activity", p0); return this; }
+        public android.content.pm.LauncherApps.ShortcutQuery setChangedSince(long p0) { meglerProps.put("ChangedSince", Long.valueOf(p0)); return this; }
+        public android.content.pm.LauncherApps.ShortcutQuery setLocusIds(java.util.List p0) { meglerProps.put("LocusIds", p0); return this; }
+        public android.content.pm.LauncherApps.ShortcutQuery setPackage(java.lang.String p0) { meglerProps.put("Package", p0); return this; }
+        public android.content.pm.LauncherApps.ShortcutQuery setQueryFlags(int p0) { meglerProps.put("QueryFlags", Integer.valueOf(p0)); return this; }
+        public android.content.pm.LauncherApps.ShortcutQuery setShortcutIds(java.util.List p0) { meglerProps.put("ShortcutIds", p0); return this; }
     }
 }

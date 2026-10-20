@@ -3,10 +3,10 @@ package android.telecom;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CallControl {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public void answer(int p0, java.util.concurrent.Executor p1, android.os.OutcomeReceiver p2) {}
     public void disconnect(android.telecom.DisconnectCause p0, java.util.concurrent.Executor p1, android.os.OutcomeReceiver p2) {}
-    public android.os.ParcelUuid getCallId() { return (android.os.ParcelUuid) megletProps.get("CallId"); }
+    public android.os.ParcelUuid getCallId() { return (android.os.ParcelUuid) meglerProps.get("CallId"); }
     public void requestCallEndpointChange(android.telecom.CallEndpoint p0, java.util.concurrent.Executor p1, android.os.OutcomeReceiver p2) {}
     public void requestMuteState(boolean p0, java.util.concurrent.Executor p1, android.os.OutcomeReceiver p2) {}
     public void requestVideoState(int p0, java.util.concurrent.Executor p1, android.os.OutcomeReceiver p2) {}

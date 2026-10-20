@@ -1,9 +1,9 @@
 /*
  * A shell's drawing, looked at and checked: scenes drawn through a
- * meglet_gfx_host and nothing else, as the core calls it (mg_gfx_scenes.c).
+ * megler_gfx_host and nothing else, as the core calls it (mg_gfx_scenes.c).
  *
  * This is for the real thing -- the phone's Direct2D, DirectWrite and WIC
- * (app/Meglet/player/GfxHost.cpp) -- where mg_gfx_tests.c is for the
+ * (app/Megler/player/GfxHost.cpp) -- where mg_gfx_tests.c is for the
  * stand-in. It is plain C over the struct, so it builds wherever the core
  * does; it only runs where someone has a host to hand it: the test program's
  * --gfx-windows mode on a PC (tools/build-tests.sh win).
@@ -11,7 +11,7 @@
 #ifndef MG_GFX_SCENES_H
 #define MG_GFX_SCENES_H
 
-#include "../include/meglet.h"
+#include "../include/megler.h"
 #include "mg_tests.h"
 
 #ifdef __cplusplus
@@ -19,7 +19,7 @@ extern "C" {
 #endif
 
 typedef struct mg_gfx_scenes_config {
-    const meglet_gfx_host *host;         /* the drawing to look at; every function of it is expected to be there */
+    const megler_gfx_host *host;         /* the drawing to look at; every function of it is expected to be there */
     /* Where each scene goes as a PNG file, and sheet.png with all of them at half size. NULL: no file is written. */
     const char *out_dir;
     /*

@@ -3,12 +3,12 @@ package android.app.appsearch.observer;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DocumentChangeInfo {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public DocumentChangeInfo(java.lang.String p0, java.lang.String p1, java.lang.String p2, java.lang.String p3, java.util.Set p4) {}
-    public java.util.Set getChangedDocumentIds() { return (megletProps.get("ChangedDocumentIds") != null ? (java.util.Set) megletProps.get("ChangedDocumentIds") : new java.util.HashSet()); }
-    public java.lang.String getDatabaseName() { return (java.lang.String) megletProps.get("DatabaseName"); }
-    public java.lang.String getNamespace() { return (java.lang.String) megletProps.get("Namespace"); }
-    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
-    public java.lang.String getSchemaName() { return (java.lang.String) megletProps.get("SchemaName"); }
+    public java.util.Set getChangedDocumentIds() { return (meglerProps.get("ChangedDocumentIds") != null ? (java.util.Set) meglerProps.get("ChangedDocumentIds") : new java.util.HashSet()); }
+    public java.lang.String getDatabaseName() { return (java.lang.String) meglerProps.get("DatabaseName"); }
+    public java.lang.String getNamespace() { return (java.lang.String) meglerProps.get("Namespace"); }
+    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
+    public java.lang.String getSchemaName() { return (java.lang.String) meglerProps.get("SchemaName"); }
     DocumentChangeInfo() { this((java.lang.String) null, (java.lang.String) null, (java.lang.String) null, (java.lang.String) null, (java.util.Set) null); }
 }

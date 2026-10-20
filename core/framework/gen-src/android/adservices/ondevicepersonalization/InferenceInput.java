@@ -3,46 +3,46 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class InferenceInput {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public int getBatchSize() { return (megletProps.get("BatchSize") instanceof Integer ? (Integer) megletProps.get("BatchSize") : 0); }
-    public byte[] getData() { return (byte[]) megletProps.get("Data"); }
-    public android.adservices.ondevicepersonalization.InferenceOutput getExpectedOutputStructure() { return (android.adservices.ondevicepersonalization.InferenceOutput) megletProps.get("ExpectedOutputStructure"); }
-    public java.lang.Object[] getInputData() { return (java.lang.Object[]) megletProps.get("InputData"); }
-    public android.adservices.ondevicepersonalization.InferenceInput.Params getParams() { return (android.adservices.ondevicepersonalization.InferenceInput.Params) megletProps.get("Params"); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public int getBatchSize() { return (meglerProps.get("BatchSize") instanceof Integer ? (Integer) meglerProps.get("BatchSize") : 0); }
+    public byte[] getData() { return (byte[]) meglerProps.get("Data"); }
+    public android.adservices.ondevicepersonalization.InferenceOutput getExpectedOutputStructure() { return (android.adservices.ondevicepersonalization.InferenceOutput) meglerProps.get("ExpectedOutputStructure"); }
+    public java.lang.Object[] getInputData() { return (java.lang.Object[]) meglerProps.get("InputData"); }
+    public android.adservices.ondevicepersonalization.InferenceInput.Params getParams() { return (android.adservices.ondevicepersonalization.InferenceInput.Params) meglerProps.get("Params"); }
     protected InferenceInput() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.adservices.ondevicepersonalization.InferenceInput.Params p0, byte[] p1) {}
         public Builder(android.adservices.ondevicepersonalization.InferenceInput.Params p0, java.lang.Object[] p1, android.adservices.ondevicepersonalization.InferenceOutput p2) {}
-        public android.adservices.ondevicepersonalization.InferenceInput build() { android.adservices.ondevicepersonalization.InferenceInput x = new android.adservices.ondevicepersonalization.InferenceInput(); x.megletProps.putAll(megletProps); return x; }
-        public android.adservices.ondevicepersonalization.InferenceInput.Builder setBatchSize(int p0) { megletProps.put("BatchSize", Integer.valueOf(p0)); return this; }
-        public android.adservices.ondevicepersonalization.InferenceInput.Builder setExpectedOutputStructure(android.adservices.ondevicepersonalization.InferenceOutput p0) { megletProps.put("ExpectedOutputStructure", p0); return this; }
-        public android.adservices.ondevicepersonalization.InferenceInput.Builder setInputData(byte[] p0) { megletProps.put("InputData", p0); return this; }
-        public android.adservices.ondevicepersonalization.InferenceInput.Builder setInputData(java.lang.Object[] p0) { megletProps.put("InputData", p0); return this; }
-        public android.adservices.ondevicepersonalization.InferenceInput.Builder setParams(android.adservices.ondevicepersonalization.InferenceInput.Params p0) { megletProps.put("Params", p0); return this; }
+        public android.adservices.ondevicepersonalization.InferenceInput build() { android.adservices.ondevicepersonalization.InferenceInput x = new android.adservices.ondevicepersonalization.InferenceInput(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.adservices.ondevicepersonalization.InferenceInput.Builder setBatchSize(int p0) { meglerProps.put("BatchSize", Integer.valueOf(p0)); return this; }
+        public android.adservices.ondevicepersonalization.InferenceInput.Builder setExpectedOutputStructure(android.adservices.ondevicepersonalization.InferenceOutput p0) { meglerProps.put("ExpectedOutputStructure", p0); return this; }
+        public android.adservices.ondevicepersonalization.InferenceInput.Builder setInputData(byte[] p0) { meglerProps.put("InputData", p0); return this; }
+        public android.adservices.ondevicepersonalization.InferenceInput.Builder setInputData(java.lang.Object[] p0) { meglerProps.put("InputData", p0); return this; }
+        public android.adservices.ondevicepersonalization.InferenceInput.Builder setParams(android.adservices.ondevicepersonalization.InferenceInput.Params p0) { meglerProps.put("Params", p0); return this; }
         Builder() { this((android.adservices.ondevicepersonalization.InferenceInput.Params) null, (byte[]) null); }
     }
     public static class Params {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int DELEGATE_CPU = 1;
         public static final int MODEL_TYPE_EXECUTORCH = 2;
         public static final int MODEL_TYPE_TENSORFLOW_LITE = 1;
         public Params(android.adservices.ondevicepersonalization.KeyValueStore p0, java.lang.String p1, int p2, int p3, int p4) {}
-        public int getDelegateType() { return (megletProps.get("DelegateType") instanceof Integer ? (Integer) megletProps.get("DelegateType") : 0); }
-        public android.adservices.ondevicepersonalization.KeyValueStore getKeyValueStore() { return (android.adservices.ondevicepersonalization.KeyValueStore) megletProps.get("KeyValueStore"); }
-        public java.lang.String getModelKey() { return (java.lang.String) megletProps.get("ModelKey"); }
-        public int getModelType() { return (megletProps.get("ModelType") instanceof Integer ? (Integer) megletProps.get("ModelType") : 0); }
-        public int getRecommendedNumThreads() { return (megletProps.get("RecommendedNumThreads") instanceof Integer ? (Integer) megletProps.get("RecommendedNumThreads") : 0); }
+        public int getDelegateType() { return (meglerProps.get("DelegateType") instanceof Integer ? (Integer) meglerProps.get("DelegateType") : 0); }
+        public android.adservices.ondevicepersonalization.KeyValueStore getKeyValueStore() { return (android.adservices.ondevicepersonalization.KeyValueStore) meglerProps.get("KeyValueStore"); }
+        public java.lang.String getModelKey() { return (java.lang.String) meglerProps.get("ModelKey"); }
+        public int getModelType() { return (meglerProps.get("ModelType") instanceof Integer ? (Integer) meglerProps.get("ModelType") : 0); }
+        public int getRecommendedNumThreads() { return (meglerProps.get("RecommendedNumThreads") instanceof Integer ? (Integer) meglerProps.get("RecommendedNumThreads") : 0); }
         Params() { this((android.adservices.ondevicepersonalization.KeyValueStore) null, (java.lang.String) null, (int) 0, (int) 0, (int) 0); }
         public static final class Builder {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public Builder(android.adservices.ondevicepersonalization.KeyValueStore p0, java.lang.String p1) {}
-            public android.adservices.ondevicepersonalization.InferenceInput.Params build() { android.adservices.ondevicepersonalization.InferenceInput.Params x = new android.adservices.ondevicepersonalization.InferenceInput.Params(); x.megletProps.putAll(megletProps); return x; }
-            public android.adservices.ondevicepersonalization.InferenceInput.Params.Builder setDelegateType(int p0) { megletProps.put("DelegateType", Integer.valueOf(p0)); return this; }
-            public android.adservices.ondevicepersonalization.InferenceInput.Params.Builder setKeyValueStore(android.adservices.ondevicepersonalization.KeyValueStore p0) { megletProps.put("KeyValueStore", p0); return this; }
-            public android.adservices.ondevicepersonalization.InferenceInput.Params.Builder setModelKey(java.lang.String p0) { megletProps.put("ModelKey", p0); return this; }
-            public android.adservices.ondevicepersonalization.InferenceInput.Params.Builder setModelType(int p0) { megletProps.put("ModelType", Integer.valueOf(p0)); return this; }
-            public android.adservices.ondevicepersonalization.InferenceInput.Params.Builder setRecommendedNumThreads(int p0) { megletProps.put("RecommendedNumThreads", Integer.valueOf(p0)); return this; }
+            public android.adservices.ondevicepersonalization.InferenceInput.Params build() { android.adservices.ondevicepersonalization.InferenceInput.Params x = new android.adservices.ondevicepersonalization.InferenceInput.Params(); x.meglerProps.putAll(meglerProps); return x; }
+            public android.adservices.ondevicepersonalization.InferenceInput.Params.Builder setDelegateType(int p0) { meglerProps.put("DelegateType", Integer.valueOf(p0)); return this; }
+            public android.adservices.ondevicepersonalization.InferenceInput.Params.Builder setKeyValueStore(android.adservices.ondevicepersonalization.KeyValueStore p0) { meglerProps.put("KeyValueStore", p0); return this; }
+            public android.adservices.ondevicepersonalization.InferenceInput.Params.Builder setModelKey(java.lang.String p0) { meglerProps.put("ModelKey", p0); return this; }
+            public android.adservices.ondevicepersonalization.InferenceInput.Params.Builder setModelType(int p0) { meglerProps.put("ModelType", Integer.valueOf(p0)); return this; }
+            public android.adservices.ondevicepersonalization.InferenceInput.Params.Builder setRecommendedNumThreads(int p0) { meglerProps.put("RecommendedNumThreads", Integer.valueOf(p0)); return this; }
             Builder() { this((android.adservices.ondevicepersonalization.KeyValueStore) null, (java.lang.String) null); }
         }
     }

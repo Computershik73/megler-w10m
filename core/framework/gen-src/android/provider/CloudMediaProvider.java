@@ -3,7 +3,7 @@ package android.provider;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class CloudMediaProvider extends android.content.ContentProvider {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public CloudMediaProvider() { super(); }
     public int delete(android.net.Uri p0, java.lang.String p1, java.lang.String[] p2) { return 0; }
     public java.lang.String getType(android.net.Uri p0) { return null; }
@@ -27,7 +27,7 @@ public abstract class CloudMediaProvider extends android.content.ContentProvider
     public android.database.Cursor query(android.net.Uri p0, java.lang.String[] p1, java.lang.String p2, java.lang.String[] p3, java.lang.String p4) { return null; }
     public int update(android.net.Uri p0, android.content.ContentValues p1, java.lang.String p2, java.lang.String[] p3) { return 0; }
     public static abstract class CloudMediaSurfaceController {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public CloudMediaSurfaceController() {}
         public abstract void onConfigChange(android.os.Bundle p0);
         public abstract void onDestroy();
@@ -41,7 +41,7 @@ public abstract class CloudMediaProvider extends android.content.ContentProvider
         public abstract void onSurfaceDestroyed(int p0);
     }
     public static abstract class CloudMediaSurfaceControllerWrapper extends android.provider.ICloudMediaSurfaceController.Stub {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public void onConfigChange(android.os.Bundle p0) {}
         public void onDestroy() {}
         public void onMediaPause(int p0) {}
@@ -55,7 +55,7 @@ public abstract class CloudMediaProvider extends android.content.ContentProvider
         protected CloudMediaSurfaceControllerWrapper() { super(); }
     }
     public static final class CloudMediaSurfaceStateChangedCallback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int PLAYBACK_STATE_BUFFERING = 1;
         public static final int PLAYBACK_STATE_COMPLETED = 5;
         public static final int PLAYBACK_STATE_ERROR_PERMANENT_FAILURE = 7;
@@ -64,7 +64,7 @@ public abstract class CloudMediaProvider extends android.content.ContentProvider
         public static final int PLAYBACK_STATE_PAUSED = 4;
         public static final int PLAYBACK_STATE_READY = 2;
         public static final int PLAYBACK_STATE_STARTED = 3;
-        public android.os.IBinder getIBinder() { return (android.os.IBinder) megletProps.get("IBinder"); }
+        public android.os.IBinder getIBinder() { return (android.os.IBinder) meglerProps.get("IBinder"); }
         public void setPlaybackState(int p0, int p1, android.os.Bundle p2) {}
         protected CloudMediaSurfaceStateChangedCallback() {}
     }

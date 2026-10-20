@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MediaSyncEvent implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int SYNC_EVENT_NONE = 0;
     public static final int SYNC_EVENT_PRESENTATION_COMPLETE = 1;
@@ -11,9 +11,9 @@ public class MediaSyncEvent implements android.os.Parcelable {
     public static android.media.MediaSyncEvent createEvent(int p0) { return new MediaSyncEvent(); }
     public static java.lang.String typeToString(int p0) { return null; }
     public int describeContents() { return 0; }
-    public int getAudioSessionId() { return (megletProps.get("AudioSessionId") instanceof Integer ? (Integer) megletProps.get("AudioSessionId") : 0); }
-    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
-    public android.media.MediaSyncEvent setAudioSessionId(int p0) { megletProps.put("AudioSessionId", Integer.valueOf(p0)); return this; }
+    public int getAudioSessionId() { return (meglerProps.get("AudioSessionId") instanceof Integer ? (Integer) meglerProps.get("AudioSessionId") : 0); }
+    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
+    public android.media.MediaSyncEvent setAudioSessionId(int p0) { meglerProps.put("AudioSessionId", Integer.valueOf(p0)); return this; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected MediaSyncEvent() {}
 }

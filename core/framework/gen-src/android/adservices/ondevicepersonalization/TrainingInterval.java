@@ -3,18 +3,18 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TrainingInterval {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int SCHEDULING_MODE_ONE_TIME = 1;
     public static final int SCHEDULING_MODE_RECURRENT = 2;
     public static java.lang.String schedulingModeToString(int p0) { return null; }
-    public java.time.Duration getMinimumInterval() { return (java.time.Duration) megletProps.get("MinimumInterval"); }
-    public int getSchedulingMode() { return (megletProps.get("SchedulingMode") instanceof Integer ? (Integer) megletProps.get("SchedulingMode") : 0); }
+    public java.time.Duration getMinimumInterval() { return (java.time.Duration) meglerProps.get("MinimumInterval"); }
+    public int getSchedulingMode() { return (meglerProps.get("SchedulingMode") instanceof Integer ? (Integer) meglerProps.get("SchedulingMode") : 0); }
     protected TrainingInterval() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.adservices.ondevicepersonalization.TrainingInterval build() { android.adservices.ondevicepersonalization.TrainingInterval x = new android.adservices.ondevicepersonalization.TrainingInterval(); x.megletProps.putAll(megletProps); return x; }
-        public android.adservices.ondevicepersonalization.TrainingInterval.Builder setMinimumInterval(java.time.Duration p0) { megletProps.put("MinimumInterval", p0); return this; }
-        public android.adservices.ondevicepersonalization.TrainingInterval.Builder setSchedulingMode(int p0) { megletProps.put("SchedulingMode", Integer.valueOf(p0)); return this; }
+        public android.adservices.ondevicepersonalization.TrainingInterval build() { android.adservices.ondevicepersonalization.TrainingInterval x = new android.adservices.ondevicepersonalization.TrainingInterval(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.adservices.ondevicepersonalization.TrainingInterval.Builder setMinimumInterval(java.time.Duration p0) { meglerProps.put("MinimumInterval", p0); return this; }
+        public android.adservices.ondevicepersonalization.TrainingInterval.Builder setSchedulingMode(int p0) { meglerProps.put("SchedulingMode", Integer.valueOf(p0)); return this; }
     }
 }

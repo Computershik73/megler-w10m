@@ -3,22 +3,22 @@ package android.view.autofill;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AutofillValue implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static android.view.autofill.AutofillValue forDate(long p0) { return new AutofillValue(); }
     public static android.view.autofill.AutofillValue forList(int p0) { return new AutofillValue(); }
     public static android.view.autofill.AutofillValue forText(java.lang.CharSequence p0) { return new AutofillValue(); }
     public static android.view.autofill.AutofillValue forToggle(boolean p0) { return new AutofillValue(); }
     public int describeContents() { return 0; }
-    public long getDateValue() { return (megletProps.get("DateValue") instanceof Long ? (Long) megletProps.get("DateValue") : 0L); }
-    public int getListValue() { return (megletProps.get("ListValue") instanceof Integer ? (Integer) megletProps.get("ListValue") : 0); }
-    public java.lang.CharSequence getTextValue() { return (java.lang.CharSequence) megletProps.get("TextValue"); }
-    public boolean getToggleValue() { return (megletProps.get("ToggleValue") instanceof Boolean ? (Boolean) megletProps.get("ToggleValue") : false); }
-    public boolean isDate() { return (megletProps.get("Date") instanceof Boolean ? (Boolean) megletProps.get("Date") : false); }
-    public boolean isEmpty() { return (megletProps.get("Empty") instanceof Boolean ? (Boolean) megletProps.get("Empty") : false); }
-    public boolean isList() { return (megletProps.get("List") instanceof Boolean ? (Boolean) megletProps.get("List") : false); }
-    public boolean isText() { return (megletProps.get("Text") instanceof Boolean ? (Boolean) megletProps.get("Text") : false); }
-    public boolean isToggle() { return (megletProps.get("Toggle") instanceof Boolean ? (Boolean) megletProps.get("Toggle") : false); }
+    public long getDateValue() { return (meglerProps.get("DateValue") instanceof Long ? (Long) meglerProps.get("DateValue") : 0L); }
+    public int getListValue() { return (meglerProps.get("ListValue") instanceof Integer ? (Integer) meglerProps.get("ListValue") : 0); }
+    public java.lang.CharSequence getTextValue() { return (java.lang.CharSequence) meglerProps.get("TextValue"); }
+    public boolean getToggleValue() { return (meglerProps.get("ToggleValue") instanceof Boolean ? (Boolean) meglerProps.get("ToggleValue") : false); }
+    public boolean isDate() { return (meglerProps.get("Date") instanceof Boolean ? (Boolean) meglerProps.get("Date") : false); }
+    public boolean isEmpty() { return (meglerProps.get("Empty") instanceof Boolean ? (Boolean) meglerProps.get("Empty") : false); }
+    public boolean isList() { return (meglerProps.get("List") instanceof Boolean ? (Boolean) meglerProps.get("List") : false); }
+    public boolean isText() { return (meglerProps.get("Text") instanceof Boolean ? (Boolean) meglerProps.get("Text") : false); }
+    public boolean isToggle() { return (meglerProps.get("Toggle") instanceof Boolean ? (Boolean) meglerProps.get("Toggle") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected AutofillValue() {}
 }

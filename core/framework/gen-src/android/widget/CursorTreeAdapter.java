@@ -3,7 +3,7 @@ package android.widget;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class CursorTreeAdapter extends android.widget.BaseExpandableListAdapter implements android.widget.Filterable, android.widget.CursorFilter.CursorFilterClient {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public CursorTreeAdapter(android.database.Cursor p0, android.content.Context p1) { super(); }
     public CursorTreeAdapter(android.database.Cursor p0, android.content.Context p1, boolean p2) { super(); }
     protected abstract void bindChildView(android.view.View p0, android.content.Context p1, android.database.Cursor p2, boolean p3);
@@ -15,11 +15,11 @@ public abstract class CursorTreeAdapter extends android.widget.BaseExpandableLis
     public android.view.View getChildView(int p0, int p1, boolean p2, android.view.View p3, android.view.ViewGroup p4) { return null; }
     public int getChildrenCount(int p0) { return 0; }
     protected abstract android.database.Cursor getChildrenCursor(android.database.Cursor p0);
-    public android.database.Cursor getCursor() { return (android.database.Cursor) megletProps.get("Cursor"); }
-    public android.widget.Filter getFilter() { return (android.widget.Filter) megletProps.get("Filter"); }
-    public android.widget.FilterQueryProvider getFilterQueryProvider() { return (android.widget.FilterQueryProvider) megletProps.get("FilterQueryProvider"); }
+    public android.database.Cursor getCursor() { return (android.database.Cursor) meglerProps.get("Cursor"); }
+    public android.widget.Filter getFilter() { return (android.widget.Filter) meglerProps.get("Filter"); }
+    public android.widget.FilterQueryProvider getFilterQueryProvider() { return (android.widget.FilterQueryProvider) meglerProps.get("FilterQueryProvider"); }
     public android.database.Cursor getGroup(int p0) { return null; }
-    public int getGroupCount() { return (megletProps.get("GroupCount") instanceof Integer ? (Integer) megletProps.get("GroupCount") : 0); }
+    public int getGroupCount() { return (meglerProps.get("GroupCount") instanceof Integer ? (Integer) meglerProps.get("GroupCount") : 0); }
     public long getGroupId(int p0) { return 0L; }
     public android.view.View getGroupView(int p0, boolean p1, android.view.View p2, android.view.ViewGroup p3) { return null; }
     public boolean hasStableIds() { return false; }
@@ -29,7 +29,7 @@ public abstract class CursorTreeAdapter extends android.widget.BaseExpandableLis
     public void notifyDataSetChanged(boolean p0) {}
     public android.database.Cursor runQueryOnBackgroundThread(java.lang.CharSequence p0) { return null; }
     public void setChildrenCursor(int p0, android.database.Cursor p1) {}
-    public void setFilterQueryProvider(android.widget.FilterQueryProvider p0) { megletProps.put("FilterQueryProvider", p0); }
-    public void setGroupCursor(android.database.Cursor p0) { megletProps.put("GroupCursor", p0); }
+    public void setFilterQueryProvider(android.widget.FilterQueryProvider p0) { meglerProps.put("FilterQueryProvider", p0); }
+    public void setGroupCursor(android.database.Cursor p0) { meglerProps.put("GroupCursor", p0); }
     CursorTreeAdapter() { this((android.database.Cursor) null, (android.content.Context) null); }
 }

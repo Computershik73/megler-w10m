@@ -3,39 +3,39 @@ package android.widget;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AnalogClock extends android.view.View {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public AnalogClock(android.content.Context p0) { super(p0); }
     public AnalogClock(android.content.Context p0, android.util.AttributeSet p1) { super(p0, p1); }
     public AnalogClock(android.content.Context p0, android.util.AttributeSet p1, int p2) { super(p0, p1, p2); }
     public AnalogClock(android.content.Context p0, android.util.AttributeSet p1, int p2, int p3) { super(p0, p1, p2, p3); }
-    public android.graphics.BlendMode getDialTintBlendMode() { return (android.graphics.BlendMode) megletProps.get("DialTintBlendMode"); }
-    public android.content.res.ColorStateList getDialTintList() { return (android.content.res.ColorStateList) megletProps.get("DialTintList"); }
-    public android.graphics.BlendMode getHourHandTintBlendMode() { return (android.graphics.BlendMode) megletProps.get("HourHandTintBlendMode"); }
-    public android.content.res.ColorStateList getHourHandTintList() { return (android.content.res.ColorStateList) megletProps.get("HourHandTintList"); }
-    public android.graphics.BlendMode getMinuteHandTintBlendMode() { return (android.graphics.BlendMode) megletProps.get("MinuteHandTintBlendMode"); }
-    public android.content.res.ColorStateList getMinuteHandTintList() { return (android.content.res.ColorStateList) megletProps.get("MinuteHandTintList"); }
-    public android.graphics.BlendMode getSecondHandTintBlendMode() { return (android.graphics.BlendMode) megletProps.get("SecondHandTintBlendMode"); }
-    public android.content.res.ColorStateList getSecondHandTintList() { return (android.content.res.ColorStateList) megletProps.get("SecondHandTintList"); }
-    public java.lang.String getTimeZone() { return (java.lang.String) megletProps.get("TimeZone"); }
+    public android.graphics.BlendMode getDialTintBlendMode() { return (android.graphics.BlendMode) meglerProps.get("DialTintBlendMode"); }
+    public android.content.res.ColorStateList getDialTintList() { return (android.content.res.ColorStateList) meglerProps.get("DialTintList"); }
+    public android.graphics.BlendMode getHourHandTintBlendMode() { return (android.graphics.BlendMode) meglerProps.get("HourHandTintBlendMode"); }
+    public android.content.res.ColorStateList getHourHandTintList() { return (android.content.res.ColorStateList) meglerProps.get("HourHandTintList"); }
+    public android.graphics.BlendMode getMinuteHandTintBlendMode() { return (android.graphics.BlendMode) meglerProps.get("MinuteHandTintBlendMode"); }
+    public android.content.res.ColorStateList getMinuteHandTintList() { return (android.content.res.ColorStateList) meglerProps.get("MinuteHandTintList"); }
+    public android.graphics.BlendMode getSecondHandTintBlendMode() { return (android.graphics.BlendMode) meglerProps.get("SecondHandTintBlendMode"); }
+    public android.content.res.ColorStateList getSecondHandTintList() { return (android.content.res.ColorStateList) meglerProps.get("SecondHandTintList"); }
+    public java.lang.String getTimeZone() { return (java.lang.String) meglerProps.get("TimeZone"); }
     protected java.time.Instant now() { return null; }
     protected void onTimeChanged() {}
-    public void setClockEventDelegate(android.widget.TextClock.ClockEventDelegate p0) { megletProps.put("ClockEventDelegate", p0); }
-    public void setDial(android.graphics.drawable.Icon p0) { megletProps.put("Dial", p0); }
-    public void setDialTintBlendMode(android.graphics.BlendMode p0) { megletProps.put("DialTintBlendMode", p0); }
-    public void setDialTintList(android.content.res.ColorStateList p0) { megletProps.put("DialTintList", p0); }
-    public void setHourHand(android.graphics.drawable.Icon p0) { megletProps.put("HourHand", p0); }
-    public void setHourHandTintBlendMode(android.graphics.BlendMode p0) { megletProps.put("HourHandTintBlendMode", p0); }
-    public void setHourHandTintList(android.content.res.ColorStateList p0) { megletProps.put("HourHandTintList", p0); }
-    public void setMinuteHand(android.graphics.drawable.Icon p0) { megletProps.put("MinuteHand", p0); }
-    public void setMinuteHandTintBlendMode(android.graphics.BlendMode p0) { megletProps.put("MinuteHandTintBlendMode", p0); }
-    public void setMinuteHandTintList(android.content.res.ColorStateList p0) { megletProps.put("MinuteHandTintList", p0); }
-    public void setSecondHand(android.graphics.drawable.Icon p0) { megletProps.put("SecondHand", p0); }
-    public void setSecondHandTintBlendMode(android.graphics.BlendMode p0) { megletProps.put("SecondHandTintBlendMode", p0); }
-    public void setSecondHandTintList(android.content.res.ColorStateList p0) { megletProps.put("SecondHandTintList", p0); }
-    public void setTimeZone(java.lang.String p0) { megletProps.put("TimeZone", p0); }
+    public void setClockEventDelegate(android.widget.TextClock.ClockEventDelegate p0) { meglerProps.put("ClockEventDelegate", p0); }
+    public void setDial(android.graphics.drawable.Icon p0) { meglerProps.put("Dial", p0); }
+    public void setDialTintBlendMode(android.graphics.BlendMode p0) { meglerProps.put("DialTintBlendMode", p0); }
+    public void setDialTintList(android.content.res.ColorStateList p0) { meglerProps.put("DialTintList", p0); }
+    public void setHourHand(android.graphics.drawable.Icon p0) { meglerProps.put("HourHand", p0); }
+    public void setHourHandTintBlendMode(android.graphics.BlendMode p0) { meglerProps.put("HourHandTintBlendMode", p0); }
+    public void setHourHandTintList(android.content.res.ColorStateList p0) { meglerProps.put("HourHandTintList", p0); }
+    public void setMinuteHand(android.graphics.drawable.Icon p0) { meglerProps.put("MinuteHand", p0); }
+    public void setMinuteHandTintBlendMode(android.graphics.BlendMode p0) { meglerProps.put("MinuteHandTintBlendMode", p0); }
+    public void setMinuteHandTintList(android.content.res.ColorStateList p0) { meglerProps.put("MinuteHandTintList", p0); }
+    public void setSecondHand(android.graphics.drawable.Icon p0) { meglerProps.put("SecondHand", p0); }
+    public void setSecondHandTintBlendMode(android.graphics.BlendMode p0) { meglerProps.put("SecondHandTintBlendMode", p0); }
+    public void setSecondHandTintList(android.content.res.ColorStateList p0) { meglerProps.put("SecondHandTintList", p0); }
+    public void setTimeZone(java.lang.String p0) { meglerProps.put("TimeZone", p0); }
     AnalogClock() { this((android.content.Context) null); }
     public static final class InspectionCompanion implements android.view.inspector.InspectionCompanion {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public InspectionCompanion() {}
         public void mapProperties(android.view.inspector.PropertyMapper p0) {}
         public void readProperties(android.widget.AnalogClock p0, android.view.inspector.PropertyReader p1) {}

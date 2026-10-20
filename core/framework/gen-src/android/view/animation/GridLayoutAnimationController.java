@@ -3,7 +3,7 @@ package android.view.animation;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class GridLayoutAnimationController extends android.view.animation.LayoutAnimationController {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int DIRECTION_BOTTOM_TO_TOP = 2;
     public static final int DIRECTION_HORIZONTAL_MASK = 1;
     public static final int DIRECTION_LEFT_TO_RIGHT = 0;
@@ -16,19 +16,19 @@ public class GridLayoutAnimationController extends android.view.animation.Layout
     public GridLayoutAnimationController(android.content.Context p0, android.util.AttributeSet p1) { super(p0, p1); }
     public GridLayoutAnimationController(android.view.animation.Animation p0) { super(p0); }
     public GridLayoutAnimationController(android.view.animation.Animation p0, float p1, float p2) { super((android.view.animation.Animation) null); }
-    public float getColumnDelay() { return (megletProps.get("ColumnDelay") instanceof Float ? (Float) megletProps.get("ColumnDelay") : 0f); }
+    public float getColumnDelay() { return (meglerProps.get("ColumnDelay") instanceof Float ? (Float) meglerProps.get("ColumnDelay") : 0f); }
     protected long getDelayForView(android.view.View p0) { return 0L; }
-    public int getDirection() { return (megletProps.get("Direction") instanceof Integer ? (Integer) megletProps.get("Direction") : 0); }
-    public int getDirectionPriority() { return (megletProps.get("DirectionPriority") instanceof Integer ? (Integer) megletProps.get("DirectionPriority") : 0); }
-    public float getRowDelay() { return (megletProps.get("RowDelay") instanceof Float ? (Float) megletProps.get("RowDelay") : 0f); }
-    public void setColumnDelay(float p0) { megletProps.put("ColumnDelay", Float.valueOf(p0)); }
-    public void setDirection(int p0) { megletProps.put("Direction", Integer.valueOf(p0)); }
-    public void setDirectionPriority(int p0) { megletProps.put("DirectionPriority", Integer.valueOf(p0)); }
-    public void setRowDelay(float p0) { megletProps.put("RowDelay", Float.valueOf(p0)); }
+    public int getDirection() { return (meglerProps.get("Direction") instanceof Integer ? (Integer) meglerProps.get("Direction") : 0); }
+    public int getDirectionPriority() { return (meglerProps.get("DirectionPriority") instanceof Integer ? (Integer) meglerProps.get("DirectionPriority") : 0); }
+    public float getRowDelay() { return (meglerProps.get("RowDelay") instanceof Float ? (Float) meglerProps.get("RowDelay") : 0f); }
+    public void setColumnDelay(float p0) { meglerProps.put("ColumnDelay", Float.valueOf(p0)); }
+    public void setDirection(int p0) { meglerProps.put("Direction", Integer.valueOf(p0)); }
+    public void setDirectionPriority(int p0) { meglerProps.put("DirectionPriority", Integer.valueOf(p0)); }
+    public void setRowDelay(float p0) { meglerProps.put("RowDelay", Float.valueOf(p0)); }
     public boolean willOverlap() { return false; }
     GridLayoutAnimationController() { this((android.view.animation.Animation) null); }
     public static class AnimationParameters extends android.view.animation.LayoutAnimationController.AnimationParameters {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public int column;
         public int columnsCount;
         public int row;

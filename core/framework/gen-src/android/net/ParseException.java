@@ -3,7 +3,7 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ParseException extends java.lang.RuntimeException {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public java.lang.String response;
     public ParseException(java.lang.String p0) { super(); }
     public ParseException(java.lang.String p0, java.lang.Throwable p1) { super(); }

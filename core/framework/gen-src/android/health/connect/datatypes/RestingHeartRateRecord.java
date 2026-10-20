@@ -3,20 +3,20 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class RestingHeartRateRecord extends android.health.connect.datatypes.InstantRecord {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.health.connect.datatypes.AggregationType BPM_AVG;
     public static android.health.connect.datatypes.AggregationType BPM_MAX;
     public static android.health.connect.datatypes.AggregationType BPM_MIN;
-    public long getBeatsPerMinute() { return (megletProps.get("BeatsPerMinute") instanceof Long ? (Long) megletProps.get("BeatsPerMinute") : 0L); }
+    public long getBeatsPerMinute() { return (meglerProps.get("BeatsPerMinute") instanceof Long ? (Long) meglerProps.get("BeatsPerMinute") : 0L); }
     public android.health.connect.internal.datatypes.RestingHeartRateRecordInternal toRecordInternal() { return null; }
     protected RestingHeartRateRecord() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.health.connect.datatypes.Metadata p0, java.time.Instant p1, long p2) {}
-        public android.health.connect.datatypes.RestingHeartRateRecord build() { android.health.connect.datatypes.RestingHeartRateRecord x = new android.health.connect.datatypes.RestingHeartRateRecord(); x.megletProps.putAll(megletProps); return x; }
+        public android.health.connect.datatypes.RestingHeartRateRecord build() { android.health.connect.datatypes.RestingHeartRateRecord x = new android.health.connect.datatypes.RestingHeartRateRecord(); x.meglerProps.putAll(meglerProps); return x; }
         public android.health.connect.datatypes.RestingHeartRateRecord buildWithoutValidation() { return null; }
         public android.health.connect.datatypes.RestingHeartRateRecord.Builder clearZoneOffset() { return this; }
-        public android.health.connect.datatypes.RestingHeartRateRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { megletProps.put("ZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.RestingHeartRateRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("ZoneOffset", p0); return this; }
         Builder() { this((android.health.connect.datatypes.Metadata) null, (java.time.Instant) null, (long) 0L); }
     }
 }

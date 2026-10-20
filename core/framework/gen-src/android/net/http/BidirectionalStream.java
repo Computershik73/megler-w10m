@@ -3,7 +3,7 @@ package android.net.http;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class BidirectionalStream {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int STREAM_PRIORITY_HIGHEST = 4;
     public static final int STREAM_PRIORITY_IDLE = 0;
     public static final int STREAM_PRIORITY_LOW = 2;

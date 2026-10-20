@@ -3,7 +3,7 @@ package android.app.blob;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class BlobStoreManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int COMMIT_RESULT_ERROR = 1;
     public static final int COMMIT_RESULT_SUCCESS = 0;
     public static final int INVALID_RES_ID = -1;
@@ -18,8 +18,8 @@ public class BlobStoreManager {
     public long createSession(android.app.blob.BlobHandle p0) { return 0L; }
     public void deleteBlob(android.app.blob.BlobInfo p0) {}
     public android.app.blob.LeaseInfo getLeaseInfo(android.app.blob.BlobHandle p0) { return null; }
-    public java.util.List getLeasedBlobs() { return (megletProps.get("LeasedBlobs") != null ? (java.util.List) megletProps.get("LeasedBlobs") : new java.util.ArrayList()); }
-    public long getRemainingLeaseQuotaBytes() { return (megletProps.get("RemainingLeaseQuotaBytes") instanceof Long ? (Long) megletProps.get("RemainingLeaseQuotaBytes") : 0L); }
+    public java.util.List getLeasedBlobs() { return (meglerProps.get("LeasedBlobs") != null ? (java.util.List) meglerProps.get("LeasedBlobs") : new java.util.ArrayList()); }
+    public long getRemainingLeaseQuotaBytes() { return (meglerProps.get("RemainingLeaseQuotaBytes") instanceof Long ? (Long) meglerProps.get("RemainingLeaseQuotaBytes") : 0L); }
     public android.os.ParcelFileDescriptor openBlob(android.app.blob.BlobHandle p0) { return null; }
     public android.app.blob.BlobStoreManager.Session openSession(long p0) { return null; }
     public java.util.List queryBlobsForUser(android.os.UserHandle p0) { return new java.util.ArrayList(); }
@@ -28,17 +28,17 @@ public class BlobStoreManager {
     public void waitForIdle(long p0) {}
     BlobStoreManager() { this((android.content.Context) null, (android.app.blob.IBlobStoreManager) null); }
     public static class Session implements java.io.Closeable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public void abandon() {}
         public void allowPackageAccess(java.lang.String p0, byte[] p1) {}
         public void allowPublicAccess() {}
         public void allowSameSignatureAccess() {}
         public void close() {}
         public void commit(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
-        public long getSize() { return (megletProps.get("Size") instanceof Long ? (Long) megletProps.get("Size") : 0L); }
+        public long getSize() { return (meglerProps.get("Size") instanceof Long ? (Long) meglerProps.get("Size") : 0L); }
         public boolean isPackageAccessAllowed(java.lang.String p0, byte[] p1) { return false; }
-        public boolean isPublicAccessAllowed() { return (megletProps.get("PublicAccessAllowed") instanceof Boolean ? (Boolean) megletProps.get("PublicAccessAllowed") : false); }
-        public boolean isSameSignatureAccessAllowed() { return (megletProps.get("SameSignatureAccessAllowed") instanceof Boolean ? (Boolean) megletProps.get("SameSignatureAccessAllowed") : false); }
+        public boolean isPublicAccessAllowed() { return (meglerProps.get("PublicAccessAllowed") instanceof Boolean ? (Boolean) meglerProps.get("PublicAccessAllowed") : false); }
+        public boolean isSameSignatureAccessAllowed() { return (meglerProps.get("SameSignatureAccessAllowed") instanceof Boolean ? (Boolean) meglerProps.get("SameSignatureAccessAllowed") : false); }
         public android.os.ParcelFileDescriptor openRead() { return null; }
         public android.os.ParcelFileDescriptor openWrite(long p0, long p1) { return null; }
         protected Session() {}

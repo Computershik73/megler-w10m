@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class IccOpenLogicalChannelResponse implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int INVALID_CHANNEL = -1;
     public static final int STATUS_MISSING_RESOURCE = 2;
@@ -12,9 +12,9 @@ public class IccOpenLogicalChannelResponse implements android.os.Parcelable {
     public static final int STATUS_UNKNOWN_ERROR = 4;
     public IccOpenLogicalChannelResponse(int p0, int p1, byte[] p2) {}
     public int describeContents() { return 0; }
-    public int getChannel() { return (megletProps.get("Channel") instanceof Integer ? (Integer) megletProps.get("Channel") : 0); }
-    public byte[] getSelectResponse() { return (byte[]) megletProps.get("SelectResponse"); }
-    public int getStatus() { return (megletProps.get("Status") instanceof Integer ? (Integer) megletProps.get("Status") : 0); }
+    public int getChannel() { return (meglerProps.get("Channel") instanceof Integer ? (Integer) meglerProps.get("Channel") : 0); }
+    public byte[] getSelectResponse() { return (byte[]) meglerProps.get("SelectResponse"); }
+    public int getStatus() { return (meglerProps.get("Status") instanceof Integer ? (Integer) meglerProps.get("Status") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     IccOpenLogicalChannelResponse() { this((int) 0, (int) 0, (byte[]) null); }
 }

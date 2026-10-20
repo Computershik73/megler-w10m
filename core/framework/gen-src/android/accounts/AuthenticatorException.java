@@ -3,7 +3,7 @@ package android.accounts;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AuthenticatorException extends android.accounts.AccountsException {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public AuthenticatorException() { super(); }
     public AuthenticatorException(java.lang.String p0) { super(p0); }
     public AuthenticatorException(java.lang.String p0, java.lang.Throwable p1) { super(p0, p1); }

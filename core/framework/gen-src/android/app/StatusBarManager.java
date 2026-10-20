@@ -3,7 +3,7 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class StatusBarManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_KEYGUARD_PRIVATE_NOTIFICATIONS_CHANGED = "android.app.action.KEYGUARD_PRIVATE_NOTIFICATIONS_CHANGED";
     public static java.util.Set ALL_SESSIONS;
     public static final int CAMERA_LAUNCH_SOURCE_LIFT_TRIGGER = 2;
@@ -83,9 +83,9 @@ public class StatusBarManager {
     public void expandNotificationsPanel() {}
     public void expandSettingsPanel() {}
     public void expandSettingsPanel(java.lang.String p0) {}
-    public android.app.StatusBarManager.DisableInfo getDisableInfo() { return (android.app.StatusBarManager.DisableInfo) megletProps.get("DisableInfo"); }
-    public int getLastSystemKey() { return (megletProps.get("LastSystemKey") instanceof Integer ? (Integer) megletProps.get("LastSystemKey") : 0); }
-    public int getNavBarMode() { return (megletProps.get("NavBarMode") instanceof Integer ? (Integer) megletProps.get("NavBarMode") : 0); }
+    public android.app.StatusBarManager.DisableInfo getDisableInfo() { return (android.app.StatusBarManager.DisableInfo) meglerProps.get("DisableInfo"); }
+    public int getLastSystemKey() { return (meglerProps.get("LastSystemKey") instanceof Integer ? (Integer) meglerProps.get("LastSystemKey") : 0); }
+    public int getNavBarMode() { return (meglerProps.get("NavBarMode") instanceof Integer ? (Integer) meglerProps.get("NavBarMode") : 0); }
     public void handleSystemKey(android.view.KeyEvent p0) {}
     public void logBlankMediaTitle(java.lang.String p0, int p1) {}
     public void registerNearbyMediaDevicesProvider(android.media.NearbyMediaDevicesProvider p0) {}
@@ -93,43 +93,43 @@ public class StatusBarManager {
     public void requestAddTileService(android.content.ComponentName p0, java.lang.CharSequence p1, android.graphics.drawable.Icon p2, java.util.concurrent.Executor p3, java.util.function.Consumer p4) {}
     public void requestTileServiceListeningState(android.content.ComponentName p0) {}
     public void sendNotificationFeedback(java.lang.String p0, android.os.Bundle p1) {}
-    public void setDisabledForSetup(boolean p0) { megletProps.put("DisabledForSetup", Boolean.valueOf(p0)); }
-    public void setExpansionDisabledForSimNetworkLock(boolean p0) { megletProps.put("ExpansionDisabledForSimNetworkLock", Boolean.valueOf(p0)); }
+    public void setDisabledForSetup(boolean p0) { meglerProps.put("DisabledForSetup", Boolean.valueOf(p0)); }
+    public void setExpansionDisabledForSimNetworkLock(boolean p0) { meglerProps.put("ExpansionDisabledForSimNetworkLock", Boolean.valueOf(p0)); }
     public void setIcon(java.lang.String p0, int p1, int p2, java.lang.String p3) {}
     public void setIconVisibility(java.lang.String p0, boolean p1) {}
-    public void setNavBarMode(int p0) { megletProps.put("NavBarMode", Integer.valueOf(p0)); }
+    public void setNavBarMode(int p0) { meglerProps.put("NavBarMode", Integer.valueOf(p0)); }
     public void togglePanel() {}
     public void unregisterNearbyMediaDevicesProvider(android.media.NearbyMediaDevicesProvider p0) {}
     public void updateMediaTapToTransferReceiverDisplay(int p0, android.media.MediaRoute2Info p1, android.graphics.drawable.Icon p2, java.lang.CharSequence p3) {}
     public void updateMediaTapToTransferSenderDisplay(int p0, android.media.MediaRoute2Info p1, java.util.concurrent.Executor p2, java.lang.Runnable p3) {}
     protected StatusBarManager() {}
     public static final class DisableInfo {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public DisableInfo() {}
         public DisableInfo(int p0, int p1) {}
         public boolean areAllComponentsDisabled() { return false; }
         public boolean areAllComponentsEnabled() { return false; }
         public boolean areNotificationIconsDisabled() { return false; }
         public boolean areSystemIconsDisabled() { return false; }
-        public boolean isClockDisabled() { return (megletProps.get("ClockDisabled") instanceof Boolean ? (Boolean) megletProps.get("ClockDisabled") : false); }
-        public boolean isNavigateToHomeDisabled() { return (megletProps.get("NavigateToHomeDisabled") instanceof Boolean ? (Boolean) megletProps.get("NavigateToHomeDisabled") : false); }
-        public boolean isNotificationPeekingDisabled() { return (megletProps.get("NotificationPeekingDisabled") instanceof Boolean ? (Boolean) megletProps.get("NotificationPeekingDisabled") : false); }
-        public boolean isQuickSettingsDisabled() { return (megletProps.get("QuickSettingsDisabled") instanceof Boolean ? (Boolean) megletProps.get("QuickSettingsDisabled") : false); }
-        public boolean isRecentsDisabled() { return (megletProps.get("RecentsDisabled") instanceof Boolean ? (Boolean) megletProps.get("RecentsDisabled") : false); }
-        public boolean isRotationSuggestionDisabled() { return (megletProps.get("RotationSuggestionDisabled") instanceof Boolean ? (Boolean) megletProps.get("RotationSuggestionDisabled") : false); }
-        public boolean isSearchDisabled() { return (megletProps.get("SearchDisabled") instanceof Boolean ? (Boolean) megletProps.get("SearchDisabled") : false); }
-        public boolean isStatusBarExpansionDisabled() { return (megletProps.get("StatusBarExpansionDisabled") instanceof Boolean ? (Boolean) megletProps.get("StatusBarExpansionDisabled") : false); }
-        public void setClockDisabled(boolean p0) { megletProps.put("ClockDisabled", Boolean.valueOf(p0)); }
+        public boolean isClockDisabled() { return (meglerProps.get("ClockDisabled") instanceof Boolean ? (Boolean) meglerProps.get("ClockDisabled") : false); }
+        public boolean isNavigateToHomeDisabled() { return (meglerProps.get("NavigateToHomeDisabled") instanceof Boolean ? (Boolean) meglerProps.get("NavigateToHomeDisabled") : false); }
+        public boolean isNotificationPeekingDisabled() { return (meglerProps.get("NotificationPeekingDisabled") instanceof Boolean ? (Boolean) meglerProps.get("NotificationPeekingDisabled") : false); }
+        public boolean isQuickSettingsDisabled() { return (meglerProps.get("QuickSettingsDisabled") instanceof Boolean ? (Boolean) meglerProps.get("QuickSettingsDisabled") : false); }
+        public boolean isRecentsDisabled() { return (meglerProps.get("RecentsDisabled") instanceof Boolean ? (Boolean) meglerProps.get("RecentsDisabled") : false); }
+        public boolean isRotationSuggestionDisabled() { return (meglerProps.get("RotationSuggestionDisabled") instanceof Boolean ? (Boolean) meglerProps.get("RotationSuggestionDisabled") : false); }
+        public boolean isSearchDisabled() { return (meglerProps.get("SearchDisabled") instanceof Boolean ? (Boolean) meglerProps.get("SearchDisabled") : false); }
+        public boolean isStatusBarExpansionDisabled() { return (meglerProps.get("StatusBarExpansionDisabled") instanceof Boolean ? (Boolean) meglerProps.get("StatusBarExpansionDisabled") : false); }
+        public void setClockDisabled(boolean p0) { meglerProps.put("ClockDisabled", Boolean.valueOf(p0)); }
         public void setDisableAll() {}
         public void setEnableAll() {}
-        public void setNagivationHomeDisabled(boolean p0) { megletProps.put("NagivationHomeDisabled", Boolean.valueOf(p0)); }
-        public void setNotificationIconsDisabled(boolean p0) { megletProps.put("NotificationIconsDisabled", Boolean.valueOf(p0)); }
-        public void setNotificationPeekingDisabled(boolean p0) { megletProps.put("NotificationPeekingDisabled", Boolean.valueOf(p0)); }
-        public void setQuickSettingsDisabled(boolean p0) { megletProps.put("QuickSettingsDisabled", Boolean.valueOf(p0)); }
-        public void setRecentsDisabled(boolean p0) { megletProps.put("RecentsDisabled", Boolean.valueOf(p0)); }
-        public void setSearchDisabled(boolean p0) { megletProps.put("SearchDisabled", Boolean.valueOf(p0)); }
-        public void setStatusBarExpansionDisabled(boolean p0) { megletProps.put("StatusBarExpansionDisabled", Boolean.valueOf(p0)); }
-        public void setSystemIconsDisabled(boolean p0) { megletProps.put("SystemIconsDisabled", Boolean.valueOf(p0)); }
+        public void setNagivationHomeDisabled(boolean p0) { meglerProps.put("NagivationHomeDisabled", Boolean.valueOf(p0)); }
+        public void setNotificationIconsDisabled(boolean p0) { meglerProps.put("NotificationIconsDisabled", Boolean.valueOf(p0)); }
+        public void setNotificationPeekingDisabled(boolean p0) { meglerProps.put("NotificationPeekingDisabled", Boolean.valueOf(p0)); }
+        public void setQuickSettingsDisabled(boolean p0) { meglerProps.put("QuickSettingsDisabled", Boolean.valueOf(p0)); }
+        public void setRecentsDisabled(boolean p0) { meglerProps.put("RecentsDisabled", Boolean.valueOf(p0)); }
+        public void setSearchDisabled(boolean p0) { meglerProps.put("SearchDisabled", Boolean.valueOf(p0)); }
+        public void setStatusBarExpansionDisabled(boolean p0) { meglerProps.put("StatusBarExpansionDisabled", Boolean.valueOf(p0)); }
+        public void setSystemIconsDisabled(boolean p0) { meglerProps.put("SystemIconsDisabled", Boolean.valueOf(p0)); }
         public android.util.Pair toFlags() { return null; }
     }
 }

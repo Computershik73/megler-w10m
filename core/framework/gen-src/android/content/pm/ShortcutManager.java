@@ -3,7 +3,7 @@ package android.content.pm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ShortcutManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int FLAG_MATCH_CACHED = 8;
     public static final int FLAG_MATCH_DYNAMIC = 2;
     public static final int FLAG_MATCH_MANIFEST = 1;
@@ -17,21 +17,21 @@ public class ShortcutManager {
     public void disableShortcuts(java.util.List p0, java.lang.CharSequence p1) {}
     public void disableShortcuts(java.util.List p0, java.lang.String p1) {}
     public void enableShortcuts(java.util.List p0) {}
-    public java.util.List getDynamicShortcuts() { return (megletProps.get("DynamicShortcuts") != null ? (java.util.List) megletProps.get("DynamicShortcuts") : new java.util.ArrayList()); }
-    public int getIconMaxHeight() { return (megletProps.get("IconMaxHeight") instanceof Integer ? (Integer) megletProps.get("IconMaxHeight") : 0); }
-    public int getIconMaxWidth() { return (megletProps.get("IconMaxWidth") instanceof Integer ? (Integer) megletProps.get("IconMaxWidth") : 0); }
-    public java.util.List getManifestShortcuts() { return (megletProps.get("ManifestShortcuts") != null ? (java.util.List) megletProps.get("ManifestShortcuts") : new java.util.ArrayList()); }
-    public int getMaxShortcutCountForActivity() { return (megletProps.get("MaxShortcutCountForActivity") instanceof Integer ? (Integer) megletProps.get("MaxShortcutCountForActivity") : 0); }
-    public int getMaxShortcutCountPerActivity() { return (megletProps.get("MaxShortcutCountPerActivity") instanceof Integer ? (Integer) megletProps.get("MaxShortcutCountPerActivity") : 0); }
-    public java.util.List getPinnedShortcuts() { return (megletProps.get("PinnedShortcuts") != null ? (java.util.List) megletProps.get("PinnedShortcuts") : new java.util.ArrayList()); }
-    public long getRateLimitResetTime() { return (megletProps.get("RateLimitResetTime") instanceof Long ? (Long) megletProps.get("RateLimitResetTime") : 0L); }
-    public int getRemainingCallCount() { return (megletProps.get("RemainingCallCount") instanceof Integer ? (Integer) megletProps.get("RemainingCallCount") : 0); }
+    public java.util.List getDynamicShortcuts() { return (meglerProps.get("DynamicShortcuts") != null ? (java.util.List) meglerProps.get("DynamicShortcuts") : new java.util.ArrayList()); }
+    public int getIconMaxHeight() { return (meglerProps.get("IconMaxHeight") instanceof Integer ? (Integer) meglerProps.get("IconMaxHeight") : 0); }
+    public int getIconMaxWidth() { return (meglerProps.get("IconMaxWidth") instanceof Integer ? (Integer) meglerProps.get("IconMaxWidth") : 0); }
+    public java.util.List getManifestShortcuts() { return (meglerProps.get("ManifestShortcuts") != null ? (java.util.List) meglerProps.get("ManifestShortcuts") : new java.util.ArrayList()); }
+    public int getMaxShortcutCountForActivity() { return (meglerProps.get("MaxShortcutCountForActivity") instanceof Integer ? (Integer) meglerProps.get("MaxShortcutCountForActivity") : 0); }
+    public int getMaxShortcutCountPerActivity() { return (meglerProps.get("MaxShortcutCountPerActivity") instanceof Integer ? (Integer) meglerProps.get("MaxShortcutCountPerActivity") : 0); }
+    public java.util.List getPinnedShortcuts() { return (meglerProps.get("PinnedShortcuts") != null ? (java.util.List) meglerProps.get("PinnedShortcuts") : new java.util.ArrayList()); }
+    public long getRateLimitResetTime() { return (meglerProps.get("RateLimitResetTime") instanceof Long ? (Long) meglerProps.get("RateLimitResetTime") : 0L); }
+    public int getRemainingCallCount() { return (meglerProps.get("RemainingCallCount") instanceof Integer ? (Integer) meglerProps.get("RemainingCallCount") : 0); }
     public java.util.List getShareTargets(android.content.IntentFilter p0) { return new java.util.ArrayList(); }
     public java.util.List getShortcuts(int p0) { return new java.util.ArrayList(); }
     public boolean hasShareTargets(java.lang.String p0) { return false; }
     protected int injectMyUserId() { return 0; }
-    public boolean isRateLimitingActive() { return (megletProps.get("RateLimitingActive") instanceof Boolean ? (Boolean) megletProps.get("RateLimitingActive") : false); }
-    public boolean isRequestPinShortcutSupported() { return (megletProps.get("RequestPinShortcutSupported") instanceof Boolean ? (Boolean) megletProps.get("RequestPinShortcutSupported") : false); }
+    public boolean isRateLimitingActive() { return (meglerProps.get("RateLimitingActive") instanceof Boolean ? (Boolean) meglerProps.get("RateLimitingActive") : false); }
+    public boolean isRequestPinShortcutSupported() { return (meglerProps.get("RequestPinShortcutSupported") instanceof Boolean ? (Boolean) meglerProps.get("RequestPinShortcutSupported") : false); }
     public void onApplicationActive(java.lang.String p0, int p1) {}
     public void pushDynamicShortcut(android.content.pm.ShortcutInfo p0) {}
     public void removeAllDynamicShortcuts() {}
@@ -43,12 +43,12 @@ public class ShortcutManager {
     public boolean updateShortcuts(java.util.List p0) { return false; }
     ShortcutManager() { this((android.content.Context) null); }
     public static final class ShareShortcutInfo implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public ShareShortcutInfo(android.content.pm.ShortcutInfo p0, android.content.ComponentName p1) {}
         public int describeContents() { return 0; }
-        public android.content.pm.ShortcutInfo getShortcutInfo() { return (android.content.pm.ShortcutInfo) megletProps.get("ShortcutInfo"); }
-        public android.content.ComponentName getTargetComponent() { return (android.content.ComponentName) megletProps.get("TargetComponent"); }
+        public android.content.pm.ShortcutInfo getShortcutInfo() { return (android.content.pm.ShortcutInfo) meglerProps.get("ShortcutInfo"); }
+        public android.content.ComponentName getTargetComponent() { return (android.content.ComponentName) meglerProps.get("TargetComponent"); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         ShareShortcutInfo() { this((android.content.pm.ShortcutInfo) null, (android.content.ComponentName) null); }
     }

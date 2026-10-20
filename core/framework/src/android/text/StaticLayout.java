@@ -127,7 +127,7 @@ public class StaticLayout extends Layout {
                     done = true;
                     break;
                 }
-                if (mEllipsize != null && mEllipsize != TextUtils.TruncateAt.MARQUEE && mMaxLines == 1 && meglet.TextRuns.measure(text, lineStart, contentEnd, paint) > mEllipsizedWidth) {
+                if (mEllipsize != null && mEllipsize != TextUtils.TruncateAt.MARQUEE && mMaxLines == 1 && megler.TextRuns.measure(text, lineStart, contentEnd, paint) > mEllipsizedWidth) {
                     ellipsizeLine(mLineCount - 1, lineStart, contentEnd, paint);
                 }
                 lineStart = next;
@@ -162,7 +162,7 @@ public class StaticLayout extends Layout {
         int n = start;
         float w = 0;
         while (n < end) {
-            float cw = meglet.TextRuns.measure(t, start, n + 1, paint);
+            float cw = megler.TextRuns.measure(t, start, n + 1, paint);
             if (cw + ell > avail) break;
             n++;
         }
@@ -177,8 +177,8 @@ public class StaticLayout extends Layout {
             String s = text.subSequence(start, end).toString();
             int tab = s.indexOf('\t');
             if (tab < 0) {
-                int n = meglet.Gfx.txBreak(s, 0, s.length(), avail + 0.5f, paint.mP, paint.megletFace(), true);
-                if (n <= 0) n = Math.max(1, meglet.Gfx.txBreak(s, 0, s.length(), avail + 0.5f, paint.mP, paint.megletFace(), false));
+                int n = megler.Gfx.txBreak(s, 0, s.length(), avail + 0.5f, paint.mP, paint.meglerFace(), true);
+                if (n <= 0) n = Math.max(1, megler.Gfx.txBreak(s, 0, s.length(), avail + 0.5f, paint.mP, paint.meglerFace(), false));
                 return start + Math.min(n, s.length());
             }
         }
@@ -186,7 +186,7 @@ public class StaticLayout extends Layout {
         int lastSpace = -1, i = start;
         while (i < end) {
             char c = text.charAt(i);
-            float w = meglet.TextRuns.measure(text, start, i + 1, paint);
+            float w = megler.TextRuns.measure(text, start, i + 1, paint);
             if (w > avail && c != ' ') {
                 if (lastSpace >= start) return lastSpace + 1;
                 return Math.max(start + 1, i);

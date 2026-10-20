@@ -3,8 +3,8 @@ package android.net.eap;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class EapInfo {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     protected EapInfo(int p0) {}
-    public int getEapMethodType() { return (megletProps.get("EapMethodType") instanceof Integer ? (Integer) megletProps.get("EapMethodType") : 0); }
+    public int getEapMethodType() { return (meglerProps.get("EapMethodType") instanceof Integer ? (Integer) meglerProps.get("EapMethodType") : 0); }
     EapInfo() { this((int) 0); }
 }

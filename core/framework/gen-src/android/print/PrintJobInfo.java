@@ -3,7 +3,7 @@ package android.print;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PrintJobInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int STATE_ANY = -1;
     public static final int STATE_ANY_ACTIVE = -3;
@@ -21,54 +21,54 @@ public final class PrintJobInfo implements android.os.Parcelable {
     public static java.lang.String stateToString(int p0) { return null; }
     public int describeContents() { return 0; }
     public int getAdvancedIntOption(java.lang.String p0) { return 0; }
-    public android.os.Bundle getAdvancedOptions() { return (android.os.Bundle) megletProps.get("AdvancedOptions"); }
+    public android.os.Bundle getAdvancedOptions() { return (android.os.Bundle) meglerProps.get("AdvancedOptions"); }
     public java.lang.String getAdvancedStringOption(java.lang.String p0) { return null; }
-    public int getAppId() { return (megletProps.get("AppId") instanceof Integer ? (Integer) megletProps.get("AppId") : 0); }
-    public android.print.PrintAttributes getAttributes() { return (android.print.PrintAttributes) megletProps.get("Attributes"); }
-    public int getCopies() { return (megletProps.get("Copies") instanceof Integer ? (Integer) megletProps.get("Copies") : 0); }
-    public long getCreationTime() { return (megletProps.get("CreationTime") instanceof Long ? (Long) megletProps.get("CreationTime") : 0L); }
-    public android.print.PrintDocumentInfo getDocumentInfo() { return (android.print.PrintDocumentInfo) megletProps.get("DocumentInfo"); }
-    public android.print.PrintJobId getId() { return (android.print.PrintJobId) megletProps.get("Id"); }
-    public java.lang.String getLabel() { return (java.lang.String) megletProps.get("Label"); }
-    public android.print.PageRange[] getPages() { return (android.print.PageRange[]) megletProps.get("Pages"); }
-    public android.print.PrinterId getPrinterId() { return (android.print.PrinterId) megletProps.get("PrinterId"); }
-    public java.lang.String getPrinterName() { return (java.lang.String) megletProps.get("PrinterName"); }
-    public float getProgress() { return (megletProps.get("Progress") instanceof Float ? (Float) megletProps.get("Progress") : 0f); }
-    public int getState() { return (megletProps.get("State") instanceof Integer ? (Integer) megletProps.get("State") : 0); }
+    public int getAppId() { return (meglerProps.get("AppId") instanceof Integer ? (Integer) meglerProps.get("AppId") : 0); }
+    public android.print.PrintAttributes getAttributes() { return (android.print.PrintAttributes) meglerProps.get("Attributes"); }
+    public int getCopies() { return (meglerProps.get("Copies") instanceof Integer ? (Integer) meglerProps.get("Copies") : 0); }
+    public long getCreationTime() { return (meglerProps.get("CreationTime") instanceof Long ? (Long) meglerProps.get("CreationTime") : 0L); }
+    public android.print.PrintDocumentInfo getDocumentInfo() { return (android.print.PrintDocumentInfo) meglerProps.get("DocumentInfo"); }
+    public android.print.PrintJobId getId() { return (android.print.PrintJobId) meglerProps.get("Id"); }
+    public java.lang.String getLabel() { return (java.lang.String) meglerProps.get("Label"); }
+    public android.print.PageRange[] getPages() { return (android.print.PageRange[]) meglerProps.get("Pages"); }
+    public android.print.PrinterId getPrinterId() { return (android.print.PrinterId) meglerProps.get("PrinterId"); }
+    public java.lang.String getPrinterName() { return (java.lang.String) meglerProps.get("PrinterName"); }
+    public float getProgress() { return (meglerProps.get("Progress") instanceof Float ? (Float) meglerProps.get("Progress") : 0f); }
+    public int getState() { return (meglerProps.get("State") instanceof Integer ? (Integer) meglerProps.get("State") : 0); }
     public java.lang.CharSequence getStatus(android.content.pm.PackageManager p0) { return null; }
-    public java.lang.String getTag() { return (java.lang.String) megletProps.get("Tag"); }
+    public java.lang.String getTag() { return (java.lang.String) meglerProps.get("Tag"); }
     public boolean hasAdvancedOption(java.lang.String p0) { return false; }
-    public boolean isCancelling() { return (megletProps.get("Cancelling") instanceof Boolean ? (Boolean) megletProps.get("Cancelling") : false); }
-    public void setAdvancedOptions(android.os.Bundle p0) { megletProps.put("AdvancedOptions", p0); }
-    public void setAppId(int p0) { megletProps.put("AppId", Integer.valueOf(p0)); }
-    public void setAttributes(android.print.PrintAttributes p0) { megletProps.put("Attributes", p0); }
-    public void setCancelling(boolean p0) { megletProps.put("Cancelling", Boolean.valueOf(p0)); }
-    public void setCopies(int p0) { megletProps.put("Copies", Integer.valueOf(p0)); }
-    public void setCreationTime(long p0) { megletProps.put("CreationTime", Long.valueOf(p0)); }
-    public void setDocumentInfo(android.print.PrintDocumentInfo p0) { megletProps.put("DocumentInfo", p0); }
-    public void setId(android.print.PrintJobId p0) { megletProps.put("Id", p0); }
-    public void setLabel(java.lang.String p0) { megletProps.put("Label", p0); }
-    public void setPages(android.print.PageRange[] p0) { megletProps.put("Pages", p0); }
-    public void setPrinterId(android.print.PrinterId p0) { megletProps.put("PrinterId", p0); }
-    public void setPrinterName(java.lang.String p0) { megletProps.put("PrinterName", p0); }
-    public void setProgress(float p0) { megletProps.put("Progress", Float.valueOf(p0)); }
-    public void setState(int p0) { megletProps.put("State", Integer.valueOf(p0)); }
+    public boolean isCancelling() { return (meglerProps.get("Cancelling") instanceof Boolean ? (Boolean) meglerProps.get("Cancelling") : false); }
+    public void setAdvancedOptions(android.os.Bundle p0) { meglerProps.put("AdvancedOptions", p0); }
+    public void setAppId(int p0) { meglerProps.put("AppId", Integer.valueOf(p0)); }
+    public void setAttributes(android.print.PrintAttributes p0) { meglerProps.put("Attributes", p0); }
+    public void setCancelling(boolean p0) { meglerProps.put("Cancelling", Boolean.valueOf(p0)); }
+    public void setCopies(int p0) { meglerProps.put("Copies", Integer.valueOf(p0)); }
+    public void setCreationTime(long p0) { meglerProps.put("CreationTime", Long.valueOf(p0)); }
+    public void setDocumentInfo(android.print.PrintDocumentInfo p0) { meglerProps.put("DocumentInfo", p0); }
+    public void setId(android.print.PrintJobId p0) { meglerProps.put("Id", p0); }
+    public void setLabel(java.lang.String p0) { meglerProps.put("Label", p0); }
+    public void setPages(android.print.PageRange[] p0) { meglerProps.put("Pages", p0); }
+    public void setPrinterId(android.print.PrinterId p0) { meglerProps.put("PrinterId", p0); }
+    public void setPrinterName(java.lang.String p0) { meglerProps.put("PrinterName", p0); }
+    public void setProgress(float p0) { meglerProps.put("Progress", Float.valueOf(p0)); }
+    public void setState(int p0) { meglerProps.put("State", Integer.valueOf(p0)); }
     public void setStatus(int p0, java.lang.CharSequence p1) {}
-    public void setStatus(java.lang.CharSequence p0) { megletProps.put("Status", p0); }
-    public void setTag(java.lang.String p0) { megletProps.put("Tag", p0); }
+    public void setStatus(java.lang.CharSequence p0) { meglerProps.put("Status", p0); }
+    public void setTag(java.lang.String p0) { meglerProps.put("Tag", p0); }
     public boolean shouldStayAwake() { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.print.PrintJobInfo p0) {}
-        public android.print.PrintJobInfo build() { android.print.PrintJobInfo x = new android.print.PrintJobInfo(); x.megletProps.putAll(megletProps); return x; }
+        public android.print.PrintJobInfo build() { android.print.PrintJobInfo x = new android.print.PrintJobInfo(); x.meglerProps.putAll(meglerProps); return x; }
         public void putAdvancedOption(java.lang.String p0, int p1) {}
         public void putAdvancedOption(java.lang.String p0, java.lang.String p1) {}
-        public void setAttributes(android.print.PrintAttributes p0) { megletProps.put("Attributes", p0); }
-        public void setCopies(int p0) { megletProps.put("Copies", Integer.valueOf(p0)); }
-        public void setPages(android.print.PageRange[] p0) { megletProps.put("Pages", p0); }
-        public void setProgress(float p0) { megletProps.put("Progress", Float.valueOf(p0)); }
-        public void setStatus(java.lang.CharSequence p0) { megletProps.put("Status", p0); }
+        public void setAttributes(android.print.PrintAttributes p0) { meglerProps.put("Attributes", p0); }
+        public void setCopies(int p0) { meglerProps.put("Copies", Integer.valueOf(p0)); }
+        public void setPages(android.print.PageRange[] p0) { meglerProps.put("Pages", p0); }
+        public void setProgress(float p0) { meglerProps.put("Progress", Float.valueOf(p0)); }
+        public void setStatus(java.lang.CharSequence p0) { meglerProps.put("Status", p0); }
         Builder() { this((android.print.PrintJobInfo) null); }
     }
 }

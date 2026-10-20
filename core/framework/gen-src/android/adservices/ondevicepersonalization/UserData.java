@@ -3,32 +3,32 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class UserData implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public java.util.Map getAppInfos() { return (megletProps.get("AppInfos") != null ? (java.util.Map) megletProps.get("AppInfos") : new java.util.HashMap()); }
-    public long getAvailableStorageBytes() { return (megletProps.get("AvailableStorageBytes") instanceof Long ? (Long) megletProps.get("AvailableStorageBytes") : 0L); }
-    public int getBatteryPercentage() { return (megletProps.get("BatteryPercentage") instanceof Integer ? (Integer) megletProps.get("BatteryPercentage") : 0); }
-    public java.lang.String getCarrier() { return (java.lang.String) megletProps.get("Carrier"); }
-    public int getDataNetworkType() { return (megletProps.get("DataNetworkType") instanceof Integer ? (Integer) megletProps.get("DataNetworkType") : 0); }
-    public android.net.NetworkCapabilities getNetworkCapabilities() { return (android.net.NetworkCapabilities) megletProps.get("NetworkCapabilities"); }
-    public int getOrientation() { return (megletProps.get("Orientation") instanceof Integer ? (Integer) megletProps.get("Orientation") : 0); }
-    public java.time.Duration getTimezoneUtcOffset() { return (java.time.Duration) megletProps.get("TimezoneUtcOffset"); }
-    public int getTimezoneUtcOffsetMins() { return (megletProps.get("TimezoneUtcOffsetMins") instanceof Integer ? (Integer) megletProps.get("TimezoneUtcOffsetMins") : 0); }
+    public java.util.Map getAppInfos() { return (meglerProps.get("AppInfos") != null ? (java.util.Map) meglerProps.get("AppInfos") : new java.util.HashMap()); }
+    public long getAvailableStorageBytes() { return (meglerProps.get("AvailableStorageBytes") instanceof Long ? (Long) meglerProps.get("AvailableStorageBytes") : 0L); }
+    public int getBatteryPercentage() { return (meglerProps.get("BatteryPercentage") instanceof Integer ? (Integer) meglerProps.get("BatteryPercentage") : 0); }
+    public java.lang.String getCarrier() { return (java.lang.String) meglerProps.get("Carrier"); }
+    public int getDataNetworkType() { return (meglerProps.get("DataNetworkType") instanceof Integer ? (Integer) meglerProps.get("DataNetworkType") : 0); }
+    public android.net.NetworkCapabilities getNetworkCapabilities() { return (android.net.NetworkCapabilities) meglerProps.get("NetworkCapabilities"); }
+    public int getOrientation() { return (meglerProps.get("Orientation") instanceof Integer ? (Integer) meglerProps.get("Orientation") : 0); }
+    public java.time.Duration getTimezoneUtcOffset() { return (java.time.Duration) meglerProps.get("TimezoneUtcOffset"); }
+    public int getTimezoneUtcOffsetMins() { return (meglerProps.get("TimezoneUtcOffsetMins") instanceof Integer ? (Integer) meglerProps.get("TimezoneUtcOffsetMins") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected UserData() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public android.adservices.ondevicepersonalization.UserData.Builder addAppInfo(java.lang.String p0, android.adservices.ondevicepersonalization.AppInfo p1) { return this; }
-        public android.adservices.ondevicepersonalization.UserData build() { android.adservices.ondevicepersonalization.UserData x = new android.adservices.ondevicepersonalization.UserData(); x.megletProps.putAll(megletProps); return x; }
-        public android.adservices.ondevicepersonalization.UserData.Builder setAppInfos(java.util.Map p0) { megletProps.put("AppInfos", p0); return this; }
-        public android.adservices.ondevicepersonalization.UserData.Builder setAvailableStorageBytes(long p0) { megletProps.put("AvailableStorageBytes", Long.valueOf(p0)); return this; }
-        public android.adservices.ondevicepersonalization.UserData.Builder setBatteryPercentage(int p0) { megletProps.put("BatteryPercentage", Integer.valueOf(p0)); return this; }
-        public android.adservices.ondevicepersonalization.UserData.Builder setCarrier(java.lang.String p0) { megletProps.put("Carrier", p0); return this; }
-        public android.adservices.ondevicepersonalization.UserData.Builder setDataNetworkType(int p0) { megletProps.put("DataNetworkType", Integer.valueOf(p0)); return this; }
-        public android.adservices.ondevicepersonalization.UserData.Builder setNetworkCapabilities(android.net.NetworkCapabilities p0) { megletProps.put("NetworkCapabilities", p0); return this; }
-        public android.adservices.ondevicepersonalization.UserData.Builder setOrientation(int p0) { megletProps.put("Orientation", Integer.valueOf(p0)); return this; }
-        public android.adservices.ondevicepersonalization.UserData.Builder setTimezoneUtcOffsetMins(int p0) { megletProps.put("TimezoneUtcOffsetMins", Integer.valueOf(p0)); return this; }
+        public android.adservices.ondevicepersonalization.UserData build() { android.adservices.ondevicepersonalization.UserData x = new android.adservices.ondevicepersonalization.UserData(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.adservices.ondevicepersonalization.UserData.Builder setAppInfos(java.util.Map p0) { meglerProps.put("AppInfos", p0); return this; }
+        public android.adservices.ondevicepersonalization.UserData.Builder setAvailableStorageBytes(long p0) { meglerProps.put("AvailableStorageBytes", Long.valueOf(p0)); return this; }
+        public android.adservices.ondevicepersonalization.UserData.Builder setBatteryPercentage(int p0) { meglerProps.put("BatteryPercentage", Integer.valueOf(p0)); return this; }
+        public android.adservices.ondevicepersonalization.UserData.Builder setCarrier(java.lang.String p0) { meglerProps.put("Carrier", p0); return this; }
+        public android.adservices.ondevicepersonalization.UserData.Builder setDataNetworkType(int p0) { meglerProps.put("DataNetworkType", Integer.valueOf(p0)); return this; }
+        public android.adservices.ondevicepersonalization.UserData.Builder setNetworkCapabilities(android.net.NetworkCapabilities p0) { meglerProps.put("NetworkCapabilities", p0); return this; }
+        public android.adservices.ondevicepersonalization.UserData.Builder setOrientation(int p0) { meglerProps.put("Orientation", Integer.valueOf(p0)); return this; }
+        public android.adservices.ondevicepersonalization.UserData.Builder setTimezoneUtcOffsetMins(int p0) { meglerProps.put("TimezoneUtcOffsetMins", Integer.valueOf(p0)); return this; }
     }
 }

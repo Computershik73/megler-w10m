@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ToneGenerator {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int MAX_VOLUME = 100;
     public static final int MIN_VOLUME = 0;
     public static final int TONE_CDMA_ABBR_ALERT = 97;
@@ -108,7 +108,7 @@ public class ToneGenerator {
     public static final int TONE_UNKNOWN = -1;
     public ToneGenerator(int p0, int p1) {}
     protected void finalize() {}
-    public int getAudioSessionId() { return (megletProps.get("AudioSessionId") instanceof Integer ? (Integer) megletProps.get("AudioSessionId") : 0); }
+    public int getAudioSessionId() { return (meglerProps.get("AudioSessionId") instanceof Integer ? (Integer) meglerProps.get("AudioSessionId") : 0); }
     public void release() {}
     public boolean startTone(int p0) { return false; }
     public boolean startTone(int p0, int p1) { return false; }

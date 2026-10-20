@@ -3,7 +3,7 @@ package android.service.notification;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ZenPolicy implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int CHANNEL_POLICY_NONE = 2;
     public static final int CHANNEL_POLICY_PRIORITY = 1;
     public static final int CHANNEL_POLICY_UNSET = 0;
@@ -68,27 +68,27 @@ public final class ZenPolicy implements android.os.Parcelable {
     public android.service.notification.ZenPolicy copy() { return new android.service.notification.ZenPolicy(); }
     public int describeContents() { return 0; }
     public void dumpDebug(android.util.proto.ProtoOutputStream p0, long p1) {}
-    public int getAllowedChannels() { return (megletProps.get("AllowedChannels") instanceof Integer ? (Integer) megletProps.get("AllowedChannels") : 0); }
-    public int getPriorityCallSenders() { return (megletProps.get("PriorityCallSenders") instanceof Integer ? (Integer) megletProps.get("PriorityCallSenders") : 0); }
-    public int getPriorityCategoryAlarms() { return (megletProps.get("PriorityCategoryAlarms") instanceof Integer ? (Integer) megletProps.get("PriorityCategoryAlarms") : 0); }
-    public int getPriorityCategoryCalls() { return (megletProps.get("PriorityCategoryCalls") instanceof Integer ? (Integer) megletProps.get("PriorityCategoryCalls") : 0); }
-    public int getPriorityCategoryConversations() { return (megletProps.get("PriorityCategoryConversations") instanceof Integer ? (Integer) megletProps.get("PriorityCategoryConversations") : 0); }
-    public int getPriorityCategoryEvents() { return (megletProps.get("PriorityCategoryEvents") instanceof Integer ? (Integer) megletProps.get("PriorityCategoryEvents") : 0); }
-    public int getPriorityCategoryMedia() { return (megletProps.get("PriorityCategoryMedia") instanceof Integer ? (Integer) megletProps.get("PriorityCategoryMedia") : 0); }
-    public int getPriorityCategoryMessages() { return (megletProps.get("PriorityCategoryMessages") instanceof Integer ? (Integer) megletProps.get("PriorityCategoryMessages") : 0); }
-    public int getPriorityCategoryReminders() { return (megletProps.get("PriorityCategoryReminders") instanceof Integer ? (Integer) megletProps.get("PriorityCategoryReminders") : 0); }
-    public int getPriorityCategoryRepeatCallers() { return (megletProps.get("PriorityCategoryRepeatCallers") instanceof Integer ? (Integer) megletProps.get("PriorityCategoryRepeatCallers") : 0); }
-    public int getPriorityCategorySystem() { return (megletProps.get("PriorityCategorySystem") instanceof Integer ? (Integer) megletProps.get("PriorityCategorySystem") : 0); }
-    public int getPriorityChannelsAllowed() { return (megletProps.get("PriorityChannelsAllowed") instanceof Integer ? (Integer) megletProps.get("PriorityChannelsAllowed") : 0); }
-    public int getPriorityConversationSenders() { return (megletProps.get("PriorityConversationSenders") instanceof Integer ? (Integer) megletProps.get("PriorityConversationSenders") : 0); }
-    public int getPriorityMessageSenders() { return (megletProps.get("PriorityMessageSenders") instanceof Integer ? (Integer) megletProps.get("PriorityMessageSenders") : 0); }
-    public int getVisualEffectAmbient() { return (megletProps.get("VisualEffectAmbient") instanceof Integer ? (Integer) megletProps.get("VisualEffectAmbient") : 0); }
-    public int getVisualEffectBadge() { return (megletProps.get("VisualEffectBadge") instanceof Integer ? (Integer) megletProps.get("VisualEffectBadge") : 0); }
-    public int getVisualEffectFullScreenIntent() { return (megletProps.get("VisualEffectFullScreenIntent") instanceof Integer ? (Integer) megletProps.get("VisualEffectFullScreenIntent") : 0); }
-    public int getVisualEffectLights() { return (megletProps.get("VisualEffectLights") instanceof Integer ? (Integer) megletProps.get("VisualEffectLights") : 0); }
-    public int getVisualEffectNotificationList() { return (megletProps.get("VisualEffectNotificationList") instanceof Integer ? (Integer) megletProps.get("VisualEffectNotificationList") : 0); }
-    public int getVisualEffectPeek() { return (megletProps.get("VisualEffectPeek") instanceof Integer ? (Integer) megletProps.get("VisualEffectPeek") : 0); }
-    public int getVisualEffectStatusBar() { return (megletProps.get("VisualEffectStatusBar") instanceof Integer ? (Integer) megletProps.get("VisualEffectStatusBar") : 0); }
+    public int getAllowedChannels() { return (meglerProps.get("AllowedChannels") instanceof Integer ? (Integer) meglerProps.get("AllowedChannels") : 0); }
+    public int getPriorityCallSenders() { return (meglerProps.get("PriorityCallSenders") instanceof Integer ? (Integer) meglerProps.get("PriorityCallSenders") : 0); }
+    public int getPriorityCategoryAlarms() { return (meglerProps.get("PriorityCategoryAlarms") instanceof Integer ? (Integer) meglerProps.get("PriorityCategoryAlarms") : 0); }
+    public int getPriorityCategoryCalls() { return (meglerProps.get("PriorityCategoryCalls") instanceof Integer ? (Integer) meglerProps.get("PriorityCategoryCalls") : 0); }
+    public int getPriorityCategoryConversations() { return (meglerProps.get("PriorityCategoryConversations") instanceof Integer ? (Integer) meglerProps.get("PriorityCategoryConversations") : 0); }
+    public int getPriorityCategoryEvents() { return (meglerProps.get("PriorityCategoryEvents") instanceof Integer ? (Integer) meglerProps.get("PriorityCategoryEvents") : 0); }
+    public int getPriorityCategoryMedia() { return (meglerProps.get("PriorityCategoryMedia") instanceof Integer ? (Integer) meglerProps.get("PriorityCategoryMedia") : 0); }
+    public int getPriorityCategoryMessages() { return (meglerProps.get("PriorityCategoryMessages") instanceof Integer ? (Integer) meglerProps.get("PriorityCategoryMessages") : 0); }
+    public int getPriorityCategoryReminders() { return (meglerProps.get("PriorityCategoryReminders") instanceof Integer ? (Integer) meglerProps.get("PriorityCategoryReminders") : 0); }
+    public int getPriorityCategoryRepeatCallers() { return (meglerProps.get("PriorityCategoryRepeatCallers") instanceof Integer ? (Integer) meglerProps.get("PriorityCategoryRepeatCallers") : 0); }
+    public int getPriorityCategorySystem() { return (meglerProps.get("PriorityCategorySystem") instanceof Integer ? (Integer) meglerProps.get("PriorityCategorySystem") : 0); }
+    public int getPriorityChannelsAllowed() { return (meglerProps.get("PriorityChannelsAllowed") instanceof Integer ? (Integer) meglerProps.get("PriorityChannelsAllowed") : 0); }
+    public int getPriorityConversationSenders() { return (meglerProps.get("PriorityConversationSenders") instanceof Integer ? (Integer) meglerProps.get("PriorityConversationSenders") : 0); }
+    public int getPriorityMessageSenders() { return (meglerProps.get("PriorityMessageSenders") instanceof Integer ? (Integer) meglerProps.get("PriorityMessageSenders") : 0); }
+    public int getVisualEffectAmbient() { return (meglerProps.get("VisualEffectAmbient") instanceof Integer ? (Integer) meglerProps.get("VisualEffectAmbient") : 0); }
+    public int getVisualEffectBadge() { return (meglerProps.get("VisualEffectBadge") instanceof Integer ? (Integer) meglerProps.get("VisualEffectBadge") : 0); }
+    public int getVisualEffectFullScreenIntent() { return (meglerProps.get("VisualEffectFullScreenIntent") instanceof Integer ? (Integer) meglerProps.get("VisualEffectFullScreenIntent") : 0); }
+    public int getVisualEffectLights() { return (meglerProps.get("VisualEffectLights") instanceof Integer ? (Integer) meglerProps.get("VisualEffectLights") : 0); }
+    public int getVisualEffectNotificationList() { return (meglerProps.get("VisualEffectNotificationList") instanceof Integer ? (Integer) meglerProps.get("VisualEffectNotificationList") : 0); }
+    public int getVisualEffectPeek() { return (meglerProps.get("VisualEffectPeek") instanceof Integer ? (Integer) meglerProps.get("VisualEffectPeek") : 0); }
+    public int getVisualEffectStatusBar() { return (meglerProps.get("VisualEffectStatusBar") instanceof Integer ? (Integer) meglerProps.get("VisualEffectStatusBar") : 0); }
     public boolean isCategoryAllowed(int p0, boolean p1) { return false; }
     public boolean isVisualEffectAllowed(int p0, boolean p1) { return false; }
     public android.service.notification.ZenPolicy overwrittenWith(android.service.notification.ZenPolicy p0) { return this; }
@@ -97,7 +97,7 @@ public final class ZenPolicy implements android.os.Parcelable {
     public byte[] toProto() { return null; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.service.notification.ZenPolicy p0) {}
         public android.service.notification.ZenPolicy.Builder allowAlarms(boolean p0) { return this; }
@@ -113,7 +113,7 @@ public final class ZenPolicy implements android.os.Parcelable {
         public android.service.notification.ZenPolicy.Builder allowReminders(boolean p0) { return this; }
         public android.service.notification.ZenPolicy.Builder allowRepeatCallers(boolean p0) { return this; }
         public android.service.notification.ZenPolicy.Builder allowSystem(boolean p0) { return this; }
-        public android.service.notification.ZenPolicy build() { android.service.notification.ZenPolicy x = new android.service.notification.ZenPolicy(); x.megletProps.putAll(megletProps); return x; }
+        public android.service.notification.ZenPolicy build() { android.service.notification.ZenPolicy x = new android.service.notification.ZenPolicy(); x.meglerProps.putAll(meglerProps); return x; }
         public android.service.notification.ZenPolicy.Builder disallowAllSounds() { return this; }
         public android.service.notification.ZenPolicy.Builder hideAllVisualEffects() { return this; }
         public android.service.notification.ZenPolicy.Builder showAllVisualEffects() { return this; }

@@ -73,7 +73,7 @@ public class WebViewLibraryLoader {
      */
     public static int loadNativeLibrary(ClassLoader clazzLoader, String libraryFileName) {
         synchronized (WebViewLibraryLoader.class) {
-            // Meglet: no zygote has reserved the space; it is reserved now, once (see the top).
+            // Megler: no zygote has reserved the space; it is reserved now, once (see the top).
             if (!sAddressSpaceReserved) reserveAddressSpaceInZygote();
         }
         if (!sAddressSpaceReserved) {

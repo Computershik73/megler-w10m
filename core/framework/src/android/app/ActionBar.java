@@ -10,7 +10,7 @@ public abstract class ActionBar {
     public interface OnNavigationListener { boolean onNavigationItemSelected(int pos, long id); }
     public static class LayoutParams extends android.view.ViewGroup.MarginLayoutParams {
         public int gravity;
-        public LayoutParams(android.content.Context c, android.util.AttributeSet a) { super(c, a); android.content.res.TypedArray t = c.obtainStyledAttributes(a, meglet.S.FrameLayout_Layout); gravity = t.getInt(meglet.S.FrameLayout_Layout_layout_gravity, android.view.Gravity.NO_GRAVITY); t.recycle(); }
+        public LayoutParams(android.content.Context c, android.util.AttributeSet a) { super(c, a); android.content.res.TypedArray t = c.obtainStyledAttributes(a, megler.S.FrameLayout_Layout); gravity = t.getInt(megler.S.FrameLayout_Layout_layout_gravity, android.view.Gravity.NO_GRAVITY); t.recycle(); }
         public LayoutParams(android.view.ViewGroup.MarginLayoutParams o) { super(o); }
         public LayoutParams(int w, int h) { super(w, h); } public LayoutParams(int w, int h, int g) { super(w, h); gravity = g; }
         public LayoutParams(int g) { this(WRAP_CONTENT, MATCH_PARENT, g); } public LayoutParams(LayoutParams o) { super(o); gravity = o.gravity; }

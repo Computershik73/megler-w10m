@@ -3,15 +3,15 @@ package android.nfc;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class NdefMessage implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public NdefMessage(android.nfc.NdefRecord p0, android.nfc.NdefRecord[] p1) {}
     public NdefMessage(byte[] p0) {}
     public NdefMessage(android.nfc.NdefRecord[] p0) {}
     public int describeContents() { return 0; }
     public void dumpDebug(android.util.proto.ProtoOutputStream p0) {}
-    public int getByteArrayLength() { return (megletProps.get("ByteArrayLength") instanceof Integer ? (Integer) megletProps.get("ByteArrayLength") : 0); }
-    public android.nfc.NdefRecord[] getRecords() { return (android.nfc.NdefRecord[]) megletProps.get("Records"); }
+    public int getByteArrayLength() { return (meglerProps.get("ByteArrayLength") instanceof Integer ? (Integer) meglerProps.get("ByteArrayLength") : 0); }
+    public android.nfc.NdefRecord[] getRecords() { return (android.nfc.NdefRecord[]) meglerProps.get("Records"); }
     public byte[] toByteArray() { return null; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     NdefMessage() { this((byte[]) null); }

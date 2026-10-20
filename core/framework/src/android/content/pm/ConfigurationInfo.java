@@ -24,8 +24,8 @@ public class ConfigurationInfo implements android.os.Parcelable {
         }
         public ConfigurationInfo[] newArray(int size) { return new ConfigurationInfo[size]; }
     };
-    /** Meglet's device. */
-    public static ConfigurationInfo megletDevice() {
+    /** Megler's device. */
+    public static ConfigurationInfo meglerDevice() {
         ConfigurationInfo c = new ConfigurationInfo();
         c.reqGlEsVersion = 0x00030002;
         c.reqTouchScreen = android.content.res.Configuration.TOUCHSCREEN_FINGER;

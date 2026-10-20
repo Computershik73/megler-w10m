@@ -3,7 +3,7 @@ package android.speech.tts;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class TextToSpeechService extends android.app.Service {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public TextToSpeechService() { super(); }
     public android.os.IBinder onBind(android.content.Intent p0) { return null; }
     public java.lang.String onGetDefaultVoiceNameFor(java.lang.String p0, java.lang.String p1, java.lang.String p2) { return null; }

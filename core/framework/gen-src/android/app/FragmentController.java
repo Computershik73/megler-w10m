@@ -3,7 +3,7 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class FragmentController {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.app.FragmentController createController(android.app.FragmentHostCallback p0) { return new FragmentController(); }
     public void attachHost(android.app.Fragment p0) {}
     public void dispatchActivityCreated() {}
@@ -32,8 +32,8 @@ public class FragmentController {
     public void dumpLoaders(java.lang.String p0, java.io.FileDescriptor p1, java.io.PrintWriter p2, java.lang.String[] p3) {}
     public boolean execPendingActions() { return false; }
     public android.app.Fragment findFragmentByWho(java.lang.String p0) { return null; }
-    public android.app.FragmentManager getFragmentManager() { return (android.app.FragmentManager) megletProps.get("FragmentManager"); }
-    public android.app.LoaderManager getLoaderManager() { return (android.app.LoaderManager) megletProps.get("LoaderManager"); }
+    public android.app.FragmentManager getFragmentManager() { return (android.app.FragmentManager) meglerProps.get("FragmentManager"); }
+    public android.app.LoaderManager getLoaderManager() { return (android.app.LoaderManager) meglerProps.get("LoaderManager"); }
     public void noteStateNotSaved() {}
     public android.view.View onCreateView(android.view.View p0, java.lang.String p1, android.content.Context p2, android.util.AttributeSet p3) { return null; }
     public void reportLoaderStart() {}

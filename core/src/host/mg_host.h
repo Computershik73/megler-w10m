@@ -373,8 +373,8 @@ bool mg_path_space(const char *path, u64 *total, u64 *available);
  * Windows.Storage's broker gives out real file handles for them.
  *
  * Such a file has a host path all the same: MG_FOREIGN_PREFIX, the number of
- * a root, and a path below it. "meglet-link:/2/Camera Roll/a.jpg" is a file of
- * root 2, and "meglet-link:/2" that root itself. Every function above that
+ * a root, and a path below it. "megler-link:/2/Camera Roll/a.jpg" is a file of
+ * root 2, and "megler-link:/2" that root itself. Every function above that
  * takes a path takes one of these. Instead of opening by path it asks
  * whoever was registered here for the operating system's own handle and goes
  * on with that, so reading, writing, mapping and listing are the same code
@@ -394,7 +394,7 @@ bool mg_path_space(const char *path, u64 *total, u64 *available);
  * A rename between a foreign path and an ordinary one, either way, is
  * MG_E_XDEV: two file systems, as far as anything above can tell.
  */
-#define MG_FOREIGN_PREFIX "meglet-link:/"
+#define MG_FOREIGN_PREFIX "megler-link:/"
 
 enum {
     MG_FOREIGN_FILE = 0,               /* a file, to read and write: MG_E_ISDIR for a directory */

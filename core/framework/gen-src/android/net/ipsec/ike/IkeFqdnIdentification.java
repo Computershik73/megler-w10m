@@ -3,13 +3,13 @@ package android.net.ipsec.ike;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class IkeFqdnIdentification extends android.net.ipsec.ike.IkeIdentification {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public java.lang.String fqdn;
     public IkeFqdnIdentification(java.lang.String p0) { super((int) 0); }
     public IkeFqdnIdentification(byte[] p0) { super((int) 0); }
     public static android.net.ipsec.ike.IkeFqdnIdentification fromPersistableBundle(android.os.PersistableBundle p0) { return new IkeFqdnIdentification(); }
-    public byte[] getEncodedIdData() { return (byte[]) megletProps.get("EncodedIdData"); }
-    public java.lang.String getIdTypeString() { return (java.lang.String) megletProps.get("IdTypeString"); }
+    public byte[] getEncodedIdData() { return (byte[]) meglerProps.get("EncodedIdData"); }
+    public java.lang.String getIdTypeString() { return (java.lang.String) meglerProps.get("IdTypeString"); }
     public android.os.PersistableBundle toPersistableBundle() { return null; }
     public void validateEndCertIdOrThrow(java.security.cert.X509Certificate p0) {}
     IkeFqdnIdentification() { this((java.lang.String) null); }

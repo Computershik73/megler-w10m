@@ -3,13 +3,13 @@ package android.hardware.camera2;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TotalCaptureResult extends android.hardware.camera2.CaptureResult {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public TotalCaptureResult(android.hardware.camera2.impl.CameraMetadataNative p0, int p1) { super(p0, p1); }
     public TotalCaptureResult(java.lang.String p0, android.hardware.camera2.impl.CameraMetadataNative p1, android.hardware.camera2.CaptureRequest p2, int p3, long p4, java.util.List p5, int p6, android.hardware.camera2.impl.PhysicalCaptureResultInfo[] p7) { super((android.hardware.camera2.impl.CameraMetadataNative) null, (int) 0); }
     public TotalCaptureResult(java.lang.String p0, android.hardware.camera2.impl.CameraMetadataNative p1, android.hardware.camera2.CaptureRequest p2, android.hardware.camera2.impl.CaptureResultExtras p3, java.util.List p4, int p5, android.hardware.camera2.impl.PhysicalCaptureResultInfo[] p6) { super((android.hardware.camera2.impl.CameraMetadataNative) null, (int) 0); }
-    public java.util.List getPartialResults() { return (megletProps.get("PartialResults") != null ? (java.util.List) megletProps.get("PartialResults") : new java.util.ArrayList()); }
-    public java.util.Map getPhysicalCameraResults() { return (megletProps.get("PhysicalCameraResults") != null ? (java.util.Map) megletProps.get("PhysicalCameraResults") : new java.util.HashMap()); }
-    public java.util.Map getPhysicalCameraTotalResults() { return (megletProps.get("PhysicalCameraTotalResults") != null ? (java.util.Map) megletProps.get("PhysicalCameraTotalResults") : new java.util.HashMap()); }
-    public int getSessionId() { return (megletProps.get("SessionId") instanceof Integer ? (Integer) megletProps.get("SessionId") : 0); }
+    public java.util.List getPartialResults() { return (meglerProps.get("PartialResults") != null ? (java.util.List) meglerProps.get("PartialResults") : new java.util.ArrayList()); }
+    public java.util.Map getPhysicalCameraResults() { return (meglerProps.get("PhysicalCameraResults") != null ? (java.util.Map) meglerProps.get("PhysicalCameraResults") : new java.util.HashMap()); }
+    public java.util.Map getPhysicalCameraTotalResults() { return (meglerProps.get("PhysicalCameraTotalResults") != null ? (java.util.Map) meglerProps.get("PhysicalCameraTotalResults") : new java.util.HashMap()); }
+    public int getSessionId() { return (meglerProps.get("SessionId") instanceof Integer ? (Integer) meglerProps.get("SessionId") : 0); }
     TotalCaptureResult() { this((android.hardware.camera2.impl.CameraMetadataNative) null, (int) 0); }
 }

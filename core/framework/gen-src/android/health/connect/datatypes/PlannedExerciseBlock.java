@@ -3,21 +3,21 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PlannedExerciseBlock {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public java.lang.CharSequence getDescription() { return (java.lang.CharSequence) megletProps.get("Description"); }
-    public int getRepetitions() { return (megletProps.get("Repetitions") instanceof Integer ? (Integer) megletProps.get("Repetitions") : 0); }
-    public java.util.List getSteps() { return (megletProps.get("Steps") != null ? (java.util.List) megletProps.get("Steps") : new java.util.ArrayList()); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public java.lang.CharSequence getDescription() { return (java.lang.CharSequence) meglerProps.get("Description"); }
+    public int getRepetitions() { return (meglerProps.get("Repetitions") instanceof Integer ? (Integer) meglerProps.get("Repetitions") : 0); }
+    public java.util.List getSteps() { return (meglerProps.get("Steps") != null ? (java.util.List) meglerProps.get("Steps") : new java.util.ArrayList()); }
     public android.health.connect.internal.datatypes.PlannedExerciseBlockInternal toInternalObject() { return null; }
     protected PlannedExerciseBlock() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(int p0) {}
         public android.health.connect.datatypes.PlannedExerciseBlock.Builder addStep(android.health.connect.datatypes.PlannedExerciseStep p0) { return this; }
-        public android.health.connect.datatypes.PlannedExerciseBlock build() { android.health.connect.datatypes.PlannedExerciseBlock x = new android.health.connect.datatypes.PlannedExerciseBlock(); x.megletProps.putAll(megletProps); return x; }
+        public android.health.connect.datatypes.PlannedExerciseBlock build() { android.health.connect.datatypes.PlannedExerciseBlock x = new android.health.connect.datatypes.PlannedExerciseBlock(); x.meglerProps.putAll(meglerProps); return x; }
         public android.health.connect.datatypes.PlannedExerciseBlock.Builder clearSteps() { return this; }
-        public android.health.connect.datatypes.PlannedExerciseBlock.Builder setDescription(java.lang.CharSequence p0) { megletProps.put("Description", p0); return this; }
-        public android.health.connect.datatypes.PlannedExerciseBlock.Builder setRepetitions(int p0) { megletProps.put("Repetitions", Integer.valueOf(p0)); return this; }
-        public android.health.connect.datatypes.PlannedExerciseBlock.Builder setSteps(java.util.List p0) { megletProps.put("Steps", p0); return this; }
+        public android.health.connect.datatypes.PlannedExerciseBlock.Builder setDescription(java.lang.CharSequence p0) { meglerProps.put("Description", p0); return this; }
+        public android.health.connect.datatypes.PlannedExerciseBlock.Builder setRepetitions(int p0) { meglerProps.put("Repetitions", Integer.valueOf(p0)); return this; }
+        public android.health.connect.datatypes.PlannedExerciseBlock.Builder setSteps(java.util.List p0) { meglerProps.put("Steps", p0); return this; }
         Builder() { this((int) 0); }
     }
 }

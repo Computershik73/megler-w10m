@@ -3,15 +3,15 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AppInfo {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public android.graphics.Bitmap getIcon() { return (android.graphics.Bitmap) megletProps.get("Icon"); }
-    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
-    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public android.graphics.Bitmap getIcon() { return (android.graphics.Bitmap) meglerProps.get("Icon"); }
+    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
+    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
     protected AppInfo() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(java.lang.String p0, java.lang.String p1, android.graphics.Bitmap p2) {}
-        public android.health.connect.datatypes.AppInfo build() { android.health.connect.datatypes.AppInfo x = new android.health.connect.datatypes.AppInfo(); x.megletProps.putAll(megletProps); return x; }
+        public android.health.connect.datatypes.AppInfo build() { android.health.connect.datatypes.AppInfo x = new android.health.connect.datatypes.AppInfo(); x.meglerProps.putAll(meglerProps); return x; }
         Builder() { this((java.lang.String) null, (java.lang.String) null, (android.graphics.Bitmap) null); }
     }
 }

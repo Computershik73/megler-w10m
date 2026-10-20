@@ -2,14 +2,14 @@ package android.os;
 
 public final class SystemClock {
     private SystemClock() {}
-    public static long uptimeMillis() { return meglet.Native.uptimeNanos() / 1000000L; }
-    public static long elapsedRealtime() { return meglet.Native.uptimeNanos() / 1000000L; }
-    public static long elapsedRealtimeNanos() { return meglet.Native.uptimeNanos(); }
+    public static long uptimeMillis() { return megler.Native.uptimeNanos() / 1000000L; }
+    public static long elapsedRealtime() { return megler.Native.uptimeNanos() / 1000000L; }
+    public static long elapsedRealtimeNanos() { return megler.Native.uptimeNanos(); }
     public static long currentThreadTimeMillis() { return uptimeMillis(); }
     public static void sleep(long ms) { try { Thread.sleep(ms); } catch (InterruptedException e) { } }
     public static boolean setCurrentTimeMillis(long ms) { return false; }
-    public static long uptimeNanos() { return meglet.Native.uptimeNanos(); }
-    public static long currentThreadTimeMicro() { return meglet.Native.uptimeNanos() / 1000L; }
+    public static long uptimeNanos() { return megler.Native.uptimeNanos(); }
+    public static long currentThreadTimeMicro() { return megler.Native.uptimeNanos() / 1000L; }
     public static long currentTimeMicro() { return System.currentTimeMillis() * 1000L; }
     public static long currentNetworkTimeMillis() { return System.currentTimeMillis(); }
     public static java.time.Clock currentNetworkTimeClock() { return java.time.Clock.systemUTC(); }

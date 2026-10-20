@@ -3,9 +3,9 @@ package android.sax;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class RootElement extends android.sax.Element {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public RootElement(java.lang.String p0) { super(); }
     public RootElement(java.lang.String p0, java.lang.String p1) { super(); }
-    public org.xml.sax.ContentHandler getContentHandler() { return (org.xml.sax.ContentHandler) megletProps.get("ContentHandler"); }
+    public org.xml.sax.ContentHandler getContentHandler() { return (org.xml.sax.ContentHandler) meglerProps.get("ContentHandler"); }
     RootElement() { this((java.lang.String) null); }
 }

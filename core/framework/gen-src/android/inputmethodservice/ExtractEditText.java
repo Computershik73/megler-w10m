@@ -3,7 +3,7 @@ package android.inputmethodservice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ExtractEditText extends android.widget.EditText {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ExtractEditText(android.content.Context p0) { super(p0); }
     public ExtractEditText(android.content.Context p0, android.util.AttributeSet p1) { super(p0, p1); }
     public ExtractEditText(android.content.Context p0, android.util.AttributeSet p1, int p2) { super(p0, p1, p2); }
@@ -13,8 +13,8 @@ public class ExtractEditText extends android.widget.EditText {
     public boolean hasFocus() { return false; }
     public boolean hasVerticalScrollBar() { return false; }
     public boolean hasWindowFocus() { return false; }
-    public boolean isFocused() { return (megletProps.get("Focused") instanceof Boolean ? (Boolean) megletProps.get("Focused") : false); }
-    public boolean isInExtractedMode() { return (megletProps.get("InExtractedMode") instanceof Boolean ? (Boolean) megletProps.get("InExtractedMode") : false); }
+    public boolean isFocused() { return (meglerProps.get("Focused") instanceof Boolean ? (Boolean) meglerProps.get("Focused") : false); }
+    public boolean isInExtractedMode() { return (meglerProps.get("InExtractedMode") instanceof Boolean ? (Boolean) meglerProps.get("InExtractedMode") : false); }
     protected void replaceText_internal(int p0, int p1, java.lang.CharSequence p2) {}
     protected void setCursorPosition_internal(int p0, int p1) {}
     protected void setSpan_internal(java.lang.Object p0, int p1, int p2, int p3) {}

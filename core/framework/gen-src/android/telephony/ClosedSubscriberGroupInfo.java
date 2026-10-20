@@ -3,14 +3,14 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ClosedSubscriberGroupInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public ClosedSubscriberGroupInfo(boolean p0, java.lang.String p1, int p2) {}
     protected static android.telephony.ClosedSubscriberGroupInfo createFromParcelBody(android.os.Parcel p0) { return new ClosedSubscriberGroupInfo(); }
     public int describeContents() { return 0; }
-    public int getCsgIdentity() { return (megletProps.get("CsgIdentity") instanceof Integer ? (Integer) megletProps.get("CsgIdentity") : 0); }
-    public boolean getCsgIndicator() { return (megletProps.get("CsgIndicator") instanceof Boolean ? (Boolean) megletProps.get("CsgIndicator") : false); }
-    public java.lang.String getHomeNodebName() { return (java.lang.String) megletProps.get("HomeNodebName"); }
+    public int getCsgIdentity() { return (meglerProps.get("CsgIdentity") instanceof Integer ? (Integer) meglerProps.get("CsgIdentity") : 0); }
+    public boolean getCsgIndicator() { return (meglerProps.get("CsgIndicator") instanceof Boolean ? (Boolean) meglerProps.get("CsgIndicator") : false); }
+    public java.lang.String getHomeNodebName() { return (java.lang.String) meglerProps.get("HomeNodebName"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     ClosedSubscriberGroupInfo() { this((boolean) false, (java.lang.String) null, (int) 0); }
 }

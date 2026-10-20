@@ -3,16 +3,16 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ExpandableListActivity extends android.app.Activity implements android.view.View.OnCreateContextMenuListener, android.widget.ExpandableListView.OnChildClickListener, android.widget.ExpandableListView.OnGroupCollapseListener, android.widget.ExpandableListView.OnGroupExpandListener {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ExpandableListActivity() { super(); }
-    public android.widget.ExpandableListAdapter getExpandableListAdapter() { return (android.widget.ExpandableListAdapter) megletProps.get("ExpandableListAdapter"); }
-    public android.widget.ExpandableListView getExpandableListView() { return (android.widget.ExpandableListView) megletProps.get("ExpandableListView"); }
-    public long getSelectedId() { return (megletProps.get("SelectedId") instanceof Long ? (Long) megletProps.get("SelectedId") : 0L); }
-    public long getSelectedPosition() { return (megletProps.get("SelectedPosition") instanceof Long ? (Long) megletProps.get("SelectedPosition") : 0L); }
+    public android.widget.ExpandableListAdapter getExpandableListAdapter() { return (android.widget.ExpandableListAdapter) meglerProps.get("ExpandableListAdapter"); }
+    public android.widget.ExpandableListView getExpandableListView() { return (android.widget.ExpandableListView) meglerProps.get("ExpandableListView"); }
+    public long getSelectedId() { return (meglerProps.get("SelectedId") instanceof Long ? (Long) meglerProps.get("SelectedId") : 0L); }
+    public long getSelectedPosition() { return (meglerProps.get("SelectedPosition") instanceof Long ? (Long) meglerProps.get("SelectedPosition") : 0L); }
     public boolean onChildClick(android.widget.ExpandableListView p0, android.view.View p1, int p2, int p3, long p4) { return false; }
     public void onGroupCollapse(int p0) {}
     public void onGroupExpand(int p0) {}
-    public void setListAdapter(android.widget.ExpandableListAdapter p0) { megletProps.put("ListAdapter", p0); }
+    public void setListAdapter(android.widget.ExpandableListAdapter p0) { meglerProps.put("ListAdapter", p0); }
     public boolean setSelectedChild(int p0, int p1, boolean p2) { return false; }
-    public void setSelectedGroup(int p0) { megletProps.put("SelectedGroup", Integer.valueOf(p0)); }
+    public void setSelectedGroup(int p0) { meglerProps.put("SelectedGroup", Integer.valueOf(p0)); }
 }

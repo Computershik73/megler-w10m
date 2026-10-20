@@ -68,9 +68,9 @@ public final class WebViewFactory {
 
     private static final boolean DEBUG = false;
 
-    /** Meglet: the WebView package, where Android's own image has it: the Android root is mounted at /system. */
+    /** Megler: the WebView package, where Android's own image has it: the Android root is mounted at /system. */
     static final String WEBVIEW_APK = "/system/app/webview/webview.apk";
-    /** Meglet: the processor's library folder in an APK whose native libraries are used from it, not extracted. */
+    /** Megler: the processor's library folder in an APK whose native libraries are used from it, not extracted. */
     static final String WEBVIEW_ABI = "armeabi-v7a";
 
     // Cache the factory both for efficiency, and ensure any one process gets all webviews from the
@@ -190,7 +190,7 @@ public final class WebViewFactory {
         public MissingWebViewPackageException(Exception e) { super(e); }
     }
 
-    /** Meglet: a WebView is supported when the Android root has the WebView package. */
+    /** Megler: a WebView is supported when the Android root has the WebView package. */
     static boolean isWebViewSupported() {
         // No lock; this is a benign race as Boolean's state is final.
         if (sWebViewSupported == null) {
@@ -254,7 +254,7 @@ public final class WebViewFactory {
     }
 
     /**
-     * Meglet: the WebView package of the Android root, whether or not it is loaded (WebView.getCurrentWebViewPackage asks
+     * Megler: the WebView package of the Android root, whether or not it is loaded (WebView.getCurrentWebViewPackage asks
      * the update service for this on Android); null when there is none.
      */
     static PackageInfo getCurrentWebViewPackage() {
@@ -350,7 +350,7 @@ public final class WebViewFactory {
     }
 
     /**
-     * Meglet: the WebView package's PackageInfo, read from its manifest, as the package manager would describe an installed
+     * Megler: the WebView package's PackageInfo, read from its manifest, as the package manager would describe an installed
      * system package: what WebViewFactory and the WebView's own code read of it (its name, version, target SDK, the meta-data
      * that names its library, where its APK and libraries are). The APK is added to the app's AssetManager first, as
      * getProviderClass adds it on Android, so that its manifest is read through it.
@@ -422,7 +422,7 @@ public final class WebViewFactory {
         return out.toByteArray();
     }
 
-    /** Meglet: "apk!/lib/<abi>", where a library of an APK whose libraries are not extracted is looked for. */
+    /** Megler: "apk!/lib/<abi>", where a library of an APK whose libraries are not extracted is looked for. */
     static String getWebViewNativeLibraryPath() {
         return WEBVIEW_APK + "!/lib/" + WEBVIEW_ABI;
     }
@@ -483,7 +483,7 @@ public final class WebViewFactory {
     }
 
     /**
-     * Meglet: the WebView's class loader, which Android's LoadedApk makes for the package: a PathClassLoader over its APK
+     * Megler: the WebView's class loader, which Android's LoadedApk makes for the package: a PathClassLoader over its APK
      * with the APK's library folder as its native path. And the app's loader is given that native path too (see the top).
      */
     private static ClassLoader makeClassLoader(Application app) throws MissingWebViewPackageException {
@@ -511,14 +511,14 @@ public final class WebViewFactory {
      * Currently, this means allocating address space to load the real JNI library later.
      */
     public static void prepareWebViewInZygote() {
-        // Meglet: there is no zygote; WebViewLibraryLoader reserves the address space when it loads the library.
+        // Megler: there is no zygote; WebViewLibraryLoader reserves the address space when it loads the library.
     }
 
     /**
      * @hide
      */
     public static int onWebViewProviderChanged(PackageInfo packageInfo) {
-        // Meglet: there is no system server to call this; the WebView package is the Android root's.
+        // Megler: there is no system server to call this; the WebView package is the Android root's.
         return 0;
     }
 }

@@ -3,10 +3,10 @@ package android.service.controls.templates;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ToggleTemplate extends android.service.controls.templates.ControlTemplate {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ToggleTemplate(java.lang.String p0, android.service.controls.templates.ControlButton p1) { super(); }
-    public java.lang.CharSequence getContentDescription() { return (java.lang.CharSequence) megletProps.get("ContentDescription"); }
-    public int getTemplateType() { return (megletProps.get("TemplateType") instanceof Integer ? (Integer) megletProps.get("TemplateType") : 0); }
-    public boolean isChecked() { return (megletProps.get("Checked") instanceof Boolean ? (Boolean) megletProps.get("Checked") : false); }
+    public java.lang.CharSequence getContentDescription() { return (java.lang.CharSequence) meglerProps.get("ContentDescription"); }
+    public int getTemplateType() { return (meglerProps.get("TemplateType") instanceof Integer ? (Integer) meglerProps.get("TemplateType") : 0); }
+    public boolean isChecked() { return (meglerProps.get("Checked") instanceof Boolean ? (Boolean) meglerProps.get("Checked") : false); }
     ToggleTemplate() { this((java.lang.String) null, (android.service.controls.templates.ControlButton) null); }
 }

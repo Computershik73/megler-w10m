@@ -3,13 +3,13 @@ package android.service.quickaccesswallet;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class WalletServiceEvent implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int TYPE_NFC_PAYMENT_STARTED = 1;
     public static final int TYPE_WALLET_CARDS_UPDATED = 2;
     public WalletServiceEvent(int p0) {}
     public int describeContents() { return 0; }
-    public int getEventType() { return (megletProps.get("EventType") instanceof Integer ? (Integer) megletProps.get("EventType") : 0); }
+    public int getEventType() { return (meglerProps.get("EventType") instanceof Integer ? (Integer) meglerProps.get("EventType") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     WalletServiceEvent() { this((int) 0); }
 }

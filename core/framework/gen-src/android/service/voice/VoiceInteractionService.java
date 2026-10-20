@@ -3,7 +3,7 @@ package android.service.voice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class VoiceInteractionService extends android.app.Service {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String SERVICE_INTERFACE = "android.service.voice.VoiceInteractionService";
     public static final java.lang.String SERVICE_META_DATA = "android.voice_interaction";
     public VoiceInteractionService() { super(); }
@@ -18,8 +18,8 @@ public class VoiceInteractionService extends android.app.Service {
     public android.service.voice.HotwordDetector createHotwordDetector(android.os.PersistableBundle p0, android.os.SharedMemory p1, java.util.concurrent.Executor p2, android.service.voice.HotwordDetector.Callback p3) { return null; }
     public android.media.voice.KeyphraseModelManager createKeyphraseModelManager() { return null; }
     public android.service.voice.VisualQueryDetector createVisualQueryDetector(android.os.PersistableBundle p0, android.os.SharedMemory p1, java.util.concurrent.Executor p2, android.service.voice.VisualQueryDetector.Callback p3) { return null; }
-    public int getDisabledShowContext() { return (megletProps.get("DisabledShowContext") instanceof Integer ? (Integer) megletProps.get("DisabledShowContext") : 0); }
-    protected android.hardware.soundtrigger.KeyphraseEnrollmentInfo getKeyphraseEnrollmentInfo() { return (android.hardware.soundtrigger.KeyphraseEnrollmentInfo) megletProps.get("KeyphraseEnrollmentInfo"); }
+    public int getDisabledShowContext() { return (meglerProps.get("DisabledShowContext") instanceof Integer ? (Integer) meglerProps.get("DisabledShowContext") : 0); }
+    protected android.hardware.soundtrigger.KeyphraseEnrollmentInfo getKeyphraseEnrollmentInfo() { return (android.hardware.soundtrigger.KeyphraseEnrollmentInfo) meglerProps.get("KeyphraseEnrollmentInfo"); }
     public boolean isKeyphraseAndLocaleSupportedForHotword(java.lang.String p0, java.util.Locale p1) { return false; }
     public java.util.List listModuleProperties() { return new java.util.ArrayList(); }
     public android.os.IBinder onBind(android.content.Intent p0) { return null; }
@@ -29,9 +29,9 @@ public class VoiceInteractionService extends android.app.Service {
     public void onReady() {}
     public void onShowSessionFailed(android.os.Bundle p0) {}
     public void onShutdown() {}
-    public void setDisabledShowContext(int p0) { megletProps.put("DisabledShowContext", Integer.valueOf(p0)); }
-    public void setInvocationEffectEnabled(boolean p0) { megletProps.put("InvocationEffectEnabled", Boolean.valueOf(p0)); }
-    public void setTestModuleForAlwaysOnHotwordDetectorEnabled(boolean p0) { megletProps.put("TestModuleForAlwaysOnHotwordDetectorEnabled", Boolean.valueOf(p0)); }
-    public void setUiHints(android.os.Bundle p0) { megletProps.put("UiHints", p0); }
+    public void setDisabledShowContext(int p0) { meglerProps.put("DisabledShowContext", Integer.valueOf(p0)); }
+    public void setInvocationEffectEnabled(boolean p0) { meglerProps.put("InvocationEffectEnabled", Boolean.valueOf(p0)); }
+    public void setTestModuleForAlwaysOnHotwordDetectorEnabled(boolean p0) { meglerProps.put("TestModuleForAlwaysOnHotwordDetectorEnabled", Boolean.valueOf(p0)); }
+    public void setUiHints(android.os.Bundle p0) { meglerProps.put("UiHints", p0); }
     public void showSession(android.os.Bundle p0, int p1) {}
 }

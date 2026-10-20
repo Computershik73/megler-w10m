@@ -3,7 +3,7 @@ package android.service.autofill;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class RegexValidator extends android.service.autofill.InternalValidator implements android.service.autofill.Validator, android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public RegexValidator(android.view.autofill.AutofillId p0, java.util.regex.Pattern p1) { super(); }
     public int describeContents() { return 0; }

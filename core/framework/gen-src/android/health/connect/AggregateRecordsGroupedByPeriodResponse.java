@@ -3,14 +3,14 @@ package android.health.connect;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AggregateRecordsGroupedByPeriodResponse {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public AggregateRecordsGroupedByPeriodResponse(java.time.LocalDateTime p0, java.time.LocalDateTime p1, java.util.Map p2) {}
     public java.lang.Object get(android.health.connect.datatypes.AggregationType p0) { return null; }
     public java.util.Set getDataOrigins(android.health.connect.datatypes.AggregationType p0) { return new java.util.HashSet(); }
-    public java.time.LocalDateTime getEndTime() { return (java.time.LocalDateTime) megletProps.get("EndTime"); }
-    public java.time.LocalDateTime getStartTime() { return (java.time.LocalDateTime) megletProps.get("StartTime"); }
+    public java.time.LocalDateTime getEndTime() { return (java.time.LocalDateTime) meglerProps.get("EndTime"); }
+    public java.time.LocalDateTime getStartTime() { return (java.time.LocalDateTime) meglerProps.get("StartTime"); }
     public java.time.ZoneOffset getZoneOffset(android.health.connect.datatypes.AggregationType p0) { return null; }
-    public android.health.connect.AggregateRecordsGroupedByPeriodResponse setEndTime(java.time.LocalDateTime p0) { megletProps.put("EndTime", p0); return this; }
-    public android.health.connect.AggregateRecordsGroupedByPeriodResponse setStartTime(java.time.LocalDateTime p0) { megletProps.put("StartTime", p0); return this; }
+    public android.health.connect.AggregateRecordsGroupedByPeriodResponse setEndTime(java.time.LocalDateTime p0) { meglerProps.put("EndTime", p0); return this; }
+    public android.health.connect.AggregateRecordsGroupedByPeriodResponse setStartTime(java.time.LocalDateTime p0) { meglerProps.put("StartTime", p0); return this; }
     AggregateRecordsGroupedByPeriodResponse() { this((java.time.LocalDateTime) null, (java.time.LocalDateTime) null, (java.util.Map) null); }
 }

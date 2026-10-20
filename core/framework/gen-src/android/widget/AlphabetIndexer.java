@@ -3,7 +3,7 @@ package android.widget;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AlphabetIndexer extends android.database.DataSetObserver implements android.widget.SectionIndexer {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     protected java.lang.CharSequence mAlphabet;
     protected int mColumnIndex;
     protected android.database.Cursor mDataCursor;
@@ -11,9 +11,9 @@ public class AlphabetIndexer extends android.database.DataSetObserver implements
     protected int compare(java.lang.String p0, java.lang.String p1) { return 0; }
     public int getPositionForSection(int p0) { return 0; }
     public int getSectionForPosition(int p0) { return 0; }
-    public java.lang.Object[] getSections() { return (java.lang.Object[]) megletProps.get("Sections"); }
+    public java.lang.Object[] getSections() { return (java.lang.Object[]) meglerProps.get("Sections"); }
     public void onChanged() {}
     public void onInvalidated() {}
-    public void setCursor(android.database.Cursor p0) { megletProps.put("Cursor", p0); }
+    public void setCursor(android.database.Cursor p0) { meglerProps.put("Cursor", p0); }
     AlphabetIndexer() { this((android.database.Cursor) null, (int) 0, (java.lang.CharSequence) null); }
 }

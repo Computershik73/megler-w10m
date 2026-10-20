@@ -3,11 +3,11 @@ package android.hardware.camera2.params;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Capability {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int COUNT = 3;
     public Capability(int p0, android.util.Size p1, android.util.Range p2) {}
-    public android.util.Size getMaxStreamingSize() { return (android.util.Size) megletProps.get("MaxStreamingSize"); }
-    public int getMode() { return (megletProps.get("Mode") instanceof Integer ? (Integer) megletProps.get("Mode") : 0); }
-    public android.util.Range getZoomRatioRange() { return (android.util.Range) megletProps.get("ZoomRatioRange"); }
+    public android.util.Size getMaxStreamingSize() { return (android.util.Size) meglerProps.get("MaxStreamingSize"); }
+    public int getMode() { return (meglerProps.get("Mode") instanceof Integer ? (Integer) meglerProps.get("Mode") : 0); }
+    public android.util.Range getZoomRatioRange() { return (android.util.Range) meglerProps.get("ZoomRatioRange"); }
     Capability() { this((int) 0, (android.util.Size) null, (android.util.Range) null); }
 }

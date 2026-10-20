@@ -10,8 +10,8 @@
 // its R class to it, and Chromium maps icudtl.dat, its .pak files and V8's snapshot out of the WebView APK with
 // openNonAssetFd on the app's AssetManager (org.chromium.base.ApkAssets). With the original's every one of those failed.
 //
-// How. A library's APK is opened by the core beside the app's (meglet.Native.addApk: its number among the APKs the core
-// reads, as the framework-res's is 1), its resources.arsc is read by Resources.megletAddLibrary, which gives its package the
+// How. A library's APK is opened by the core beside the app's (megler.Native.addApk: its number among the APKs the core
+// reads, as the framework-res's is 1), its resources.arsc is read by Resources.meglerAddLibrary, which gives its package the
 // next free package id from 0x02 up, as Android's AssetManager2 does, and its files are read through the same calls as the
 // app's own. There is one AssetManager's worth of APKs for the process, as there is one app: the list is static. A cookie is
 // 1 for the app's APK and 2 on for the libraries, in the order they were added. Everything else is the original's.
@@ -19,7 +19,7 @@ package android.content.res;
 
 import java.io.*;
 
-/** The APK's assets/ folder, read through Meglet (the APK is a zip Meglet already has open); and shared libraries' APKs beside it. */
+/** The APK's assets/ folder, read through Megler (the APK is a zip Megler already has open); and shared libraries' APKs beside it. */
 public final class AssetManager implements AutoCloseable {
     public static final int ACCESS_UNKNOWN = 0, ACCESS_RANDOM = 1, ACCESS_STREAMING = 2, ACCESS_BUFFER = 3;
     public AssetManager() {}
@@ -27,20 +27,20 @@ public final class AssetManager implements AutoCloseable {
     public InputStream open(String name) throws IOException { return open(name, ACCESS_STREAMING); }
     public InputStream open(String name, int mode) throws IOException {
         String n = norm(name);
-        long len = meglet.Native.assetLength(n);
+        long len = megler.Native.assetLength(n);
         // a large asset stored uncompressed is read from the APK as it is consumed, not copied whole into memory (a game's
         // repacked data, hundreds of MB, unpacked through this stream on first launch)
         if (len > (8 << 20)) {
-            long fdoff = meglet.Native.assetFd(n);
+            long fdoff = megler.Native.assetFd(n);
             if (fdoff != -1) return new StoredAssetStream((int) (fdoff >>> 40), fdoff & 0xFFFFFFFFFFL, len);
         }
-        byte[] b = meglet.Native.readAsset(n);
+        byte[] b = megler.Native.readAsset(n);
         if (b == null) b = libraryFile("assets/" + n);
         if (b == null) throw new FileNotFoundException(name);
         return new ByteArrayInputStream(b);
     }
     public String[] list(String path) throws IOException {
-        String[] l = meglet.Native.listAssets(norm(path));
+        String[] l = megler.Native.listAssets(norm(path));
         if (l == null) l = new String[0];
         synchronized (sLibs) {
             if (sLibs.isEmpty()) return l;
@@ -65,7 +65,7 @@ public final class AssetManager implements AutoCloseable {
         return openNonAssetFd(name);
     }
     public InputStream openNonAsset(String name) throws IOException {
-        byte[] b = meglet.Native.readAsset("/" + norm(name));
+        byte[] b = megler.Native.readAsset("/" + norm(name));
         if (b == null) b = libraryFile(norm(name));
         if (b == null) throw new FileNotFoundException(name);
         return new ByteArrayInputStream(b);
@@ -73,7 +73,7 @@ public final class AssetManager implements AutoCloseable {
     public InputStream openNonAsset(int cookie, String name) throws IOException {
         Library lib = library(cookie);
         if (lib != null) {
-            byte[] b = meglet.Native.readApkFile(lib.apk, norm(name));
+            byte[] b = megler.Native.readApkFile(lib.apk, norm(name));
             if (b == null) throw new FileNotFoundException(name);
             return new ByteArrayInputStream(b);
         }
@@ -82,7 +82,7 @@ public final class AssetManager implements AutoCloseable {
     public InputStream openNonAsset(String name, int mode) throws IOException { return openNonAsset(name); }
     public InputStream openNonAsset(int cookie, String name, int mode) throws IOException { return openNonAsset(cookie, name); }
     private AssetFileDescriptor fd(String n, String name) throws IOException {
-        long fdoff = meglet.Native.assetFd(n);
+        long fdoff = megler.Native.assetFd(n);
         if (fdoff == -1) {
             // not the app's: a library's (n is "x" for assets/x, "/x" for x from the APK's root)
             String inApk = n.startsWith("/") ? n.substring(1) : "assets/" + n;
@@ -92,7 +92,7 @@ public final class AssetManager implements AutoCloseable {
             }
             throw new FileNotFoundException("This file can not be opened as a file descriptor; it is probably compressed: " + name);
         }
-        long len = meglet.Native.assetLength(n);
+        long len = megler.Native.assetLength(n);
         return new AssetFileDescriptor(n, descriptor((int) (fdoff >>> 40)), fdoff & 0xFFFFFFFFFFL, len);
     }
     private static FileDescriptor descriptor(int number) {
@@ -102,7 +102,7 @@ public final class AssetManager implements AutoCloseable {
     }
     public String[] getLocales() { return new String[] { "en-US" }; }
 
-    // ---- Meglet: shared libraries (see the top of the file)
+    // ---- Megler: shared libraries (see the top of the file)
 
     /** A shared library's APK: where it is, the core's number for it, and the package id its resources were given (0: none). */
     private static final class Library {
@@ -113,12 +113,12 @@ public final class AssetManager implements AutoCloseable {
         Library(String path, int apk) { this.path = path; this.apk = apk; }
         /** A file of the APK as a descriptor and where it starts, or null when it is not there or is compressed. */
         AssetFileDescriptor fd(String inApk) {
-            long fdoff = meglet.Native.apkFileFd(apk, inApk);
+            long fdoff = megler.Native.apkFileFd(apk, inApk);
             if (fdoff == -1) return null;
-            return new AssetFileDescriptor(inApk, descriptor((int) (fdoff >>> 40)), fdoff & 0xFFFFFFFFFFL, meglet.Native.apkFileLength(apk, inApk));
+            return new AssetFileDescriptor(inApk, descriptor((int) (fdoff >>> 40)), fdoff & 0xFFFFFFFFFFL, megler.Native.apkFileLength(apk, inApk));
         }
         java.util.List<String> list(String prefix) {
-            String[] all = meglet.Native.listApkFiles(apk, prefix);
+            String[] all = megler.Native.listApkFiles(apk, prefix);
             return all == null ? java.util.Collections.<String>emptyList() : java.util.Arrays.asList(all);
         }
     }
@@ -129,7 +129,7 @@ public final class AssetManager implements AutoCloseable {
     private static Library library(int cookie) { synchronized (sLibs) { return cookie >= 2 && cookie - 2 < sLibs.size() ? sLibs.get(cookie - 2) : null; } }
     private static byte[] libraryFile(String inApk) {
         for (Library lib : libraries()) {
-            byte[] b = meglet.Native.readApkFile(lib.apk, inApk);
+            byte[] b = megler.Native.readApkFile(lib.apk, inApk);
             if (b != null) return b;
         }
         return null;
@@ -143,7 +143,7 @@ public final class AssetManager implements AutoCloseable {
         if (path == null) return 0;
         synchronized (sLibs) {
             for (int i = 0; i < sLibs.size(); i++) if (sLibs.get(i).path.equals(path)) return i + 2;
-            int apk = meglet.Native.addApk(path);
+            int apk = megler.Native.addApk(path);
             if (apk < 0) {
                 android.util.Log.w("AssetManager", "cannot add " + path + ": it cannot be read");
                 return 0;
@@ -152,7 +152,7 @@ public final class AssetManager implements AutoCloseable {
             sLibs.add(lib);
             int[] id = new int[1];
             String[] name = new String[1];
-            Resources.megletAddLibrary(apk, id, name);
+            Resources.meglerAddLibrary(apk, id, name);
             lib.packageId = id[0];
             lib.packageName = name[0];
             android.util.Log.i("AssetManager", "added " + path + (lib.packageId != 0 ? ": package " + lib.packageName + " as 0x" + Integer.toHexString(lib.packageId) : ": no resources"));
@@ -162,7 +162,7 @@ public final class AssetManager implements AutoCloseable {
     /** The app's own APK is cookie 1; any other is added as above (the only kind an app adds is a library's). */
     public int addAssetPath(String path) {
         if (path == null) return 0;
-        if (path.equals(meglet.Native.apkPath())) return 1;
+        if (path.equals(megler.Native.apkPath())) return 1;
         return addAssetPathAsSharedLibrary(path);
     }
     public int addOverlayPath(String path) { return 0; }
@@ -171,20 +171,20 @@ public final class AssetManager implements AutoCloseable {
     public android.util.SparseArray<String> getAssignedPackageIdentifiers(boolean includeOverlays, boolean includeLoaders) {
         android.util.SparseArray<String> ids = new android.util.SparseArray<>();
         ids.put(0x01, "android");
-        ids.put(0x7f, meglet.Native.packageName());
+        ids.put(0x7f, megler.Native.packageName());
         for (Library lib : libraries()) if (lib.packageId != 0) ids.put(lib.packageId, lib.packageName);
         return ids;
     }
     public String[] getApkPaths() {
         java.util.List<Library> libs = libraries();
         String[] paths = new String[1 + libs.size()];
-        paths[0] = meglet.Native.apkPath();
+        paths[0] = megler.Native.apkPath();
         for (int i = 0; i < libs.size(); i++) paths[i + 1] = libs.get(i).path;
         return paths;
     }
     public int findCookieForPath(String path) {
         if (path == null) return 0;
-        if (path.equals(meglet.Native.apkPath())) return 1;
+        if (path.equals(megler.Native.apkPath())) return 1;
         synchronized (sLibs) { for (int i = 0; i < sLibs.size(); i++) if (sLibs.get(i).path.equals(path)) return i + 2; }
         return 0;
     }
@@ -226,7 +226,7 @@ public final class AssetManager implements AutoCloseable {
         // ---- end of generated members (AssetInputStream)
     }
     // ---- generated by tools/compat/fillmembers.py: the platform's members this class does not write (signatures only)
-    private final java.util.HashMap<String, Object> megletFill = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerFill = new java.util.HashMap<>();
     public static final int COOKIE_UNKNOWN = -1;
     public static java.lang.String FRAMEWORK_APK_PATH;
     public static void createSystemAssetsInZygoteLocked(boolean p0, java.lang.String p1) {}
@@ -236,7 +236,7 @@ public final class AssetManager implements AutoCloseable {
     public static android.content.res.AssetManager getSystem() { return null; }
     public void addApkKeys(java.util.List p0, boolean p1) {}
     public boolean containsAllocatedTable() { return false; }
-    public android.content.res.ApkAssets[] getApkAssets() { return (android.content.res.ApkAssets[]) megletFill.get("ApkAssets"); }
+    public android.content.res.ApkAssets[] getApkAssets() { return (android.content.res.ApkAssets[]) meglerFill.get("ApkAssets"); }
     public java.lang.String getLastResourceResolution() { return null; }
     public java.util.List getLoaders() { return new java.util.ArrayList(); }
     public java.lang.String[] getNonSystemLocales() { return null; }
@@ -253,7 +253,7 @@ public final class AssetManager implements AutoCloseable {
     // ---- end of generated members
     // ---- generated by tools/compat/genstubs.py: the platform's nested classes this class does not write
     public static class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public android.content.res.AssetManager.Builder addApkAssets(android.content.res.ApkAssets p0) { return this; }
         public android.content.res.AssetManager.Builder addLoader(android.content.res.loader.ResourcesLoader p0) { return this; }

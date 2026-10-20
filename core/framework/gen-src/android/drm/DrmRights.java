@@ -3,15 +3,15 @@ package android.drm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DrmRights {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public DrmRights(android.drm.ProcessedData p0, java.lang.String p1) {}
     public DrmRights(java.io.File p0, java.lang.String p1) {}
     public DrmRights(java.lang.String p0, java.lang.String p1) {}
     public DrmRights(java.lang.String p0, java.lang.String p1, java.lang.String p2) {}
     public DrmRights(java.lang.String p0, java.lang.String p1, java.lang.String p2, java.lang.String p3) {}
-    public java.lang.String getAccountId() { return (java.lang.String) megletProps.get("AccountId"); }
-    public byte[] getData() { return (byte[]) megletProps.get("Data"); }
-    public java.lang.String getMimeType() { return (java.lang.String) megletProps.get("MimeType"); }
-    public java.lang.String getSubscriptionId() { return (java.lang.String) megletProps.get("SubscriptionId"); }
+    public java.lang.String getAccountId() { return (java.lang.String) meglerProps.get("AccountId"); }
+    public byte[] getData() { return (byte[]) meglerProps.get("Data"); }
+    public java.lang.String getMimeType() { return (java.lang.String) meglerProps.get("MimeType"); }
+    public java.lang.String getSubscriptionId() { return (java.lang.String) meglerProps.get("SubscriptionId"); }
     DrmRights() { this((android.drm.ProcessedData) null, (java.lang.String) null); }
 }

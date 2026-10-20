@@ -3,23 +3,23 @@ package android.adservices.adselection;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AdSelectionOutcome {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.adservices.adselection.AdSelectionOutcome NO_OUTCOME;
     public static final int UNSET_AD_SELECTION_ID = 0;
     public static final java.lang.String UNSET_AD_SELECTION_ID_MESSAGE = "Non-zero ad selection ID must be set";
-    public long getAdSelectionId() { return (megletProps.get("AdSelectionId") instanceof Long ? (Long) megletProps.get("AdSelectionId") : 0L); }
-    public java.util.List getComponentAdUris() { return (megletProps.get("ComponentAdUris") != null ? (java.util.List) megletProps.get("ComponentAdUris") : new java.util.ArrayList()); }
-    public android.net.Uri getRenderUri() { return (android.net.Uri) megletProps.get("RenderUri"); }
-    public android.adservices.common.AdTechIdentifier getWinningSeller() { return (android.adservices.common.AdTechIdentifier) megletProps.get("WinningSeller"); }
+    public long getAdSelectionId() { return (meglerProps.get("AdSelectionId") instanceof Long ? (Long) meglerProps.get("AdSelectionId") : 0L); }
+    public java.util.List getComponentAdUris() { return (meglerProps.get("ComponentAdUris") != null ? (java.util.List) meglerProps.get("ComponentAdUris") : new java.util.ArrayList()); }
+    public android.net.Uri getRenderUri() { return (android.net.Uri) meglerProps.get("RenderUri"); }
+    public android.adservices.common.AdTechIdentifier getWinningSeller() { return (android.adservices.common.AdTechIdentifier) meglerProps.get("WinningSeller"); }
     public boolean hasOutcome() { return false; }
     protected AdSelectionOutcome() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.adservices.adselection.AdSelectionOutcome build() { android.adservices.adselection.AdSelectionOutcome x = new android.adservices.adselection.AdSelectionOutcome(); x.megletProps.putAll(megletProps); return x; }
-        public android.adservices.adselection.AdSelectionOutcome.Builder setAdSelectionId(long p0) { megletProps.put("AdSelectionId", Long.valueOf(p0)); return this; }
-        public android.adservices.adselection.AdSelectionOutcome.Builder setComponentAdUris(java.util.List p0) { megletProps.put("ComponentAdUris", p0); return this; }
-        public android.adservices.adselection.AdSelectionOutcome.Builder setRenderUri(android.net.Uri p0) { megletProps.put("RenderUri", p0); return this; }
-        public android.adservices.adselection.AdSelectionOutcome.Builder setWinningSeller(android.adservices.common.AdTechIdentifier p0) { megletProps.put("WinningSeller", p0); return this; }
+        public android.adservices.adselection.AdSelectionOutcome build() { android.adservices.adselection.AdSelectionOutcome x = new android.adservices.adselection.AdSelectionOutcome(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.adservices.adselection.AdSelectionOutcome.Builder setAdSelectionId(long p0) { meglerProps.put("AdSelectionId", Long.valueOf(p0)); return this; }
+        public android.adservices.adselection.AdSelectionOutcome.Builder setComponentAdUris(java.util.List p0) { meglerProps.put("ComponentAdUris", p0); return this; }
+        public android.adservices.adselection.AdSelectionOutcome.Builder setRenderUri(android.net.Uri p0) { meglerProps.put("RenderUri", p0); return this; }
+        public android.adservices.adselection.AdSelectionOutcome.Builder setWinningSeller(android.adservices.common.AdTechIdentifier p0) { meglerProps.put("WinningSeller", p0); return this; }
     }
 }

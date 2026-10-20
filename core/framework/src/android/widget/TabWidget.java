@@ -16,8 +16,8 @@ public class TabWidget extends LinearLayout implements View.OnFocusChangeListene
     public TabWidget(Context c, AttributeSet a, int s) { super(c, a, s); setOrientation(HORIZONTAL); }
     public TabWidget(Context c, AttributeSet a, int s, int r) { super(c, a, s, r); setOrientation(HORIZONTAL); }
 
-    void megletSetHost(TabHost h) { mHost = h; }
-    void megletAddTab(View indicator) {
+    void meglerSetHost(TabHost h) { mHost = h; }
+    void meglerAddTab(View indicator) {
         final int index = getChildCount();
         LayoutParams lp = new LayoutParams(0, LayoutParams.MATCH_PARENT, 1f);
         indicator.setFocusable(true);

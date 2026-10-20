@@ -3,12 +3,12 @@ package android.text.method;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DateTimeKeyListener extends android.text.method.NumberKeyListener {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static char[] CHARACTERS;
     public DateTimeKeyListener() { super(); }
     public DateTimeKeyListener(java.util.Locale p0) { super(); }
     public static android.text.method.DateTimeKeyListener getInstance() { return new DateTimeKeyListener(); }
     public static android.text.method.DateTimeKeyListener getInstance(java.util.Locale p0) { return new DateTimeKeyListener(); }
-    public char[] getAcceptedChars() { return (char[]) megletProps.get("AcceptedChars"); }
-    public int getInputType() { return (megletProps.get("InputType") instanceof Integer ? (Integer) megletProps.get("InputType") : 0); }
+    public char[] getAcceptedChars() { return (char[]) meglerProps.get("AcceptedChars"); }
+    public int getInputType() { return (meglerProps.get("InputType") instanceof Integer ? (Integer) meglerProps.get("InputType") : 0); }
 }

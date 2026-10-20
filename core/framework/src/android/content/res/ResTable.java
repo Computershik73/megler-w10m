@@ -198,8 +198,8 @@ public final class ResTable {
         public boolean complex() { return (flags & 1) != 0; }
     }
 
-    /** Meglet debugging: what the table has for an id's package and type. */
-    public String megletDescribe(int id) {
+    /** Megler debugging: what the table has for an id's package and type. */
+    public String meglerDescribe(int id) {
         Package p = byId[(id >>> 24) & 255];
         if (p == null) return "no package " + (id >>> 24) + " (" + packages.size() + " packages)";
         Type t = p.types[(id >>> 16) & 255];

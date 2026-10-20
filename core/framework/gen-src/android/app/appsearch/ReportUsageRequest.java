@@ -3,18 +3,18 @@ package android.app.appsearch;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class ReportUsageRequest extends android.app.appsearch.safeparcel.AbstractSafeParcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
-    public java.lang.String getDocumentId() { return (java.lang.String) megletProps.get("DocumentId"); }
-    public java.lang.String getNamespace() { return (java.lang.String) megletProps.get("Namespace"); }
-    public long getUsageTimestampMillis() { return (megletProps.get("UsageTimestampMillis") instanceof Long ? (Long) megletProps.get("UsageTimestampMillis") : 0L); }
+    public java.lang.String getDocumentId() { return (java.lang.String) meglerProps.get("DocumentId"); }
+    public java.lang.String getNamespace() { return (java.lang.String) meglerProps.get("Namespace"); }
+    public long getUsageTimestampMillis() { return (meglerProps.get("UsageTimestampMillis") instanceof Long ? (Long) meglerProps.get("UsageTimestampMillis") : 0L); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected ReportUsageRequest() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(java.lang.String p0, java.lang.String p1) {}
         public android.app.appsearch.ReportUsageRequest build() { return null; }
-        public android.app.appsearch.ReportUsageRequest.Builder setUsageTimestampMillis(long p0) { megletProps.put("UsageTimestampMillis", Long.valueOf(p0)); return this; }
+        public android.app.appsearch.ReportUsageRequest.Builder setUsageTimestampMillis(long p0) { meglerProps.put("UsageTimestampMillis", Long.valueOf(p0)); return this; }
         Builder() { this((java.lang.String) null, (java.lang.String) null); }
     }
 }

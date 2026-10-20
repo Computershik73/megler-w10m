@@ -3,13 +3,13 @@ package android.graphics.pdf.content;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PdfPageTextContent implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public PdfPageTextContent(java.lang.String p0) {}
     public PdfPageTextContent(java.lang.String p0, java.util.List p1) {}
     public int describeContents() { return 0; }
-    public java.util.List getBounds() { return (megletProps.get("Bounds") != null ? (java.util.List) megletProps.get("Bounds") : new java.util.ArrayList()); }
-    public java.lang.String getText() { return (java.lang.String) megletProps.get("Text"); }
+    public java.util.List getBounds() { return (meglerProps.get("Bounds") != null ? (java.util.List) meglerProps.get("Bounds") : new java.util.ArrayList()); }
+    public java.lang.String getText() { return (java.lang.String) meglerProps.get("Text"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     PdfPageTextContent() { this((java.lang.String) null); }
 }

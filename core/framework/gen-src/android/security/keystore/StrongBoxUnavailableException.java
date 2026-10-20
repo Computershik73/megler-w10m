@@ -3,7 +3,7 @@ package android.security.keystore;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class StrongBoxUnavailableException extends java.security.ProviderException {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public StrongBoxUnavailableException() { super(); }
     public StrongBoxUnavailableException(java.lang.String p0) { super(); }
     public StrongBoxUnavailableException(java.lang.String p0, java.lang.Throwable p1) { super(); }

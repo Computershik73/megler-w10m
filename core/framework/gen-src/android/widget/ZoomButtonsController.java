@@ -3,20 +3,20 @@ package android.widget;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ZoomButtonsController implements android.view.View.OnTouchListener {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ZoomButtonsController(android.view.View p0) {}
-    public android.view.ViewGroup getContainer() { return (android.view.ViewGroup) megletProps.get("Container"); }
-    public android.view.View getZoomControls() { return (android.view.View) megletProps.get("ZoomControls"); }
-    public boolean isAutoDismissed() { return (megletProps.get("AutoDismissed") instanceof Boolean ? (Boolean) megletProps.get("AutoDismissed") : false); }
-    public boolean isVisible() { return (megletProps.get("Visible") instanceof Boolean ? (Boolean) megletProps.get("Visible") : false); }
+    public android.view.ViewGroup getContainer() { return (android.view.ViewGroup) meglerProps.get("Container"); }
+    public android.view.View getZoomControls() { return (android.view.View) meglerProps.get("ZoomControls"); }
+    public boolean isAutoDismissed() { return (meglerProps.get("AutoDismissed") instanceof Boolean ? (Boolean) meglerProps.get("AutoDismissed") : false); }
+    public boolean isVisible() { return (meglerProps.get("Visible") instanceof Boolean ? (Boolean) meglerProps.get("Visible") : false); }
     public boolean onTouch(android.view.View p0, android.view.MotionEvent p1) { return false; }
-    public void setAutoDismissed(boolean p0) { megletProps.put("AutoDismissed", Boolean.valueOf(p0)); }
-    public void setFocusable(boolean p0) { megletProps.put("Focusable", Boolean.valueOf(p0)); }
-    public void setOnZoomListener(android.widget.ZoomButtonsController.OnZoomListener p0) { megletProps.put("OnZoomListener", p0); }
-    public void setVisible(boolean p0) { megletProps.put("Visible", Boolean.valueOf(p0)); }
-    public void setZoomInEnabled(boolean p0) { megletProps.put("ZoomInEnabled", Boolean.valueOf(p0)); }
-    public void setZoomOutEnabled(boolean p0) { megletProps.put("ZoomOutEnabled", Boolean.valueOf(p0)); }
-    public void setZoomSpeed(long p0) { megletProps.put("ZoomSpeed", Long.valueOf(p0)); }
+    public void setAutoDismissed(boolean p0) { meglerProps.put("AutoDismissed", Boolean.valueOf(p0)); }
+    public void setFocusable(boolean p0) { meglerProps.put("Focusable", Boolean.valueOf(p0)); }
+    public void setOnZoomListener(android.widget.ZoomButtonsController.OnZoomListener p0) { meglerProps.put("OnZoomListener", p0); }
+    public void setVisible(boolean p0) { meglerProps.put("Visible", Boolean.valueOf(p0)); }
+    public void setZoomInEnabled(boolean p0) { meglerProps.put("ZoomInEnabled", Boolean.valueOf(p0)); }
+    public void setZoomOutEnabled(boolean p0) { meglerProps.put("ZoomOutEnabled", Boolean.valueOf(p0)); }
+    public void setZoomSpeed(long p0) { meglerProps.put("ZoomSpeed", Long.valueOf(p0)); }
     ZoomButtonsController() { this((android.view.View) null); }
     public interface OnZoomListener {
         void onVisibilityChanged(boolean p0);

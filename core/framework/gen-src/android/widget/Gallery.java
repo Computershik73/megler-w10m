@@ -3,7 +3,7 @@ package android.widget;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Gallery extends android.widget.AbsSpinner implements android.view.GestureDetector.OnGestureListener {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public Gallery(android.content.Context p0) { super(p0); }
     public Gallery(android.content.Context p0, android.util.AttributeSet p1) { super(p0, p1); }
     public Gallery(android.content.Context p0, android.util.AttributeSet p1, int p2) { super(p0, p1, p2); }
@@ -18,10 +18,10 @@ public class Gallery extends android.widget.AbsSpinner implements android.view.G
     public android.view.ViewGroup.LayoutParams generateDefaultLayoutParams() { return null; }
     public android.view.ViewGroup.LayoutParams generateLayoutParams(android.util.AttributeSet p0) { return null; }
     public android.view.ViewGroup.LayoutParams generateLayoutParams(android.view.ViewGroup.LayoutParams p0) { return null; }
-    public java.lang.CharSequence getAccessibilityClassName() { return (java.lang.CharSequence) megletProps.get("AccessibilityClassName"); }
+    public java.lang.CharSequence getAccessibilityClassName() { return (java.lang.CharSequence) meglerProps.get("AccessibilityClassName"); }
     public int getChildDrawingOrder(int p0, int p1) { return 0; }
     public boolean getChildStaticTransformation(android.view.View p0, android.view.animation.Transformation p1) { return false; }
-    protected android.view.ContextMenu.ContextMenuInfo getContextMenuInfo() { return (android.view.ContextMenu.ContextMenuInfo) megletProps.get("ContextMenuInfo"); }
+    protected android.view.ContextMenu.ContextMenuInfo getContextMenuInfo() { return (android.view.ContextMenu.ContextMenuInfo) meglerProps.get("ContextMenuInfo"); }
     public void onAttachedToWindow() {}
     public boolean onDown(android.view.MotionEvent p0) { return false; }
     public boolean onFling(android.view.MotionEvent p0, android.view.MotionEvent p1, float p2, float p3) { return false; }
@@ -35,19 +35,19 @@ public class Gallery extends android.widget.AbsSpinner implements android.view.G
     public boolean onSingleTapUp(android.view.MotionEvent p0) { return false; }
     public boolean onTouchEvent(android.view.MotionEvent p0) { return false; }
     public boolean performAccessibilityActionInternal(int p0, android.os.Bundle p1) { return false; }
-    public void setAnimationDuration(int p0) { megletProps.put("AnimationDuration", Integer.valueOf(p0)); }
-    public void setCallbackDuringFling(boolean p0) { megletProps.put("CallbackDuringFling", Boolean.valueOf(p0)); }
-    public void setCallbackOnUnselectedItemClick(boolean p0) { megletProps.put("CallbackOnUnselectedItemClick", Boolean.valueOf(p0)); }
-    public void setGravity(int p0) { megletProps.put("Gravity", Integer.valueOf(p0)); }
-    public void setSpacing(int p0) { megletProps.put("Spacing", Integer.valueOf(p0)); }
-    public void setUnselectedAlpha(float p0) { megletProps.put("UnselectedAlpha", Float.valueOf(p0)); }
+    public void setAnimationDuration(int p0) { meglerProps.put("AnimationDuration", Integer.valueOf(p0)); }
+    public void setCallbackDuringFling(boolean p0) { meglerProps.put("CallbackDuringFling", Boolean.valueOf(p0)); }
+    public void setCallbackOnUnselectedItemClick(boolean p0) { meglerProps.put("CallbackOnUnselectedItemClick", Boolean.valueOf(p0)); }
+    public void setGravity(int p0) { meglerProps.put("Gravity", Integer.valueOf(p0)); }
+    public void setSpacing(int p0) { meglerProps.put("Spacing", Integer.valueOf(p0)); }
+    public void setUnselectedAlpha(float p0) { meglerProps.put("UnselectedAlpha", Float.valueOf(p0)); }
     public boolean showContextMenu() { return false; }
     public boolean showContextMenu(float p0, float p1) { return false; }
     public boolean showContextMenuForChild(android.view.View p0) { return false; }
     public boolean showContextMenuForChild(android.view.View p0, float p1, float p2) { return false; }
     Gallery() { this((android.content.Context) null); }
     public static class LayoutParams extends android.view.ViewGroup.LayoutParams {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public LayoutParams(int p0, int p1) { super(p0, p1); }
         public LayoutParams(android.content.Context p0, android.util.AttributeSet p1) { super(p0, p1); }
         public LayoutParams(android.view.ViewGroup.LayoutParams p0) { super(p0); }

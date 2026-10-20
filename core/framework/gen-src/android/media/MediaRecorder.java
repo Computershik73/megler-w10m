@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MediaRecorder implements android.media.AudioRouting, android.media.AudioRecordingMonitor, android.media.AudioRecordingMonitorClient, android.media.MicrophoneDirection {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int MEDIA_ERROR_SERVER_DIED = 100;
     public static final int MEDIA_RECORDER_ERROR_UNKNOWN = 1;
     public static final int MEDIA_RECORDER_INFO_MAX_DURATION_REACHED = 800;
@@ -31,17 +31,17 @@ public class MediaRecorder implements android.media.AudioRouting, android.media.
     public static java.lang.String toLogFriendlyAudioSource(int p0) { return null; }
     public void addOnRoutingChangedListener(android.media.AudioRouting.OnRoutingChangedListener p0, android.os.Handler p1) {}
     protected void finalize() {}
-    public java.util.List getActiveMicrophones() { return (megletProps.get("ActiveMicrophones") != null ? (java.util.List) megletProps.get("ActiveMicrophones") : new java.util.ArrayList()); }
-    public android.media.AudioRecordingConfiguration getActiveRecordingConfiguration() { return (android.media.AudioRecordingConfiguration) megletProps.get("ActiveRecordingConfiguration"); }
-    public android.media.metrics.LogSessionId getLogSessionId() { return (android.media.metrics.LogSessionId) megletProps.get("LogSessionId"); }
-    public int getMaxAmplitude() { return (megletProps.get("MaxAmplitude") instanceof Integer ? (Integer) megletProps.get("MaxAmplitude") : 0); }
-    public android.os.PersistableBundle getMetrics() { return (android.os.PersistableBundle) megletProps.get("Metrics"); }
-    public int getPortId() { return (megletProps.get("PortId") instanceof Integer ? (Integer) megletProps.get("PortId") : 0); }
-    public android.media.AudioDeviceInfo getPreferredDevice() { return (android.media.AudioDeviceInfo) megletProps.get("PreferredDevice"); }
-    public android.media.AudioDeviceInfo getRoutedDevice() { return (android.media.AudioDeviceInfo) megletProps.get("RoutedDevice"); }
-    public java.util.List getRoutedDevices() { return (megletProps.get("RoutedDevices") != null ? (java.util.List) megletProps.get("RoutedDevices") : new java.util.ArrayList()); }
-    public android.view.Surface getSurface() { return (android.view.Surface) megletProps.get("Surface"); }
-    public boolean isPrivacySensitive() { return (megletProps.get("PrivacySensitive") instanceof Boolean ? (Boolean) megletProps.get("PrivacySensitive") : false); }
+    public java.util.List getActiveMicrophones() { return (meglerProps.get("ActiveMicrophones") != null ? (java.util.List) meglerProps.get("ActiveMicrophones") : new java.util.ArrayList()); }
+    public android.media.AudioRecordingConfiguration getActiveRecordingConfiguration() { return (android.media.AudioRecordingConfiguration) meglerProps.get("ActiveRecordingConfiguration"); }
+    public android.media.metrics.LogSessionId getLogSessionId() { return (android.media.metrics.LogSessionId) meglerProps.get("LogSessionId"); }
+    public int getMaxAmplitude() { return (meglerProps.get("MaxAmplitude") instanceof Integer ? (Integer) meglerProps.get("MaxAmplitude") : 0); }
+    public android.os.PersistableBundle getMetrics() { return (android.os.PersistableBundle) meglerProps.get("Metrics"); }
+    public int getPortId() { return (meglerProps.get("PortId") instanceof Integer ? (Integer) meglerProps.get("PortId") : 0); }
+    public android.media.AudioDeviceInfo getPreferredDevice() { return (android.media.AudioDeviceInfo) meglerProps.get("PreferredDevice"); }
+    public android.media.AudioDeviceInfo getRoutedDevice() { return (android.media.AudioDeviceInfo) meglerProps.get("RoutedDevice"); }
+    public java.util.List getRoutedDevices() { return (meglerProps.get("RoutedDevices") != null ? (java.util.List) meglerProps.get("RoutedDevices") : new java.util.ArrayList()); }
+    public android.view.Surface getSurface() { return (android.view.Surface) meglerProps.get("Surface"); }
+    public boolean isPrivacySensitive() { return (meglerProps.get("PrivacySensitive") instanceof Boolean ? (Boolean) meglerProps.get("PrivacySensitive") : false); }
     public void pause() {}
     public void prepare() {}
     public void registerAudioRecordingCallback(java.util.concurrent.Executor p0, android.media.AudioManager.AudioRecordingCallback p1) {}
@@ -49,48 +49,48 @@ public class MediaRecorder implements android.media.AudioRouting, android.media.
     public void removeOnRoutingChangedListener(android.media.AudioRouting.OnRoutingChangedListener p0) {}
     public void reset() {}
     public void resume() {}
-    public void setAudioChannels(int p0) { megletProps.put("AudioChannels", Integer.valueOf(p0)); }
-    public void setAudioEncoder(int p0) { megletProps.put("AudioEncoder", Integer.valueOf(p0)); }
-    public void setAudioEncodingBitRate(int p0) { megletProps.put("AudioEncodingBitRate", Integer.valueOf(p0)); }
-    public void setAudioProfile(android.media.EncoderProfiles.AudioProfile p0) { megletProps.put("AudioProfile", p0); }
-    public void setAudioSamplingRate(int p0) { megletProps.put("AudioSamplingRate", Integer.valueOf(p0)); }
-    public void setAudioSource(int p0) { megletProps.put("AudioSource", Integer.valueOf(p0)); }
-    public void setAuxiliaryOutputFile(java.io.FileDescriptor p0) { megletProps.put("AuxiliaryOutputFile", p0); }
-    public void setAuxiliaryOutputFile(java.lang.String p0) { megletProps.put("AuxiliaryOutputFile", p0); }
-    public void setCamera(android.hardware.Camera p0) { megletProps.put("Camera", p0); }
-    public void setCaptureRate(double p0) { megletProps.put("CaptureRate", Double.valueOf(p0)); }
-    public void setInputSurface(android.view.Surface p0) { megletProps.put("InputSurface", p0); }
+    public void setAudioChannels(int p0) { meglerProps.put("AudioChannels", Integer.valueOf(p0)); }
+    public void setAudioEncoder(int p0) { meglerProps.put("AudioEncoder", Integer.valueOf(p0)); }
+    public void setAudioEncodingBitRate(int p0) { meglerProps.put("AudioEncodingBitRate", Integer.valueOf(p0)); }
+    public void setAudioProfile(android.media.EncoderProfiles.AudioProfile p0) { meglerProps.put("AudioProfile", p0); }
+    public void setAudioSamplingRate(int p0) { meglerProps.put("AudioSamplingRate", Integer.valueOf(p0)); }
+    public void setAudioSource(int p0) { meglerProps.put("AudioSource", Integer.valueOf(p0)); }
+    public void setAuxiliaryOutputFile(java.io.FileDescriptor p0) { meglerProps.put("AuxiliaryOutputFile", p0); }
+    public void setAuxiliaryOutputFile(java.lang.String p0) { meglerProps.put("AuxiliaryOutputFile", p0); }
+    public void setCamera(android.hardware.Camera p0) { meglerProps.put("Camera", p0); }
+    public void setCaptureRate(double p0) { meglerProps.put("CaptureRate", Double.valueOf(p0)); }
+    public void setInputSurface(android.view.Surface p0) { meglerProps.put("InputSurface", p0); }
     public void setLocation(float p0, float p1) {}
-    public void setLogSessionId(android.media.metrics.LogSessionId p0) { megletProps.put("LogSessionId", p0); }
-    public void setMaxDuration(int p0) { megletProps.put("MaxDuration", Integer.valueOf(p0)); }
-    public void setMaxFileSize(long p0) { megletProps.put("MaxFileSize", Long.valueOf(p0)); }
-    public void setNextOutputFile(java.io.File p0) { megletProps.put("NextOutputFile", p0); }
-    public void setNextOutputFile(java.io.FileDescriptor p0) { megletProps.put("NextOutputFile", p0); }
-    public void setOnErrorListener(android.media.MediaRecorder.OnErrorListener p0) { megletProps.put("OnErrorListener", p0); }
-    public void setOnInfoListener(android.media.MediaRecorder.OnInfoListener p0) { megletProps.put("OnInfoListener", p0); }
-    public void setOrientationHint(int p0) { megletProps.put("OrientationHint", Integer.valueOf(p0)); }
-    public void setOutputFile(java.io.File p0) { megletProps.put("OutputFile", p0); }
-    public void setOutputFile(java.io.FileDescriptor p0) { megletProps.put("OutputFile", p0); }
-    public void setOutputFile(java.lang.String p0) { megletProps.put("OutputFile", p0); }
-    public void setOutputFormat(int p0) { megletProps.put("OutputFormat", Integer.valueOf(p0)); }
+    public void setLogSessionId(android.media.metrics.LogSessionId p0) { meglerProps.put("LogSessionId", p0); }
+    public void setMaxDuration(int p0) { meglerProps.put("MaxDuration", Integer.valueOf(p0)); }
+    public void setMaxFileSize(long p0) { meglerProps.put("MaxFileSize", Long.valueOf(p0)); }
+    public void setNextOutputFile(java.io.File p0) { meglerProps.put("NextOutputFile", p0); }
+    public void setNextOutputFile(java.io.FileDescriptor p0) { meglerProps.put("NextOutputFile", p0); }
+    public void setOnErrorListener(android.media.MediaRecorder.OnErrorListener p0) { meglerProps.put("OnErrorListener", p0); }
+    public void setOnInfoListener(android.media.MediaRecorder.OnInfoListener p0) { meglerProps.put("OnInfoListener", p0); }
+    public void setOrientationHint(int p0) { meglerProps.put("OrientationHint", Integer.valueOf(p0)); }
+    public void setOutputFile(java.io.File p0) { meglerProps.put("OutputFile", p0); }
+    public void setOutputFile(java.io.FileDescriptor p0) { meglerProps.put("OutputFile", p0); }
+    public void setOutputFile(java.lang.String p0) { meglerProps.put("OutputFile", p0); }
+    public void setOutputFormat(int p0) { meglerProps.put("OutputFormat", Integer.valueOf(p0)); }
     public boolean setPreferredDevice(android.media.AudioDeviceInfo p0) { return false; }
     public boolean setPreferredMicrophoneDirection(int p0) { return false; }
     public boolean setPreferredMicrophoneFieldDimension(float p0) { return false; }
-    public void setPreviewDisplay(android.view.Surface p0) { megletProps.put("PreviewDisplay", p0); }
-    public void setPrivacySensitive(boolean p0) { megletProps.put("PrivacySensitive", Boolean.valueOf(p0)); }
-    public void setProfile(android.media.CamcorderProfile p0) { megletProps.put("Profile", p0); }
-    public void setVideoEncoder(int p0) { megletProps.put("VideoEncoder", Integer.valueOf(p0)); }
-    public void setVideoEncodingBitRate(int p0) { megletProps.put("VideoEncodingBitRate", Integer.valueOf(p0)); }
+    public void setPreviewDisplay(android.view.Surface p0) { meglerProps.put("PreviewDisplay", p0); }
+    public void setPrivacySensitive(boolean p0) { meglerProps.put("PrivacySensitive", Boolean.valueOf(p0)); }
+    public void setProfile(android.media.CamcorderProfile p0) { meglerProps.put("Profile", p0); }
+    public void setVideoEncoder(int p0) { meglerProps.put("VideoEncoder", Integer.valueOf(p0)); }
+    public void setVideoEncodingBitRate(int p0) { meglerProps.put("VideoEncodingBitRate", Integer.valueOf(p0)); }
     public void setVideoEncodingProfileLevel(int p0, int p1) {}
-    public void setVideoFrameRate(int p0) { megletProps.put("VideoFrameRate", Integer.valueOf(p0)); }
-    public void setVideoProfile(android.media.EncoderProfiles.VideoProfile p0) { megletProps.put("VideoProfile", p0); }
+    public void setVideoFrameRate(int p0) { meglerProps.put("VideoFrameRate", Integer.valueOf(p0)); }
+    public void setVideoProfile(android.media.EncoderProfiles.VideoProfile p0) { meglerProps.put("VideoProfile", p0); }
     public void setVideoSize(int p0, int p1) {}
-    public void setVideoSource(int p0) { megletProps.put("VideoSource", Integer.valueOf(p0)); }
+    public void setVideoSource(int p0) { meglerProps.put("VideoSource", Integer.valueOf(p0)); }
     public void start() {}
     public void stop() {}
     public void unregisterAudioRecordingCallback(android.media.AudioManager.AudioRecordingCallback p0) {}
     public static final class AudioEncoder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int AAC = 3;
         public static final int AAC_ELD = 5;
         public static final int AMR_NB = 1;
@@ -102,7 +102,7 @@ public class MediaRecorder implements android.media.AudioRouting, android.media.
         protected AudioEncoder() {}
     }
     public static final class AudioSource {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int AUDIO_SOURCE_INVALID = -1;
         public static final int CAMCORDER = 5;
         public static final int DEFAULT = 0;
@@ -122,7 +122,7 @@ public class MediaRecorder implements android.media.AudioRouting, android.media.
         protected AudioSource() {}
     }
     public static final class MetricsConstants {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String AUDIO_BITRATE = "android.media.mediarecorder.audio-bitrate";
         public static final java.lang.String AUDIO_CHANNELS = "android.media.mediarecorder.audio-channels";
         public static final java.lang.String AUDIO_SAMPLERATE = "android.media.mediarecorder.audio-samplerate";
@@ -148,7 +148,7 @@ public class MediaRecorder implements android.media.AudioRouting, android.media.
         void onInfo(android.media.MediaRecorder p0, int p1, int p2);
     }
     public static final class OutputFormat {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int AAC_ADIF = 5;
         public static final int AAC_ADTS = 6;
         public static final int AMR_NB = 3;
@@ -165,7 +165,7 @@ public class MediaRecorder implements android.media.AudioRouting, android.media.
         protected OutputFormat() {}
     }
     public static final class VideoEncoder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int APV = 9;
         public static final int AV1 = 8;
         public static final int DEFAULT = 0;
@@ -179,7 +179,7 @@ public class MediaRecorder implements android.media.AudioRouting, android.media.
         protected VideoEncoder() {}
     }
     public static final class VideoSource {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int CAMERA = 1;
         public static final int DEFAULT = 0;
         public static final int SURFACE = 2;

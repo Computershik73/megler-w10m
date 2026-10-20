@@ -3,7 +3,7 @@ package android.net.wifi;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class WifiConfiguration implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int AP_BAND_2GHZ = 0;
     public static final int AP_BAND_5GHZ = 1;
     public static final int AP_BAND_60GHZ = 2;
@@ -141,102 +141,102 @@ public class WifiConfiguration implements android.os.Parcelable {
     public void enableSaeH2eOnlyMode(boolean p0) {}
     public void enableSaePkOnlyMode(boolean p0) {}
     public void enableSuiteBCiphers(boolean p0, boolean p1) {}
-    public java.util.Set getAllNetworkKeys() { return (megletProps.get("AllNetworkKeys") != null ? (java.util.Set) megletProps.get("AllNetworkKeys") : new java.util.HashSet()); }
-    public int getAuthType() { return (megletProps.get("AuthType") instanceof Integer ? (Integer) megletProps.get("AuthType") : 0); }
-    public java.util.List getBssidAllowlist() { return (megletProps.get("BssidAllowlist") != null ? (java.util.List) megletProps.get("BssidAllowlist") : new java.util.ArrayList()); }
-    public java.util.List getBssidAllowlistInternal() { return (megletProps.get("BssidAllowlistInternal") != null ? (java.util.List) megletProps.get("BssidAllowlistInternal") : new java.util.ArrayList()); }
-    public int getCreatorUserId() { return (megletProps.get("CreatorUserId") instanceof Integer ? (Integer) megletProps.get("CreatorUserId") : 0); }
-    public int getCreatorUserIdInternal() { return (megletProps.get("CreatorUserIdInternal") instanceof Integer ? (Integer) megletProps.get("CreatorUserIdInternal") : 0); }
-    public android.net.wifi.SecurityParams getDefaultSecurityParams() { return (android.net.wifi.SecurityParams) megletProps.get("DefaultSecurityParams"); }
-    public java.lang.String getDefaultSecurityType() { return (java.lang.String) megletProps.get("DefaultSecurityType"); }
-    public int getDeletionPriority() { return (megletProps.get("DeletionPriority") instanceof Integer ? (Integer) megletProps.get("DeletionPriority") : 0); }
-    public byte[] getDppCSignKey() { return (byte[]) megletProps.get("DppCSignKey"); }
-    public byte[] getDppConnector() { return (byte[]) megletProps.get("DppConnector"); }
-    public byte[] getDppNetAccessKey() { return (byte[]) megletProps.get("DppNetAccessKey"); }
-    public byte[] getDppPrivateEcKey() { return (byte[]) megletProps.get("DppPrivateEcKey"); }
-    public byte[] getEncryptedPreSharedKey() { return (byte[]) megletProps.get("EncryptedPreSharedKey"); }
-    public byte[] getEncryptedPreSharedKeyIv() { return (byte[]) megletProps.get("EncryptedPreSharedKeyIv"); }
-    public android.net.ProxyInfo getHttpProxy() { return (android.net.ProxyInfo) megletProps.get("HttpProxy"); }
-    public android.net.IpConfiguration.IpAssignment getIpAssignment() { return (android.net.IpConfiguration.IpAssignment) megletProps.get("IpAssignment"); }
-    public android.net.IpConfiguration getIpConfiguration() { return (android.net.IpConfiguration) megletProps.get("IpConfiguration"); }
-    public java.lang.String getKey() { return (java.lang.String) megletProps.get("Key"); }
+    public java.util.Set getAllNetworkKeys() { return (meglerProps.get("AllNetworkKeys") != null ? (java.util.Set) meglerProps.get("AllNetworkKeys") : new java.util.HashSet()); }
+    public int getAuthType() { return (meglerProps.get("AuthType") instanceof Integer ? (Integer) meglerProps.get("AuthType") : 0); }
+    public java.util.List getBssidAllowlist() { return (meglerProps.get("BssidAllowlist") != null ? (java.util.List) meglerProps.get("BssidAllowlist") : new java.util.ArrayList()); }
+    public java.util.List getBssidAllowlistInternal() { return (meglerProps.get("BssidAllowlistInternal") != null ? (java.util.List) meglerProps.get("BssidAllowlistInternal") : new java.util.ArrayList()); }
+    public int getCreatorUserId() { return (meglerProps.get("CreatorUserId") instanceof Integer ? (Integer) meglerProps.get("CreatorUserId") : 0); }
+    public int getCreatorUserIdInternal() { return (meglerProps.get("CreatorUserIdInternal") instanceof Integer ? (Integer) meglerProps.get("CreatorUserIdInternal") : 0); }
+    public android.net.wifi.SecurityParams getDefaultSecurityParams() { return (android.net.wifi.SecurityParams) meglerProps.get("DefaultSecurityParams"); }
+    public java.lang.String getDefaultSecurityType() { return (java.lang.String) meglerProps.get("DefaultSecurityType"); }
+    public int getDeletionPriority() { return (meglerProps.get("DeletionPriority") instanceof Integer ? (Integer) meglerProps.get("DeletionPriority") : 0); }
+    public byte[] getDppCSignKey() { return (byte[]) meglerProps.get("DppCSignKey"); }
+    public byte[] getDppConnector() { return (byte[]) meglerProps.get("DppConnector"); }
+    public byte[] getDppNetAccessKey() { return (byte[]) meglerProps.get("DppNetAccessKey"); }
+    public byte[] getDppPrivateEcKey() { return (byte[]) meglerProps.get("DppPrivateEcKey"); }
+    public byte[] getEncryptedPreSharedKey() { return (byte[]) meglerProps.get("EncryptedPreSharedKey"); }
+    public byte[] getEncryptedPreSharedKeyIv() { return (byte[]) meglerProps.get("EncryptedPreSharedKeyIv"); }
+    public android.net.ProxyInfo getHttpProxy() { return (android.net.ProxyInfo) meglerProps.get("HttpProxy"); }
+    public android.net.IpConfiguration.IpAssignment getIpAssignment() { return (android.net.IpConfiguration.IpAssignment) meglerProps.get("IpAssignment"); }
+    public android.net.IpConfiguration getIpConfiguration() { return (android.net.IpConfiguration) meglerProps.get("IpConfiguration"); }
+    public java.lang.String getKey() { return (java.lang.String) meglerProps.get("Key"); }
     public java.lang.String getKeyIdForCredentials(android.net.wifi.WifiConfiguration p0) { return null; }
-    public int getMacRandomizationSetting() { return (megletProps.get("MacRandomizationSetting") instanceof Integer ? (Integer) megletProps.get("MacRandomizationSetting") : 0); }
-    public java.lang.String getMoTree() { return (java.lang.String) megletProps.get("MoTree"); }
-    public java.lang.String getNetworkKey() { return (java.lang.String) megletProps.get("NetworkKey"); }
+    public int getMacRandomizationSetting() { return (meglerProps.get("MacRandomizationSetting") instanceof Integer ? (Integer) meglerProps.get("MacRandomizationSetting") : 0); }
+    public java.lang.String getMoTree() { return (java.lang.String) meglerProps.get("MoTree"); }
+    public java.lang.String getNetworkKey() { return (java.lang.String) meglerProps.get("NetworkKey"); }
     public java.lang.String getNetworkKeyFromSecurityType(int p0) { return null; }
-    public android.net.wifi.WifiConfiguration.NetworkSelectionStatus getNetworkSelectionStatus() { return (android.net.wifi.WifiConfiguration.NetworkSelectionStatus) megletProps.get("NetworkSelectionStatus"); }
-    public java.lang.String getPasspointUniqueId() { return (java.lang.String) megletProps.get("PasspointUniqueId"); }
-    public java.lang.String getPrintableSsid() { return (java.lang.String) megletProps.get("PrintableSsid"); }
-    public java.lang.String getProfileKey() { return (java.lang.String) megletProps.get("ProfileKey"); }
-    public android.net.IpConfiguration.ProxySettings getProxySettings() { return (android.net.IpConfiguration.ProxySettings) megletProps.get("ProxySettings"); }
-    public android.net.MacAddress getRandomizedMacAddress() { return (android.net.MacAddress) megletProps.get("RandomizedMacAddress"); }
-    public int getRecentFailureReason() { return (megletProps.get("RecentFailureReason") instanceof Integer ? (Integer) megletProps.get("RecentFailureReason") : 0); }
+    public android.net.wifi.WifiConfiguration.NetworkSelectionStatus getNetworkSelectionStatus() { return (android.net.wifi.WifiConfiguration.NetworkSelectionStatus) meglerProps.get("NetworkSelectionStatus"); }
+    public java.lang.String getPasspointUniqueId() { return (java.lang.String) meglerProps.get("PasspointUniqueId"); }
+    public java.lang.String getPrintableSsid() { return (java.lang.String) meglerProps.get("PrintableSsid"); }
+    public java.lang.String getProfileKey() { return (java.lang.String) meglerProps.get("ProfileKey"); }
+    public android.net.IpConfiguration.ProxySettings getProxySettings() { return (android.net.IpConfiguration.ProxySettings) meglerProps.get("ProxySettings"); }
+    public android.net.MacAddress getRandomizedMacAddress() { return (android.net.MacAddress) meglerProps.get("RandomizedMacAddress"); }
+    public int getRecentFailureReason() { return (meglerProps.get("RecentFailureReason") instanceof Integer ? (Integer) meglerProps.get("RecentFailureReason") : 0); }
     public android.net.wifi.SecurityParams getSecurityParams(int p0) { return null; }
-    public java.util.List getSecurityParamsList() { return (megletProps.get("SecurityParamsList") != null ? (java.util.List) megletProps.get("SecurityParamsList") : new java.util.ArrayList()); }
-    public java.lang.String getSsidAndSecurityTypeString() { return (java.lang.String) megletProps.get("SsidAndSecurityTypeString"); }
-    public android.net.StaticIpConfiguration getStaticIpConfiguration() { return (android.net.StaticIpConfiguration) megletProps.get("StaticIpConfiguration"); }
-    public int getStoredCreatorUserId() { return (megletProps.get("StoredCreatorUserId") instanceof Integer ? (Integer) megletProps.get("StoredCreatorUserId") : 0); }
-    public android.os.ParcelUuid getSubscriptionGroup() { return (android.os.ParcelUuid) megletProps.get("SubscriptionGroup"); }
-    public java.util.List getVendorData() { return (megletProps.get("VendorData") != null ? (java.util.List) megletProps.get("VendorData") : new java.util.ArrayList()); }
+    public java.util.List getSecurityParamsList() { return (meglerProps.get("SecurityParamsList") != null ? (java.util.List) meglerProps.get("SecurityParamsList") : new java.util.ArrayList()); }
+    public java.lang.String getSsidAndSecurityTypeString() { return (java.lang.String) meglerProps.get("SsidAndSecurityTypeString"); }
+    public android.net.StaticIpConfiguration getStaticIpConfiguration() { return (android.net.StaticIpConfiguration) meglerProps.get("StaticIpConfiguration"); }
+    public int getStoredCreatorUserId() { return (meglerProps.get("StoredCreatorUserId") instanceof Integer ? (Integer) meglerProps.get("StoredCreatorUserId") : 0); }
+    public android.os.ParcelUuid getSubscriptionGroup() { return (android.os.ParcelUuid) meglerProps.get("SubscriptionGroup"); }
+    public java.util.List getVendorData() { return (meglerProps.get("VendorData") != null ? (java.util.List) meglerProps.get("VendorData") : new java.util.ArrayList()); }
     public boolean hasEncryptedPreSharedKey() { return false; }
     public boolean hasNoInternetAccess() { return false; }
     public boolean hasPreSharedKeyChanged() { return false; }
-    public boolean isAllowedToUpdateByOtherUsers() { return (megletProps.get("AllowedToUpdateByOtherUsers") instanceof Boolean ? (Boolean) megletProps.get("AllowedToUpdateByOtherUsers") : false); }
-    public boolean isDppConfigurator() { return (megletProps.get("DppConfigurator") instanceof Boolean ? (Boolean) megletProps.get("DppConfigurator") : false); }
-    public boolean isEnterprise() { return (megletProps.get("Enterprise") instanceof Boolean ? (Boolean) megletProps.get("Enterprise") : false); }
-    public boolean isEphemeral() { return (megletProps.get("Ephemeral") instanceof Boolean ? (Boolean) megletProps.get("Ephemeral") : false); }
-    public boolean isFilsSha256Enabled() { return (megletProps.get("FilsSha256Enabled") instanceof Boolean ? (Boolean) megletProps.get("FilsSha256Enabled") : false); }
-    public boolean isFilsSha384Enabled() { return (megletProps.get("FilsSha384Enabled") instanceof Boolean ? (Boolean) megletProps.get("FilsSha384Enabled") : false); }
-    public boolean isIpProvisioningTimedOut() { return (megletProps.get("IpProvisioningTimedOut") instanceof Boolean ? (Boolean) megletProps.get("IpProvisioningTimedOut") : false); }
+    public boolean isAllowedToUpdateByOtherUsers() { return (meglerProps.get("AllowedToUpdateByOtherUsers") instanceof Boolean ? (Boolean) meglerProps.get("AllowedToUpdateByOtherUsers") : false); }
+    public boolean isDppConfigurator() { return (meglerProps.get("DppConfigurator") instanceof Boolean ? (Boolean) meglerProps.get("DppConfigurator") : false); }
+    public boolean isEnterprise() { return (meglerProps.get("Enterprise") instanceof Boolean ? (Boolean) meglerProps.get("Enterprise") : false); }
+    public boolean isEphemeral() { return (meglerProps.get("Ephemeral") instanceof Boolean ? (Boolean) meglerProps.get("Ephemeral") : false); }
+    public boolean isFilsSha256Enabled() { return (meglerProps.get("FilsSha256Enabled") instanceof Boolean ? (Boolean) meglerProps.get("FilsSha256Enabled") : false); }
+    public boolean isFilsSha384Enabled() { return (meglerProps.get("FilsSha384Enabled") instanceof Boolean ? (Boolean) meglerProps.get("FilsSha384Enabled") : false); }
+    public boolean isIpProvisioningTimedOut() { return (meglerProps.get("IpProvisioningTimedOut") instanceof Boolean ? (Boolean) meglerProps.get("IpProvisioningTimedOut") : false); }
     public boolean isLinked(android.net.wifi.WifiConfiguration p0) { return false; }
-    public boolean isNoInternetAccessExpected() { return (megletProps.get("NoInternetAccessExpected") instanceof Boolean ? (Boolean) megletProps.get("NoInternetAccessExpected") : false); }
-    public boolean isOpenNetwork() { return (megletProps.get("OpenNetwork") instanceof Boolean ? (Boolean) megletProps.get("OpenNetwork") : false); }
-    public boolean isPasspoint() { return (megletProps.get("Passpoint") instanceof Boolean ? (Boolean) megletProps.get("Passpoint") : false); }
-    public boolean isRepeaterEnabled() { return (megletProps.get("RepeaterEnabled") instanceof Boolean ? (Boolean) megletProps.get("RepeaterEnabled") : false); }
+    public boolean isNoInternetAccessExpected() { return (meglerProps.get("NoInternetAccessExpected") instanceof Boolean ? (Boolean) meglerProps.get("NoInternetAccessExpected") : false); }
+    public boolean isOpenNetwork() { return (meglerProps.get("OpenNetwork") instanceof Boolean ? (Boolean) meglerProps.get("OpenNetwork") : false); }
+    public boolean isPasspoint() { return (meglerProps.get("Passpoint") instanceof Boolean ? (Boolean) meglerProps.get("Passpoint") : false); }
+    public boolean isRepeaterEnabled() { return (meglerProps.get("RepeaterEnabled") instanceof Boolean ? (Boolean) meglerProps.get("RepeaterEnabled") : false); }
     public boolean isSecurityType(int p0) { return false; }
-    public boolean isSendDhcpHostnameEnabled() { return (megletProps.get("SendDhcpHostnameEnabled") instanceof Boolean ? (Boolean) megletProps.get("SendDhcpHostnameEnabled") : false); }
-    public boolean isSuiteBCipherEcdheEcdsaEnabled() { return (megletProps.get("SuiteBCipherEcdheEcdsaEnabled") instanceof Boolean ? (Boolean) megletProps.get("SuiteBCipherEcdheEcdsaEnabled") : false); }
-    public boolean isSuiteBCipherEcdheRsaEnabled() { return (megletProps.get("SuiteBCipherEcdheRsaEnabled") instanceof Boolean ? (Boolean) megletProps.get("SuiteBCipherEcdheRsaEnabled") : false); }
-    public boolean isUserSelected() { return (megletProps.get("UserSelected") instanceof Boolean ? (Boolean) megletProps.get("UserSelected") : false); }
-    public boolean isWifi7Enabled() { return (megletProps.get("Wifi7Enabled") instanceof Boolean ? (Boolean) megletProps.get("Wifi7Enabled") : false); }
-    public boolean isWpaPersonalOnlyConfiguration() { return (megletProps.get("WpaPersonalOnlyConfiguration") instanceof Boolean ? (Boolean) megletProps.get("WpaPersonalOnlyConfiguration") : false); }
+    public boolean isSendDhcpHostnameEnabled() { return (meglerProps.get("SendDhcpHostnameEnabled") instanceof Boolean ? (Boolean) meglerProps.get("SendDhcpHostnameEnabled") : false); }
+    public boolean isSuiteBCipherEcdheEcdsaEnabled() { return (meglerProps.get("SuiteBCipherEcdheEcdsaEnabled") instanceof Boolean ? (Boolean) meglerProps.get("SuiteBCipherEcdheEcdsaEnabled") : false); }
+    public boolean isSuiteBCipherEcdheRsaEnabled() { return (meglerProps.get("SuiteBCipherEcdheRsaEnabled") instanceof Boolean ? (Boolean) meglerProps.get("SuiteBCipherEcdheRsaEnabled") : false); }
+    public boolean isUserSelected() { return (meglerProps.get("UserSelected") instanceof Boolean ? (Boolean) meglerProps.get("UserSelected") : false); }
+    public boolean isWifi7Enabled() { return (meglerProps.get("Wifi7Enabled") instanceof Boolean ? (Boolean) meglerProps.get("Wifi7Enabled") : false); }
+    public boolean isWpaPersonalOnlyConfiguration() { return (meglerProps.get("WpaPersonalOnlyConfiguration") instanceof Boolean ? (Boolean) meglerProps.get("WpaPersonalOnlyConfiguration") : false); }
     public boolean needsPreSharedKey() { return false; }
-    public void setAllowedToUpdateByOtherUsers(boolean p0) { megletProps.put("AllowedToUpdateByOtherUsers", Boolean.valueOf(p0)); }
-    public void setBssidAllowlist(java.util.List p0) { megletProps.put("BssidAllowlist", p0); }
-    public void setCreatorUserId(int p0) { megletProps.put("CreatorUserId", Integer.valueOf(p0)); }
-    public void setDeletionPriority(int p0) { megletProps.put("DeletionPriority", Integer.valueOf(p0)); }
-    public void setDppConfigurator(byte[] p0) { megletProps.put("DppConfigurator", p0); }
+    public void setAllowedToUpdateByOtherUsers(boolean p0) { meglerProps.put("AllowedToUpdateByOtherUsers", Boolean.valueOf(p0)); }
+    public void setBssidAllowlist(java.util.List p0) { meglerProps.put("BssidAllowlist", p0); }
+    public void setCreatorUserId(int p0) { meglerProps.put("CreatorUserId", Integer.valueOf(p0)); }
+    public void setDeletionPriority(int p0) { meglerProps.put("DeletionPriority", Integer.valueOf(p0)); }
+    public void setDppConfigurator(byte[] p0) { meglerProps.put("DppConfigurator", p0); }
     public void setDppConnectionKeys(byte[] p0, byte[] p1, byte[] p2) {}
     public void setEncryptedPreSharedKey(byte[] p0, byte[] p1) {}
-    public void setHasPreSharedKeyChanged(boolean p0) { megletProps.put("HasPreSharedKeyChanged", Boolean.valueOf(p0)); }
-    public void setHttpProxy(android.net.ProxyInfo p0) { megletProps.put("HttpProxy", p0); }
-    public void setIpAssignment(android.net.IpConfiguration.IpAssignment p0) { megletProps.put("IpAssignment", p0); }
-    public void setIpConfiguration(android.net.IpConfiguration p0) { megletProps.put("IpConfiguration", p0); }
-    public void setIpProvisioningTimedOut(boolean p0) { megletProps.put("IpProvisioningTimedOut", Boolean.valueOf(p0)); }
+    public void setHasPreSharedKeyChanged(boolean p0) { meglerProps.put("HasPreSharedKeyChanged", Boolean.valueOf(p0)); }
+    public void setHttpProxy(android.net.ProxyInfo p0) { meglerProps.put("HttpProxy", p0); }
+    public void setIpAssignment(android.net.IpConfiguration.IpAssignment p0) { meglerProps.put("IpAssignment", p0); }
+    public void setIpConfiguration(android.net.IpConfiguration p0) { meglerProps.put("IpConfiguration", p0); }
+    public void setIpProvisioningTimedOut(boolean p0) { meglerProps.put("IpProvisioningTimedOut", Boolean.valueOf(p0)); }
     public boolean setIsUserSelected(boolean p0) { return false; }
-    public void setMacRandomizationSetting(int p0) { megletProps.put("MacRandomizationSetting", Integer.valueOf(p0)); }
-    public void setNetworkSelectionStatus(android.net.wifi.WifiConfiguration.NetworkSelectionStatus p0) { megletProps.put("NetworkSelectionStatus", p0); }
-    public void setPasspointManagementObjectTree(java.lang.String p0) { megletProps.put("PasspointManagementObjectTree", p0); }
-    public void setPasspointUniqueId(java.lang.String p0) { megletProps.put("PasspointUniqueId", p0); }
+    public void setMacRandomizationSetting(int p0) { meglerProps.put("MacRandomizationSetting", Integer.valueOf(p0)); }
+    public void setNetworkSelectionStatus(android.net.wifi.WifiConfiguration.NetworkSelectionStatus p0) { meglerProps.put("NetworkSelectionStatus", p0); }
+    public void setPasspointManagementObjectTree(java.lang.String p0) { meglerProps.put("PasspointManagementObjectTree", p0); }
+    public void setPasspointUniqueId(java.lang.String p0) { meglerProps.put("PasspointUniqueId", p0); }
     public void setProxy(android.net.IpConfiguration.ProxySettings p0, android.net.ProxyInfo p1) {}
-    public void setProxySettings(android.net.IpConfiguration.ProxySettings p0) { megletProps.put("ProxySettings", p0); }
-    public void setRandomizedMacAddress(android.net.MacAddress p0) { megletProps.put("RandomizedMacAddress", p0); }
-    public void setRepeaterEnabled(boolean p0) { megletProps.put("RepeaterEnabled", Boolean.valueOf(p0)); }
-    public void setSecurityParams(int p0) { megletProps.put("SecurityParams", Integer.valueOf(p0)); }
-    public void setSecurityParams(android.net.wifi.SecurityParams p0) { megletProps.put("SecurityParams", p0); }
-    public void setSecurityParams(java.util.BitSet p0) { megletProps.put("SecurityParams", p0); }
-    public void setSecurityParams(java.util.List p0) { megletProps.put("SecurityParams", p0); }
+    public void setProxySettings(android.net.IpConfiguration.ProxySettings p0) { meglerProps.put("ProxySettings", p0); }
+    public void setRandomizedMacAddress(android.net.MacAddress p0) { meglerProps.put("RandomizedMacAddress", p0); }
+    public void setRepeaterEnabled(boolean p0) { meglerProps.put("RepeaterEnabled", Boolean.valueOf(p0)); }
+    public void setSecurityParams(int p0) { meglerProps.put("SecurityParams", Integer.valueOf(p0)); }
+    public void setSecurityParams(android.net.wifi.SecurityParams p0) { meglerProps.put("SecurityParams", p0); }
+    public void setSecurityParams(java.util.BitSet p0) { meglerProps.put("SecurityParams", p0); }
+    public void setSecurityParams(java.util.List p0) { meglerProps.put("SecurityParams", p0); }
     public void setSecurityParamsEnabled(int p0, boolean p1) {}
     public void setSecurityParamsIsAddedByAutoUpgrade(int p0, boolean p1) {}
-    public void setSendDhcpHostnameEnabled(boolean p0) { megletProps.put("SendDhcpHostnameEnabled", Boolean.valueOf(p0)); }
-    public void setStaticIpConfiguration(android.net.StaticIpConfiguration p0) { megletProps.put("StaticIpConfiguration", p0); }
-    public void setSubscriptionGroup(android.os.ParcelUuid p0) { megletProps.put("SubscriptionGroup", p0); }
-    public void setVendorData(java.util.List p0) { megletProps.put("VendorData", p0); }
-    public void setWifi7Enabled(boolean p0) { megletProps.put("Wifi7Enabled", Boolean.valueOf(p0)); }
+    public void setSendDhcpHostnameEnabled(boolean p0) { meglerProps.put("SendDhcpHostnameEnabled", Boolean.valueOf(p0)); }
+    public void setStaticIpConfiguration(android.net.StaticIpConfiguration p0) { meglerProps.put("StaticIpConfiguration", p0); }
+    public void setSubscriptionGroup(android.os.ParcelUuid p0) { meglerProps.put("SubscriptionGroup", p0); }
+    public void setVendorData(java.util.List p0) { meglerProps.put("VendorData", p0); }
+    public void setWifi7Enabled(boolean p0) { meglerProps.put("Wifi7Enabled", Boolean.valueOf(p0)); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public static class AuthAlgorithm {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int LEAP = 2;
         public static final int OPEN = 0;
         public static final int SAE = 3;
@@ -246,7 +246,7 @@ public class WifiConfiguration implements android.os.Parcelable {
         protected AuthAlgorithm() {}
     }
     public static class GroupCipher {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int CCMP = 3;
         public static final int GCMP_128 = 7;
         public static final int GCMP_256 = 5;
@@ -260,7 +260,7 @@ public class WifiConfiguration implements android.os.Parcelable {
         protected GroupCipher() {}
     }
     public static class GroupMgmtCipher {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int BIP_CMAC_256 = 0;
         public static final int BIP_GMAC_128 = 1;
         public static final int BIP_GMAC_256 = 2;
@@ -268,7 +268,7 @@ public class WifiConfiguration implements android.os.Parcelable {
         protected GroupMgmtCipher() {}
     }
     public static class KeyMgmt {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int DPP = 17;
         public static final int FILS_SHA256 = 15;
         public static final int FILS_SHA384 = 16;
@@ -292,7 +292,7 @@ public class WifiConfiguration implements android.os.Parcelable {
         protected KeyMgmt() {}
     }
     public static class NetworkSelectionStatus {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int DISABLED_ASSOCIATION_REJECTION = 1;
         public static final int DISABLED_AUTHENTICATION_FAILURE = 2;
         public static final int DISABLED_AUTHENTICATION_NO_CREDENTIALS = 5;
@@ -325,55 +325,55 @@ public class WifiConfiguration implements android.os.Parcelable {
         public void clearDisableReasonCounter() {}
         public void clearDisableReasonCounter(int p0) {}
         public void copy(android.net.wifi.WifiConfiguration.NetworkSelectionStatus p0) {}
-        public android.net.wifi.ScanResult getCandidate() { return (android.net.wifi.ScanResult) megletProps.get("Candidate"); }
-        public int getCandidateScore() { return (megletProps.get("CandidateScore") instanceof Integer ? (Integer) megletProps.get("CandidateScore") : 0); }
-        public android.net.wifi.SecurityParams getCandidateSecurityParams() { return (android.net.wifi.SecurityParams) megletProps.get("CandidateSecurityParams"); }
-        public java.lang.String getConnectChoice() { return (java.lang.String) megletProps.get("ConnectChoice"); }
-        public int getConnectChoiceRssi() { return (megletProps.get("ConnectChoiceRssi") instanceof Integer ? (Integer) megletProps.get("ConnectChoiceRssi") : 0); }
-        public long getDisableEndTime() { return (megletProps.get("DisableEndTime") instanceof Long ? (Long) megletProps.get("DisableEndTime") : 0L); }
+        public android.net.wifi.ScanResult getCandidate() { return (android.net.wifi.ScanResult) meglerProps.get("Candidate"); }
+        public int getCandidateScore() { return (meglerProps.get("CandidateScore") instanceof Integer ? (Integer) meglerProps.get("CandidateScore") : 0); }
+        public android.net.wifi.SecurityParams getCandidateSecurityParams() { return (android.net.wifi.SecurityParams) meglerProps.get("CandidateSecurityParams"); }
+        public java.lang.String getConnectChoice() { return (java.lang.String) meglerProps.get("ConnectChoice"); }
+        public int getConnectChoiceRssi() { return (meglerProps.get("ConnectChoiceRssi") instanceof Integer ? (Integer) meglerProps.get("ConnectChoiceRssi") : 0); }
+        public long getDisableEndTime() { return (meglerProps.get("DisableEndTime") instanceof Long ? (Long) meglerProps.get("DisableEndTime") : 0L); }
         public int getDisableReasonCounter(int p0) { return 0; }
-        public long getDisableTime() { return (megletProps.get("DisableTime") instanceof Long ? (Long) megletProps.get("DisableTime") : 0L); }
-        public android.net.wifi.SecurityParams getLastUsedSecurityParams() { return (android.net.wifi.SecurityParams) megletProps.get("LastUsedSecurityParams"); }
-        public java.lang.String getNetworkSelectionBSSID() { return (java.lang.String) megletProps.get("NetworkSelectionBSSID"); }
-        public int getNetworkSelectionDisableReason() { return (megletProps.get("NetworkSelectionDisableReason") instanceof Integer ? (Integer) megletProps.get("NetworkSelectionDisableReason") : 0); }
-        public java.lang.String getNetworkSelectionDisableReasonString() { return (java.lang.String) megletProps.get("NetworkSelectionDisableReasonString"); }
-        public int getNetworkSelectionStatus() { return (megletProps.get("NetworkSelectionStatus") instanceof Integer ? (Integer) megletProps.get("NetworkSelectionStatus") : 0); }
-        public java.lang.String getNetworkStatusString() { return (java.lang.String) megletProps.get("NetworkStatusString"); }
-        public boolean getSeenInLastQualifiedNetworkSelection() { return (megletProps.get("SeenInLastQualifiedNetworkSelection") instanceof Boolean ? (Boolean) megletProps.get("SeenInLastQualifiedNetworkSelection") : false); }
+        public long getDisableTime() { return (meglerProps.get("DisableTime") instanceof Long ? (Long) meglerProps.get("DisableTime") : 0L); }
+        public android.net.wifi.SecurityParams getLastUsedSecurityParams() { return (android.net.wifi.SecurityParams) meglerProps.get("LastUsedSecurityParams"); }
+        public java.lang.String getNetworkSelectionBSSID() { return (java.lang.String) meglerProps.get("NetworkSelectionBSSID"); }
+        public int getNetworkSelectionDisableReason() { return (meglerProps.get("NetworkSelectionDisableReason") instanceof Integer ? (Integer) meglerProps.get("NetworkSelectionDisableReason") : 0); }
+        public java.lang.String getNetworkSelectionDisableReasonString() { return (java.lang.String) meglerProps.get("NetworkSelectionDisableReasonString"); }
+        public int getNetworkSelectionStatus() { return (meglerProps.get("NetworkSelectionStatus") instanceof Integer ? (Integer) meglerProps.get("NetworkSelectionStatus") : 0); }
+        public java.lang.String getNetworkStatusString() { return (java.lang.String) meglerProps.get("NetworkStatusString"); }
+        public boolean getSeenInLastQualifiedNetworkSelection() { return (meglerProps.get("SeenInLastQualifiedNetworkSelection") instanceof Boolean ? (Boolean) meglerProps.get("SeenInLastQualifiedNetworkSelection") : false); }
         public boolean hasEverConnected() { return false; }
         public boolean hasEverValidatedInternetAccess() { return false; }
         public boolean hasNeverDetectedCaptivePortal() { return false; }
         public void incrementDisableReasonCounter(int p0) {}
-        public boolean isNetworkEnabled() { return (megletProps.get("NetworkEnabled") instanceof Boolean ? (Boolean) megletProps.get("NetworkEnabled") : false); }
-        public boolean isNetworkPermanentlyDisabled() { return (megletProps.get("NetworkPermanentlyDisabled") instanceof Boolean ? (Boolean) megletProps.get("NetworkPermanentlyDisabled") : false); }
-        public boolean isNetworkTemporaryDisabled() { return (megletProps.get("NetworkTemporaryDisabled") instanceof Boolean ? (Boolean) megletProps.get("NetworkTemporaryDisabled") : false); }
+        public boolean isNetworkEnabled() { return (meglerProps.get("NetworkEnabled") instanceof Boolean ? (Boolean) meglerProps.get("NetworkEnabled") : false); }
+        public boolean isNetworkPermanentlyDisabled() { return (meglerProps.get("NetworkPermanentlyDisabled") instanceof Boolean ? (Boolean) meglerProps.get("NetworkPermanentlyDisabled") : false); }
+        public boolean isNetworkTemporaryDisabled() { return (meglerProps.get("NetworkTemporaryDisabled") instanceof Boolean ? (Boolean) meglerProps.get("NetworkTemporaryDisabled") : false); }
         public void readFromParcel(android.os.Parcel p0) {}
-        public void setCandidate(android.net.wifi.ScanResult p0) { megletProps.put("Candidate", p0); }
-        public void setCandidateScore(int p0) { megletProps.put("CandidateScore", Integer.valueOf(p0)); }
-        public void setCandidateSecurityParams(android.net.wifi.SecurityParams p0) { megletProps.put("CandidateSecurityParams", p0); }
-        public void setConnectChoice(java.lang.String p0) { megletProps.put("ConnectChoice", p0); }
-        public void setConnectChoiceRssi(int p0) { megletProps.put("ConnectChoiceRssi", Integer.valueOf(p0)); }
-        public void setDisableEndTime(long p0) { megletProps.put("DisableEndTime", Long.valueOf(p0)); }
+        public void setCandidate(android.net.wifi.ScanResult p0) { meglerProps.put("Candidate", p0); }
+        public void setCandidateScore(int p0) { meglerProps.put("CandidateScore", Integer.valueOf(p0)); }
+        public void setCandidateSecurityParams(android.net.wifi.SecurityParams p0) { meglerProps.put("CandidateSecurityParams", p0); }
+        public void setConnectChoice(java.lang.String p0) { meglerProps.put("ConnectChoice", p0); }
+        public void setConnectChoiceRssi(int p0) { meglerProps.put("ConnectChoiceRssi", Integer.valueOf(p0)); }
+        public void setDisableEndTime(long p0) { meglerProps.put("DisableEndTime", Long.valueOf(p0)); }
         public void setDisableReasonCounter(int p0, int p1) {}
-        public void setDisableTime(long p0) { megletProps.put("DisableTime", Long.valueOf(p0)); }
-        public void setHasEverConnected(boolean p0) { megletProps.put("HasEverConnected", Boolean.valueOf(p0)); }
-        public void setHasEverValidatedInternetAccess(boolean p0) { megletProps.put("HasEverValidatedInternetAccess", Boolean.valueOf(p0)); }
-        public void setHasNeverDetectedCaptivePortal(boolean p0) { megletProps.put("HasNeverDetectedCaptivePortal", Boolean.valueOf(p0)); }
-        public void setLastUsedSecurityParams(android.net.wifi.SecurityParams p0) { megletProps.put("LastUsedSecurityParams", p0); }
-        public void setNetworkSelectionBSSID(java.lang.String p0) { megletProps.put("NetworkSelectionBSSID", p0); }
-        public void setNetworkSelectionDisableReason(int p0) { megletProps.put("NetworkSelectionDisableReason", Integer.valueOf(p0)); }
-        public void setNetworkSelectionStatus(int p0) { megletProps.put("NetworkSelectionStatus", Integer.valueOf(p0)); }
-        public void setSeenInLastQualifiedNetworkSelection(boolean p0) { megletProps.put("SeenInLastQualifiedNetworkSelection", Boolean.valueOf(p0)); }
+        public void setDisableTime(long p0) { meglerProps.put("DisableTime", Long.valueOf(p0)); }
+        public void setHasEverConnected(boolean p0) { meglerProps.put("HasEverConnected", Boolean.valueOf(p0)); }
+        public void setHasEverValidatedInternetAccess(boolean p0) { meglerProps.put("HasEverValidatedInternetAccess", Boolean.valueOf(p0)); }
+        public void setHasNeverDetectedCaptivePortal(boolean p0) { meglerProps.put("HasNeverDetectedCaptivePortal", Boolean.valueOf(p0)); }
+        public void setLastUsedSecurityParams(android.net.wifi.SecurityParams p0) { meglerProps.put("LastUsedSecurityParams", p0); }
+        public void setNetworkSelectionBSSID(java.lang.String p0) { meglerProps.put("NetworkSelectionBSSID", p0); }
+        public void setNetworkSelectionDisableReason(int p0) { meglerProps.put("NetworkSelectionDisableReason", Integer.valueOf(p0)); }
+        public void setNetworkSelectionStatus(int p0) { meglerProps.put("NetworkSelectionStatus", Integer.valueOf(p0)); }
+        public void setSeenInLastQualifiedNetworkSelection(boolean p0) { meglerProps.put("SeenInLastQualifiedNetworkSelection", Boolean.valueOf(p0)); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         public static final class Builder {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public Builder() {}
-            public android.net.wifi.WifiConfiguration.NetworkSelectionStatus build() { android.net.wifi.WifiConfiguration.NetworkSelectionStatus x = new android.net.wifi.WifiConfiguration.NetworkSelectionStatus(); x.megletProps.putAll(megletProps); return x; }
-            public android.net.wifi.WifiConfiguration.NetworkSelectionStatus.Builder setNetworkSelectionDisableReason(int p0) { megletProps.put("NetworkSelectionDisableReason", Integer.valueOf(p0)); return this; }
-            public android.net.wifi.WifiConfiguration.NetworkSelectionStatus.Builder setNetworkSelectionStatus(int p0) { megletProps.put("NetworkSelectionStatus", Integer.valueOf(p0)); return this; }
+            public android.net.wifi.WifiConfiguration.NetworkSelectionStatus build() { android.net.wifi.WifiConfiguration.NetworkSelectionStatus x = new android.net.wifi.WifiConfiguration.NetworkSelectionStatus(); x.meglerProps.putAll(meglerProps); return x; }
+            public android.net.wifi.WifiConfiguration.NetworkSelectionStatus.Builder setNetworkSelectionDisableReason(int p0) { meglerProps.put("NetworkSelectionDisableReason", Integer.valueOf(p0)); return this; }
+            public android.net.wifi.WifiConfiguration.NetworkSelectionStatus.Builder setNetworkSelectionStatus(int p0) { meglerProps.put("NetworkSelectionStatus", Integer.valueOf(p0)); return this; }
         }
         public static final class DisableReasonInfo {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public static final int PERMANENT_DISABLE_TIMEOUT = -1;
             public int mDisableThreshold;
             public int mDisableTimeoutMillis;
@@ -383,7 +383,7 @@ public class WifiConfiguration implements android.os.Parcelable {
         }
     }
     public static class PairwiseCipher {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int CCMP = 2;
         public static final int GCMP_128 = 5;
         public static final int GCMP_256 = 3;
@@ -395,7 +395,7 @@ public class WifiConfiguration implements android.os.Parcelable {
         protected PairwiseCipher() {}
     }
     public static class Protocol {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int OSEN = 2;
         public static final int RSN = 1;
         public static final int WAPI = 3;
@@ -405,15 +405,15 @@ public class WifiConfiguration implements android.os.Parcelable {
         protected Protocol() {}
     }
     public static class RecentFailure {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public void clear() {}
-        public int getAssociationStatus() { return (megletProps.get("AssociationStatus") instanceof Integer ? (Integer) megletProps.get("AssociationStatus") : 0); }
-        public long getLastUpdateTimeSinceBootMillis() { return (megletProps.get("LastUpdateTimeSinceBootMillis") instanceof Long ? (Long) megletProps.get("LastUpdateTimeSinceBootMillis") : 0L); }
+        public int getAssociationStatus() { return (meglerProps.get("AssociationStatus") instanceof Integer ? (Integer) meglerProps.get("AssociationStatus") : 0); }
+        public long getLastUpdateTimeSinceBootMillis() { return (meglerProps.get("LastUpdateTimeSinceBootMillis") instanceof Long ? (Long) meglerProps.get("LastUpdateTimeSinceBootMillis") : 0L); }
         public void setAssociationStatus(int p0, long p1) {}
         protected RecentFailure() {}
     }
     public static class Status {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int CURRENT = 0;
         public static final int DISABLED = 1;
         public static final int ENABLED = 2;
@@ -421,7 +421,7 @@ public class WifiConfiguration implements android.os.Parcelable {
         protected Status() {}
     }
     public static class SuiteBCipher {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int ECDHE_ECDSA = 0;
         public static final int ECDHE_RSA = 1;
         public static java.lang.String[] strings;

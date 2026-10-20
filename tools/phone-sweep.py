@@ -52,7 +52,7 @@ def main():
     args = ap.parse_args()
     if not 10 <= args.seconds <= 3600:
         ap.error("--seconds must be 10..3600")
-    os.environ.setdefault("MEGLET_PHONE_PATIENCE", "20")
+    os.environ.setdefault("MEGLER_PHONE_PATIENCE", "20")
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     pkg = phone.package()
@@ -81,7 +81,7 @@ def main():
                 (folder / "apk.json").write_bytes(report)
             phone.cmd_stop(None)
             set_flags({"shots", f"play-{args.seconds}", "app-" + name[:-4]})
-            stale = {n: phone.read_app_file(pfn, n) for n in ("meglet.log", "meglet-auto.log")}
+            stale = {n: phone.read_app_file(pfn, n) for n in ("megler.log", "megler-auto.log")}
             # Portal creation dates/sizes do not change when a BMP is
             # overwritten. Archive pre-existing captures before the first
             # run, then clear the generated frame names between runs.
@@ -103,20 +103,20 @@ def main():
             fresh = False
             while time.monotonic() < deadline:
                 time.sleep(3)
-                data = phone.read_app_file(pfn, "meglet-auto.log")
-                if data and data != stale["meglet-auto.log"]:
+                data = phone.read_app_file(pfn, "megler-auto.log")
+                if data and data != stale["megler-auto.log"]:
                     fresh = True
                     if b"AUTO DONE" in data:
                         state = "done"
                         break
-                if phone.meglet_running() is False:
+                if phone.megler_running() is False:
                     state = "process-ended"
                     break
-            for log in ("meglet.log", "meglet-auto.log", "meglet-boot.txt"):
+            for log in ("megler.log", "megler-auto.log", "megler-boot.txt"):
                 data = phone.read_app_file(pfn, log)
                 if data is not None and data != stale.get(log):
                     (folder / log).write_bytes(data)
-            auto_path = folder / "meglet-auto.log"
+            auto_path = folder / "megler-auto.log"
             auto = auto_path.read_text(encoding="utf-8", errors="replace") if auto_path.exists() else ""
             # A screenshot belongs to this run only if the auto run selected
             # the requested APK; a refused selection can leave old pictures.

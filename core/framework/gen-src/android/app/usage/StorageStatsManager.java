@@ -3,7 +3,7 @@ package android.app.usage;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class StorageStatsManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public StorageStatsManager(android.content.Context p0, android.app.usage.IStorageStatsManager p1) {}
     public long getCacheBytes(java.lang.String p0) { return 0L; }
     public long getCacheBytes(java.util.UUID p0) { return 0L; }

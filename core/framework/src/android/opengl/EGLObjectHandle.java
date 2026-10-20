@@ -3,8 +3,8 @@ package android.opengl;
 /** An EGL object by its handle; equal handles are the same object, as on Android. */
 public abstract class EGLObjectHandle {
     private final long mHandle;
-    /** Meglet: the javax.microedition.khronos.egl object behind it. */
-    Object meglet;
+    /** Megler: the javax.microedition.khronos.egl object behind it. */
+    Object megler;
     @Deprecated protected EGLObjectHandle(int handle) { mHandle = handle; }
     protected EGLObjectHandle(long handle) { mHandle = handle; }
     @Deprecated public int getHandle() { return (int) mHandle; }

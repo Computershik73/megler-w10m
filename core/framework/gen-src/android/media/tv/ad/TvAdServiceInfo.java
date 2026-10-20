@@ -3,14 +3,14 @@ package android.media.tv.ad;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TvAdServiceInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public TvAdServiceInfo(android.content.Context p0, android.content.ComponentName p1) {}
     public int describeContents() { return 0; }
-    public android.content.ComponentName getComponent() { return (android.content.ComponentName) megletProps.get("Component"); }
-    public java.lang.String getId() { return (java.lang.String) megletProps.get("Id"); }
-    public android.content.pm.ServiceInfo getServiceInfo() { return (android.content.pm.ServiceInfo) megletProps.get("ServiceInfo"); }
-    public java.util.List getSupportedTypes() { return (megletProps.get("SupportedTypes") != null ? (java.util.List) megletProps.get("SupportedTypes") : new java.util.ArrayList()); }
+    public android.content.ComponentName getComponent() { return (android.content.ComponentName) meglerProps.get("Component"); }
+    public java.lang.String getId() { return (java.lang.String) meglerProps.get("Id"); }
+    public android.content.pm.ServiceInfo getServiceInfo() { return (android.content.pm.ServiceInfo) meglerProps.get("ServiceInfo"); }
+    public java.util.List getSupportedTypes() { return (meglerProps.get("SupportedTypes") != null ? (java.util.List) meglerProps.get("SupportedTypes") : new java.util.ArrayList()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     TvAdServiceInfo() { this((android.content.Context) null, (android.content.ComponentName) null); }
 }

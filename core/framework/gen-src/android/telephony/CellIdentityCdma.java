@@ -3,17 +3,17 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CellIdentityCdma extends android.telephony.CellIdentity {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public CellIdentityCdma() { super((java.lang.String) null, (int) 0, (android.os.Parcel) null); }
     public CellIdentityCdma(int p0, int p1, int p2, int p3, int p4, java.lang.String p5, java.lang.String p6) { super((java.lang.String) null, (int) 0, (android.os.Parcel) null); }
     protected static android.telephony.CellIdentityCdma createFromParcelBody(android.os.Parcel p0) { return new CellIdentityCdma(); }
     public android.telephony.cdma.CdmaCellLocation asCellLocation() { return null; }
-    public int getBasestationId() { return (megletProps.get("BasestationId") instanceof Integer ? (Integer) megletProps.get("BasestationId") : 0); }
-    public int getLatitude() { return (megletProps.get("Latitude") instanceof Integer ? (Integer) megletProps.get("Latitude") : 0); }
-    public int getLongitude() { return (megletProps.get("Longitude") instanceof Integer ? (Integer) megletProps.get("Longitude") : 0); }
-    public int getNetworkId() { return (megletProps.get("NetworkId") instanceof Integer ? (Integer) megletProps.get("NetworkId") : 0); }
-    public int getSystemId() { return (megletProps.get("SystemId") instanceof Integer ? (Integer) megletProps.get("SystemId") : 0); }
+    public int getBasestationId() { return (meglerProps.get("BasestationId") instanceof Integer ? (Integer) meglerProps.get("BasestationId") : 0); }
+    public int getLatitude() { return (meglerProps.get("Latitude") instanceof Integer ? (Integer) meglerProps.get("Latitude") : 0); }
+    public int getLongitude() { return (meglerProps.get("Longitude") instanceof Integer ? (Integer) meglerProps.get("Longitude") : 0); }
+    public int getNetworkId() { return (meglerProps.get("NetworkId") instanceof Integer ? (Integer) meglerProps.get("NetworkId") : 0); }
+    public int getSystemId() { return (meglerProps.get("SystemId") instanceof Integer ? (Integer) meglerProps.get("SystemId") : 0); }
     public android.telephony.CellIdentityCdma sanitizeLocationInfo() { return this; }
     protected void updateGlobalCellId() {}
     public void writeToParcel(android.os.Parcel p0, int p1) {}

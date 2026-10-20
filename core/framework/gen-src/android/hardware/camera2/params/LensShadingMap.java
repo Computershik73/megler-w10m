@@ -3,14 +3,14 @@ package android.hardware.camera2.params;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class LensShadingMap {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final float MINIMUM_GAIN_FACTOR = 1.0f;
     public LensShadingMap(float[] p0, int p1, int p2) {}
     public void copyGainFactors(float[] p0, int p1) {}
-    public int getColumnCount() { return (megletProps.get("ColumnCount") instanceof Integer ? (Integer) megletProps.get("ColumnCount") : 0); }
+    public int getColumnCount() { return (meglerProps.get("ColumnCount") instanceof Integer ? (Integer) meglerProps.get("ColumnCount") : 0); }
     public float getGainFactor(int p0, int p1, int p2) { return 0f; }
-    public int getGainFactorCount() { return (megletProps.get("GainFactorCount") instanceof Integer ? (Integer) megletProps.get("GainFactorCount") : 0); }
+    public int getGainFactorCount() { return (meglerProps.get("GainFactorCount") instanceof Integer ? (Integer) meglerProps.get("GainFactorCount") : 0); }
     public android.hardware.camera2.params.RggbChannelVector getGainFactorVector(int p0, int p1) { return null; }
-    public int getRowCount() { return (megletProps.get("RowCount") instanceof Integer ? (Integer) megletProps.get("RowCount") : 0); }
+    public int getRowCount() { return (meglerProps.get("RowCount") instanceof Integer ? (Integer) meglerProps.get("RowCount") : 0); }
     LensShadingMap() { this((float[]) null, (int) 0, (int) 0); }
 }

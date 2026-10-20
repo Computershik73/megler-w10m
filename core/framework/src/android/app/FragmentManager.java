@@ -39,9 +39,9 @@ public class FragmentManager {
     final ArrayList<Fragment> mAdded = new ArrayList<>();
     final ArrayList<Tx> mBackStack = new ArrayList<>();
     private final ArrayList<OnBackStackChangedListener> mListeners = new ArrayList<>();
-    FragmentManager(Activity a) { mActivity = a; mHostState = a.megletFragmentHost(); }
+    FragmentManager(Activity a) { mActivity = a; mHostState = a.meglerFragmentHost(); }
     /** The activity moved: its fragments follow, up to where it is now (or down, as it pauses, stops, goes). */
-    void megletHostState(int state) {
+    void meglerHostState(int state) {
         int old = mHostState;
         mHostState = state;
         if (state > old) {
@@ -60,7 +60,7 @@ public class FragmentManager {
     }
     /** A fragment brought up to the host's state. */
     private void raise(Fragment f) {
-        if (mHostState >= HOST_ACTIVITY_CREATED && !f.mMegletActivityCreated) { f.mMegletActivityCreated = true; f.onActivityCreated(null); f.onViewStateRestored(null); }
+        if (mHostState >= HOST_ACTIVITY_CREATED && !f.mMeglerActivityCreated) { f.mMeglerActivityCreated = true; f.onActivityCreated(null); f.onViewStateRestored(null); }
         if (mHostState >= HOST_STARTED && !f.mStarted) { f.onStart(); f.mStarted = true; }
         if (mHostState >= HOST_RESUMED && !f.mResumed) { f.onResume(); f.mResumed = true; }
     }
@@ -133,10 +133,10 @@ public class FragmentManager {
         if (f.mStarted) { f.onStop(); f.mStarted = false; }
         if (f.mView != null) { f.onDestroyView(); if (f.mView.getParent() instanceof ViewGroup) ((ViewGroup) f.mView.getParent()).removeView(f.mView); f.mView = null; }
         f.onDestroy(); f.onDetach();
-        f.mAdded = false; f.mMegletActivityCreated = false;
+        f.mAdded = false; f.mMeglerActivityCreated = false;
     }
     /** A <fragment class=... android:id=...> in a layout. */
-    public View megletInflateFragment(View parent, Context c, android.util.AttributeSet attrs) {
+    public View meglerInflateFragment(View parent, Context c, android.util.AttributeSet attrs) {
         String cls = attrs.getAttributeValue(null, "class");
         if (cls == null) cls = attrs.getAttributeValue("http://schemas.android.com/apk/res/android", "name");
         int id = attrs.getAttributeResourceValue("http://schemas.android.com/apk/res/android", "id", 0);

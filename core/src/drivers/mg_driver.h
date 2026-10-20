@@ -9,7 +9,7 @@
 #ifndef MG_DRIVER_H
 #define MG_DRIVER_H
 
-#include "../../include/meglet.h"
+#include "../../include/megler.h"
 #include "../apk/mg_apk.h"
 
 #ifdef __cplusplus
@@ -18,7 +18,7 @@ extern "C" {
 
 typedef struct mg_driver {
     const char *name;      /* the engine name mg_apk_read_info reports */
-    bool (*start)(const meglet_run_config *config, const mg_apk_info *info);
+    bool (*start)(const megler_run_config *config, const mg_apk_info *info);
     void (*touch)(int phase, int pointer_id, float x, float y);
     void (*key)(int android_keycode, bool down);
     void (*set_paused)(bool paused);

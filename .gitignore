@@ -1,6 +1,6 @@
 /build/
-/app/Meglet/AppPackages/
-/app/Meglet/*.cer
+/app/Megler/AppPackages/
+/app/Megler/*.cer
 *.pfx
 *.user
 .claude/

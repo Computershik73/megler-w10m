@@ -3,7 +3,7 @@ package android.provider;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class BlockedNumberContract {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String AUTHORITY = "com.android.blockednumber";
     public static android.net.Uri AUTHORITY_URI;
     public static final java.lang.String EXTRA_CALL_PRESENTATION = "extra_call_presentation";
@@ -31,7 +31,7 @@ public class BlockedNumberContract {
     public static int unblock(android.content.Context p0, java.lang.String p1) { return 0; }
     protected BlockedNumberContract() {}
     public static class BlockedNumbers {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String COLUMN_E164_NUMBER = "e164_number";
         public static final java.lang.String COLUMN_ID = "_id";
         public static final java.lang.String COLUMN_ORIGINAL_NUMBER = "original_number";
@@ -41,7 +41,7 @@ public class BlockedNumberContract {
         protected BlockedNumbers() {}
     }
     public static class SystemContract {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String ACTION_BLOCK_SUPPRESSION_STATE_CHANGED = "android.provider.action.BLOCK_SUPPRESSION_STATE_CHANGED";
         public static final java.lang.String ENHANCED_SETTING_KEY_BLOCK_PAYPHONE = "block_payphone_calls_setting";
         public static final java.lang.String ENHANCED_SETTING_KEY_BLOCK_PRIVATE = "block_private_number_calls_setting";
@@ -68,7 +68,7 @@ public class BlockedNumberContract {
         public static boolean shouldShowEmergencyCallNotification(android.content.Context p0) { return false; }
         public static int shouldSystemBlockNumber(android.content.Context p0, java.lang.String p1, android.os.Bundle p2) { return 0; }
         public static class BlockSuppressionStatus {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public boolean isSuppressed;
             public long untilTimestampMillis;
             public BlockSuppressionStatus(boolean p0, long p1) {}

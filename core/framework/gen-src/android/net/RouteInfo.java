@@ -3,7 +3,7 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class RouteInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int RTN_THROW = 9;
     public static final int RTN_UNICAST = 1;
@@ -22,25 +22,25 @@ public final class RouteInfo implements android.os.Parcelable {
     public static android.net.RouteInfo makeHostRoute(java.net.InetAddress p0, java.net.InetAddress p1, java.lang.String p2) { return new RouteInfo(); }
     public static android.net.RouteInfo selectBestRoute(java.util.Collection p0, java.net.InetAddress p1) { return new RouteInfo(); }
     public int describeContents() { return 0; }
-    public android.net.IpPrefix getDestination() { return (android.net.IpPrefix) megletProps.get("Destination"); }
-    public android.net.LinkAddress getDestinationLinkAddress() { return (android.net.LinkAddress) megletProps.get("DestinationLinkAddress"); }
-    public java.net.InetAddress getGateway() { return (java.net.InetAddress) megletProps.get("Gateway"); }
-    public java.lang.String getInterface() { return (java.lang.String) megletProps.get("Interface"); }
-    public int getMtu() { return (megletProps.get("Mtu") instanceof Integer ? (Integer) megletProps.get("Mtu") : 0); }
-    public android.net.RouteInfo.RouteKey getRouteKey() { return (android.net.RouteInfo.RouteKey) megletProps.get("RouteKey"); }
-    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
+    public android.net.IpPrefix getDestination() { return (android.net.IpPrefix) meglerProps.get("Destination"); }
+    public android.net.LinkAddress getDestinationLinkAddress() { return (android.net.LinkAddress) meglerProps.get("DestinationLinkAddress"); }
+    public java.net.InetAddress getGateway() { return (java.net.InetAddress) meglerProps.get("Gateway"); }
+    public java.lang.String getInterface() { return (java.lang.String) meglerProps.get("Interface"); }
+    public int getMtu() { return (meglerProps.get("Mtu") instanceof Integer ? (Integer) meglerProps.get("Mtu") : 0); }
+    public android.net.RouteInfo.RouteKey getRouteKey() { return (android.net.RouteInfo.RouteKey) meglerProps.get("RouteKey"); }
+    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
     public boolean hasGateway() { return false; }
-    public boolean isDefaultRoute() { return (megletProps.get("DefaultRoute") instanceof Boolean ? (Boolean) megletProps.get("DefaultRoute") : false); }
-    public boolean isHostRoute() { return (megletProps.get("HostRoute") instanceof Boolean ? (Boolean) megletProps.get("HostRoute") : false); }
-    public boolean isIPv4Default() { return (megletProps.get("IPv4Default") instanceof Boolean ? (Boolean) megletProps.get("IPv4Default") : false); }
-    public boolean isIPv4UnreachableDefault() { return (megletProps.get("IPv4UnreachableDefault") instanceof Boolean ? (Boolean) megletProps.get("IPv4UnreachableDefault") : false); }
-    public boolean isIPv6Default() { return (megletProps.get("IPv6Default") instanceof Boolean ? (Boolean) megletProps.get("IPv6Default") : false); }
-    public boolean isIPv6UnreachableDefault() { return (megletProps.get("IPv6UnreachableDefault") instanceof Boolean ? (Boolean) megletProps.get("IPv6UnreachableDefault") : false); }
+    public boolean isDefaultRoute() { return (meglerProps.get("DefaultRoute") instanceof Boolean ? (Boolean) meglerProps.get("DefaultRoute") : false); }
+    public boolean isHostRoute() { return (meglerProps.get("HostRoute") instanceof Boolean ? (Boolean) meglerProps.get("HostRoute") : false); }
+    public boolean isIPv4Default() { return (meglerProps.get("IPv4Default") instanceof Boolean ? (Boolean) meglerProps.get("IPv4Default") : false); }
+    public boolean isIPv4UnreachableDefault() { return (meglerProps.get("IPv4UnreachableDefault") instanceof Boolean ? (Boolean) meglerProps.get("IPv4UnreachableDefault") : false); }
+    public boolean isIPv6Default() { return (meglerProps.get("IPv6Default") instanceof Boolean ? (Boolean) meglerProps.get("IPv6Default") : false); }
+    public boolean isIPv6UnreachableDefault() { return (meglerProps.get("IPv6UnreachableDefault") instanceof Boolean ? (Boolean) meglerProps.get("IPv6UnreachableDefault") : false); }
     public boolean matches(java.net.InetAddress p0) { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     RouteInfo() { this((android.net.IpPrefix) null); }
     public static class RouteKey {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         protected RouteKey() {}
     }
 }

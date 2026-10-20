@@ -3,7 +3,7 @@ package android.service.autofill;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SaveInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int FLAG_DELAY_SAVE = 4;
     public static final int FLAG_DONT_SAVE_ON_FINISH = 2;
@@ -24,35 +24,35 @@ public final class SaveInfo implements android.os.Parcelable {
     public static final int SAVE_DATA_TYPE_USERNAME = 8;
     public static android.service.autofill.SaveInfo copy(android.service.autofill.SaveInfo p0, android.view.autofill.AutofillId[] p1) { return new SaveInfo(); }
     public int describeContents() { return 0; }
-    public android.service.autofill.CustomDescription getCustomDescription() { return (android.service.autofill.CustomDescription) megletProps.get("CustomDescription"); }
-    public java.lang.CharSequence getDescription() { return (java.lang.CharSequence) megletProps.get("Description"); }
-    public int getFlags() { return (megletProps.get("Flags") instanceof Integer ? (Integer) megletProps.get("Flags") : 0); }
-    public android.content.IntentSender getNegativeActionListener() { return (android.content.IntentSender) megletProps.get("NegativeActionListener"); }
-    public int getNegativeActionStyle() { return (megletProps.get("NegativeActionStyle") instanceof Integer ? (Integer) megletProps.get("NegativeActionStyle") : 0); }
-    public android.view.autofill.AutofillId[] getOptionalIds() { return (android.view.autofill.AutofillId[]) megletProps.get("OptionalIds"); }
-    public int getPositiveActionStyle() { return (megletProps.get("PositiveActionStyle") instanceof Integer ? (Integer) megletProps.get("PositiveActionStyle") : 0); }
-    public android.view.autofill.AutofillId[] getRequiredIds() { return (android.view.autofill.AutofillId[]) megletProps.get("RequiredIds"); }
-    public android.service.autofill.InternalSanitizer[] getSanitizerKeys() { return (android.service.autofill.InternalSanitizer[]) megletProps.get("SanitizerKeys"); }
-    public android.view.autofill.AutofillId[][] getSanitizerValues() { return (android.view.autofill.AutofillId[][]) megletProps.get("SanitizerValues"); }
-    public android.view.autofill.AutofillId getTriggerId() { return (android.view.autofill.AutofillId) megletProps.get("TriggerId"); }
-    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
-    public android.service.autofill.InternalValidator getValidator() { return (android.service.autofill.InternalValidator) megletProps.get("Validator"); }
+    public android.service.autofill.CustomDescription getCustomDescription() { return (android.service.autofill.CustomDescription) meglerProps.get("CustomDescription"); }
+    public java.lang.CharSequence getDescription() { return (java.lang.CharSequence) meglerProps.get("Description"); }
+    public int getFlags() { return (meglerProps.get("Flags") instanceof Integer ? (Integer) meglerProps.get("Flags") : 0); }
+    public android.content.IntentSender getNegativeActionListener() { return (android.content.IntentSender) meglerProps.get("NegativeActionListener"); }
+    public int getNegativeActionStyle() { return (meglerProps.get("NegativeActionStyle") instanceof Integer ? (Integer) meglerProps.get("NegativeActionStyle") : 0); }
+    public android.view.autofill.AutofillId[] getOptionalIds() { return (android.view.autofill.AutofillId[]) meglerProps.get("OptionalIds"); }
+    public int getPositiveActionStyle() { return (meglerProps.get("PositiveActionStyle") instanceof Integer ? (Integer) meglerProps.get("PositiveActionStyle") : 0); }
+    public android.view.autofill.AutofillId[] getRequiredIds() { return (android.view.autofill.AutofillId[]) meglerProps.get("RequiredIds"); }
+    public android.service.autofill.InternalSanitizer[] getSanitizerKeys() { return (android.service.autofill.InternalSanitizer[]) meglerProps.get("SanitizerKeys"); }
+    public android.view.autofill.AutofillId[][] getSanitizerValues() { return (android.view.autofill.AutofillId[][]) meglerProps.get("SanitizerValues"); }
+    public android.view.autofill.AutofillId getTriggerId() { return (android.view.autofill.AutofillId) meglerProps.get("TriggerId"); }
+    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
+    public android.service.autofill.InternalValidator getValidator() { return (android.service.autofill.InternalValidator) meglerProps.get("Validator"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected SaveInfo() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(int p0) {}
         public Builder(int p0, android.view.autofill.AutofillId[] p1) {}
         public android.service.autofill.SaveInfo.Builder addSanitizer(android.service.autofill.Sanitizer p0, android.view.autofill.AutofillId[] p1) { return this; }
-        public android.service.autofill.SaveInfo build() { android.service.autofill.SaveInfo x = new android.service.autofill.SaveInfo(); x.megletProps.putAll(megletProps); return x; }
-        public android.service.autofill.SaveInfo.Builder setCustomDescription(android.service.autofill.CustomDescription p0) { megletProps.put("CustomDescription", p0); return this; }
-        public android.service.autofill.SaveInfo.Builder setDescription(java.lang.CharSequence p0) { megletProps.put("Description", p0); return this; }
-        public android.service.autofill.SaveInfo.Builder setFlags(int p0) { megletProps.put("Flags", Integer.valueOf(p0)); return this; }
+        public android.service.autofill.SaveInfo build() { android.service.autofill.SaveInfo x = new android.service.autofill.SaveInfo(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.service.autofill.SaveInfo.Builder setCustomDescription(android.service.autofill.CustomDescription p0) { meglerProps.put("CustomDescription", p0); return this; }
+        public android.service.autofill.SaveInfo.Builder setDescription(java.lang.CharSequence p0) { meglerProps.put("Description", p0); return this; }
+        public android.service.autofill.SaveInfo.Builder setFlags(int p0) { meglerProps.put("Flags", Integer.valueOf(p0)); return this; }
         public android.service.autofill.SaveInfo.Builder setNegativeAction(int p0, android.content.IntentSender p1) { return this; }
-        public android.service.autofill.SaveInfo.Builder setOptionalIds(android.view.autofill.AutofillId[] p0) { megletProps.put("OptionalIds", p0); return this; }
-        public android.service.autofill.SaveInfo.Builder setPositiveAction(int p0) { megletProps.put("PositiveAction", Integer.valueOf(p0)); return this; }
-        public android.service.autofill.SaveInfo.Builder setTriggerId(android.view.autofill.AutofillId p0) { megletProps.put("TriggerId", p0); return this; }
-        public android.service.autofill.SaveInfo.Builder setValidator(android.service.autofill.Validator p0) { megletProps.put("Validator", p0); return this; }
+        public android.service.autofill.SaveInfo.Builder setOptionalIds(android.view.autofill.AutofillId[] p0) { meglerProps.put("OptionalIds", p0); return this; }
+        public android.service.autofill.SaveInfo.Builder setPositiveAction(int p0) { meglerProps.put("PositiveAction", Integer.valueOf(p0)); return this; }
+        public android.service.autofill.SaveInfo.Builder setTriggerId(android.view.autofill.AutofillId p0) { meglerProps.put("TriggerId", p0); return this; }
+        public android.service.autofill.SaveInfo.Builder setValidator(android.service.autofill.Validator p0) { meglerProps.put("Validator", p0); return this; }
         Builder() { this((int) 0); }
     }
 }

@@ -1,4 +1,4 @@
-    // Meglet: members added to the original's android.os.MessageQueue (tools/build-framework.sh, "X.java.members").
+    // Megler: members added to the original's android.os.MessageQueue (tools/build-framework.sh, "X.java.members").
     // next(), Android's own name for what Looper.loop takes the next message with: blocks until one is due, null once the
     // queue has quit. It is hidden API, and code that runs its own event loop takes the Java looper's messages with it:
     // Gecko's (Firefox 152) asks for it by JNI on the Gecko thread, and without it ended on a NoSuchMethodError

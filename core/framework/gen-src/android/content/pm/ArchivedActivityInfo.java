@@ -3,18 +3,18 @@ package android.content.pm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ArchivedActivityInfo {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ArchivedActivityInfo(java.lang.CharSequence p0, android.content.ComponentName p1) {}
     public static byte[] bytesFromBitmap(android.graphics.Bitmap p0) { return null; }
     public static android.graphics.Bitmap drawableToBitmap(android.graphics.drawable.Drawable p0) { return null; }
     public static android.graphics.Bitmap drawableToBitmap(android.graphics.drawable.Drawable p0, int p1) { return null; }
-    public android.content.ComponentName getComponentName() { return (android.content.ComponentName) megletProps.get("ComponentName"); }
-    public android.graphics.drawable.Drawable getIcon() { return (android.graphics.drawable.Drawable) megletProps.get("Icon"); }
-    public java.lang.CharSequence getLabel() { return (java.lang.CharSequence) megletProps.get("Label"); }
-    public android.graphics.drawable.Drawable getMonochromeIcon() { return (android.graphics.drawable.Drawable) megletProps.get("MonochromeIcon"); }
-    public android.content.pm.ArchivedActivityInfo setComponentName(android.content.ComponentName p0) { megletProps.put("ComponentName", p0); return this; }
-    public android.content.pm.ArchivedActivityInfo setIcon(android.graphics.drawable.Drawable p0) { megletProps.put("Icon", p0); return this; }
-    public android.content.pm.ArchivedActivityInfo setLabel(java.lang.CharSequence p0) { megletProps.put("Label", p0); return this; }
-    public android.content.pm.ArchivedActivityInfo setMonochromeIcon(android.graphics.drawable.Drawable p0) { megletProps.put("MonochromeIcon", p0); return this; }
+    public android.content.ComponentName getComponentName() { return (android.content.ComponentName) meglerProps.get("ComponentName"); }
+    public android.graphics.drawable.Drawable getIcon() { return (android.graphics.drawable.Drawable) meglerProps.get("Icon"); }
+    public java.lang.CharSequence getLabel() { return (java.lang.CharSequence) meglerProps.get("Label"); }
+    public android.graphics.drawable.Drawable getMonochromeIcon() { return (android.graphics.drawable.Drawable) meglerProps.get("MonochromeIcon"); }
+    public android.content.pm.ArchivedActivityInfo setComponentName(android.content.ComponentName p0) { meglerProps.put("ComponentName", p0); return this; }
+    public android.content.pm.ArchivedActivityInfo setIcon(android.graphics.drawable.Drawable p0) { meglerProps.put("Icon", p0); return this; }
+    public android.content.pm.ArchivedActivityInfo setLabel(java.lang.CharSequence p0) { meglerProps.put("Label", p0); return this; }
+    public android.content.pm.ArchivedActivityInfo setMonochromeIcon(android.graphics.drawable.Drawable p0) { meglerProps.put("MonochromeIcon", p0); return this; }
     ArchivedActivityInfo() { this((java.lang.CharSequence) null, (android.content.ComponentName) null); }
 }

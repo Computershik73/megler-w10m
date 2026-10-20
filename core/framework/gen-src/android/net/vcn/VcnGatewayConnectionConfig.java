@@ -3,7 +3,7 @@ package android.net.vcn;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class VcnGatewayConnectionConfig {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static java.util.Set ALLOWED_CAPABILITIES;
     public static java.util.List DEFAULT_UNDERLYING_NETWORK_TEMPLATES;
     public static final int MIN_UDP_PORT_4500_NAT_TIMEOUT_SECONDS = 120;
@@ -11,31 +11,31 @@ public final class VcnGatewayConnectionConfig {
     public static final java.lang.String UNDERLYING_NETWORK_TEMPLATES_KEY = "mUnderlyingNetworkTemplates";
     public static int VCN_GATEWAY_OPTION_ENABLE_DATA_STALL_RECOVERY_WITH_MOBILITY;
     public VcnGatewayConnectionConfig(android.os.PersistableBundle p0) {}
-    public java.util.Set getAllExposedCapabilities() { return (megletProps.get("AllExposedCapabilities") != null ? (java.util.Set) megletProps.get("AllExposedCapabilities") : new java.util.HashSet()); }
-    public int[] getExposedCapabilities() { return (int[]) megletProps.get("ExposedCapabilities"); }
-    public java.lang.String getGatewayConnectionName() { return (java.lang.String) megletProps.get("GatewayConnectionName"); }
-    public int getMaxMtu() { return (megletProps.get("MaxMtu") instanceof Integer ? (Integer) megletProps.get("MaxMtu") : 0); }
-    public int getMinUdpPort4500NatTimeoutSeconds() { return (megletProps.get("MinUdpPort4500NatTimeoutSeconds") instanceof Integer ? (Integer) megletProps.get("MinUdpPort4500NatTimeoutSeconds") : 0); }
-    public long[] getRetryIntervalsMillis() { return (long[]) megletProps.get("RetryIntervalsMillis"); }
-    public android.net.ipsec.ike.IkeTunnelConnectionParams getTunnelConnectionParams() { return (android.net.ipsec.ike.IkeTunnelConnectionParams) megletProps.get("TunnelConnectionParams"); }
-    public java.util.List getVcnUnderlyingNetworkPriorities() { return (megletProps.get("VcnUnderlyingNetworkPriorities") != null ? (java.util.List) megletProps.get("VcnUnderlyingNetworkPriorities") : new java.util.ArrayList()); }
+    public java.util.Set getAllExposedCapabilities() { return (meglerProps.get("AllExposedCapabilities") != null ? (java.util.Set) meglerProps.get("AllExposedCapabilities") : new java.util.HashSet()); }
+    public int[] getExposedCapabilities() { return (int[]) meglerProps.get("ExposedCapabilities"); }
+    public java.lang.String getGatewayConnectionName() { return (java.lang.String) meglerProps.get("GatewayConnectionName"); }
+    public int getMaxMtu() { return (meglerProps.get("MaxMtu") instanceof Integer ? (Integer) meglerProps.get("MaxMtu") : 0); }
+    public int getMinUdpPort4500NatTimeoutSeconds() { return (meglerProps.get("MinUdpPort4500NatTimeoutSeconds") instanceof Integer ? (Integer) meglerProps.get("MinUdpPort4500NatTimeoutSeconds") : 0); }
+    public long[] getRetryIntervalsMillis() { return (long[]) meglerProps.get("RetryIntervalsMillis"); }
+    public android.net.ipsec.ike.IkeTunnelConnectionParams getTunnelConnectionParams() { return (android.net.ipsec.ike.IkeTunnelConnectionParams) meglerProps.get("TunnelConnectionParams"); }
+    public java.util.List getVcnUnderlyingNetworkPriorities() { return (meglerProps.get("VcnUnderlyingNetworkPriorities") != null ? (java.util.List) meglerProps.get("VcnUnderlyingNetworkPriorities") : new java.util.ArrayList()); }
     public boolean hasGatewayOption(int p0) { return false; }
-    public boolean isSafeModeEnabled() { return (megletProps.get("SafeModeEnabled") instanceof Boolean ? (Boolean) megletProps.get("SafeModeEnabled") : false); }
+    public boolean isSafeModeEnabled() { return (meglerProps.get("SafeModeEnabled") instanceof Boolean ? (Boolean) meglerProps.get("SafeModeEnabled") : false); }
     public android.os.PersistableBundle toPersistableBundle() { return null; }
     VcnGatewayConnectionConfig() { this((android.os.PersistableBundle) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(java.lang.String p0, android.net.ipsec.ike.IkeTunnelConnectionParams p1) {}
         public android.net.vcn.VcnGatewayConnectionConfig.Builder addExposedCapability(int p0) { return this; }
         public android.net.vcn.VcnGatewayConnectionConfig.Builder addGatewayOption(int p0) { return this; }
-        public android.net.vcn.VcnGatewayConnectionConfig build() { android.net.vcn.VcnGatewayConnectionConfig x = new android.net.vcn.VcnGatewayConnectionConfig(); x.megletProps.putAll(megletProps); return x; }
+        public android.net.vcn.VcnGatewayConnectionConfig build() { android.net.vcn.VcnGatewayConnectionConfig x = new android.net.vcn.VcnGatewayConnectionConfig(); x.meglerProps.putAll(meglerProps); return x; }
         public android.net.vcn.VcnGatewayConnectionConfig.Builder removeExposedCapability(int p0) { return this; }
         public android.net.vcn.VcnGatewayConnectionConfig.Builder removeGatewayOption(int p0) { return this; }
-        public android.net.vcn.VcnGatewayConnectionConfig.Builder setMaxMtu(int p0) { megletProps.put("MaxMtu", Integer.valueOf(p0)); return this; }
-        public android.net.vcn.VcnGatewayConnectionConfig.Builder setMinUdpPort4500NatTimeoutSeconds(int p0) { megletProps.put("MinUdpPort4500NatTimeoutSeconds", Integer.valueOf(p0)); return this; }
-        public android.net.vcn.VcnGatewayConnectionConfig.Builder setRetryIntervalsMillis(long[] p0) { megletProps.put("RetryIntervalsMillis", p0); return this; }
-        public android.net.vcn.VcnGatewayConnectionConfig.Builder setSafeModeEnabled(boolean p0) { megletProps.put("SafeModeEnabled", Boolean.valueOf(p0)); return this; }
-        public android.net.vcn.VcnGatewayConnectionConfig.Builder setVcnUnderlyingNetworkPriorities(java.util.List p0) { megletProps.put("VcnUnderlyingNetworkPriorities", p0); return this; }
+        public android.net.vcn.VcnGatewayConnectionConfig.Builder setMaxMtu(int p0) { meglerProps.put("MaxMtu", Integer.valueOf(p0)); return this; }
+        public android.net.vcn.VcnGatewayConnectionConfig.Builder setMinUdpPort4500NatTimeoutSeconds(int p0) { meglerProps.put("MinUdpPort4500NatTimeoutSeconds", Integer.valueOf(p0)); return this; }
+        public android.net.vcn.VcnGatewayConnectionConfig.Builder setRetryIntervalsMillis(long[] p0) { meglerProps.put("RetryIntervalsMillis", p0); return this; }
+        public android.net.vcn.VcnGatewayConnectionConfig.Builder setSafeModeEnabled(boolean p0) { meglerProps.put("SafeModeEnabled", Boolean.valueOf(p0)); return this; }
+        public android.net.vcn.VcnGatewayConnectionConfig.Builder setVcnUnderlyingNetworkPriorities(java.util.List p0) { meglerProps.put("VcnUnderlyingNetworkPriorities", p0); return this; }
         Builder() { this((java.lang.String) null, (android.net.ipsec.ike.IkeTunnelConnectionParams) null); }
     }
 }

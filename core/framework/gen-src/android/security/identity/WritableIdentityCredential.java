@@ -3,7 +3,7 @@ package android.security.identity;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class WritableIdentityCredential {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     protected WritableIdentityCredential() {}
     public abstract java.util.Collection getCredentialKeyCertificateChain(byte[] p0);
     public abstract byte[] personalize(android.security.identity.PersonalizationData p0);

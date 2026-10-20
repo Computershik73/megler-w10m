@@ -3,7 +3,7 @@ package android.app.admin;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DevicePolicyResourcesManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     protected DevicePolicyResourcesManager(android.content.Context p0, android.app.admin.IDevicePolicyManager p1) {}
     public android.graphics.drawable.Drawable getDrawable(java.lang.String p0, java.lang.String p1, java.lang.String p2, java.util.function.Supplier p3) { return null; }
     public android.graphics.drawable.Drawable getDrawable(java.lang.String p0, java.lang.String p1, java.util.function.Supplier p2) { return null; }
@@ -15,7 +15,7 @@ public class DevicePolicyResourcesManager {
     public java.lang.String getString(java.lang.String p0, java.util.function.Supplier p1, java.lang.Object[] p2) { return null; }
     public void resetDrawables(java.util.Set p0) {}
     public void resetStrings(java.util.Set p0) {}
-    public void setDrawables(java.util.Set p0) { megletProps.put("Drawables", p0); }
-    public void setStrings(java.util.Set p0) { megletProps.put("Strings", p0); }
+    public void setDrawables(java.util.Set p0) { meglerProps.put("Drawables", p0); }
+    public void setStrings(java.util.Set p0) { meglerProps.put("Strings", p0); }
     DevicePolicyResourcesManager() { this((android.content.Context) null, (android.app.admin.IDevicePolicyManager) null); }
 }

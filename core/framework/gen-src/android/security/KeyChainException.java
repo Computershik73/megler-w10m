@@ -3,7 +3,7 @@ package android.security;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class KeyChainException extends java.lang.Exception {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public KeyChainException() { super(); }
     public KeyChainException(java.lang.String p0) { super(); }
     public KeyChainException(java.lang.String p0, java.lang.Throwable p1) { super(); }

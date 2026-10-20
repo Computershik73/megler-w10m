@@ -2,7 +2,7 @@ package android.media;
 
 import java.util.ArrayList;
 
-/** The decoders Meglet has (see MediaCodecInfo): H.264 and HEVC video, AAC and MP3 audio. No encoders. */
+/** The decoders Megler has (see MediaCodecInfo): H.264 and HEVC video, AAC and MP3 audio. No encoders. */
 public final class MediaCodecList {
     public static final int REGULAR_CODECS = 0, ALL_CODECS = 1;
     private static MediaCodecInfo[] sInfos;
@@ -20,12 +20,12 @@ public final class MediaCodecList {
                 { MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10, MediaCodecInfo.CodecProfileLevel.HEVCMainTierLevel51 },
             };
             ArrayList<MediaCodecInfo> l = new ArrayList<>();
-            l.add(new MediaCodecInfo("c2.meglet.avc.decoder", false, MediaCodecInfo.CodecCapabilities.video(MediaFormat.MIMETYPE_VIDEO_AVC, avc)));
-            if (meglet.MediaCodecNative.supported(MediaFormat.MIMETYPE_VIDEO_HEVC))
-                l.add(new MediaCodecInfo("c2.meglet.hevc.decoder", false, MediaCodecInfo.CodecCapabilities.video(MediaFormat.MIMETYPE_VIDEO_HEVC, hevc)));
-            l.add(new MediaCodecInfo("c2.meglet.aac.decoder", false, MediaCodecInfo.CodecCapabilities.audio(MediaFormat.MIMETYPE_AUDIO_AAC, 8,
+            l.add(new MediaCodecInfo("c2.megler.avc.decoder", false, MediaCodecInfo.CodecCapabilities.video(MediaFormat.MIMETYPE_VIDEO_AVC, avc)));
+            if (megler.MediaCodecNative.supported(MediaFormat.MIMETYPE_VIDEO_HEVC))
+                l.add(new MediaCodecInfo("c2.megler.hevc.decoder", false, MediaCodecInfo.CodecCapabilities.video(MediaFormat.MIMETYPE_VIDEO_HEVC, hevc)));
+            l.add(new MediaCodecInfo("c2.megler.aac.decoder", false, MediaCodecInfo.CodecCapabilities.audio(MediaFormat.MIMETYPE_AUDIO_AAC, 8,
                 new int[] { MediaCodecInfo.CodecProfileLevel.AACObjectLC, MediaCodecInfo.CodecProfileLevel.AACObjectHE, MediaCodecInfo.CodecProfileLevel.AACObjectHE_PS })));
-            l.add(new MediaCodecInfo("c2.meglet.mp3.decoder", false, MediaCodecInfo.CodecCapabilities.audio(MediaFormat.MIMETYPE_AUDIO_MPEG, 2, new int[0])));
+            l.add(new MediaCodecInfo("c2.megler.mp3.decoder", false, MediaCodecInfo.CodecCapabilities.audio(MediaFormat.MIMETYPE_AUDIO_MPEG, 2, new int[0])));
             sInfos = l.toArray(new MediaCodecInfo[0]);
         }
         return sInfos;

@@ -3,26 +3,26 @@ package android.adservices.adselection;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ReportEventRequest {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int FLAG_REPORTING_DESTINATION_BUYER = 2;
     public static final int FLAG_REPORTING_DESTINATION_COMPONENT_SELLER = 4;
     public static final int FLAG_REPORTING_DESTINATION_SELLER = 1;
     public static final long REPORT_EVENT_MAX_INTERACTION_DATA_SIZE_B = 65536L;
-    public long getAdSelectionId() { return (megletProps.get("AdSelectionId") instanceof Long ? (Long) megletProps.get("AdSelectionId") : 0L); }
-    public java.lang.String getData() { return (java.lang.String) megletProps.get("Data"); }
-    public android.view.InputEvent getInputEvent() { return (android.view.InputEvent) megletProps.get("InputEvent"); }
-    public java.lang.String getKey() { return (java.lang.String) megletProps.get("Key"); }
-    public int getReportingDestinations() { return (megletProps.get("ReportingDestinations") instanceof Integer ? (Integer) megletProps.get("ReportingDestinations") : 0); }
+    public long getAdSelectionId() { return (meglerProps.get("AdSelectionId") instanceof Long ? (Long) meglerProps.get("AdSelectionId") : 0L); }
+    public java.lang.String getData() { return (java.lang.String) meglerProps.get("Data"); }
+    public android.view.InputEvent getInputEvent() { return (android.view.InputEvent) meglerProps.get("InputEvent"); }
+    public java.lang.String getKey() { return (java.lang.String) meglerProps.get("Key"); }
+    public int getReportingDestinations() { return (meglerProps.get("ReportingDestinations") instanceof Integer ? (Integer) meglerProps.get("ReportingDestinations") : 0); }
     protected ReportEventRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(long p0, java.lang.String p1, java.lang.String p2, int p3) {}
-        public android.adservices.adselection.ReportEventRequest build() { android.adservices.adselection.ReportEventRequest x = new android.adservices.adselection.ReportEventRequest(); x.megletProps.putAll(megletProps); return x; }
-        public android.adservices.adselection.ReportEventRequest.Builder setAdSelectionId(long p0) { megletProps.put("AdSelectionId", Long.valueOf(p0)); return this; }
-        public android.adservices.adselection.ReportEventRequest.Builder setData(java.lang.String p0) { megletProps.put("Data", p0); return this; }
-        public android.adservices.adselection.ReportEventRequest.Builder setInputEvent(android.view.InputEvent p0) { megletProps.put("InputEvent", p0); return this; }
-        public android.adservices.adselection.ReportEventRequest.Builder setKey(java.lang.String p0) { megletProps.put("Key", p0); return this; }
-        public android.adservices.adselection.ReportEventRequest.Builder setReportingDestinations(int p0) { megletProps.put("ReportingDestinations", Integer.valueOf(p0)); return this; }
+        public android.adservices.adselection.ReportEventRequest build() { android.adservices.adselection.ReportEventRequest x = new android.adservices.adselection.ReportEventRequest(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.adservices.adselection.ReportEventRequest.Builder setAdSelectionId(long p0) { meglerProps.put("AdSelectionId", Long.valueOf(p0)); return this; }
+        public android.adservices.adselection.ReportEventRequest.Builder setData(java.lang.String p0) { meglerProps.put("Data", p0); return this; }
+        public android.adservices.adselection.ReportEventRequest.Builder setInputEvent(android.view.InputEvent p0) { meglerProps.put("InputEvent", p0); return this; }
+        public android.adservices.adselection.ReportEventRequest.Builder setKey(java.lang.String p0) { meglerProps.put("Key", p0); return this; }
+        public android.adservices.adselection.ReportEventRequest.Builder setReportingDestinations(int p0) { meglerProps.put("ReportingDestinations", Integer.valueOf(p0)); return this; }
         Builder() { this((long) 0L, (java.lang.String) null, (java.lang.String) null, (int) 0); }
     }
 }

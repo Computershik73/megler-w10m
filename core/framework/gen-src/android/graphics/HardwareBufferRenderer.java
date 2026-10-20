@@ -3,28 +3,28 @@ package android.graphics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class HardwareBufferRenderer implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public HardwareBufferRenderer(android.hardware.HardwareBuffer p0) {}
     public void close() {}
-    public boolean isClosed() { return (megletProps.get("Closed") instanceof Boolean ? (Boolean) megletProps.get("Closed") : false); }
+    public boolean isClosed() { return (meglerProps.get("Closed") instanceof Boolean ? (Boolean) meglerProps.get("Closed") : false); }
     public android.graphics.HardwareBufferRenderer.RenderRequest obtainRenderRequest() { return null; }
-    public void setContentRoot(android.graphics.RenderNode p0) { megletProps.put("ContentRoot", p0); }
+    public void setContentRoot(android.graphics.RenderNode p0) { meglerProps.put("ContentRoot", p0); }
     public void setLightSourceAlpha(float p0, float p1) {}
     public void setLightSourceGeometry(float p0, float p1, float p2, float p3) {}
     HardwareBufferRenderer() { this((android.hardware.HardwareBuffer) null); }
     public static final class RenderRequest {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public void draw(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
-        public android.graphics.HardwareBufferRenderer.RenderRequest setBufferTransform(int p0) { megletProps.put("BufferTransform", Integer.valueOf(p0)); return this; }
-        public android.graphics.HardwareBufferRenderer.RenderRequest setColorSpace(android.graphics.ColorSpace p0) { megletProps.put("ColorSpace", p0); return this; }
+        public android.graphics.HardwareBufferRenderer.RenderRequest setBufferTransform(int p0) { meglerProps.put("BufferTransform", Integer.valueOf(p0)); return this; }
+        public android.graphics.HardwareBufferRenderer.RenderRequest setColorSpace(android.graphics.ColorSpace p0) { meglerProps.put("ColorSpace", p0); return this; }
         protected RenderRequest() {}
     }
     public static final class RenderResult {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int ERROR_UNKNOWN = 1;
         public static int SUCCESS;
-        public android.hardware.SyncFence getFence() { return (android.hardware.SyncFence) megletProps.get("Fence"); }
-        public int getStatus() { return (megletProps.get("Status") instanceof Integer ? (Integer) megletProps.get("Status") : 0); }
+        public android.hardware.SyncFence getFence() { return (android.hardware.SyncFence) meglerProps.get("Fence"); }
+        public int getStatus() { return (meglerProps.get("Status") instanceof Integer ? (Integer) meglerProps.get("Status") : 0); }
         protected RenderResult() {}
     }
 }

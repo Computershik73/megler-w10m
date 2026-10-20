@@ -402,7 +402,7 @@ void mg_bionic_native_stacks_start(void)
  * top 8 KB of its stack take to copy (no lock is taken while it is stopped). A sample whose pc is in the system's own
  * code (ntdll, KERNELBASE, kernel32, and win32u, whose system calls are the graphics driver's into the kernel) is a wait --
  * a thread stopped in a system call is in the kernel, blocked nearly always -- and
- * is put to the first return address on its stack that is neither the system's nor the layer's (Meglet.exe, whose locks
+ * is put to the first return address on its stack that is neither the system's nor the layer's (Megler.exe, whose locks
  * and condition variables the app's waits go through): what it waits for, in ANGLE, the driver or the app. And every
  * sample is put to the innermost frame of ANGLE's (libGLESv2.dll) it is under -- its pc, or the first return address
  * into ANGLE on its stack: the ANGLE function a stretch of time in Direct3D, the driver or the kernel below it is
@@ -460,7 +460,7 @@ static int prof_kind(const char *name)
     low[i] = 0;
     for (i = 0; i < MG_COUNT(system); i++)
         if (!strcmp(low, system[i])) return PROF_SYSTEM;
-    return !strcmp(low, "meglet.exe") ? PROF_LAYER : PROF_OTHER;
+    return !strcmp(low, "megler.exe") ? PROF_LAYER : PROF_OTHER;
 }
 
 /* A DLL's executable sections, from the PE header Windows mapped at its base. (A word on a stack that points into a module
@@ -707,7 +707,7 @@ static size_t prof_dump_hist(char *out, size_t size, const char *what, const mg_
     return at;
 }
 
-const char *meglet_data_dir(void);
+const char *megler_data_dir(void);
 
 static void prof_report(prof_slot *slots, double seconds, double since)
 {
@@ -745,7 +745,7 @@ static void prof_report(prof_slot *slots, double seconds, double since)
     for (i = 0; i < PROF_THREADS; i++)
         for (k = 0; k < PROF_SLOTS; k++) cap += (slots[i].run_addr[k] ? 96 : 0) + (slots[i].wait_addr[k] ? 96 : 0) + (slots[i].under_addr[k] ? 96 : 0);
     file = (char *)mg_alloc(cap);
-    at += (size_t)snprintf(file + at, cap - at, "# Meglet trace-profile, %.0f s after it began: samples by address (module, offset in it, count); "
+    at += (size_t)snprintf(file + at, cap - at, "# Megler trace-profile, %.0f s after it began: samples by address (module, offset in it, count); "
                                                 "run: where a thread was, wait: what a thread in the system's code waited for, "
                                                 "under: the innermost frame of ANGLE's a sample was under\n", since);
     for (i = 0; i < PROF_THREADS; i++) {
@@ -759,7 +759,7 @@ static void prof_report(prof_slot *slots, double seconds, double since)
     }
     {
         char path[700];
-        snprintf(path, sizeof(path), "%s/profile.txt", meglet_data_dir());
+        snprintf(path, sizeof(path), "%s/profile.txt", megler_data_dir());
         if (!mg_file_write_all(path, file, at) && prof_line_left()) mg_info("profile: %s could not be written", path);
     }
     free(file);
@@ -914,7 +914,7 @@ static size_t hang_add(char *out, size_t cap, size_t at, const char *fmt, ...)
 static void hang_write(const char *text, size_t size)
 {
     char path[700];
-    snprintf(path, sizeof(path), "%s/hang.txt", meglet_data_dir());
+    snprintf(path, sizeof(path), "%s/hang.txt", megler_data_dir());
     mg_file_write_all(path, text, size);
 }
 
@@ -1269,7 +1269,7 @@ static void default_props(void)
         { "ro.build.version.release", "9" },
         { "ro.build.version.codename", "REL" },
         { "ro.build.id", "PQ3A.190801.002" },
-        { "ro.build.display.id", "Meglet" },
+        { "ro.build.display.id", "Megler" },
         { "ro.build.type", "user" },
         { "ro.build.tags", "release-keys" },
         { "ro.build.fingerprint", "google/sailfish/sailfish:9/PQ3A.190801.002/1:user/release-keys" },

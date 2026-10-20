@@ -3,7 +3,7 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BluetoothLeAudioCodecConfig implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int BITS_PER_SAMPLE_16 = 1;
     public static final int BITS_PER_SAMPLE_24 = 2;
     public static final int BITS_PER_SAMPLE_32 = 8;
@@ -38,31 +38,31 @@ public final class BluetoothLeAudioCodecConfig implements android.os.Parcelable 
     public static final int SOURCE_CODEC_TYPE_OPUS = 1;
     public static final int SOURCE_CODEC_TYPE_OPUS_HI_RES = 2;
     public int describeContents() { return 0; }
-    public int getBitsPerSample() { return (megletProps.get("BitsPerSample") instanceof Integer ? (Integer) megletProps.get("BitsPerSample") : 0); }
-    public int getChannelCount() { return (megletProps.get("ChannelCount") instanceof Integer ? (Integer) megletProps.get("ChannelCount") : 0); }
-    public java.lang.String getCodecName() { return (java.lang.String) megletProps.get("CodecName"); }
-    public int getCodecPriority() { return (megletProps.get("CodecPriority") instanceof Integer ? (Integer) megletProps.get("CodecPriority") : 0); }
-    public int getCodecType() { return (megletProps.get("CodecType") instanceof Integer ? (Integer) megletProps.get("CodecType") : 0); }
-    public int getFrameDuration() { return (megletProps.get("FrameDuration") instanceof Integer ? (Integer) megletProps.get("FrameDuration") : 0); }
-    public int getMaxOctetsPerFrame() { return (megletProps.get("MaxOctetsPerFrame") instanceof Integer ? (Integer) megletProps.get("MaxOctetsPerFrame") : 0); }
-    public int getMinOctetsPerFrame() { return (megletProps.get("MinOctetsPerFrame") instanceof Integer ? (Integer) megletProps.get("MinOctetsPerFrame") : 0); }
-    public int getOctetsPerFrame() { return (megletProps.get("OctetsPerFrame") instanceof Integer ? (Integer) megletProps.get("OctetsPerFrame") : 0); }
-    public int getSampleRate() { return (megletProps.get("SampleRate") instanceof Integer ? (Integer) megletProps.get("SampleRate") : 0); }
+    public int getBitsPerSample() { return (meglerProps.get("BitsPerSample") instanceof Integer ? (Integer) meglerProps.get("BitsPerSample") : 0); }
+    public int getChannelCount() { return (meglerProps.get("ChannelCount") instanceof Integer ? (Integer) meglerProps.get("ChannelCount") : 0); }
+    public java.lang.String getCodecName() { return (java.lang.String) meglerProps.get("CodecName"); }
+    public int getCodecPriority() { return (meglerProps.get("CodecPriority") instanceof Integer ? (Integer) meglerProps.get("CodecPriority") : 0); }
+    public int getCodecType() { return (meglerProps.get("CodecType") instanceof Integer ? (Integer) meglerProps.get("CodecType") : 0); }
+    public int getFrameDuration() { return (meglerProps.get("FrameDuration") instanceof Integer ? (Integer) meglerProps.get("FrameDuration") : 0); }
+    public int getMaxOctetsPerFrame() { return (meglerProps.get("MaxOctetsPerFrame") instanceof Integer ? (Integer) meglerProps.get("MaxOctetsPerFrame") : 0); }
+    public int getMinOctetsPerFrame() { return (meglerProps.get("MinOctetsPerFrame") instanceof Integer ? (Integer) meglerProps.get("MinOctetsPerFrame") : 0); }
+    public int getOctetsPerFrame() { return (meglerProps.get("OctetsPerFrame") instanceof Integer ? (Integer) meglerProps.get("OctetsPerFrame") : 0); }
+    public int getSampleRate() { return (meglerProps.get("SampleRate") instanceof Integer ? (Integer) meglerProps.get("SampleRate") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected BluetoothLeAudioCodecConfig() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.bluetooth.BluetoothLeAudioCodecConfig p0) {}
-        public android.bluetooth.BluetoothLeAudioCodecConfig build() { android.bluetooth.BluetoothLeAudioCodecConfig x = new android.bluetooth.BluetoothLeAudioCodecConfig(); x.megletProps.putAll(megletProps); return x; }
-        public android.bluetooth.BluetoothLeAudioCodecConfig.Builder setBitsPerSample(int p0) { megletProps.put("BitsPerSample", Integer.valueOf(p0)); return this; }
-        public android.bluetooth.BluetoothLeAudioCodecConfig.Builder setChannelCount(int p0) { megletProps.put("ChannelCount", Integer.valueOf(p0)); return this; }
-        public android.bluetooth.BluetoothLeAudioCodecConfig.Builder setCodecPriority(int p0) { megletProps.put("CodecPriority", Integer.valueOf(p0)); return this; }
-        public android.bluetooth.BluetoothLeAudioCodecConfig.Builder setCodecType(int p0) { megletProps.put("CodecType", Integer.valueOf(p0)); return this; }
-        public android.bluetooth.BluetoothLeAudioCodecConfig.Builder setFrameDuration(int p0) { megletProps.put("FrameDuration", Integer.valueOf(p0)); return this; }
-        public android.bluetooth.BluetoothLeAudioCodecConfig.Builder setMaxOctetsPerFrame(int p0) { megletProps.put("MaxOctetsPerFrame", Integer.valueOf(p0)); return this; }
-        public android.bluetooth.BluetoothLeAudioCodecConfig.Builder setMinOctetsPerFrame(int p0) { megletProps.put("MinOctetsPerFrame", Integer.valueOf(p0)); return this; }
-        public android.bluetooth.BluetoothLeAudioCodecConfig.Builder setOctetsPerFrame(int p0) { megletProps.put("OctetsPerFrame", Integer.valueOf(p0)); return this; }
-        public android.bluetooth.BluetoothLeAudioCodecConfig.Builder setSampleRate(int p0) { megletProps.put("SampleRate", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.BluetoothLeAudioCodecConfig build() { android.bluetooth.BluetoothLeAudioCodecConfig x = new android.bluetooth.BluetoothLeAudioCodecConfig(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.bluetooth.BluetoothLeAudioCodecConfig.Builder setBitsPerSample(int p0) { meglerProps.put("BitsPerSample", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.BluetoothLeAudioCodecConfig.Builder setChannelCount(int p0) { meglerProps.put("ChannelCount", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.BluetoothLeAudioCodecConfig.Builder setCodecPriority(int p0) { meglerProps.put("CodecPriority", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.BluetoothLeAudioCodecConfig.Builder setCodecType(int p0) { meglerProps.put("CodecType", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.BluetoothLeAudioCodecConfig.Builder setFrameDuration(int p0) { meglerProps.put("FrameDuration", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.BluetoothLeAudioCodecConfig.Builder setMaxOctetsPerFrame(int p0) { meglerProps.put("MaxOctetsPerFrame", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.BluetoothLeAudioCodecConfig.Builder setMinOctetsPerFrame(int p0) { meglerProps.put("MinOctetsPerFrame", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.BluetoothLeAudioCodecConfig.Builder setOctetsPerFrame(int p0) { meglerProps.put("OctetsPerFrame", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.BluetoothLeAudioCodecConfig.Builder setSampleRate(int p0) { meglerProps.put("SampleRate", Integer.valueOf(p0)); return this; }
     }
 }

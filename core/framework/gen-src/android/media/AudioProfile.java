@@ -3,18 +3,18 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AudioProfile implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int AUDIO_ENCAPSULATION_TYPE_IEC61937 = 1;
     public static final int AUDIO_ENCAPSULATION_TYPE_NONE = 0;
     public static final int AUDIO_ENCAPSULATION_TYPE_PCM = 2;
     public static android.os.Parcelable.Creator CREATOR;
     public AudioProfile(int p0, int[] p1, int[] p2, int[] p3, int p4) {}
     public int describeContents() { return 0; }
-    public int[] getChannelIndexMasks() { return (int[]) megletProps.get("ChannelIndexMasks"); }
-    public int[] getChannelMasks() { return (int[]) megletProps.get("ChannelMasks"); }
-    public int getEncapsulationType() { return (megletProps.get("EncapsulationType") instanceof Integer ? (Integer) megletProps.get("EncapsulationType") : 0); }
-    public int getFormat() { return (megletProps.get("Format") instanceof Integer ? (Integer) megletProps.get("Format") : 0); }
-    public int[] getSampleRates() { return (int[]) megletProps.get("SampleRates"); }
+    public int[] getChannelIndexMasks() { return (int[]) meglerProps.get("ChannelIndexMasks"); }
+    public int[] getChannelMasks() { return (int[]) meglerProps.get("ChannelMasks"); }
+    public int getEncapsulationType() { return (meglerProps.get("EncapsulationType") instanceof Integer ? (Integer) meglerProps.get("EncapsulationType") : 0); }
+    public int getFormat() { return (meglerProps.get("Format") instanceof Integer ? (Integer) meglerProps.get("Format") : 0); }
+    public int[] getSampleRates() { return (int[]) meglerProps.get("SampleRates"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     AudioProfile() { this((int) 0, (int[]) null, (int[]) null, (int[]) null, (int) 0); }
 }

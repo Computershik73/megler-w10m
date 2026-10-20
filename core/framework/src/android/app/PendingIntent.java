@@ -26,7 +26,7 @@ public final class PendingIntent implements android.os.Parcelable {
     public void send(int code, OnFinished f, android.os.Handler h) throws CanceledException { send(); }
     public void send(Context c, int code, Intent i, OnFinished f, android.os.Handler h) throws CanceledException { send(c, code, i); }
     public void cancel() {}
-    public String getCreatorPackage() { return meglet.Native.packageName(); }
+    public String getCreatorPackage() { return megler.Native.packageName(); }
     public String getTargetPackage() { return getCreatorPackage(); }
     public int getCreatorUid() { return android.os.Process.myUid(); }
     public android.os.UserHandle getCreatorUserHandle() { return android.os.UserHandle.getUserHandleForUid(0); }

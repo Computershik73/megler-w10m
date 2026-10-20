@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The test app of the Java driver (tools/build-test-app.sh): an Application, one Activity, a layout from resources. No native library. -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="meglet.test.hello" android:versionCode="1" android:versionName="1.0">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="megler.test.hello" android:versionCode="1" android:versionName="1.0">
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />
     <application android:name=".App" android:label="@string/app_name" android:icon="@drawable/mark">
         <activity android:name=".MainActivity" android:label="@string/app_name">

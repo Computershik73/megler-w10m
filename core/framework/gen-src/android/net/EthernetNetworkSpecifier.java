@@ -3,14 +3,14 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class EthernetNetworkSpecifier extends android.net.NetworkSpecifier implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public EthernetNetworkSpecifier(java.lang.String p0) { super(); }
     public EthernetNetworkSpecifier(java.lang.String p0, android.net.MacAddress p1) { super(); }
     public boolean canBeSatisfiedBy(android.net.NetworkSpecifier p0) { return false; }
     public int describeContents() { return 0; }
-    public java.lang.String getInterfaceName() { return (java.lang.String) megletProps.get("InterfaceName"); }
-    public android.net.MacAddress getMacAddress() { return (android.net.MacAddress) megletProps.get("MacAddress"); }
+    public java.lang.String getInterfaceName() { return (java.lang.String) meglerProps.get("InterfaceName"); }
+    public android.net.MacAddress getMacAddress() { return (android.net.MacAddress) meglerProps.get("MacAddress"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     EthernetNetworkSpecifier() { this((java.lang.String) null); }
 }

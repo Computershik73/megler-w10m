@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class MediaRoute2ProviderService extends android.app.Service {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String CATEGORY_SELF_SCAN_ONLY = "android.media.MediaRoute2ProviderService.SELF_SCAN_ONLY";
     public static final java.lang.String CATEGORY_SYSTEM_MEDIA = "android.media.MediaRoute2ProviderService.SYSTEM_MEDIA";
     public static final int REASON_FAILED_TO_REROUTE_SYSTEM_MEDIA = 6;
@@ -16,7 +16,7 @@ public abstract class MediaRoute2ProviderService extends android.app.Service {
     public static final long REQUEST_ID_NONE = 0L;
     public static final java.lang.String SERVICE_INTERFACE = "android.media.MediaRoute2ProviderService";
     public MediaRoute2ProviderService() { super(); }
-    public java.util.List getAllSessionInfo() { return (megletProps.get("AllSessionInfo") != null ? (java.util.List) megletProps.get("AllSessionInfo") : new java.util.ArrayList()); }
+    public java.util.List getAllSessionInfo() { return (meglerProps.get("AllSessionInfo") != null ? (java.util.List) meglerProps.get("AllSessionInfo") : new java.util.ArrayList()); }
     public android.media.RoutingSessionInfo getSessionInfo(java.lang.String p0) { return null; }
     public void notifyRequestFailed(long p0, int p1) {}
     public void notifyRoutes(java.util.Collection p0) {}
@@ -36,38 +36,38 @@ public abstract class MediaRoute2ProviderService extends android.app.Service {
     public abstract void onSetSessionVolume(long p0, java.lang.String p1, int p2);
     public abstract void onTransferToRoute(long p0, java.lang.String p1, java.lang.String p2);
     public static final class MediaStreams {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public android.media.AudioRecord getAudioRecord() { return (android.media.AudioRecord) megletProps.get("AudioRecord"); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public android.media.AudioRecord getAudioRecord() { return (android.media.AudioRecord) meglerProps.get("AudioRecord"); }
         protected MediaStreams() {}
         public static final class Builder {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-            public android.media.MediaRoute2ProviderService.MediaStreams build() { android.media.MediaRoute2ProviderService.MediaStreams x = new android.media.MediaRoute2ProviderService.MediaStreams(); x.megletProps.putAll(megletProps); return x; }
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            public android.media.MediaRoute2ProviderService.MediaStreams build() { android.media.MediaRoute2ProviderService.MediaStreams x = new android.media.MediaRoute2ProviderService.MediaStreams(); x.meglerProps.putAll(meglerProps); return x; }
             public android.media.MediaRoute2ProviderService.MediaStreams.Builder setAudioStream(android.media.audiopolicy.AudioPolicy p0, android.media.AudioRecord p1) { return this; }
             protected Builder() {}
         }
     }
     public static final class MediaStreamsFormats {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public android.media.AudioFormat getAudioFormat() { return (android.media.AudioFormat) megletProps.get("AudioFormat"); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public android.media.AudioFormat getAudioFormat() { return (android.media.AudioFormat) meglerProps.get("AudioFormat"); }
         protected MediaStreamsFormats() {}
         public static final class Builder {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public Builder() {}
-            public android.media.MediaRoute2ProviderService.MediaStreamsFormats build() { android.media.MediaRoute2ProviderService.MediaStreamsFormats x = new android.media.MediaRoute2ProviderService.MediaStreamsFormats(); x.megletProps.putAll(megletProps); return x; }
-            public android.media.MediaRoute2ProviderService.MediaStreamsFormats.Builder setAudioFormat(android.media.AudioFormat p0) { megletProps.put("AudioFormat", p0); return this; }
+            public android.media.MediaRoute2ProviderService.MediaStreamsFormats build() { android.media.MediaRoute2ProviderService.MediaStreamsFormats x = new android.media.MediaRoute2ProviderService.MediaStreamsFormats(); x.meglerProps.putAll(meglerProps); return x; }
+            public android.media.MediaRoute2ProviderService.MediaStreamsFormats.Builder setAudioFormat(android.media.AudioFormat p0) { meglerProps.put("AudioFormat", p0); return this; }
         }
     }
     public static final class SystemRoutingSessionParams {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
-        public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
+        public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
         protected SystemRoutingSessionParams() {}
         public static final class Builder {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public Builder() {}
-            public android.media.MediaRoute2ProviderService.SystemRoutingSessionParams build() { android.media.MediaRoute2ProviderService.SystemRoutingSessionParams x = new android.media.MediaRoute2ProviderService.SystemRoutingSessionParams(); x.megletProps.putAll(megletProps); return x; }
-            public android.media.MediaRoute2ProviderService.SystemRoutingSessionParams.Builder setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); return this; }
-            public android.media.MediaRoute2ProviderService.SystemRoutingSessionParams.Builder setPackageName(java.lang.String p0) { megletProps.put("PackageName", p0); return this; }
+            public android.media.MediaRoute2ProviderService.SystemRoutingSessionParams build() { android.media.MediaRoute2ProviderService.SystemRoutingSessionParams x = new android.media.MediaRoute2ProviderService.SystemRoutingSessionParams(); x.meglerProps.putAll(meglerProps); return x; }
+            public android.media.MediaRoute2ProviderService.SystemRoutingSessionParams.Builder setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); return this; }
+            public android.media.MediaRoute2ProviderService.SystemRoutingSessionParams.Builder setPackageName(java.lang.String p0) { meglerProps.put("PackageName", p0); return this; }
         }
     }
 }

@@ -3,15 +3,15 @@ package android.adservices.customaudience;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class LeaveCustomAudienceRequest {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public android.adservices.common.AdTechIdentifier getBuyer() { return (android.adservices.common.AdTechIdentifier) megletProps.get("Buyer"); }
-    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public android.adservices.common.AdTechIdentifier getBuyer() { return (android.adservices.common.AdTechIdentifier) meglerProps.get("Buyer"); }
+    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
     protected LeaveCustomAudienceRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.adservices.customaudience.LeaveCustomAudienceRequest build() { android.adservices.customaudience.LeaveCustomAudienceRequest x = new android.adservices.customaudience.LeaveCustomAudienceRequest(); x.megletProps.putAll(megletProps); return x; }
-        public android.adservices.customaudience.LeaveCustomAudienceRequest.Builder setBuyer(android.adservices.common.AdTechIdentifier p0) { megletProps.put("Buyer", p0); return this; }
-        public android.adservices.customaudience.LeaveCustomAudienceRequest.Builder setName(java.lang.String p0) { megletProps.put("Name", p0); return this; }
+        public android.adservices.customaudience.LeaveCustomAudienceRequest build() { android.adservices.customaudience.LeaveCustomAudienceRequest x = new android.adservices.customaudience.LeaveCustomAudienceRequest(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.adservices.customaudience.LeaveCustomAudienceRequest.Builder setBuyer(android.adservices.common.AdTechIdentifier p0) { meglerProps.put("Buyer", p0); return this; }
+        public android.adservices.customaudience.LeaveCustomAudienceRequest.Builder setName(java.lang.String p0) { meglerProps.put("Name", p0); return this; }
     }
 }

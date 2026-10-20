@@ -3,7 +3,7 @@ package android.content;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class UriRelativeFilter {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int FRAGMENT = 2;
     public static final int PATH = 0;
     public static final int QUERY = 1;
@@ -11,9 +11,9 @@ public final class UriRelativeFilter {
     public UriRelativeFilter(android.content.UriRelativeFilterParcel p0) {}
     public UriRelativeFilter(org.xmlpull.v1.XmlPullParser p0) {}
     public void dumpDebug(android.util.proto.ProtoOutputStream p0, long p1) {}
-    public java.lang.String getFilter() { return (java.lang.String) megletProps.get("Filter"); }
-    public int getPatternType() { return (megletProps.get("PatternType") instanceof Integer ? (Integer) megletProps.get("PatternType") : 0); }
-    public int getUriPart() { return (megletProps.get("UriPart") instanceof Integer ? (Integer) megletProps.get("UriPart") : 0); }
+    public java.lang.String getFilter() { return (java.lang.String) meglerProps.get("Filter"); }
+    public int getPatternType() { return (meglerProps.get("PatternType") instanceof Integer ? (Integer) meglerProps.get("PatternType") : 0); }
+    public int getUriPart() { return (meglerProps.get("UriPart") instanceof Integer ? (Integer) meglerProps.get("UriPart") : 0); }
     public boolean matchData(android.net.Uri p0) { return false; }
     public android.content.UriRelativeFilterParcel toParcel() { return null; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}

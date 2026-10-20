@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SyncParams {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int AUDIO_ADJUST_MODE_DEFAULT = 0;
     public static final int AUDIO_ADJUST_MODE_RESAMPLE = 2;
     public static final int AUDIO_ADJUST_MODE_STRETCH = 1;
@@ -13,12 +13,12 @@ public final class SyncParams {
     public static final int SYNC_SOURCE_VSYNC = 3;
     public SyncParams() {}
     public android.media.SyncParams allowDefaults() { return this; }
-    public int getAudioAdjustMode() { return (megletProps.get("AudioAdjustMode") instanceof Integer ? (Integer) megletProps.get("AudioAdjustMode") : 0); }
-    public float getFrameRate() { return (megletProps.get("FrameRate") instanceof Float ? (Float) megletProps.get("FrameRate") : 0f); }
-    public int getSyncSource() { return (megletProps.get("SyncSource") instanceof Integer ? (Integer) megletProps.get("SyncSource") : 0); }
-    public float getTolerance() { return (megletProps.get("Tolerance") instanceof Float ? (Float) megletProps.get("Tolerance") : 0f); }
-    public android.media.SyncParams setAudioAdjustMode(int p0) { megletProps.put("AudioAdjustMode", Integer.valueOf(p0)); return this; }
-    public android.media.SyncParams setFrameRate(float p0) { megletProps.put("FrameRate", Float.valueOf(p0)); return this; }
-    public android.media.SyncParams setSyncSource(int p0) { megletProps.put("SyncSource", Integer.valueOf(p0)); return this; }
-    public android.media.SyncParams setTolerance(float p0) { megletProps.put("Tolerance", Float.valueOf(p0)); return this; }
+    public int getAudioAdjustMode() { return (meglerProps.get("AudioAdjustMode") instanceof Integer ? (Integer) meglerProps.get("AudioAdjustMode") : 0); }
+    public float getFrameRate() { return (meglerProps.get("FrameRate") instanceof Float ? (Float) meglerProps.get("FrameRate") : 0f); }
+    public int getSyncSource() { return (meglerProps.get("SyncSource") instanceof Integer ? (Integer) meglerProps.get("SyncSource") : 0); }
+    public float getTolerance() { return (meglerProps.get("Tolerance") instanceof Float ? (Float) meglerProps.get("Tolerance") : 0f); }
+    public android.media.SyncParams setAudioAdjustMode(int p0) { meglerProps.put("AudioAdjustMode", Integer.valueOf(p0)); return this; }
+    public android.media.SyncParams setFrameRate(float p0) { meglerProps.put("FrameRate", Float.valueOf(p0)); return this; }
+    public android.media.SyncParams setSyncSource(int p0) { meglerProps.put("SyncSource", Integer.valueOf(p0)); return this; }
+    public android.media.SyncParams setTolerance(float p0) { meglerProps.put("Tolerance", Float.valueOf(p0)); return this; }
 }

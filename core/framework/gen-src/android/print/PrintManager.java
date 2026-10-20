@@ -3,7 +3,7 @@ package android.print;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PrintManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_PRINT_DIALOG = "android.print.PRINT_DIALOG";
     public static final int ALL_SERVICES = 3;
     public static final int APP_ID_ANY = -2;
@@ -21,8 +21,8 @@ public final class PrintManager {
     public android.graphics.drawable.Icon getCustomPrinterIcon(android.print.PrinterId p0) { return null; }
     public android.print.PrintManager getGlobalPrintManagerForUser(int p0) { return this; }
     public android.print.PrintJob getPrintJob(android.print.PrintJobId p0) { return null; }
-    public java.util.List getPrintJobs() { return (megletProps.get("PrintJobs") != null ? (java.util.List) megletProps.get("PrintJobs") : new java.util.ArrayList()); }
-    public java.util.List getPrintServiceRecommendations() { return (megletProps.get("PrintServiceRecommendations") != null ? (java.util.List) megletProps.get("PrintServiceRecommendations") : new java.util.ArrayList()); }
+    public java.util.List getPrintJobs() { return (meglerProps.get("PrintJobs") != null ? (java.util.List) meglerProps.get("PrintJobs") : new java.util.ArrayList()); }
+    public java.util.List getPrintServiceRecommendations() { return (meglerProps.get("PrintServiceRecommendations") != null ? (java.util.List) meglerProps.get("PrintServiceRecommendations") : new java.util.ArrayList()); }
     public java.util.List getPrintServices(int p0) { return new java.util.ArrayList(); }
     public boolean isPrintServiceEnabled(android.content.ComponentName p0) { return false; }
     public android.print.PrintJob print(java.lang.String p0, android.print.PrintDocumentAdapter p1, android.print.PrintAttributes p2) { return null; }
@@ -32,7 +32,7 @@ public final class PrintManager {
     public void setPrintServiceEnabled(android.content.ComponentName p0, boolean p1) {}
     PrintManager() { this((android.content.Context) null, (android.print.IPrintManager) null, (int) 0, (int) 0); }
     public static abstract class PrintDocumentAdapterDelegate extends android.print.IPrintDocumentAdapter.Stub implements android.app.Application.ActivityLifecycleCallbacks {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public PrintDocumentAdapterDelegate(android.app.Activity p0, android.print.PrintDocumentAdapter p1) { super(); }
         public void finish() {}
         public void layout(android.print.PrintAttributes p0, android.print.PrintAttributes p1, android.print.ILayoutResultCallback p2, android.os.Bundle p3, int p4) {}
@@ -43,7 +43,7 @@ public final class PrintManager {
         public void onActivitySaveInstanceState(android.app.Activity p0, android.os.Bundle p1) {}
         public void onActivityStarted(android.app.Activity p0) {}
         public void onActivityStopped(android.app.Activity p0) {}
-        public void setObserver(android.print.IPrintDocumentAdapterObserver p0) { megletProps.put("Observer", p0); }
+        public void setObserver(android.print.IPrintDocumentAdapterObserver p0) { meglerProps.put("Observer", p0); }
         public void start() {}
         public void write(android.print.PageRange[] p0, android.os.ParcelFileDescriptor p1, android.print.IWriteResultCallback p2, int p3) {}
         PrintDocumentAdapterDelegate() { this((android.app.Activity) null, (android.print.PrintDocumentAdapter) null); }
@@ -52,10 +52,10 @@ public final class PrintManager {
         void onPrintJobStateChanged(android.print.PrintJobId p0);
     }
     public static abstract class PrintJobStateChangeListenerWrapper extends android.print.IPrintJobStateChangeListener.Stub {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public PrintJobStateChangeListenerWrapper(android.print.PrintManager.PrintJobStateChangeListener p0, android.os.Handler p1) { super(); }
         public void destroy() {}
-        public android.print.PrintManager.PrintJobStateChangeListener getListener() { return (android.print.PrintManager.PrintJobStateChangeListener) megletProps.get("Listener"); }
+        public android.print.PrintManager.PrintJobStateChangeListener getListener() { return (android.print.PrintManager.PrintJobStateChangeListener) meglerProps.get("Listener"); }
         public void onPrintJobStateChanged(android.print.PrintJobId p0) {}
         PrintJobStateChangeListenerWrapper() { this((android.print.PrintManager.PrintJobStateChangeListener) null, (android.os.Handler) null); }
     }
@@ -63,7 +63,7 @@ public final class PrintManager {
         void onPrintServiceRecommendationsChanged();
     }
     public static abstract class PrintServiceRecommendationsChangeListenerWrapper extends android.printservice.recommendation.IRecommendationsChangeListener.Stub {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public PrintServiceRecommendationsChangeListenerWrapper(android.print.PrintManager.PrintServiceRecommendationsChangeListener p0, android.os.Handler p1) { super(); }
         public void destroy() {}
         public void onRecommendationsChanged() {}
@@ -73,7 +73,7 @@ public final class PrintManager {
         void onPrintServicesChanged();
     }
     public static abstract class PrintServicesChangeListenerWrapper extends android.print.IPrintServicesChangeListener.Stub {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public PrintServicesChangeListenerWrapper(android.print.PrintManager.PrintServicesChangeListener p0, android.os.Handler p1) { super(); }
         public void destroy() {}
         public void onPrintServicesChanged() {}

@@ -3,7 +3,7 @@ package android.nfc;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class NfcAdapter {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_ADAPTER_STATE_CHANGED = "android.nfc.action.ADAPTER_STATE_CHANGED";
     public static final java.lang.String ACTION_CHANGE_TAG_INTENT_PREFERENCE = "android.nfc.action.CHANGE_TAG_INTENT_PREFERENCE";
     public static final java.lang.String ACTION_HANDOVER_TRANSFER_DONE = "android.nfc.action.HANDOVER_TRANSFER_DONE";
@@ -92,36 +92,36 @@ public final class NfcAdapter {
     public boolean enableReaderOption(boolean p0) { return false; }
     public boolean enableSecureNfc(boolean p0) { return false; }
     public void enforceResumed(android.app.Activity p0) {}
-    public int getAdapterState() { return (megletProps.get("AdapterState") instanceof Integer ? (Integer) megletProps.get("AdapterState") : 0); }
-    public android.content.Context getContext() { return (android.content.Context) megletProps.get("Context"); }
-    public android.nfc.INfcAdapterExtras getNfcAdapterExtrasInterface() { return (android.nfc.INfcAdapterExtras) megletProps.get("NfcAdapterExtrasInterface"); }
-    public android.nfc.NfcAntennaInfo getNfcAntennaInfo() { return (android.nfc.NfcAntennaInfo) megletProps.get("NfcAntennaInfo"); }
-    public android.nfc.INfcDta getNfcDtaInterface() { return (android.nfc.INfcDta) megletProps.get("NfcDtaInterface"); }
-    public android.nfc.NfcOemExtension getNfcOemExtension() { return (android.nfc.NfcOemExtension) megletProps.get("NfcOemExtension"); }
-    public int getSdkVersion() { return (megletProps.get("SdkVersion") instanceof Integer ? (Integer) megletProps.get("SdkVersion") : 0); }
-    public java.util.List getSupportedOffHostSecureElements() { return (megletProps.get("SupportedOffHostSecureElements") != null ? (java.util.List) megletProps.get("SupportedOffHostSecureElements") : new java.util.ArrayList()); }
+    public int getAdapterState() { return (meglerProps.get("AdapterState") instanceof Integer ? (Integer) meglerProps.get("AdapterState") : 0); }
+    public android.content.Context getContext() { return (android.content.Context) meglerProps.get("Context"); }
+    public android.nfc.INfcAdapterExtras getNfcAdapterExtrasInterface() { return (android.nfc.INfcAdapterExtras) meglerProps.get("NfcAdapterExtrasInterface"); }
+    public android.nfc.NfcAntennaInfo getNfcAntennaInfo() { return (android.nfc.NfcAntennaInfo) meglerProps.get("NfcAntennaInfo"); }
+    public android.nfc.INfcDta getNfcDtaInterface() { return (android.nfc.INfcDta) meglerProps.get("NfcDtaInterface"); }
+    public android.nfc.NfcOemExtension getNfcOemExtension() { return (android.nfc.NfcOemExtension) meglerProps.get("NfcOemExtension"); }
+    public int getSdkVersion() { return (meglerProps.get("SdkVersion") instanceof Integer ? (Integer) meglerProps.get("SdkVersion") : 0); }
+    public java.util.List getSupportedOffHostSecureElements() { return (meglerProps.get("SupportedOffHostSecureElements") != null ? (java.util.List) meglerProps.get("SupportedOffHostSecureElements") : new java.util.ArrayList()); }
     public java.util.Map getTagIntentAppPreferenceForUser(int p0) { return new java.util.HashMap(); }
-    public android.nfc.WlcListenerDeviceInfo getWlcListenerDeviceInfo() { return (android.nfc.WlcListenerDeviceInfo) megletProps.get("WlcListenerDeviceInfo"); }
+    public android.nfc.WlcListenerDeviceInfo getWlcListenerDeviceInfo() { return (android.nfc.WlcListenerDeviceInfo) meglerProps.get("WlcListenerDeviceInfo"); }
     public boolean ignore(android.nfc.Tag p0, int p1, android.nfc.NfcAdapter.OnTagRemovedListener p2, android.os.Handler p3) { return false; }
     public void indicateDataMigration(boolean p0) {}
     public boolean invokeBeam(android.app.Activity p0) { return false; }
-    public boolean isControllerAlwaysOn() { return (megletProps.get("ControllerAlwaysOn") instanceof Boolean ? (Boolean) megletProps.get("ControllerAlwaysOn") : false); }
-    public boolean isControllerAlwaysOnSupported() { return (megletProps.get("ControllerAlwaysOnSupported") instanceof Boolean ? (Boolean) megletProps.get("ControllerAlwaysOnSupported") : false); }
-    public boolean isEnabled() { return (megletProps.get("Enabled") instanceof Boolean ? (Boolean) megletProps.get("Enabled") : false); }
-    public boolean isExitFramesSupported() { return (megletProps.get("ExitFramesSupported") instanceof Boolean ? (Boolean) megletProps.get("ExitFramesSupported") : false); }
-    public boolean isNdefPushEnabled() { return (megletProps.get("NdefPushEnabled") instanceof Boolean ? (Boolean) megletProps.get("NdefPushEnabled") : false); }
-    public boolean isObserveModeEnabled() { return (megletProps.get("ObserveModeEnabled") instanceof Boolean ? (Boolean) megletProps.get("ObserveModeEnabled") : false); }
-    public boolean isObserveModeSupported() { return (megletProps.get("ObserveModeSupported") instanceof Boolean ? (Boolean) megletProps.get("ObserveModeSupported") : false); }
-    public boolean isPowerSavingModeEnabled() { return (megletProps.get("PowerSavingModeEnabled") instanceof Boolean ? (Boolean) megletProps.get("PowerSavingModeEnabled") : false); }
-    public boolean isPowerSavingModeSupported() { return (megletProps.get("PowerSavingModeSupported") instanceof Boolean ? (Boolean) megletProps.get("PowerSavingModeSupported") : false); }
-    public boolean isReaderModeAnnotationSupported() { return (megletProps.get("ReaderModeAnnotationSupported") instanceof Boolean ? (Boolean) megletProps.get("ReaderModeAnnotationSupported") : false); }
-    public boolean isReaderOptionEnabled() { return (megletProps.get("ReaderOptionEnabled") instanceof Boolean ? (Boolean) megletProps.get("ReaderOptionEnabled") : false); }
-    public boolean isReaderOptionSupported() { return (megletProps.get("ReaderOptionSupported") instanceof Boolean ? (Boolean) megletProps.get("ReaderOptionSupported") : false); }
-    public boolean isSecureNfcEnabled() { return (megletProps.get("SecureNfcEnabled") instanceof Boolean ? (Boolean) megletProps.get("SecureNfcEnabled") : false); }
-    public boolean isSecureNfcSupported() { return (megletProps.get("SecureNfcSupported") instanceof Boolean ? (Boolean) megletProps.get("SecureNfcSupported") : false); }
-    public boolean isTagIntentAllowed() { return (megletProps.get("TagIntentAllowed") instanceof Boolean ? (Boolean) megletProps.get("TagIntentAllowed") : false); }
-    public boolean isTagIntentAppPreferenceSupported() { return (megletProps.get("TagIntentAppPreferenceSupported") instanceof Boolean ? (Boolean) megletProps.get("TagIntentAppPreferenceSupported") : false); }
-    public boolean isWlcEnabled() { return (megletProps.get("WlcEnabled") instanceof Boolean ? (Boolean) megletProps.get("WlcEnabled") : false); }
+    public boolean isControllerAlwaysOn() { return (meglerProps.get("ControllerAlwaysOn") instanceof Boolean ? (Boolean) meglerProps.get("ControllerAlwaysOn") : false); }
+    public boolean isControllerAlwaysOnSupported() { return (meglerProps.get("ControllerAlwaysOnSupported") instanceof Boolean ? (Boolean) meglerProps.get("ControllerAlwaysOnSupported") : false); }
+    public boolean isEnabled() { return (meglerProps.get("Enabled") instanceof Boolean ? (Boolean) meglerProps.get("Enabled") : false); }
+    public boolean isExitFramesSupported() { return (meglerProps.get("ExitFramesSupported") instanceof Boolean ? (Boolean) meglerProps.get("ExitFramesSupported") : false); }
+    public boolean isNdefPushEnabled() { return (meglerProps.get("NdefPushEnabled") instanceof Boolean ? (Boolean) meglerProps.get("NdefPushEnabled") : false); }
+    public boolean isObserveModeEnabled() { return (meglerProps.get("ObserveModeEnabled") instanceof Boolean ? (Boolean) meglerProps.get("ObserveModeEnabled") : false); }
+    public boolean isObserveModeSupported() { return (meglerProps.get("ObserveModeSupported") instanceof Boolean ? (Boolean) meglerProps.get("ObserveModeSupported") : false); }
+    public boolean isPowerSavingModeEnabled() { return (meglerProps.get("PowerSavingModeEnabled") instanceof Boolean ? (Boolean) meglerProps.get("PowerSavingModeEnabled") : false); }
+    public boolean isPowerSavingModeSupported() { return (meglerProps.get("PowerSavingModeSupported") instanceof Boolean ? (Boolean) meglerProps.get("PowerSavingModeSupported") : false); }
+    public boolean isReaderModeAnnotationSupported() { return (meglerProps.get("ReaderModeAnnotationSupported") instanceof Boolean ? (Boolean) meglerProps.get("ReaderModeAnnotationSupported") : false); }
+    public boolean isReaderOptionEnabled() { return (meglerProps.get("ReaderOptionEnabled") instanceof Boolean ? (Boolean) meglerProps.get("ReaderOptionEnabled") : false); }
+    public boolean isReaderOptionSupported() { return (meglerProps.get("ReaderOptionSupported") instanceof Boolean ? (Boolean) meglerProps.get("ReaderOptionSupported") : false); }
+    public boolean isSecureNfcEnabled() { return (meglerProps.get("SecureNfcEnabled") instanceof Boolean ? (Boolean) meglerProps.get("SecureNfcEnabled") : false); }
+    public boolean isSecureNfcSupported() { return (meglerProps.get("SecureNfcSupported") instanceof Boolean ? (Boolean) meglerProps.get("SecureNfcSupported") : false); }
+    public boolean isTagIntentAllowed() { return (meglerProps.get("TagIntentAllowed") instanceof Boolean ? (Boolean) meglerProps.get("TagIntentAllowed") : false); }
+    public boolean isTagIntentAppPreferenceSupported() { return (meglerProps.get("TagIntentAppPreferenceSupported") instanceof Boolean ? (Boolean) meglerProps.get("TagIntentAppPreferenceSupported") : false); }
+    public boolean isWlcEnabled() { return (meglerProps.get("WlcEnabled") instanceof Boolean ? (Boolean) meglerProps.get("WlcEnabled") : false); }
     public void notifyHceDeactivated() {}
     public void notifyPollingLoop(android.nfc.cardemulation.PollingFrame p0) {}
     public void notifyTestHceData(int p0, byte[] p1) {}
@@ -142,8 +142,8 @@ public final class NfcAdapter {
     public void setNdefPushMessageCallback(android.nfc.NfcAdapter.CreateNdefMessageCallback p0, android.app.Activity p1, android.app.Activity[] p2) {}
     public boolean setObserveModeEnabled(boolean p0) { return false; }
     public void setOnNdefPushCompleteCallback(android.nfc.NfcAdapter.OnNdefPushCompleteCallback p0, android.app.Activity p1, android.app.Activity[] p2) {}
-    public void setPowerSavingMode(boolean p0) { megletProps.put("PowerSavingMode", Boolean.valueOf(p0)); }
-    public void setReaderModePollingEnabled(boolean p0) { megletProps.put("ReaderModePollingEnabled", Boolean.valueOf(p0)); }
+    public void setPowerSavingMode(boolean p0) { meglerProps.put("PowerSavingMode", Boolean.valueOf(p0)); }
+    public void setReaderModePollingEnabled(boolean p0) { meglerProps.put("ReaderModePollingEnabled", Boolean.valueOf(p0)); }
     public int setTagIntentAppPreferenceForUser(int p0, java.lang.String p1, boolean p2) { return 0; }
     public boolean setWlcEnabled(boolean p0) { return false; }
     public void unregisterControllerAlwaysOnListener(android.nfc.NfcAdapter.ControllerAlwaysOnListener p0) {}

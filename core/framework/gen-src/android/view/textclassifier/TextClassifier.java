@@ -56,7 +56,7 @@ public interface TextClassifier {
         protected EntityConfig() {}
     }
     public static final class Utils {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Utils() {}
         public static android.view.textclassifier.TextLinks generateLegacyLinks(android.view.textclassifier.TextLinks.Request p0) { return null; }
         public static java.lang.String getSubString(java.lang.String p0, int p1, int p2, int p3) { return null; }

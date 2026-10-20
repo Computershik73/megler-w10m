@@ -3,7 +3,7 @@ package android.os;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class LimitExceededException extends java.lang.IllegalStateException {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public LimitExceededException() { super(); }
     public LimitExceededException(java.lang.String p0) { super(); }
 }

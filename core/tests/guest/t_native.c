@@ -313,7 +313,7 @@ static void ask_java(void)
     const char *text = JNI(env, 169, const char *(*)(JNIEnv *, jobject, void *))(env, name, 0);                   /* GetStringUTFChars */
     jobject dir, path, version;
     void *fid;
-    t_native_state.package_ok = text && !strcmp(text, "org.meglet.test.native");
+    t_native_state.package_ok = text && !strcmp(text, "org.megler.test.native");
     mid = JNI(env, 33, void *(*)(JNIEnv *, jobject, const char *, const char *))(env, cls, "getFilesDir", "()Ljava/io/File;");
     dir = JNI(env, 34, jobject (*)(JNIEnv *, jobject, void *, ...))(env, activity, mid);
     mid = JNI(env, 33, void *(*)(JNIEnv *, jobject, const char *, const char *))(

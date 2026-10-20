@@ -3,27 +3,27 @@ package android.adservices.measurement;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DeletionRequest {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int DELETION_MODE_ALL = 0;
     public static final int DELETION_MODE_EXCLUDE_INTERNAL_DATA = 1;
     public static final int MATCH_BEHAVIOR_DELETE = 0;
     public static final int MATCH_BEHAVIOR_PRESERVE = 1;
-    public int getDeletionMode() { return (megletProps.get("DeletionMode") instanceof Integer ? (Integer) megletProps.get("DeletionMode") : 0); }
-    public java.util.List getDomainUris() { return (megletProps.get("DomainUris") != null ? (java.util.List) megletProps.get("DomainUris") : new java.util.ArrayList()); }
-    public java.time.Instant getEnd() { return (java.time.Instant) megletProps.get("End"); }
-    public int getMatchBehavior() { return (megletProps.get("MatchBehavior") instanceof Integer ? (Integer) megletProps.get("MatchBehavior") : 0); }
-    public java.util.List getOriginUris() { return (megletProps.get("OriginUris") != null ? (java.util.List) megletProps.get("OriginUris") : new java.util.ArrayList()); }
-    public java.time.Instant getStart() { return (java.time.Instant) megletProps.get("Start"); }
+    public int getDeletionMode() { return (meglerProps.get("DeletionMode") instanceof Integer ? (Integer) meglerProps.get("DeletionMode") : 0); }
+    public java.util.List getDomainUris() { return (meglerProps.get("DomainUris") != null ? (java.util.List) meglerProps.get("DomainUris") : new java.util.ArrayList()); }
+    public java.time.Instant getEnd() { return (java.time.Instant) meglerProps.get("End"); }
+    public int getMatchBehavior() { return (meglerProps.get("MatchBehavior") instanceof Integer ? (Integer) meglerProps.get("MatchBehavior") : 0); }
+    public java.util.List getOriginUris() { return (meglerProps.get("OriginUris") != null ? (java.util.List) meglerProps.get("OriginUris") : new java.util.ArrayList()); }
+    public java.time.Instant getStart() { return (java.time.Instant) meglerProps.get("Start"); }
     protected DeletionRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.adservices.measurement.DeletionRequest build() { android.adservices.measurement.DeletionRequest x = new android.adservices.measurement.DeletionRequest(); x.megletProps.putAll(megletProps); return x; }
-        public android.adservices.measurement.DeletionRequest.Builder setDeletionMode(int p0) { megletProps.put("DeletionMode", Integer.valueOf(p0)); return this; }
-        public android.adservices.measurement.DeletionRequest.Builder setDomainUris(java.util.List p0) { megletProps.put("DomainUris", p0); return this; }
-        public android.adservices.measurement.DeletionRequest.Builder setEnd(java.time.Instant p0) { megletProps.put("End", p0); return this; }
-        public android.adservices.measurement.DeletionRequest.Builder setMatchBehavior(int p0) { megletProps.put("MatchBehavior", Integer.valueOf(p0)); return this; }
-        public android.adservices.measurement.DeletionRequest.Builder setOriginUris(java.util.List p0) { megletProps.put("OriginUris", p0); return this; }
-        public android.adservices.measurement.DeletionRequest.Builder setStart(java.time.Instant p0) { megletProps.put("Start", p0); return this; }
+        public android.adservices.measurement.DeletionRequest build() { android.adservices.measurement.DeletionRequest x = new android.adservices.measurement.DeletionRequest(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.adservices.measurement.DeletionRequest.Builder setDeletionMode(int p0) { meglerProps.put("DeletionMode", Integer.valueOf(p0)); return this; }
+        public android.adservices.measurement.DeletionRequest.Builder setDomainUris(java.util.List p0) { meglerProps.put("DomainUris", p0); return this; }
+        public android.adservices.measurement.DeletionRequest.Builder setEnd(java.time.Instant p0) { meglerProps.put("End", p0); return this; }
+        public android.adservices.measurement.DeletionRequest.Builder setMatchBehavior(int p0) { meglerProps.put("MatchBehavior", Integer.valueOf(p0)); return this; }
+        public android.adservices.measurement.DeletionRequest.Builder setOriginUris(java.util.List p0) { meglerProps.put("OriginUris", p0); return this; }
+        public android.adservices.measurement.DeletionRequest.Builder setStart(java.time.Instant p0) { meglerProps.put("Start", p0); return this; }
     }
 }

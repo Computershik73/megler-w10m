@@ -3,11 +3,11 @@ package android.mtp;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MtpStorageInfo {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public java.lang.String getDescription() { return (java.lang.String) megletProps.get("Description"); }
-    public long getFreeSpace() { return (megletProps.get("FreeSpace") instanceof Long ? (Long) megletProps.get("FreeSpace") : 0L); }
-    public long getMaxCapacity() { return (megletProps.get("MaxCapacity") instanceof Long ? (Long) megletProps.get("MaxCapacity") : 0L); }
-    public int getStorageId() { return (megletProps.get("StorageId") instanceof Integer ? (Integer) megletProps.get("StorageId") : 0); }
-    public java.lang.String getVolumeIdentifier() { return (java.lang.String) megletProps.get("VolumeIdentifier"); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public java.lang.String getDescription() { return (java.lang.String) meglerProps.get("Description"); }
+    public long getFreeSpace() { return (meglerProps.get("FreeSpace") instanceof Long ? (Long) meglerProps.get("FreeSpace") : 0L); }
+    public long getMaxCapacity() { return (meglerProps.get("MaxCapacity") instanceof Long ? (Long) meglerProps.get("MaxCapacity") : 0L); }
+    public int getStorageId() { return (meglerProps.get("StorageId") instanceof Integer ? (Integer) meglerProps.get("StorageId") : 0); }
+    public java.lang.String getVolumeIdentifier() { return (java.lang.String) meglerProps.get("VolumeIdentifier"); }
     protected MtpStorageInfo() {}
 }

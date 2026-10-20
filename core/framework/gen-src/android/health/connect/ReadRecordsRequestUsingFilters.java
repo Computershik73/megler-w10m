@@ -3,23 +3,23 @@ package android.health.connect;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ReadRecordsRequestUsingFilters extends android.health.connect.ReadRecordsRequest {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public java.util.Set getDataOrigins() { return (megletProps.get("DataOrigins") != null ? (java.util.Set) megletProps.get("DataOrigins") : new java.util.HashSet()); }
-    public int getPageSize() { return (megletProps.get("PageSize") instanceof Integer ? (Integer) megletProps.get("PageSize") : 0); }
-    public long getPageToken() { return (megletProps.get("PageToken") instanceof Long ? (Long) megletProps.get("PageToken") : 0L); }
-    public android.health.connect.TimeRangeFilter getTimeRangeFilter() { return (android.health.connect.TimeRangeFilter) megletProps.get("TimeRangeFilter"); }
-    public boolean isAscending() { return (megletProps.get("Ascending") instanceof Boolean ? (Boolean) megletProps.get("Ascending") : false); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public java.util.Set getDataOrigins() { return (meglerProps.get("DataOrigins") != null ? (java.util.Set) meglerProps.get("DataOrigins") : new java.util.HashSet()); }
+    public int getPageSize() { return (meglerProps.get("PageSize") instanceof Integer ? (Integer) meglerProps.get("PageSize") : 0); }
+    public long getPageToken() { return (meglerProps.get("PageToken") instanceof Long ? (Long) meglerProps.get("PageToken") : 0L); }
+    public android.health.connect.TimeRangeFilter getTimeRangeFilter() { return (android.health.connect.TimeRangeFilter) meglerProps.get("TimeRangeFilter"); }
+    public boolean isAscending() { return (meglerProps.get("Ascending") instanceof Boolean ? (Boolean) meglerProps.get("Ascending") : false); }
     public android.health.connect.aidl.ReadRecordsRequestParcel toReadRecordsRequestParcel() { return null; }
     protected ReadRecordsRequestUsingFilters() { super((java.lang.Class) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(java.lang.Class p0) {}
         public android.health.connect.ReadRecordsRequestUsingFilters.Builder addDataOrigins(android.health.connect.datatypes.DataOrigin p0) { return this; }
-        public android.health.connect.ReadRecordsRequestUsingFilters build() { android.health.connect.ReadRecordsRequestUsingFilters x = new android.health.connect.ReadRecordsRequestUsingFilters(); x.megletProps.putAll(megletProps); return x; }
-        public android.health.connect.ReadRecordsRequestUsingFilters.Builder setAscending(boolean p0) { megletProps.put("Ascending", Boolean.valueOf(p0)); return this; }
-        public android.health.connect.ReadRecordsRequestUsingFilters.Builder setPageSize(int p0) { megletProps.put("PageSize", Integer.valueOf(p0)); return this; }
-        public android.health.connect.ReadRecordsRequestUsingFilters.Builder setPageToken(long p0) { megletProps.put("PageToken", Long.valueOf(p0)); return this; }
-        public android.health.connect.ReadRecordsRequestUsingFilters.Builder setTimeRangeFilter(android.health.connect.TimeRangeFilter p0) { megletProps.put("TimeRangeFilter", p0); return this; }
+        public android.health.connect.ReadRecordsRequestUsingFilters build() { android.health.connect.ReadRecordsRequestUsingFilters x = new android.health.connect.ReadRecordsRequestUsingFilters(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.health.connect.ReadRecordsRequestUsingFilters.Builder setAscending(boolean p0) { meglerProps.put("Ascending", Boolean.valueOf(p0)); return this; }
+        public android.health.connect.ReadRecordsRequestUsingFilters.Builder setPageSize(int p0) { meglerProps.put("PageSize", Integer.valueOf(p0)); return this; }
+        public android.health.connect.ReadRecordsRequestUsingFilters.Builder setPageToken(long p0) { meglerProps.put("PageToken", Long.valueOf(p0)); return this; }
+        public android.health.connect.ReadRecordsRequestUsingFilters.Builder setTimeRangeFilter(android.health.connect.TimeRangeFilter p0) { meglerProps.put("TimeRangeFilter", p0); return this; }
         Builder() { this((java.lang.Class) null); }
     }
 }

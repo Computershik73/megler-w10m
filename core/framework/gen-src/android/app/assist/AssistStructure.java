@@ -3,7 +3,7 @@ package android.app.assist;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AssistStructure implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public AssistStructure() {}
     public AssistStructure(android.app.Activity p0, boolean p1, int p2) {}
@@ -13,189 +13,189 @@ public class AssistStructure implements android.os.Parcelable {
     public void dump(boolean p0) {}
     public void ensureData() {}
     public void ensureDataForAutofill() {}
-    public long getAcquisitionEndTime() { return (megletProps.get("AcquisitionEndTime") instanceof Long ? (Long) megletProps.get("AcquisitionEndTime") : 0L); }
-    public long getAcquisitionStartTime() { return (megletProps.get("AcquisitionStartTime") instanceof Long ? (Long) megletProps.get("AcquisitionStartTime") : 0L); }
-    public android.content.ComponentName getActivityComponent() { return (android.content.ComponentName) megletProps.get("ActivityComponent"); }
-    public int getFlags() { return (megletProps.get("Flags") instanceof Integer ? (Integer) megletProps.get("Flags") : 0); }
-    public int getTaskId() { return (megletProps.get("TaskId") instanceof Integer ? (Integer) megletProps.get("TaskId") : 0); }
+    public long getAcquisitionEndTime() { return (meglerProps.get("AcquisitionEndTime") instanceof Long ? (Long) meglerProps.get("AcquisitionEndTime") : 0L); }
+    public long getAcquisitionStartTime() { return (meglerProps.get("AcquisitionStartTime") instanceof Long ? (Long) meglerProps.get("AcquisitionStartTime") : 0L); }
+    public android.content.ComponentName getActivityComponent() { return (android.content.ComponentName) meglerProps.get("ActivityComponent"); }
+    public int getFlags() { return (meglerProps.get("Flags") instanceof Integer ? (Integer) meglerProps.get("Flags") : 0); }
+    public int getTaskId() { return (meglerProps.get("TaskId") instanceof Integer ? (Integer) meglerProps.get("TaskId") : 0); }
     public android.app.assist.AssistStructure.WindowNode getWindowNodeAt(int p0) { return null; }
-    public int getWindowNodeCount() { return (megletProps.get("WindowNodeCount") instanceof Integer ? (Integer) megletProps.get("WindowNodeCount") : 0); }
-    public boolean isHomeActivity() { return (megletProps.get("HomeActivity") instanceof Boolean ? (Boolean) megletProps.get("HomeActivity") : false); }
+    public int getWindowNodeCount() { return (meglerProps.get("WindowNodeCount") instanceof Integer ? (Integer) meglerProps.get("WindowNodeCount") : 0); }
+    public boolean isHomeActivity() { return (meglerProps.get("HomeActivity") instanceof Boolean ? (Boolean) meglerProps.get("HomeActivity") : false); }
     public void sanitizeForParceling(boolean p0) {}
-    public void setAcquisitionEndTime(long p0) { megletProps.put("AcquisitionEndTime", Long.valueOf(p0)); }
-    public void setAcquisitionStartTime(long p0) { megletProps.put("AcquisitionStartTime", Long.valueOf(p0)); }
-    public void setActivityComponent(android.content.ComponentName p0) { megletProps.put("ActivityComponent", p0); }
-    public void setHomeActivity(boolean p0) { megletProps.put("HomeActivity", Boolean.valueOf(p0)); }
-    public void setTaskId(int p0) { megletProps.put("TaskId", Integer.valueOf(p0)); }
+    public void setAcquisitionEndTime(long p0) { meglerProps.put("AcquisitionEndTime", Long.valueOf(p0)); }
+    public void setAcquisitionStartTime(long p0) { meglerProps.put("AcquisitionStartTime", Long.valueOf(p0)); }
+    public void setActivityComponent(android.content.ComponentName p0) { meglerProps.put("ActivityComponent", p0); }
+    public void setHomeActivity(boolean p0) { meglerProps.put("HomeActivity", Boolean.valueOf(p0)); }
+    public void setTaskId(int p0) { meglerProps.put("TaskId", Integer.valueOf(p0)); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public static class AutofillOverlay {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public boolean focused;
         public android.view.autofill.AutofillValue value;
         public AutofillOverlay() {}
     }
     public static class ViewNode {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int TEXT_COLOR_UNDEFINED = 1;
         public static final int TEXT_STYLE_BOLD = 1;
         public static final int TEXT_STYLE_ITALIC = 2;
         public static final int TEXT_STYLE_STRIKE_THRU = 8;
         public static final int TEXT_STYLE_UNDERLINE = 4;
         public ViewNode() {}
-        public float getAlpha() { return (megletProps.get("Alpha") instanceof Float ? (Float) megletProps.get("Alpha") : 0f); }
-        public java.lang.String[] getAutofillHints() { return (java.lang.String[]) megletProps.get("AutofillHints"); }
-        public android.view.autofill.AutofillId getAutofillId() { return (android.view.autofill.AutofillId) megletProps.get("AutofillId"); }
-        public java.lang.CharSequence[] getAutofillOptions() { return (java.lang.CharSequence[]) megletProps.get("AutofillOptions"); }
-        public int getAutofillType() { return (megletProps.get("AutofillType") instanceof Integer ? (Integer) megletProps.get("AutofillType") : 0); }
-        public android.view.autofill.AutofillValue getAutofillValue() { return (android.view.autofill.AutofillValue) megletProps.get("AutofillValue"); }
+        public float getAlpha() { return (meglerProps.get("Alpha") instanceof Float ? (Float) meglerProps.get("Alpha") : 0f); }
+        public java.lang.String[] getAutofillHints() { return (java.lang.String[]) meglerProps.get("AutofillHints"); }
+        public android.view.autofill.AutofillId getAutofillId() { return (android.view.autofill.AutofillId) meglerProps.get("AutofillId"); }
+        public java.lang.CharSequence[] getAutofillOptions() { return (java.lang.CharSequence[]) meglerProps.get("AutofillOptions"); }
+        public int getAutofillType() { return (meglerProps.get("AutofillType") instanceof Integer ? (Integer) meglerProps.get("AutofillType") : 0); }
+        public android.view.autofill.AutofillValue getAutofillValue() { return (android.view.autofill.AutofillValue) meglerProps.get("AutofillValue"); }
         public android.app.assist.AssistStructure.ViewNode getChildAt(int p0) { return this; }
-        public int getChildCount() { return (megletProps.get("ChildCount") instanceof Integer ? (Integer) megletProps.get("ChildCount") : 0); }
-        public java.lang.String getClassName() { return (java.lang.String) megletProps.get("ClassName"); }
-        public java.lang.CharSequence getContentDescription() { return (java.lang.CharSequence) megletProps.get("ContentDescription"); }
-        public float getElevation() { return (megletProps.get("Elevation") instanceof Float ? (Float) megletProps.get("Elevation") : 0f); }
-        public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
-        public int getHeight() { return (megletProps.get("Height") instanceof Integer ? (Integer) megletProps.get("Height") : 0); }
-        public java.lang.String getHint() { return (java.lang.String) megletProps.get("Hint"); }
-        public java.lang.String getHintIdEntry() { return (java.lang.String) megletProps.get("HintIdEntry"); }
-        public android.view.ViewStructure.HtmlInfo getHtmlInfo() { return (android.view.ViewStructure.HtmlInfo) megletProps.get("HtmlInfo"); }
-        public int getId() { return (megletProps.get("Id") instanceof Integer ? (Integer) megletProps.get("Id") : 0); }
-        public java.lang.String getIdEntry() { return (java.lang.String) megletProps.get("IdEntry"); }
-        public java.lang.String getIdPackage() { return (java.lang.String) megletProps.get("IdPackage"); }
-        public java.lang.String getIdType() { return (java.lang.String) megletProps.get("IdType"); }
-        public int getImportantForAutofill() { return (megletProps.get("ImportantForAutofill") instanceof Integer ? (Integer) megletProps.get("ImportantForAutofill") : 0); }
-        public int getInputType() { return (megletProps.get("InputType") instanceof Integer ? (Integer) megletProps.get("InputType") : 0); }
-        public int getLeft() { return (megletProps.get("Left") instanceof Integer ? (Integer) megletProps.get("Left") : 0); }
-        public android.os.LocaleList getLocaleList() { return (android.os.LocaleList) megletProps.get("LocaleList"); }
-        public int getMaxTextEms() { return (megletProps.get("MaxTextEms") instanceof Integer ? (Integer) megletProps.get("MaxTextEms") : 0); }
-        public int getMaxTextLength() { return (megletProps.get("MaxTextLength") instanceof Integer ? (Integer) megletProps.get("MaxTextLength") : 0); }
-        public int getMinTextEms() { return (megletProps.get("MinTextEms") instanceof Integer ? (Integer) megletProps.get("MinTextEms") : 0); }
-        public android.os.ResultReceiver getPendingCredentialCallback() { return (android.os.ResultReceiver) megletProps.get("PendingCredentialCallback"); }
-        public android.credentials.GetCredentialRequest getPendingCredentialRequest() { return (android.credentials.GetCredentialRequest) megletProps.get("PendingCredentialRequest"); }
-        public java.lang.String[] getReceiveContentMimeTypes() { return (java.lang.String[]) megletProps.get("ReceiveContentMimeTypes"); }
-        public int getScrollX() { return (megletProps.get("ScrollX") instanceof Integer ? (Integer) megletProps.get("ScrollX") : 0); }
-        public int getScrollY() { return (megletProps.get("ScrollY") instanceof Integer ? (Integer) megletProps.get("ScrollY") : 0); }
-        public java.lang.CharSequence getText() { return (java.lang.CharSequence) megletProps.get("Text"); }
-        public int getTextBackgroundColor() { return (megletProps.get("TextBackgroundColor") instanceof Integer ? (Integer) megletProps.get("TextBackgroundColor") : 0); }
-        public int getTextColor() { return (megletProps.get("TextColor") instanceof Integer ? (Integer) megletProps.get("TextColor") : 0); }
-        public java.lang.String getTextIdEntry() { return (java.lang.String) megletProps.get("TextIdEntry"); }
-        public int[] getTextLineBaselines() { return (int[]) megletProps.get("TextLineBaselines"); }
-        public int[] getTextLineCharOffsets() { return (int[]) megletProps.get("TextLineCharOffsets"); }
-        public int getTextSelectionEnd() { return (megletProps.get("TextSelectionEnd") instanceof Integer ? (Integer) megletProps.get("TextSelectionEnd") : 0); }
-        public int getTextSelectionStart() { return (megletProps.get("TextSelectionStart") instanceof Integer ? (Integer) megletProps.get("TextSelectionStart") : 0); }
-        public float getTextSize() { return (megletProps.get("TextSize") instanceof Float ? (Float) megletProps.get("TextSize") : 0f); }
-        public int getTextStyle() { return (megletProps.get("TextStyle") instanceof Integer ? (Integer) megletProps.get("TextStyle") : 0); }
-        public int getTop() { return (megletProps.get("Top") instanceof Integer ? (Integer) megletProps.get("Top") : 0); }
-        public android.graphics.Matrix getTransformation() { return (android.graphics.Matrix) megletProps.get("Transformation"); }
-        public int getVisibility() { return (megletProps.get("Visibility") instanceof Integer ? (Integer) megletProps.get("Visibility") : 0); }
-        public java.lang.String getWebDomain() { return (java.lang.String) megletProps.get("WebDomain"); }
-        public java.lang.String getWebScheme() { return (java.lang.String) megletProps.get("WebScheme"); }
-        public int getWidth() { return (megletProps.get("Width") instanceof Integer ? (Integer) megletProps.get("Width") : 0); }
-        public boolean isAccessibilityFocused() { return (megletProps.get("AccessibilityFocused") instanceof Boolean ? (Boolean) megletProps.get("AccessibilityFocused") : false); }
-        public boolean isActivated() { return (megletProps.get("Activated") instanceof Boolean ? (Boolean) megletProps.get("Activated") : false); }
-        public boolean isAssistBlocked() { return (megletProps.get("AssistBlocked") instanceof Boolean ? (Boolean) megletProps.get("AssistBlocked") : false); }
-        public boolean isCheckable() { return (megletProps.get("Checkable") instanceof Boolean ? (Boolean) megletProps.get("Checkable") : false); }
-        public boolean isChecked() { return (megletProps.get("Checked") instanceof Boolean ? (Boolean) megletProps.get("Checked") : false); }
-        public boolean isClickable() { return (megletProps.get("Clickable") instanceof Boolean ? (Boolean) megletProps.get("Clickable") : false); }
-        public boolean isContextClickable() { return (megletProps.get("ContextClickable") instanceof Boolean ? (Boolean) megletProps.get("ContextClickable") : false); }
-        public boolean isCredential() { return (megletProps.get("Credential") instanceof Boolean ? (Boolean) megletProps.get("Credential") : false); }
-        public boolean isEnabled() { return (megletProps.get("Enabled") instanceof Boolean ? (Boolean) megletProps.get("Enabled") : false); }
-        public boolean isFocusable() { return (megletProps.get("Focusable") instanceof Boolean ? (Boolean) megletProps.get("Focusable") : false); }
-        public boolean isFocused() { return (megletProps.get("Focused") instanceof Boolean ? (Boolean) megletProps.get("Focused") : false); }
-        public boolean isLongClickable() { return (megletProps.get("LongClickable") instanceof Boolean ? (Boolean) megletProps.get("LongClickable") : false); }
-        public boolean isOpaque() { return (megletProps.get("Opaque") instanceof Boolean ? (Boolean) megletProps.get("Opaque") : false); }
-        public boolean isSanitized() { return (megletProps.get("Sanitized") instanceof Boolean ? (Boolean) megletProps.get("Sanitized") : false); }
-        public boolean isSelected() { return (megletProps.get("Selected") instanceof Boolean ? (Boolean) megletProps.get("Selected") : false); }
-        public void setAutofillOverlay(android.app.assist.AssistStructure.AutofillOverlay p0) { megletProps.put("AutofillOverlay", p0); }
-        public void setWebDomain(java.lang.String p0) { megletProps.put("WebDomain", p0); }
+        public int getChildCount() { return (meglerProps.get("ChildCount") instanceof Integer ? (Integer) meglerProps.get("ChildCount") : 0); }
+        public java.lang.String getClassName() { return (java.lang.String) meglerProps.get("ClassName"); }
+        public java.lang.CharSequence getContentDescription() { return (java.lang.CharSequence) meglerProps.get("ContentDescription"); }
+        public float getElevation() { return (meglerProps.get("Elevation") instanceof Float ? (Float) meglerProps.get("Elevation") : 0f); }
+        public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
+        public int getHeight() { return (meglerProps.get("Height") instanceof Integer ? (Integer) meglerProps.get("Height") : 0); }
+        public java.lang.String getHint() { return (java.lang.String) meglerProps.get("Hint"); }
+        public java.lang.String getHintIdEntry() { return (java.lang.String) meglerProps.get("HintIdEntry"); }
+        public android.view.ViewStructure.HtmlInfo getHtmlInfo() { return (android.view.ViewStructure.HtmlInfo) meglerProps.get("HtmlInfo"); }
+        public int getId() { return (meglerProps.get("Id") instanceof Integer ? (Integer) meglerProps.get("Id") : 0); }
+        public java.lang.String getIdEntry() { return (java.lang.String) meglerProps.get("IdEntry"); }
+        public java.lang.String getIdPackage() { return (java.lang.String) meglerProps.get("IdPackage"); }
+        public java.lang.String getIdType() { return (java.lang.String) meglerProps.get("IdType"); }
+        public int getImportantForAutofill() { return (meglerProps.get("ImportantForAutofill") instanceof Integer ? (Integer) meglerProps.get("ImportantForAutofill") : 0); }
+        public int getInputType() { return (meglerProps.get("InputType") instanceof Integer ? (Integer) meglerProps.get("InputType") : 0); }
+        public int getLeft() { return (meglerProps.get("Left") instanceof Integer ? (Integer) meglerProps.get("Left") : 0); }
+        public android.os.LocaleList getLocaleList() { return (android.os.LocaleList) meglerProps.get("LocaleList"); }
+        public int getMaxTextEms() { return (meglerProps.get("MaxTextEms") instanceof Integer ? (Integer) meglerProps.get("MaxTextEms") : 0); }
+        public int getMaxTextLength() { return (meglerProps.get("MaxTextLength") instanceof Integer ? (Integer) meglerProps.get("MaxTextLength") : 0); }
+        public int getMinTextEms() { return (meglerProps.get("MinTextEms") instanceof Integer ? (Integer) meglerProps.get("MinTextEms") : 0); }
+        public android.os.ResultReceiver getPendingCredentialCallback() { return (android.os.ResultReceiver) meglerProps.get("PendingCredentialCallback"); }
+        public android.credentials.GetCredentialRequest getPendingCredentialRequest() { return (android.credentials.GetCredentialRequest) meglerProps.get("PendingCredentialRequest"); }
+        public java.lang.String[] getReceiveContentMimeTypes() { return (java.lang.String[]) meglerProps.get("ReceiveContentMimeTypes"); }
+        public int getScrollX() { return (meglerProps.get("ScrollX") instanceof Integer ? (Integer) meglerProps.get("ScrollX") : 0); }
+        public int getScrollY() { return (meglerProps.get("ScrollY") instanceof Integer ? (Integer) meglerProps.get("ScrollY") : 0); }
+        public java.lang.CharSequence getText() { return (java.lang.CharSequence) meglerProps.get("Text"); }
+        public int getTextBackgroundColor() { return (meglerProps.get("TextBackgroundColor") instanceof Integer ? (Integer) meglerProps.get("TextBackgroundColor") : 0); }
+        public int getTextColor() { return (meglerProps.get("TextColor") instanceof Integer ? (Integer) meglerProps.get("TextColor") : 0); }
+        public java.lang.String getTextIdEntry() { return (java.lang.String) meglerProps.get("TextIdEntry"); }
+        public int[] getTextLineBaselines() { return (int[]) meglerProps.get("TextLineBaselines"); }
+        public int[] getTextLineCharOffsets() { return (int[]) meglerProps.get("TextLineCharOffsets"); }
+        public int getTextSelectionEnd() { return (meglerProps.get("TextSelectionEnd") instanceof Integer ? (Integer) meglerProps.get("TextSelectionEnd") : 0); }
+        public int getTextSelectionStart() { return (meglerProps.get("TextSelectionStart") instanceof Integer ? (Integer) meglerProps.get("TextSelectionStart") : 0); }
+        public float getTextSize() { return (meglerProps.get("TextSize") instanceof Float ? (Float) meglerProps.get("TextSize") : 0f); }
+        public int getTextStyle() { return (meglerProps.get("TextStyle") instanceof Integer ? (Integer) meglerProps.get("TextStyle") : 0); }
+        public int getTop() { return (meglerProps.get("Top") instanceof Integer ? (Integer) meglerProps.get("Top") : 0); }
+        public android.graphics.Matrix getTransformation() { return (android.graphics.Matrix) meglerProps.get("Transformation"); }
+        public int getVisibility() { return (meglerProps.get("Visibility") instanceof Integer ? (Integer) meglerProps.get("Visibility") : 0); }
+        public java.lang.String getWebDomain() { return (java.lang.String) meglerProps.get("WebDomain"); }
+        public java.lang.String getWebScheme() { return (java.lang.String) meglerProps.get("WebScheme"); }
+        public int getWidth() { return (meglerProps.get("Width") instanceof Integer ? (Integer) meglerProps.get("Width") : 0); }
+        public boolean isAccessibilityFocused() { return (meglerProps.get("AccessibilityFocused") instanceof Boolean ? (Boolean) meglerProps.get("AccessibilityFocused") : false); }
+        public boolean isActivated() { return (meglerProps.get("Activated") instanceof Boolean ? (Boolean) meglerProps.get("Activated") : false); }
+        public boolean isAssistBlocked() { return (meglerProps.get("AssistBlocked") instanceof Boolean ? (Boolean) meglerProps.get("AssistBlocked") : false); }
+        public boolean isCheckable() { return (meglerProps.get("Checkable") instanceof Boolean ? (Boolean) meglerProps.get("Checkable") : false); }
+        public boolean isChecked() { return (meglerProps.get("Checked") instanceof Boolean ? (Boolean) meglerProps.get("Checked") : false); }
+        public boolean isClickable() { return (meglerProps.get("Clickable") instanceof Boolean ? (Boolean) meglerProps.get("Clickable") : false); }
+        public boolean isContextClickable() { return (meglerProps.get("ContextClickable") instanceof Boolean ? (Boolean) meglerProps.get("ContextClickable") : false); }
+        public boolean isCredential() { return (meglerProps.get("Credential") instanceof Boolean ? (Boolean) meglerProps.get("Credential") : false); }
+        public boolean isEnabled() { return (meglerProps.get("Enabled") instanceof Boolean ? (Boolean) meglerProps.get("Enabled") : false); }
+        public boolean isFocusable() { return (meglerProps.get("Focusable") instanceof Boolean ? (Boolean) meglerProps.get("Focusable") : false); }
+        public boolean isFocused() { return (meglerProps.get("Focused") instanceof Boolean ? (Boolean) meglerProps.get("Focused") : false); }
+        public boolean isLongClickable() { return (meglerProps.get("LongClickable") instanceof Boolean ? (Boolean) meglerProps.get("LongClickable") : false); }
+        public boolean isOpaque() { return (meglerProps.get("Opaque") instanceof Boolean ? (Boolean) meglerProps.get("Opaque") : false); }
+        public boolean isSanitized() { return (meglerProps.get("Sanitized") instanceof Boolean ? (Boolean) meglerProps.get("Sanitized") : false); }
+        public boolean isSelected() { return (meglerProps.get("Selected") instanceof Boolean ? (Boolean) meglerProps.get("Selected") : false); }
+        public void setAutofillOverlay(android.app.assist.AssistStructure.AutofillOverlay p0) { meglerProps.put("AutofillOverlay", p0); }
+        public void setWebDomain(java.lang.String p0) { meglerProps.put("WebDomain", p0); }
         public void updateAutofillValue(android.view.autofill.AutofillValue p0) {}
     }
     public static class ViewNodeBuilder extends android.view.ViewStructure {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public ViewNodeBuilder() { super(); }
         public int addChildCount(int p0) { return 0; }
         public void asyncCommit() {}
         public android.view.ViewStructure asyncNewChild(int p0) { return null; }
-        public android.view.autofill.AutofillId getAutofillId() { return (android.view.autofill.AutofillId) megletProps.get("AutofillId"); }
-        public int getChildCount() { return (megletProps.get("ChildCount") instanceof Integer ? (Integer) megletProps.get("ChildCount") : 0); }
-        public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
-        public java.lang.CharSequence getHint() { return (java.lang.CharSequence) megletProps.get("Hint"); }
-        public android.os.OutcomeReceiver getPendingCredentialCallback() { return (android.os.OutcomeReceiver) megletProps.get("PendingCredentialCallback"); }
-        public android.credentials.GetCredentialRequest getPendingCredentialRequest() { return (android.credentials.GetCredentialRequest) megletProps.get("PendingCredentialRequest"); }
-        public android.graphics.Rect getTempRect() { return (android.graphics.Rect) megletProps.get("TempRect"); }
-        public java.lang.CharSequence getText() { return (java.lang.CharSequence) megletProps.get("Text"); }
-        public int getTextSelectionEnd() { return (megletProps.get("TextSelectionEnd") instanceof Integer ? (Integer) megletProps.get("TextSelectionEnd") : 0); }
-        public int getTextSelectionStart() { return (megletProps.get("TextSelectionStart") instanceof Integer ? (Integer) megletProps.get("TextSelectionStart") : 0); }
-        public android.app.assist.AssistStructure.ViewNode getViewNode() { return (android.app.assist.AssistStructure.ViewNode) megletProps.get("ViewNode"); }
+        public android.view.autofill.AutofillId getAutofillId() { return (android.view.autofill.AutofillId) meglerProps.get("AutofillId"); }
+        public int getChildCount() { return (meglerProps.get("ChildCount") instanceof Integer ? (Integer) meglerProps.get("ChildCount") : 0); }
+        public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
+        public java.lang.CharSequence getHint() { return (java.lang.CharSequence) meglerProps.get("Hint"); }
+        public android.os.OutcomeReceiver getPendingCredentialCallback() { return (android.os.OutcomeReceiver) meglerProps.get("PendingCredentialCallback"); }
+        public android.credentials.GetCredentialRequest getPendingCredentialRequest() { return (android.credentials.GetCredentialRequest) meglerProps.get("PendingCredentialRequest"); }
+        public android.graphics.Rect getTempRect() { return (android.graphics.Rect) meglerProps.get("TempRect"); }
+        public java.lang.CharSequence getText() { return (java.lang.CharSequence) meglerProps.get("Text"); }
+        public int getTextSelectionEnd() { return (meglerProps.get("TextSelectionEnd") instanceof Integer ? (Integer) meglerProps.get("TextSelectionEnd") : 0); }
+        public int getTextSelectionStart() { return (meglerProps.get("TextSelectionStart") instanceof Integer ? (Integer) meglerProps.get("TextSelectionStart") : 0); }
+        public android.app.assist.AssistStructure.ViewNode getViewNode() { return (android.app.assist.AssistStructure.ViewNode) meglerProps.get("ViewNode"); }
         public boolean hasExtras() { return false; }
         public android.view.ViewStructure newChild(int p0) { return null; }
         public android.view.ViewStructure.HtmlInfo.Builder newHtmlInfoBuilder(java.lang.String p0) { return null; }
-        public void setAccessibilityFocused(boolean p0) { megletProps.put("AccessibilityFocused", Boolean.valueOf(p0)); }
-        public void setActivated(boolean p0) { megletProps.put("Activated", Boolean.valueOf(p0)); }
-        public void setAlpha(float p0) { megletProps.put("Alpha", Float.valueOf(p0)); }
-        public void setAssistBlocked(boolean p0) { megletProps.put("AssistBlocked", Boolean.valueOf(p0)); }
-        public void setAutofillHints(java.lang.String[] p0) { megletProps.put("AutofillHints", p0); }
-        public void setAutofillId(android.view.autofill.AutofillId p0) { megletProps.put("AutofillId", p0); }
+        public void setAccessibilityFocused(boolean p0) { meglerProps.put("AccessibilityFocused", Boolean.valueOf(p0)); }
+        public void setActivated(boolean p0) { meglerProps.put("Activated", Boolean.valueOf(p0)); }
+        public void setAlpha(float p0) { meglerProps.put("Alpha", Float.valueOf(p0)); }
+        public void setAssistBlocked(boolean p0) { meglerProps.put("AssistBlocked", Boolean.valueOf(p0)); }
+        public void setAutofillHints(java.lang.String[] p0) { meglerProps.put("AutofillHints", p0); }
+        public void setAutofillId(android.view.autofill.AutofillId p0) { meglerProps.put("AutofillId", p0); }
         public void setAutofillId(android.view.autofill.AutofillId p0, int p1) {}
-        public void setAutofillOptions(java.lang.CharSequence[] p0) { megletProps.put("AutofillOptions", p0); }
-        public void setAutofillType(int p0) { megletProps.put("AutofillType", Integer.valueOf(p0)); }
-        public void setAutofillValue(android.view.autofill.AutofillValue p0) { megletProps.put("AutofillValue", p0); }
-        public void setCheckable(boolean p0) { megletProps.put("Checkable", Boolean.valueOf(p0)); }
-        public void setChecked(boolean p0) { megletProps.put("Checked", Boolean.valueOf(p0)); }
-        public void setChildCount(int p0) { megletProps.put("ChildCount", Integer.valueOf(p0)); }
-        public void setClassName(java.lang.String p0) { megletProps.put("ClassName", p0); }
-        public void setClickable(boolean p0) { megletProps.put("Clickable", Boolean.valueOf(p0)); }
-        public void setContentDescription(java.lang.CharSequence p0) { megletProps.put("ContentDescription", p0); }
-        public void setContextClickable(boolean p0) { megletProps.put("ContextClickable", Boolean.valueOf(p0)); }
-        public void setDataIsSensitive(boolean p0) { megletProps.put("DataIsSensitive", Boolean.valueOf(p0)); }
+        public void setAutofillOptions(java.lang.CharSequence[] p0) { meglerProps.put("AutofillOptions", p0); }
+        public void setAutofillType(int p0) { meglerProps.put("AutofillType", Integer.valueOf(p0)); }
+        public void setAutofillValue(android.view.autofill.AutofillValue p0) { meglerProps.put("AutofillValue", p0); }
+        public void setCheckable(boolean p0) { meglerProps.put("Checkable", Boolean.valueOf(p0)); }
+        public void setChecked(boolean p0) { meglerProps.put("Checked", Boolean.valueOf(p0)); }
+        public void setChildCount(int p0) { meglerProps.put("ChildCount", Integer.valueOf(p0)); }
+        public void setClassName(java.lang.String p0) { meglerProps.put("ClassName", p0); }
+        public void setClickable(boolean p0) { meglerProps.put("Clickable", Boolean.valueOf(p0)); }
+        public void setContentDescription(java.lang.CharSequence p0) { meglerProps.put("ContentDescription", p0); }
+        public void setContextClickable(boolean p0) { meglerProps.put("ContextClickable", Boolean.valueOf(p0)); }
+        public void setDataIsSensitive(boolean p0) { meglerProps.put("DataIsSensitive", Boolean.valueOf(p0)); }
         public void setDimens(int p0, int p1, int p2, int p3, int p4, int p5) {}
-        public void setElevation(float p0) { megletProps.put("Elevation", Float.valueOf(p0)); }
-        public void setEnabled(boolean p0) { megletProps.put("Enabled", Boolean.valueOf(p0)); }
-        public void setFocusable(boolean p0) { megletProps.put("Focusable", Boolean.valueOf(p0)); }
-        public void setFocused(boolean p0) { megletProps.put("Focused", Boolean.valueOf(p0)); }
-        public void setHint(java.lang.CharSequence p0) { megletProps.put("Hint", p0); }
-        public void setHintIdEntry(java.lang.String p0) { megletProps.put("HintIdEntry", p0); }
-        public void setHtmlInfo(android.view.ViewStructure.HtmlInfo p0) { megletProps.put("HtmlInfo", p0); }
+        public void setElevation(float p0) { meglerProps.put("Elevation", Float.valueOf(p0)); }
+        public void setEnabled(boolean p0) { meglerProps.put("Enabled", Boolean.valueOf(p0)); }
+        public void setFocusable(boolean p0) { meglerProps.put("Focusable", Boolean.valueOf(p0)); }
+        public void setFocused(boolean p0) { meglerProps.put("Focused", Boolean.valueOf(p0)); }
+        public void setHint(java.lang.CharSequence p0) { meglerProps.put("Hint", p0); }
+        public void setHintIdEntry(java.lang.String p0) { meglerProps.put("HintIdEntry", p0); }
+        public void setHtmlInfo(android.view.ViewStructure.HtmlInfo p0) { meglerProps.put("HtmlInfo", p0); }
         public void setId(int p0, java.lang.String p1, java.lang.String p2, java.lang.String p3) {}
-        public void setImportantForAutofill(int p0) { megletProps.put("ImportantForAutofill", Integer.valueOf(p0)); }
-        public void setInputType(int p0) { megletProps.put("InputType", Integer.valueOf(p0)); }
-        public void setIsCredential(boolean p0) { megletProps.put("IsCredential", Boolean.valueOf(p0)); }
-        public void setLocaleList(android.os.LocaleList p0) { megletProps.put("LocaleList", p0); }
-        public void setLongClickable(boolean p0) { megletProps.put("LongClickable", Boolean.valueOf(p0)); }
-        public void setMaxTextEms(int p0) { megletProps.put("MaxTextEms", Integer.valueOf(p0)); }
-        public void setMaxTextLength(int p0) { megletProps.put("MaxTextLength", Integer.valueOf(p0)); }
-        public void setMinTextEms(int p0) { megletProps.put("MinTextEms", Integer.valueOf(p0)); }
-        public void setOpaque(boolean p0) { megletProps.put("Opaque", Boolean.valueOf(p0)); }
+        public void setImportantForAutofill(int p0) { meglerProps.put("ImportantForAutofill", Integer.valueOf(p0)); }
+        public void setInputType(int p0) { meglerProps.put("InputType", Integer.valueOf(p0)); }
+        public void setIsCredential(boolean p0) { meglerProps.put("IsCredential", Boolean.valueOf(p0)); }
+        public void setLocaleList(android.os.LocaleList p0) { meglerProps.put("LocaleList", p0); }
+        public void setLongClickable(boolean p0) { meglerProps.put("LongClickable", Boolean.valueOf(p0)); }
+        public void setMaxTextEms(int p0) { meglerProps.put("MaxTextEms", Integer.valueOf(p0)); }
+        public void setMaxTextLength(int p0) { meglerProps.put("MaxTextLength", Integer.valueOf(p0)); }
+        public void setMinTextEms(int p0) { meglerProps.put("MinTextEms", Integer.valueOf(p0)); }
+        public void setOpaque(boolean p0) { meglerProps.put("Opaque", Boolean.valueOf(p0)); }
         public void setPendingCredentialRequest(android.credentials.GetCredentialRequest p0, android.os.OutcomeReceiver p1) {}
-        public void setReceiveContentMimeTypes(java.lang.String[] p0) { megletProps.put("ReceiveContentMimeTypes", p0); }
-        public void setSelected(boolean p0) { megletProps.put("Selected", Boolean.valueOf(p0)); }
-        public void setText(java.lang.CharSequence p0) { megletProps.put("Text", p0); }
+        public void setReceiveContentMimeTypes(java.lang.String[] p0) { meglerProps.put("ReceiveContentMimeTypes", p0); }
+        public void setSelected(boolean p0) { meglerProps.put("Selected", Boolean.valueOf(p0)); }
+        public void setText(java.lang.CharSequence p0) { meglerProps.put("Text", p0); }
         public void setText(java.lang.CharSequence p0, int p1, int p2) {}
-        public void setTextIdEntry(java.lang.String p0) { megletProps.put("TextIdEntry", p0); }
+        public void setTextIdEntry(java.lang.String p0) { meglerProps.put("TextIdEntry", p0); }
         public void setTextLines(int[] p0, int[] p1) {}
         public void setTextStyle(float p0, int p1, int p2, int p3) {}
-        public void setTransformation(android.graphics.Matrix p0) { megletProps.put("Transformation", p0); }
-        public void setVisibility(int p0) { megletProps.put("Visibility", Integer.valueOf(p0)); }
-        public void setWebDomain(java.lang.String p0) { megletProps.put("WebDomain", p0); }
+        public void setTransformation(android.graphics.Matrix p0) { meglerProps.put("Transformation", p0); }
+        public void setVisibility(int p0) { meglerProps.put("Visibility", Integer.valueOf(p0)); }
+        public void setWebDomain(java.lang.String p0) { meglerProps.put("WebDomain", p0); }
     }
     public static final class ViewNodeParcelable implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public ViewNodeParcelable(android.app.assist.AssistStructure.ViewNode p0) {}
         public ViewNodeParcelable(android.os.Parcel p0) {}
         public int describeContents() { return 0; }
-        public android.app.assist.AssistStructure.ViewNode getViewNode() { return (android.app.assist.AssistStructure.ViewNode) megletProps.get("ViewNode"); }
+        public android.app.assist.AssistStructure.ViewNode getViewNode() { return (android.app.assist.AssistStructure.ViewNode) meglerProps.get("ViewNode"); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         ViewNodeParcelable() { this((android.app.assist.AssistStructure.ViewNode) null); }
     }
     public static class WindowNode {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public int getDisplayId() { return (megletProps.get("DisplayId") instanceof Integer ? (Integer) megletProps.get("DisplayId") : 0); }
-        public int getHeight() { return (megletProps.get("Height") instanceof Integer ? (Integer) megletProps.get("Height") : 0); }
-        public int getLeft() { return (megletProps.get("Left") instanceof Integer ? (Integer) megletProps.get("Left") : 0); }
-        public android.app.assist.AssistStructure.ViewNode getRootViewNode() { return (android.app.assist.AssistStructure.ViewNode) megletProps.get("RootViewNode"); }
-        public java.lang.CharSequence getTitle() { return (java.lang.CharSequence) megletProps.get("Title"); }
-        public int getTop() { return (megletProps.get("Top") instanceof Integer ? (Integer) megletProps.get("Top") : 0); }
-        public int getWidth() { return (megletProps.get("Width") instanceof Integer ? (Integer) megletProps.get("Width") : 0); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public int getDisplayId() { return (meglerProps.get("DisplayId") instanceof Integer ? (Integer) meglerProps.get("DisplayId") : 0); }
+        public int getHeight() { return (meglerProps.get("Height") instanceof Integer ? (Integer) meglerProps.get("Height") : 0); }
+        public int getLeft() { return (meglerProps.get("Left") instanceof Integer ? (Integer) meglerProps.get("Left") : 0); }
+        public android.app.assist.AssistStructure.ViewNode getRootViewNode() { return (android.app.assist.AssistStructure.ViewNode) meglerProps.get("RootViewNode"); }
+        public java.lang.CharSequence getTitle() { return (java.lang.CharSequence) meglerProps.get("Title"); }
+        public int getTop() { return (meglerProps.get("Top") instanceof Integer ? (Integer) meglerProps.get("Top") : 0); }
+        public int getWidth() { return (meglerProps.get("Width") instanceof Integer ? (Integer) meglerProps.get("Width") : 0); }
         protected WindowNode() {}
     }
 }

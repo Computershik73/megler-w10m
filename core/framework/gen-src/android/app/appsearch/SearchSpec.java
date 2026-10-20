@@ -3,7 +3,7 @@ package android.app.appsearch;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class SearchSpec extends android.app.appsearch.safeparcel.AbstractSafeParcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int DEFAULT_NUM_PER_PAGE = 10;
     public static final int EMBEDDING_SEARCH_METRIC_TYPE_COSINE = 1;
@@ -29,43 +29,43 @@ public abstract class SearchSpec extends android.app.appsearch.safeparcel.Abstra
     public static final java.lang.String SCHEMA_TYPE_WILDCARD = "*";
     public static final int TERM_MATCH_EXACT_ONLY = 1;
     public static final int TERM_MATCH_PREFIX = 2;
-    public java.lang.String getAdvancedRankingExpression() { return (java.lang.String) megletProps.get("AdvancedRankingExpression"); }
-    public int getDefaultEmbeddingSearchMetricType() { return (megletProps.get("DefaultEmbeddingSearchMetricType") instanceof Integer ? (Integer) megletProps.get("DefaultEmbeddingSearchMetricType") : 0); }
-    public java.util.List getEmbeddingParameters() { return (megletProps.get("EmbeddingParameters") != null ? (java.util.List) megletProps.get("EmbeddingParameters") : new java.util.ArrayList()); }
-    public java.util.List getEnabledFeatures() { return (megletProps.get("EnabledFeatures") != null ? (java.util.List) megletProps.get("EnabledFeatures") : new java.util.ArrayList()); }
-    public java.util.List getFilterDocumentIds() { return (megletProps.get("FilterDocumentIds") != null ? (java.util.List) megletProps.get("FilterDocumentIds") : new java.util.ArrayList()); }
-    public java.util.List getFilterNamespaces() { return (megletProps.get("FilterNamespaces") != null ? (java.util.List) megletProps.get("FilterNamespaces") : new java.util.ArrayList()); }
-    public java.util.List getFilterPackageNames() { return (megletProps.get("FilterPackageNames") != null ? (java.util.List) megletProps.get("FilterPackageNames") : new java.util.ArrayList()); }
-    public java.util.Map getFilterProperties() { return (megletProps.get("FilterProperties") != null ? (java.util.Map) megletProps.get("FilterProperties") : new java.util.HashMap()); }
-    public java.util.List getFilterSchemas() { return (megletProps.get("FilterSchemas") != null ? (java.util.List) megletProps.get("FilterSchemas") : new java.util.ArrayList()); }
-    public java.util.List getInformationalRankingExpressions() { return (megletProps.get("InformationalRankingExpressions") != null ? (java.util.List) megletProps.get("InformationalRankingExpressions") : new java.util.ArrayList()); }
-    public android.app.appsearch.JoinSpec getJoinSpec() { return (android.app.appsearch.JoinSpec) megletProps.get("JoinSpec"); }
-    public int getMaxSnippetSize() { return (megletProps.get("MaxSnippetSize") instanceof Integer ? (Integer) megletProps.get("MaxSnippetSize") : 0); }
-    public int getOrder() { return (megletProps.get("Order") instanceof Integer ? (Integer) megletProps.get("Order") : 0); }
-    public java.util.Map getProjectionPaths() { return (megletProps.get("ProjectionPaths") != null ? (java.util.Map) megletProps.get("ProjectionPaths") : new java.util.HashMap()); }
-    public java.util.Map getProjections() { return (megletProps.get("Projections") != null ? (java.util.Map) megletProps.get("Projections") : new java.util.HashMap()); }
-    public java.util.Map getPropertyWeightPaths() { return (megletProps.get("PropertyWeightPaths") != null ? (java.util.Map) megletProps.get("PropertyWeightPaths") : new java.util.HashMap()); }
-    public java.util.Map getPropertyWeights() { return (megletProps.get("PropertyWeights") != null ? (java.util.Map) megletProps.get("PropertyWeights") : new java.util.HashMap()); }
-    public int getRankingStrategy() { return (megletProps.get("RankingStrategy") instanceof Integer ? (Integer) megletProps.get("RankingStrategy") : 0); }
-    public int getResultCountPerPage() { return (megletProps.get("ResultCountPerPage") instanceof Integer ? (Integer) megletProps.get("ResultCountPerPage") : 0); }
-    public int getResultGroupingLimit() { return (megletProps.get("ResultGroupingLimit") instanceof Integer ? (Integer) megletProps.get("ResultGroupingLimit") : 0); }
-    public int getResultGroupingTypeFlags() { return (megletProps.get("ResultGroupingTypeFlags") instanceof Integer ? (Integer) megletProps.get("ResultGroupingTypeFlags") : 0); }
-    public java.lang.String getSearchSourceLogTag() { return (java.lang.String) megletProps.get("SearchSourceLogTag"); }
-    public java.util.List getSearchStringParameters() { return (megletProps.get("SearchStringParameters") != null ? (java.util.List) megletProps.get("SearchStringParameters") : new java.util.ArrayList()); }
-    public int getSnippetCount() { return (megletProps.get("SnippetCount") instanceof Integer ? (Integer) megletProps.get("SnippetCount") : 0); }
-    public int getSnippetCountPerProperty() { return (megletProps.get("SnippetCountPerProperty") instanceof Integer ? (Integer) megletProps.get("SnippetCountPerProperty") : 0); }
-    public int getTermMatch() { return (megletProps.get("TermMatch") instanceof Integer ? (Integer) megletProps.get("TermMatch") : 0); }
-    public boolean isListFilterHasPropertyFunctionEnabled() { return (megletProps.get("ListFilterHasPropertyFunctionEnabled") instanceof Boolean ? (Boolean) megletProps.get("ListFilterHasPropertyFunctionEnabled") : false); }
-    public boolean isListFilterMatchScoreExpressionFunctionEnabled() { return (megletProps.get("ListFilterMatchScoreExpressionFunctionEnabled") instanceof Boolean ? (Boolean) megletProps.get("ListFilterMatchScoreExpressionFunctionEnabled") : false); }
-    public boolean isListFilterQueryLanguageEnabled() { return (megletProps.get("ListFilterQueryLanguageEnabled") instanceof Boolean ? (Boolean) megletProps.get("ListFilterQueryLanguageEnabled") : false); }
-    public boolean isNumericSearchEnabled() { return (megletProps.get("NumericSearchEnabled") instanceof Boolean ? (Boolean) megletProps.get("NumericSearchEnabled") : false); }
-    public boolean isScorablePropertyRankingEnabled() { return (megletProps.get("ScorablePropertyRankingEnabled") instanceof Boolean ? (Boolean) megletProps.get("ScorablePropertyRankingEnabled") : false); }
-    public boolean isVerbatimSearchEnabled() { return (megletProps.get("VerbatimSearchEnabled") instanceof Boolean ? (Boolean) megletProps.get("VerbatimSearchEnabled") : false); }
+    public java.lang.String getAdvancedRankingExpression() { return (java.lang.String) meglerProps.get("AdvancedRankingExpression"); }
+    public int getDefaultEmbeddingSearchMetricType() { return (meglerProps.get("DefaultEmbeddingSearchMetricType") instanceof Integer ? (Integer) meglerProps.get("DefaultEmbeddingSearchMetricType") : 0); }
+    public java.util.List getEmbeddingParameters() { return (meglerProps.get("EmbeddingParameters") != null ? (java.util.List) meglerProps.get("EmbeddingParameters") : new java.util.ArrayList()); }
+    public java.util.List getEnabledFeatures() { return (meglerProps.get("EnabledFeatures") != null ? (java.util.List) meglerProps.get("EnabledFeatures") : new java.util.ArrayList()); }
+    public java.util.List getFilterDocumentIds() { return (meglerProps.get("FilterDocumentIds") != null ? (java.util.List) meglerProps.get("FilterDocumentIds") : new java.util.ArrayList()); }
+    public java.util.List getFilterNamespaces() { return (meglerProps.get("FilterNamespaces") != null ? (java.util.List) meglerProps.get("FilterNamespaces") : new java.util.ArrayList()); }
+    public java.util.List getFilterPackageNames() { return (meglerProps.get("FilterPackageNames") != null ? (java.util.List) meglerProps.get("FilterPackageNames") : new java.util.ArrayList()); }
+    public java.util.Map getFilterProperties() { return (meglerProps.get("FilterProperties") != null ? (java.util.Map) meglerProps.get("FilterProperties") : new java.util.HashMap()); }
+    public java.util.List getFilterSchemas() { return (meglerProps.get("FilterSchemas") != null ? (java.util.List) meglerProps.get("FilterSchemas") : new java.util.ArrayList()); }
+    public java.util.List getInformationalRankingExpressions() { return (meglerProps.get("InformationalRankingExpressions") != null ? (java.util.List) meglerProps.get("InformationalRankingExpressions") : new java.util.ArrayList()); }
+    public android.app.appsearch.JoinSpec getJoinSpec() { return (android.app.appsearch.JoinSpec) meglerProps.get("JoinSpec"); }
+    public int getMaxSnippetSize() { return (meglerProps.get("MaxSnippetSize") instanceof Integer ? (Integer) meglerProps.get("MaxSnippetSize") : 0); }
+    public int getOrder() { return (meglerProps.get("Order") instanceof Integer ? (Integer) meglerProps.get("Order") : 0); }
+    public java.util.Map getProjectionPaths() { return (meglerProps.get("ProjectionPaths") != null ? (java.util.Map) meglerProps.get("ProjectionPaths") : new java.util.HashMap()); }
+    public java.util.Map getProjections() { return (meglerProps.get("Projections") != null ? (java.util.Map) meglerProps.get("Projections") : new java.util.HashMap()); }
+    public java.util.Map getPropertyWeightPaths() { return (meglerProps.get("PropertyWeightPaths") != null ? (java.util.Map) meglerProps.get("PropertyWeightPaths") : new java.util.HashMap()); }
+    public java.util.Map getPropertyWeights() { return (meglerProps.get("PropertyWeights") != null ? (java.util.Map) meglerProps.get("PropertyWeights") : new java.util.HashMap()); }
+    public int getRankingStrategy() { return (meglerProps.get("RankingStrategy") instanceof Integer ? (Integer) meglerProps.get("RankingStrategy") : 0); }
+    public int getResultCountPerPage() { return (meglerProps.get("ResultCountPerPage") instanceof Integer ? (Integer) meglerProps.get("ResultCountPerPage") : 0); }
+    public int getResultGroupingLimit() { return (meglerProps.get("ResultGroupingLimit") instanceof Integer ? (Integer) meglerProps.get("ResultGroupingLimit") : 0); }
+    public int getResultGroupingTypeFlags() { return (meglerProps.get("ResultGroupingTypeFlags") instanceof Integer ? (Integer) meglerProps.get("ResultGroupingTypeFlags") : 0); }
+    public java.lang.String getSearchSourceLogTag() { return (java.lang.String) meglerProps.get("SearchSourceLogTag"); }
+    public java.util.List getSearchStringParameters() { return (meglerProps.get("SearchStringParameters") != null ? (java.util.List) meglerProps.get("SearchStringParameters") : new java.util.ArrayList()); }
+    public int getSnippetCount() { return (meglerProps.get("SnippetCount") instanceof Integer ? (Integer) meglerProps.get("SnippetCount") : 0); }
+    public int getSnippetCountPerProperty() { return (meglerProps.get("SnippetCountPerProperty") instanceof Integer ? (Integer) meglerProps.get("SnippetCountPerProperty") : 0); }
+    public int getTermMatch() { return (meglerProps.get("TermMatch") instanceof Integer ? (Integer) meglerProps.get("TermMatch") : 0); }
+    public boolean isListFilterHasPropertyFunctionEnabled() { return (meglerProps.get("ListFilterHasPropertyFunctionEnabled") instanceof Boolean ? (Boolean) meglerProps.get("ListFilterHasPropertyFunctionEnabled") : false); }
+    public boolean isListFilterMatchScoreExpressionFunctionEnabled() { return (meglerProps.get("ListFilterMatchScoreExpressionFunctionEnabled") instanceof Boolean ? (Boolean) meglerProps.get("ListFilterMatchScoreExpressionFunctionEnabled") : false); }
+    public boolean isListFilterQueryLanguageEnabled() { return (meglerProps.get("ListFilterQueryLanguageEnabled") instanceof Boolean ? (Boolean) meglerProps.get("ListFilterQueryLanguageEnabled") : false); }
+    public boolean isNumericSearchEnabled() { return (meglerProps.get("NumericSearchEnabled") instanceof Boolean ? (Boolean) meglerProps.get("NumericSearchEnabled") : false); }
+    public boolean isScorablePropertyRankingEnabled() { return (meglerProps.get("ScorablePropertyRankingEnabled") instanceof Boolean ? (Boolean) meglerProps.get("ScorablePropertyRankingEnabled") : false); }
+    public boolean isVerbatimSearchEnabled() { return (meglerProps.get("VerbatimSearchEnabled") instanceof Boolean ? (Boolean) meglerProps.get("VerbatimSearchEnabled") : false); }
     public boolean shouldRetrieveEmbeddingMatchInfos() { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected SearchSpec() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.app.appsearch.SearchSpec p0) {}
         public android.app.appsearch.SearchSpec.Builder addEmbeddingParameters(java.util.Collection p0) { return this; }
@@ -100,26 +100,26 @@ public abstract class SearchSpec extends android.app.appsearch.safeparcel.Abstra
         public android.app.appsearch.SearchSpec.Builder clearResultGrouping() { return this; }
         public android.app.appsearch.SearchSpec.Builder clearSearchSourceLogTag() { return this; }
         public android.app.appsearch.SearchSpec.Builder clearSearchStringParameters() { return this; }
-        public android.app.appsearch.SearchSpec.Builder setDefaultEmbeddingSearchMetricType(int p0) { megletProps.put("DefaultEmbeddingSearchMetricType", Integer.valueOf(p0)); return this; }
-        public android.app.appsearch.SearchSpec.Builder setJoinSpec(android.app.appsearch.JoinSpec p0) { megletProps.put("JoinSpec", p0); return this; }
-        public android.app.appsearch.SearchSpec.Builder setListFilterHasPropertyFunctionEnabled(boolean p0) { megletProps.put("ListFilterHasPropertyFunctionEnabled", Boolean.valueOf(p0)); return this; }
-        public android.app.appsearch.SearchSpec.Builder setListFilterMatchScoreExpressionFunctionEnabled(boolean p0) { megletProps.put("ListFilterMatchScoreExpressionFunctionEnabled", Boolean.valueOf(p0)); return this; }
-        public android.app.appsearch.SearchSpec.Builder setListFilterQueryLanguageEnabled(boolean p0) { megletProps.put("ListFilterQueryLanguageEnabled", Boolean.valueOf(p0)); return this; }
-        public android.app.appsearch.SearchSpec.Builder setMaxSnippetSize(int p0) { megletProps.put("MaxSnippetSize", Integer.valueOf(p0)); return this; }
-        public android.app.appsearch.SearchSpec.Builder setNumericSearchEnabled(boolean p0) { megletProps.put("NumericSearchEnabled", Boolean.valueOf(p0)); return this; }
-        public android.app.appsearch.SearchSpec.Builder setOrder(int p0) { megletProps.put("Order", Integer.valueOf(p0)); return this; }
+        public android.app.appsearch.SearchSpec.Builder setDefaultEmbeddingSearchMetricType(int p0) { meglerProps.put("DefaultEmbeddingSearchMetricType", Integer.valueOf(p0)); return this; }
+        public android.app.appsearch.SearchSpec.Builder setJoinSpec(android.app.appsearch.JoinSpec p0) { meglerProps.put("JoinSpec", p0); return this; }
+        public android.app.appsearch.SearchSpec.Builder setListFilterHasPropertyFunctionEnabled(boolean p0) { meglerProps.put("ListFilterHasPropertyFunctionEnabled", Boolean.valueOf(p0)); return this; }
+        public android.app.appsearch.SearchSpec.Builder setListFilterMatchScoreExpressionFunctionEnabled(boolean p0) { meglerProps.put("ListFilterMatchScoreExpressionFunctionEnabled", Boolean.valueOf(p0)); return this; }
+        public android.app.appsearch.SearchSpec.Builder setListFilterQueryLanguageEnabled(boolean p0) { meglerProps.put("ListFilterQueryLanguageEnabled", Boolean.valueOf(p0)); return this; }
+        public android.app.appsearch.SearchSpec.Builder setMaxSnippetSize(int p0) { meglerProps.put("MaxSnippetSize", Integer.valueOf(p0)); return this; }
+        public android.app.appsearch.SearchSpec.Builder setNumericSearchEnabled(boolean p0) { meglerProps.put("NumericSearchEnabled", Boolean.valueOf(p0)); return this; }
+        public android.app.appsearch.SearchSpec.Builder setOrder(int p0) { meglerProps.put("Order", Integer.valueOf(p0)); return this; }
         public android.app.appsearch.SearchSpec.Builder setPropertyWeightPaths(java.lang.String p0, java.util.Map p1) { return this; }
         public android.app.appsearch.SearchSpec.Builder setPropertyWeights(java.lang.String p0, java.util.Map p1) { return this; }
-        public android.app.appsearch.SearchSpec.Builder setRankingStrategy(int p0) { megletProps.put("RankingStrategy", Integer.valueOf(p0)); return this; }
-        public android.app.appsearch.SearchSpec.Builder setRankingStrategy(java.lang.String p0) { megletProps.put("RankingStrategy", p0); return this; }
-        public android.app.appsearch.SearchSpec.Builder setResultCountPerPage(int p0) { megletProps.put("ResultCountPerPage", Integer.valueOf(p0)); return this; }
+        public android.app.appsearch.SearchSpec.Builder setRankingStrategy(int p0) { meglerProps.put("RankingStrategy", Integer.valueOf(p0)); return this; }
+        public android.app.appsearch.SearchSpec.Builder setRankingStrategy(java.lang.String p0) { meglerProps.put("RankingStrategy", p0); return this; }
+        public android.app.appsearch.SearchSpec.Builder setResultCountPerPage(int p0) { meglerProps.put("ResultCountPerPage", Integer.valueOf(p0)); return this; }
         public android.app.appsearch.SearchSpec.Builder setResultGrouping(int p0, int p1) { return this; }
-        public android.app.appsearch.SearchSpec.Builder setRetrieveEmbeddingMatchInfos(boolean p0) { megletProps.put("RetrieveEmbeddingMatchInfos", Boolean.valueOf(p0)); return this; }
-        public android.app.appsearch.SearchSpec.Builder setScorablePropertyRankingEnabled(boolean p0) { megletProps.put("ScorablePropertyRankingEnabled", Boolean.valueOf(p0)); return this; }
-        public android.app.appsearch.SearchSpec.Builder setSearchSourceLogTag(java.lang.String p0) { megletProps.put("SearchSourceLogTag", p0); return this; }
-        public android.app.appsearch.SearchSpec.Builder setSnippetCount(int p0) { megletProps.put("SnippetCount", Integer.valueOf(p0)); return this; }
-        public android.app.appsearch.SearchSpec.Builder setSnippetCountPerProperty(int p0) { megletProps.put("SnippetCountPerProperty", Integer.valueOf(p0)); return this; }
-        public android.app.appsearch.SearchSpec.Builder setTermMatch(int p0) { megletProps.put("TermMatch", Integer.valueOf(p0)); return this; }
-        public android.app.appsearch.SearchSpec.Builder setVerbatimSearchEnabled(boolean p0) { megletProps.put("VerbatimSearchEnabled", Boolean.valueOf(p0)); return this; }
+        public android.app.appsearch.SearchSpec.Builder setRetrieveEmbeddingMatchInfos(boolean p0) { meglerProps.put("RetrieveEmbeddingMatchInfos", Boolean.valueOf(p0)); return this; }
+        public android.app.appsearch.SearchSpec.Builder setScorablePropertyRankingEnabled(boolean p0) { meglerProps.put("ScorablePropertyRankingEnabled", Boolean.valueOf(p0)); return this; }
+        public android.app.appsearch.SearchSpec.Builder setSearchSourceLogTag(java.lang.String p0) { meglerProps.put("SearchSourceLogTag", p0); return this; }
+        public android.app.appsearch.SearchSpec.Builder setSnippetCount(int p0) { meglerProps.put("SnippetCount", Integer.valueOf(p0)); return this; }
+        public android.app.appsearch.SearchSpec.Builder setSnippetCountPerProperty(int p0) { meglerProps.put("SnippetCountPerProperty", Integer.valueOf(p0)); return this; }
+        public android.app.appsearch.SearchSpec.Builder setTermMatch(int p0) { meglerProps.put("TermMatch", Integer.valueOf(p0)); return this; }
+        public android.app.appsearch.SearchSpec.Builder setVerbatimSearchEnabled(boolean p0) { meglerProps.put("VerbatimSearchEnabled", Boolean.valueOf(p0)); return this; }
     }
 }

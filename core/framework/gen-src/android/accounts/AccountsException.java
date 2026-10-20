@@ -3,7 +3,7 @@ package android.accounts;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AccountsException extends java.lang.Exception {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public AccountsException() { super(); }
     public AccountsException(java.lang.String p0) { super(); }
     public AccountsException(java.lang.String p0, java.lang.Throwable p1) { super(); }

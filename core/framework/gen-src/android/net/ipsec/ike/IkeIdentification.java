@@ -3,7 +3,7 @@ package android.net.ipsec.ike;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class IkeIdentification {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int ID_TYPE_DER_ASN1_DN = 9;
     public static final int ID_TYPE_FQDN = 2;
     public static final int ID_TYPE_IPV4_ADDR = 1;

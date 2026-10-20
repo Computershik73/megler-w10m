@@ -3,7 +3,7 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TvInputManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_BLOCKED_RATINGS_CHANGED = "android.media.tv.action.BLOCKED_RATINGS_CHANGED";
     public static final java.lang.String ACTION_PARENTAL_CONTROLS_ENABLED_CHANGED = "android.media.tv.action.PARENTAL_CONTROLS_ENABLED_CHANGED";
     public static final java.lang.String ACTION_QUERY_CONTENT_RATING_SYSTEMS = "android.media.tv.action.QUERY_CONTENT_RATING_SYSTEMS";
@@ -101,22 +101,22 @@ public final class TvInputManager {
     public void createSession(java.lang.String p0, android.content.AttributionSource p1, android.media.tv.TvInputManager.SessionCallback p2, android.os.Handler p3) {}
     public java.util.List getAvailableExtensionInterfaceNames(java.lang.String p0) { return new java.util.ArrayList(); }
     public java.util.List getAvailableTvStreamConfigList(java.lang.String p0) { return new java.util.ArrayList(); }
-    public java.util.List getBlockedRatings() { return (megletProps.get("BlockedRatings") != null ? (java.util.List) megletProps.get("BlockedRatings") : new java.util.ArrayList()); }
+    public java.util.List getBlockedRatings() { return (meglerProps.get("BlockedRatings") != null ? (java.util.List) meglerProps.get("BlockedRatings") : new java.util.ArrayList()); }
     public int getClientPid(java.lang.String p0) { return 0; }
     public int getClientPriority(int p0) { return 0; }
     public int getClientPriority(int p0, java.lang.String p1) { return 0; }
     public int getClientUserId(java.lang.String p0) { return 0; }
-    public java.util.List getCurrentTunedInfos() { return (megletProps.get("CurrentTunedInfos") != null ? (java.util.List) megletProps.get("CurrentTunedInfos") : new java.util.ArrayList()); }
-    public java.util.List getDvbDeviceList() { return (megletProps.get("DvbDeviceList") != null ? (java.util.List) megletProps.get("DvbDeviceList") : new java.util.ArrayList()); }
+    public java.util.List getCurrentTunedInfos() { return (meglerProps.get("CurrentTunedInfos") != null ? (java.util.List) meglerProps.get("CurrentTunedInfos") : new java.util.ArrayList()); }
+    public java.util.List getDvbDeviceList() { return (meglerProps.get("DvbDeviceList") != null ? (java.util.List) meglerProps.get("DvbDeviceList") : new java.util.ArrayList()); }
     public android.os.IBinder getExtensionInterface(java.lang.String p0, java.lang.String p1) { return null; }
-    public java.util.List getHardwareList() { return (megletProps.get("HardwareList") != null ? (java.util.List) megletProps.get("HardwareList") : new java.util.ArrayList()); }
+    public java.util.List getHardwareList() { return (meglerProps.get("HardwareList") != null ? (java.util.List) meglerProps.get("HardwareList") : new java.util.ArrayList()); }
     public int getInputState(java.lang.String p0) { return 0; }
-    public java.util.List getTvContentRatingSystemList() { return (megletProps.get("TvContentRatingSystemList") != null ? (java.util.List) megletProps.get("TvContentRatingSystemList") : new java.util.ArrayList()); }
+    public java.util.List getTvContentRatingSystemList() { return (meglerProps.get("TvContentRatingSystemList") != null ? (java.util.List) meglerProps.get("TvContentRatingSystemList") : new java.util.ArrayList()); }
     public android.media.tv.TvInputInfo getTvInputInfo(java.lang.String p0) { return null; }
-    public java.util.List getTvInputList() { return (megletProps.get("TvInputList") != null ? (java.util.List) megletProps.get("TvInputList") : new java.util.ArrayList()); }
-    public boolean isParentalControlsEnabled() { return (megletProps.get("ParentalControlsEnabled") instanceof Boolean ? (Boolean) megletProps.get("ParentalControlsEnabled") : false); }
+    public java.util.List getTvInputList() { return (meglerProps.get("TvInputList") != null ? (java.util.List) meglerProps.get("TvInputList") : new java.util.ArrayList()); }
+    public boolean isParentalControlsEnabled() { return (meglerProps.get("ParentalControlsEnabled") instanceof Boolean ? (Boolean) meglerProps.get("ParentalControlsEnabled") : false); }
     public boolean isRatingBlocked(android.media.tv.TvContentRating p0) { return false; }
-    public boolean isSingleSessionActive() { return (megletProps.get("SingleSessionActive") instanceof Boolean ? (Boolean) megletProps.get("SingleSessionActive") : false); }
+    public boolean isSingleSessionActive() { return (meglerProps.get("SingleSessionActive") instanceof Boolean ? (Boolean) meglerProps.get("SingleSessionActive") : false); }
     public void notifyPreviewProgramAddedToWatchNext(java.lang.String p0, long p1, long p2) {}
     public void notifyPreviewProgramBrowsableDisabled(java.lang.String p0, long p1) {}
     public void notifyWatchNextProgramBrowsableDisabled(java.lang.String p0, long p1) {}
@@ -126,21 +126,21 @@ public final class TvInputManager {
     public void removeBlockedRating(android.media.tv.TvContentRating p0) {}
     public void removeHardwareDevice(int p0) {}
     public void requestChannelBrowsable(android.net.Uri p0) {}
-    public void setParentalControlsEnabled(boolean p0) { megletProps.put("ParentalControlsEnabled", Boolean.valueOf(p0)); }
+    public void setParentalControlsEnabled(boolean p0) { meglerProps.put("ParentalControlsEnabled", Boolean.valueOf(p0)); }
     public void unregisterCallback(android.media.tv.TvInputManager.TvInputCallback p0) {}
     public void updateTvInputInfo(android.media.tv.TvInputInfo p0) {}
     TvInputManager() { this((android.media.tv.ITvInputManager) null, (int) 0); }
     public static final class Hardware {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public boolean dispatchKeyEventToHdmi(android.view.KeyEvent p0) { return false; }
         public void overrideAudioSink(int p0, java.lang.String p1, int p2, int p3, int p4) {}
         public void overrideAudioSink(android.media.AudioDeviceInfo p0, int p1, int p2, int p3) {}
-        public void setStreamVolume(float p0) { megletProps.put("StreamVolume", Float.valueOf(p0)); }
+        public void setStreamVolume(float p0) { meglerProps.put("StreamVolume", Float.valueOf(p0)); }
         public boolean setSurface(android.view.Surface p0, android.media.tv.TvStreamConfig p1) { return false; }
         protected Hardware() {}
     }
     public static abstract class HardwareCallback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public HardwareCallback() {}
         public abstract void onReleased();
         public abstract void onStreamConfigChanged(android.media.tv.TvStreamConfig[] p0);
@@ -149,7 +149,7 @@ public final class TvInputManager {
         protected Session() {}
     }
     public static abstract class SessionCallback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public SessionCallback() {}
         public void onAitInfoUpdated(android.media.tv.TvInputManager.Session p0, android.media.tv.AitInfo p1) {}
         public void onAudioPresentationSelected(android.media.tv.TvInputManager.Session p0, int p1, int p2) {}
@@ -178,7 +178,7 @@ public final class TvInputManager {
         public void onVideoUnavailable(android.media.tv.TvInputManager.Session p0, int p1) {}
     }
     public static abstract class TvInputCallback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public TvInputCallback() {}
         public void onCurrentTunedInfosUpdated(java.util.List p0) {}
         public void onInputAdded(java.lang.String p0) {}

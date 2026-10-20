@@ -3,7 +3,7 @@ package android.media.metrics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PlaybackMetrics implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int CONTENT_TYPE_AD = 2;
     public static final int CONTENT_TYPE_MAIN = 1;
     public static final int CONTENT_TYPE_OTHER = 3;
@@ -32,45 +32,45 @@ public final class PlaybackMetrics implements android.os.Parcelable {
     public static int STREAM_TYPE_UNKNOWN;
     public PlaybackMetrics(long p0, int p1, int p2, int p3, int p4, int p5, java.lang.String p6, java.lang.String p7, long[] p8, int p9, int p10, int p11, long p12, long p13, long p14, byte[] p15, android.os.Bundle p16) {}
     public int describeContents() { return 0; }
-    public int getAudioUnderrunCount() { return (megletProps.get("AudioUnderrunCount") instanceof Integer ? (Integer) megletProps.get("AudioUnderrunCount") : 0); }
-    public int getContentType() { return (megletProps.get("ContentType") instanceof Integer ? (Integer) megletProps.get("ContentType") : 0); }
-    public byte[] getDrmSessionId() { return (byte[]) megletProps.get("DrmSessionId"); }
-    public int getDrmType() { return (megletProps.get("DrmType") instanceof Integer ? (Integer) megletProps.get("DrmType") : 0); }
-    public long[] getExperimentIds() { return (long[]) megletProps.get("ExperimentIds"); }
-    public long getLocalBytesRead() { return (megletProps.get("LocalBytesRead") instanceof Long ? (Long) megletProps.get("LocalBytesRead") : 0L); }
-    public long getMediaDurationMillis() { return (megletProps.get("MediaDurationMillis") instanceof Long ? (Long) megletProps.get("MediaDurationMillis") : 0L); }
-    public android.os.Bundle getMetricsBundle() { return (android.os.Bundle) megletProps.get("MetricsBundle"); }
-    public long getNetworkBytesRead() { return (megletProps.get("NetworkBytesRead") instanceof Long ? (Long) megletProps.get("NetworkBytesRead") : 0L); }
-    public long getNetworkTransferDurationMillis() { return (megletProps.get("NetworkTransferDurationMillis") instanceof Long ? (Long) megletProps.get("NetworkTransferDurationMillis") : 0L); }
-    public int getPlaybackType() { return (megletProps.get("PlaybackType") instanceof Integer ? (Integer) megletProps.get("PlaybackType") : 0); }
-    public java.lang.String getPlayerName() { return (java.lang.String) megletProps.get("PlayerName"); }
-    public java.lang.String getPlayerVersion() { return (java.lang.String) megletProps.get("PlayerVersion"); }
-    public int getStreamSource() { return (megletProps.get("StreamSource") instanceof Integer ? (Integer) megletProps.get("StreamSource") : 0); }
-    public int getStreamType() { return (megletProps.get("StreamType") instanceof Integer ? (Integer) megletProps.get("StreamType") : 0); }
-    public int getVideoFramesDropped() { return (megletProps.get("VideoFramesDropped") instanceof Integer ? (Integer) megletProps.get("VideoFramesDropped") : 0); }
-    public int getVideoFramesPlayed() { return (megletProps.get("VideoFramesPlayed") instanceof Integer ? (Integer) megletProps.get("VideoFramesPlayed") : 0); }
+    public int getAudioUnderrunCount() { return (meglerProps.get("AudioUnderrunCount") instanceof Integer ? (Integer) meglerProps.get("AudioUnderrunCount") : 0); }
+    public int getContentType() { return (meglerProps.get("ContentType") instanceof Integer ? (Integer) meglerProps.get("ContentType") : 0); }
+    public byte[] getDrmSessionId() { return (byte[]) meglerProps.get("DrmSessionId"); }
+    public int getDrmType() { return (meglerProps.get("DrmType") instanceof Integer ? (Integer) meglerProps.get("DrmType") : 0); }
+    public long[] getExperimentIds() { return (long[]) meglerProps.get("ExperimentIds"); }
+    public long getLocalBytesRead() { return (meglerProps.get("LocalBytesRead") instanceof Long ? (Long) meglerProps.get("LocalBytesRead") : 0L); }
+    public long getMediaDurationMillis() { return (meglerProps.get("MediaDurationMillis") instanceof Long ? (Long) meglerProps.get("MediaDurationMillis") : 0L); }
+    public android.os.Bundle getMetricsBundle() { return (android.os.Bundle) meglerProps.get("MetricsBundle"); }
+    public long getNetworkBytesRead() { return (meglerProps.get("NetworkBytesRead") instanceof Long ? (Long) meglerProps.get("NetworkBytesRead") : 0L); }
+    public long getNetworkTransferDurationMillis() { return (meglerProps.get("NetworkTransferDurationMillis") instanceof Long ? (Long) meglerProps.get("NetworkTransferDurationMillis") : 0L); }
+    public int getPlaybackType() { return (meglerProps.get("PlaybackType") instanceof Integer ? (Integer) meglerProps.get("PlaybackType") : 0); }
+    public java.lang.String getPlayerName() { return (java.lang.String) meglerProps.get("PlayerName"); }
+    public java.lang.String getPlayerVersion() { return (java.lang.String) meglerProps.get("PlayerVersion"); }
+    public int getStreamSource() { return (meglerProps.get("StreamSource") instanceof Integer ? (Integer) meglerProps.get("StreamSource") : 0); }
+    public int getStreamType() { return (meglerProps.get("StreamType") instanceof Integer ? (Integer) meglerProps.get("StreamType") : 0); }
+    public int getVideoFramesDropped() { return (meglerProps.get("VideoFramesDropped") instanceof Integer ? (Integer) meglerProps.get("VideoFramesDropped") : 0); }
+    public int getVideoFramesPlayed() { return (meglerProps.get("VideoFramesPlayed") instanceof Integer ? (Integer) meglerProps.get("VideoFramesPlayed") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     PlaybackMetrics() { this((long) 0L, (int) 0, (int) 0, (int) 0, (int) 0, (int) 0, (java.lang.String) null, (java.lang.String) null, (long[]) null, (int) 0, (int) 0, (int) 0, (long) 0L, (long) 0L, (long) 0L, (byte[]) null, (android.os.Bundle) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public android.media.metrics.PlaybackMetrics.Builder addExperimentId(long p0) { return this; }
-        public android.media.metrics.PlaybackMetrics build() { android.media.metrics.PlaybackMetrics x = new android.media.metrics.PlaybackMetrics(); x.megletProps.putAll(megletProps); return x; }
-        public android.media.metrics.PlaybackMetrics.Builder setAudioUnderrunCount(int p0) { megletProps.put("AudioUnderrunCount", Integer.valueOf(p0)); return this; }
-        public android.media.metrics.PlaybackMetrics.Builder setContentType(int p0) { megletProps.put("ContentType", Integer.valueOf(p0)); return this; }
-        public android.media.metrics.PlaybackMetrics.Builder setDrmSessionId(byte[] p0) { megletProps.put("DrmSessionId", p0); return this; }
-        public android.media.metrics.PlaybackMetrics.Builder setDrmType(int p0) { megletProps.put("DrmType", Integer.valueOf(p0)); return this; }
-        public android.media.metrics.PlaybackMetrics.Builder setLocalBytesRead(long p0) { megletProps.put("LocalBytesRead", Long.valueOf(p0)); return this; }
-        public android.media.metrics.PlaybackMetrics.Builder setMediaDurationMillis(long p0) { megletProps.put("MediaDurationMillis", Long.valueOf(p0)); return this; }
-        public android.media.metrics.PlaybackMetrics.Builder setMetricsBundle(android.os.Bundle p0) { megletProps.put("MetricsBundle", p0); return this; }
-        public android.media.metrics.PlaybackMetrics.Builder setNetworkBytesRead(long p0) { megletProps.put("NetworkBytesRead", Long.valueOf(p0)); return this; }
-        public android.media.metrics.PlaybackMetrics.Builder setNetworkTransferDurationMillis(long p0) { megletProps.put("NetworkTransferDurationMillis", Long.valueOf(p0)); return this; }
-        public android.media.metrics.PlaybackMetrics.Builder setPlaybackType(int p0) { megletProps.put("PlaybackType", Integer.valueOf(p0)); return this; }
-        public android.media.metrics.PlaybackMetrics.Builder setPlayerName(java.lang.String p0) { megletProps.put("PlayerName", p0); return this; }
-        public android.media.metrics.PlaybackMetrics.Builder setPlayerVersion(java.lang.String p0) { megletProps.put("PlayerVersion", p0); return this; }
-        public android.media.metrics.PlaybackMetrics.Builder setStreamSource(int p0) { megletProps.put("StreamSource", Integer.valueOf(p0)); return this; }
-        public android.media.metrics.PlaybackMetrics.Builder setStreamType(int p0) { megletProps.put("StreamType", Integer.valueOf(p0)); return this; }
-        public android.media.metrics.PlaybackMetrics.Builder setVideoFramesDropped(int p0) { megletProps.put("VideoFramesDropped", Integer.valueOf(p0)); return this; }
-        public android.media.metrics.PlaybackMetrics.Builder setVideoFramesPlayed(int p0) { megletProps.put("VideoFramesPlayed", Integer.valueOf(p0)); return this; }
+        public android.media.metrics.PlaybackMetrics build() { android.media.metrics.PlaybackMetrics x = new android.media.metrics.PlaybackMetrics(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.media.metrics.PlaybackMetrics.Builder setAudioUnderrunCount(int p0) { meglerProps.put("AudioUnderrunCount", Integer.valueOf(p0)); return this; }
+        public android.media.metrics.PlaybackMetrics.Builder setContentType(int p0) { meglerProps.put("ContentType", Integer.valueOf(p0)); return this; }
+        public android.media.metrics.PlaybackMetrics.Builder setDrmSessionId(byte[] p0) { meglerProps.put("DrmSessionId", p0); return this; }
+        public android.media.metrics.PlaybackMetrics.Builder setDrmType(int p0) { meglerProps.put("DrmType", Integer.valueOf(p0)); return this; }
+        public android.media.metrics.PlaybackMetrics.Builder setLocalBytesRead(long p0) { meglerProps.put("LocalBytesRead", Long.valueOf(p0)); return this; }
+        public android.media.metrics.PlaybackMetrics.Builder setMediaDurationMillis(long p0) { meglerProps.put("MediaDurationMillis", Long.valueOf(p0)); return this; }
+        public android.media.metrics.PlaybackMetrics.Builder setMetricsBundle(android.os.Bundle p0) { meglerProps.put("MetricsBundle", p0); return this; }
+        public android.media.metrics.PlaybackMetrics.Builder setNetworkBytesRead(long p0) { meglerProps.put("NetworkBytesRead", Long.valueOf(p0)); return this; }
+        public android.media.metrics.PlaybackMetrics.Builder setNetworkTransferDurationMillis(long p0) { meglerProps.put("NetworkTransferDurationMillis", Long.valueOf(p0)); return this; }
+        public android.media.metrics.PlaybackMetrics.Builder setPlaybackType(int p0) { meglerProps.put("PlaybackType", Integer.valueOf(p0)); return this; }
+        public android.media.metrics.PlaybackMetrics.Builder setPlayerName(java.lang.String p0) { meglerProps.put("PlayerName", p0); return this; }
+        public android.media.metrics.PlaybackMetrics.Builder setPlayerVersion(java.lang.String p0) { meglerProps.put("PlayerVersion", p0); return this; }
+        public android.media.metrics.PlaybackMetrics.Builder setStreamSource(int p0) { meglerProps.put("StreamSource", Integer.valueOf(p0)); return this; }
+        public android.media.metrics.PlaybackMetrics.Builder setStreamType(int p0) { meglerProps.put("StreamType", Integer.valueOf(p0)); return this; }
+        public android.media.metrics.PlaybackMetrics.Builder setVideoFramesDropped(int p0) { meglerProps.put("VideoFramesDropped", Integer.valueOf(p0)); return this; }
+        public android.media.metrics.PlaybackMetrics.Builder setVideoFramesPlayed(int p0) { meglerProps.put("VideoFramesPlayed", Integer.valueOf(p0)); return this; }
     }
 }

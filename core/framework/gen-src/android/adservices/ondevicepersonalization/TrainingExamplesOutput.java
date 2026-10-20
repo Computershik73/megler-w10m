@@ -3,14 +3,14 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TrainingExamplesOutput {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public java.util.List getTrainingExampleRecords() { return (megletProps.get("TrainingExampleRecords") != null ? (java.util.List) megletProps.get("TrainingExampleRecords") : new java.util.ArrayList()); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public java.util.List getTrainingExampleRecords() { return (meglerProps.get("TrainingExampleRecords") != null ? (java.util.List) meglerProps.get("TrainingExampleRecords") : new java.util.ArrayList()); }
     protected TrainingExamplesOutput() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public android.adservices.ondevicepersonalization.TrainingExamplesOutput.Builder addTrainingExampleRecord(android.adservices.ondevicepersonalization.TrainingExampleRecord p0) { return this; }
-        public android.adservices.ondevicepersonalization.TrainingExamplesOutput build() { android.adservices.ondevicepersonalization.TrainingExamplesOutput x = new android.adservices.ondevicepersonalization.TrainingExamplesOutput(); x.megletProps.putAll(megletProps); return x; }
-        public android.adservices.ondevicepersonalization.TrainingExamplesOutput.Builder setTrainingExampleRecords(java.util.List p0) { megletProps.put("TrainingExampleRecords", p0); return this; }
+        public android.adservices.ondevicepersonalization.TrainingExamplesOutput build() { android.adservices.ondevicepersonalization.TrainingExamplesOutput x = new android.adservices.ondevicepersonalization.TrainingExamplesOutput(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.adservices.ondevicepersonalization.TrainingExamplesOutput.Builder setTrainingExampleRecords(java.util.List p0) { meglerProps.put("TrainingExampleRecords", p0); return this; }
     }
 }

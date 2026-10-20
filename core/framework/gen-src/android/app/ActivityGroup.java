@@ -3,11 +3,11 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ActivityGroup extends android.app.Activity {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     protected android.app.LocalActivityManager mLocalActivityManager;
     public ActivityGroup() { super(); }
     public ActivityGroup(boolean p0) { super(); }
-    public android.app.Activity getCurrentActivity() { return (android.app.Activity) megletProps.get("CurrentActivity"); }
-    public android.app.LocalActivityManager getLocalActivityManager() { return (android.app.LocalActivityManager) megletProps.get("LocalActivityManager"); }
+    public android.app.Activity getCurrentActivity() { return (android.app.Activity) meglerProps.get("CurrentActivity"); }
+    public android.app.LocalActivityManager getLocalActivityManager() { return (android.app.LocalActivityManager) meglerProps.get("LocalActivityManager"); }
     public java.util.HashMap onRetainNonConfigurationChildInstances() { return null; }
 }

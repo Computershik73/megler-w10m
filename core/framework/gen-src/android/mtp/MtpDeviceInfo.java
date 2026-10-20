@@ -3,14 +3,14 @@ package android.mtp;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MtpDeviceInfo {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public int[] getDevicePropertySupported() { return (int[]) megletProps.get("DevicePropertySupported"); }
-    public int[] getEventsSupported() { return (int[]) megletProps.get("EventsSupported"); }
-    public java.lang.String getManufacturer() { return (java.lang.String) megletProps.get("Manufacturer"); }
-    public java.lang.String getModel() { return (java.lang.String) megletProps.get("Model"); }
-    public int[] getOperationsSupported() { return (int[]) megletProps.get("OperationsSupported"); }
-    public java.lang.String getSerialNumber() { return (java.lang.String) megletProps.get("SerialNumber"); }
-    public java.lang.String getVersion() { return (java.lang.String) megletProps.get("Version"); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public int[] getDevicePropertySupported() { return (int[]) meglerProps.get("DevicePropertySupported"); }
+    public int[] getEventsSupported() { return (int[]) meglerProps.get("EventsSupported"); }
+    public java.lang.String getManufacturer() { return (java.lang.String) meglerProps.get("Manufacturer"); }
+    public java.lang.String getModel() { return (java.lang.String) meglerProps.get("Model"); }
+    public int[] getOperationsSupported() { return (int[]) meglerProps.get("OperationsSupported"); }
+    public java.lang.String getSerialNumber() { return (java.lang.String) meglerProps.get("SerialNumber"); }
+    public java.lang.String getVersion() { return (java.lang.String) meglerProps.get("Version"); }
     public boolean isDevicePropertySupported(int p0) { return false; }
     public boolean isEventSupported(int p0) { return false; }
     public boolean isOperationSupported(int p0) { return false; }

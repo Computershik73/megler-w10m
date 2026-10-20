@@ -3,33 +3,33 @@ package android.health.connect.changelog;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ChangeLogsResponse implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public ChangeLogsResponse(android.health.connect.aidl.RecordsParcel p0, java.util.List p1, java.lang.String p2, boolean p3) {}
     public ChangeLogsResponse(java.util.List p0, java.util.List p1, java.util.List p2, java.util.List p3, java.lang.String p4, boolean p5) {}
     public int describeContents() { return 0; }
-    public java.util.List getDeletedLogs() { return (megletProps.get("DeletedLogs") != null ? (java.util.List) megletProps.get("DeletedLogs") : new java.util.ArrayList()); }
-    public java.util.List getDeletedMedicalResources() { return (megletProps.get("DeletedMedicalResources") != null ? (java.util.List) megletProps.get("DeletedMedicalResources") : new java.util.ArrayList()); }
-    public java.lang.String getNextChangesToken() { return (java.lang.String) megletProps.get("NextChangesToken"); }
-    public java.util.List getUpsertedMedicalResources() { return (megletProps.get("UpsertedMedicalResources") != null ? (java.util.List) megletProps.get("UpsertedMedicalResources") : new java.util.ArrayList()); }
-    public java.util.List getUpsertedRecords() { return (megletProps.get("UpsertedRecords") != null ? (java.util.List) megletProps.get("UpsertedRecords") : new java.util.ArrayList()); }
+    public java.util.List getDeletedLogs() { return (meglerProps.get("DeletedLogs") != null ? (java.util.List) meglerProps.get("DeletedLogs") : new java.util.ArrayList()); }
+    public java.util.List getDeletedMedicalResources() { return (meglerProps.get("DeletedMedicalResources") != null ? (java.util.List) meglerProps.get("DeletedMedicalResources") : new java.util.ArrayList()); }
+    public java.lang.String getNextChangesToken() { return (java.lang.String) meglerProps.get("NextChangesToken"); }
+    public java.util.List getUpsertedMedicalResources() { return (meglerProps.get("UpsertedMedicalResources") != null ? (java.util.List) meglerProps.get("UpsertedMedicalResources") : new java.util.ArrayList()); }
+    public java.util.List getUpsertedRecords() { return (meglerProps.get("UpsertedRecords") != null ? (java.util.List) meglerProps.get("UpsertedRecords") : new java.util.ArrayList()); }
     public boolean hasMorePages() { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     ChangeLogsResponse() { this((android.health.connect.aidl.RecordsParcel) null, (java.util.List) null, (java.lang.String) null, (boolean) false); }
     public static final class DeletedLog {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public DeletedLog(java.lang.String p0, long p1) {}
         public DeletedLog(java.lang.String p0, java.time.Instant p1) {}
-        public java.lang.String getDeletedRecordId() { return (java.lang.String) megletProps.get("DeletedRecordId"); }
-        public java.time.Instant getDeletedTime() { return (java.time.Instant) megletProps.get("DeletedTime"); }
+        public java.lang.String getDeletedRecordId() { return (java.lang.String) meglerProps.get("DeletedRecordId"); }
+        public java.time.Instant getDeletedTime() { return (java.time.Instant) meglerProps.get("DeletedTime"); }
         DeletedLog() { this((java.lang.String) null, (long) 0L); }
     }
     public static final class DeletedMedicalResource {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public DeletedMedicalResource(android.health.connect.MedicalResourceId p0, java.time.Instant p1) {}
-        public java.lang.String getDataSourceId() { return (java.lang.String) megletProps.get("DataSourceId"); }
-        public android.health.connect.MedicalResourceId getDeletedMedicalResourceId() { return (android.health.connect.MedicalResourceId) megletProps.get("DeletedMedicalResourceId"); }
-        public java.time.Instant getDeletedTime() { return (java.time.Instant) megletProps.get("DeletedTime"); }
+        public java.lang.String getDataSourceId() { return (java.lang.String) meglerProps.get("DataSourceId"); }
+        public android.health.connect.MedicalResourceId getDeletedMedicalResourceId() { return (android.health.connect.MedicalResourceId) meglerProps.get("DeletedMedicalResourceId"); }
+        public java.time.Instant getDeletedTime() { return (java.time.Instant) meglerProps.get("DeletedTime"); }
         DeletedMedicalResource() { this((android.health.connect.MedicalResourceId) null, (java.time.Instant) null); }
     }
 }

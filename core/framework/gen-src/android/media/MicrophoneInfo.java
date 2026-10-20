@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MicrophoneInfo {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int CHANNEL_MAPPING_DIRECT = 1;
     public static final int CHANNEL_MAPPING_PROCESSED = 2;
     public static final int DIRECTIONALITY_BI_DIRECTIONAL = 2;
@@ -22,27 +22,27 @@ public final class MicrophoneInfo {
     public static android.media.MicrophoneInfo.Coordinate3F POSITION_UNKNOWN;
     public static final float SENSITIVITY_UNKNOWN = -3.4028234663852886e+38f;
     public static final float SPL_UNKNOWN = -3.4028234663852886e+38f;
-    public java.lang.String getAddress() { return (java.lang.String) megletProps.get("Address"); }
-    public java.util.List getChannelMapping() { return (megletProps.get("ChannelMapping") != null ? (java.util.List) megletProps.get("ChannelMapping") : new java.util.ArrayList()); }
-    public java.lang.String getDescription() { return (java.lang.String) megletProps.get("Description"); }
-    public int getDirectionality() { return (megletProps.get("Directionality") instanceof Integer ? (Integer) megletProps.get("Directionality") : 0); }
-    public java.util.List getFrequencyResponse() { return (megletProps.get("FrequencyResponse") != null ? (java.util.List) megletProps.get("FrequencyResponse") : new java.util.ArrayList()); }
-    public int getGroup() { return (megletProps.get("Group") instanceof Integer ? (Integer) megletProps.get("Group") : 0); }
-    public int getId() { return (megletProps.get("Id") instanceof Integer ? (Integer) megletProps.get("Id") : 0); }
-    public int getIndexInTheGroup() { return (megletProps.get("IndexInTheGroup") instanceof Integer ? (Integer) megletProps.get("IndexInTheGroup") : 0); }
-    public int getInternalDeviceType() { return (megletProps.get("InternalDeviceType") instanceof Integer ? (Integer) megletProps.get("InternalDeviceType") : 0); }
-    public int getLocation() { return (megletProps.get("Location") instanceof Integer ? (Integer) megletProps.get("Location") : 0); }
-    public float getMaxSpl() { return (megletProps.get("MaxSpl") instanceof Float ? (Float) megletProps.get("MaxSpl") : 0f); }
-    public float getMinSpl() { return (megletProps.get("MinSpl") instanceof Float ? (Float) megletProps.get("MinSpl") : 0f); }
-    public android.media.MicrophoneInfo.Coordinate3F getOrientation() { return (android.media.MicrophoneInfo.Coordinate3F) megletProps.get("Orientation"); }
-    public android.media.MicrophoneInfo.Coordinate3F getPosition() { return (android.media.MicrophoneInfo.Coordinate3F) megletProps.get("Position"); }
-    public float getSensitivity() { return (megletProps.get("Sensitivity") instanceof Float ? (Float) megletProps.get("Sensitivity") : 0f); }
-    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
-    public void setChannelMapping(java.util.List p0) { megletProps.put("ChannelMapping", p0); }
-    public void setId(int p0) { megletProps.put("Id", Integer.valueOf(p0)); }
+    public java.lang.String getAddress() { return (java.lang.String) meglerProps.get("Address"); }
+    public java.util.List getChannelMapping() { return (meglerProps.get("ChannelMapping") != null ? (java.util.List) meglerProps.get("ChannelMapping") : new java.util.ArrayList()); }
+    public java.lang.String getDescription() { return (java.lang.String) meglerProps.get("Description"); }
+    public int getDirectionality() { return (meglerProps.get("Directionality") instanceof Integer ? (Integer) meglerProps.get("Directionality") : 0); }
+    public java.util.List getFrequencyResponse() { return (meglerProps.get("FrequencyResponse") != null ? (java.util.List) meglerProps.get("FrequencyResponse") : new java.util.ArrayList()); }
+    public int getGroup() { return (meglerProps.get("Group") instanceof Integer ? (Integer) meglerProps.get("Group") : 0); }
+    public int getId() { return (meglerProps.get("Id") instanceof Integer ? (Integer) meglerProps.get("Id") : 0); }
+    public int getIndexInTheGroup() { return (meglerProps.get("IndexInTheGroup") instanceof Integer ? (Integer) meglerProps.get("IndexInTheGroup") : 0); }
+    public int getInternalDeviceType() { return (meglerProps.get("InternalDeviceType") instanceof Integer ? (Integer) meglerProps.get("InternalDeviceType") : 0); }
+    public int getLocation() { return (meglerProps.get("Location") instanceof Integer ? (Integer) meglerProps.get("Location") : 0); }
+    public float getMaxSpl() { return (meglerProps.get("MaxSpl") instanceof Float ? (Float) meglerProps.get("MaxSpl") : 0f); }
+    public float getMinSpl() { return (meglerProps.get("MinSpl") instanceof Float ? (Float) meglerProps.get("MinSpl") : 0f); }
+    public android.media.MicrophoneInfo.Coordinate3F getOrientation() { return (android.media.MicrophoneInfo.Coordinate3F) meglerProps.get("Orientation"); }
+    public android.media.MicrophoneInfo.Coordinate3F getPosition() { return (android.media.MicrophoneInfo.Coordinate3F) meglerProps.get("Position"); }
+    public float getSensitivity() { return (meglerProps.get("Sensitivity") instanceof Float ? (Float) meglerProps.get("Sensitivity") : 0f); }
+    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
+    public void setChannelMapping(java.util.List p0) { meglerProps.put("ChannelMapping", p0); }
+    public void setId(int p0) { meglerProps.put("Id", Integer.valueOf(p0)); }
     protected MicrophoneInfo() {}
     public static final class Coordinate3F {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public float x;
         public float y;
         public float z;

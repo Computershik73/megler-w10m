@@ -3,7 +3,7 @@ package android.telecom;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class ConnectionService extends android.app.Service {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String EXTRA_IS_HANDOVER = "android.telecom.extra.IS_HANDOVER";
     public static final java.lang.String SERVICE_INTERFACE = "android.telecom.ConnectionService";
     public ConnectionService() { super(); }
@@ -18,9 +18,9 @@ public abstract class ConnectionService extends android.app.Service {
     public android.telecom.RemoteConnection createRemoteIncomingConnection(android.telecom.PhoneAccountHandle p0, android.telecom.ConnectionRequest p1) { return null; }
     public android.telecom.RemoteConference createRemoteOutgoingConference(android.telecom.PhoneAccountHandle p0, android.telecom.ConnectionRequest p1) { return null; }
     public android.telecom.RemoteConnection createRemoteOutgoingConnection(android.telecom.PhoneAccountHandle p0, android.telecom.ConnectionRequest p1) { return null; }
-    public java.util.Collection getAllConferences() { return (megletProps.get("AllConferences") != null ? (java.util.Collection) megletProps.get("AllConferences") : new java.util.ArrayList()); }
-    public java.util.Collection getAllConnections() { return (megletProps.get("AllConnections") != null ? (java.util.Collection) megletProps.get("AllConnections") : new java.util.ArrayList()); }
-    public android.os.Handler getHandler() { return (android.os.Handler) megletProps.get("Handler"); }
+    public java.util.Collection getAllConferences() { return (meglerProps.get("AllConferences") != null ? (java.util.Collection) meglerProps.get("AllConferences") : new java.util.ArrayList()); }
+    public java.util.Collection getAllConnections() { return (meglerProps.get("AllConnections") != null ? (java.util.Collection) meglerProps.get("AllConnections") : new java.util.ArrayList()); }
+    public android.os.Handler getHandler() { return (android.os.Handler) meglerProps.get("Handler"); }
     public android.os.IBinder onBind(android.content.Intent p0) { return null; }
     public void onBindClient(android.content.Intent p0) {}
     public void onConference(android.telecom.Connection p0, android.telecom.Connection p1) {}

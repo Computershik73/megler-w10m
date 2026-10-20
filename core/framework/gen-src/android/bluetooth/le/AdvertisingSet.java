@@ -3,15 +3,15 @@ package android.bluetooth.le;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AdvertisingSet {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public void enableAdvertising(boolean p0, int p1, int p2) {}
-    public int getAdvertiserId() { return (megletProps.get("AdvertiserId") instanceof Integer ? (Integer) megletProps.get("AdvertiserId") : 0); }
+    public int getAdvertiserId() { return (meglerProps.get("AdvertiserId") instanceof Integer ? (Integer) meglerProps.get("AdvertiserId") : 0); }
     public void getOwnAddress() {}
-    public void setAdvertisingData(android.bluetooth.le.AdvertiseData p0) { megletProps.put("AdvertisingData", p0); }
-    public void setAdvertisingParameters(android.bluetooth.le.AdvertisingSetParameters p0) { megletProps.put("AdvertisingParameters", p0); }
-    public void setPeriodicAdvertisingData(android.bluetooth.le.AdvertiseData p0) { megletProps.put("PeriodicAdvertisingData", p0); }
-    public void setPeriodicAdvertisingEnabled(boolean p0) { megletProps.put("PeriodicAdvertisingEnabled", Boolean.valueOf(p0)); }
-    public void setPeriodicAdvertisingParameters(android.bluetooth.le.PeriodicAdvertisingParameters p0) { megletProps.put("PeriodicAdvertisingParameters", p0); }
-    public void setScanResponseData(android.bluetooth.le.AdvertiseData p0) { megletProps.put("ScanResponseData", p0); }
+    public void setAdvertisingData(android.bluetooth.le.AdvertiseData p0) { meglerProps.put("AdvertisingData", p0); }
+    public void setAdvertisingParameters(android.bluetooth.le.AdvertisingSetParameters p0) { meglerProps.put("AdvertisingParameters", p0); }
+    public void setPeriodicAdvertisingData(android.bluetooth.le.AdvertiseData p0) { meglerProps.put("PeriodicAdvertisingData", p0); }
+    public void setPeriodicAdvertisingEnabled(boolean p0) { meglerProps.put("PeriodicAdvertisingEnabled", Boolean.valueOf(p0)); }
+    public void setPeriodicAdvertisingParameters(android.bluetooth.le.PeriodicAdvertisingParameters p0) { meglerProps.put("PeriodicAdvertisingParameters", p0); }
+    public void setScanResponseData(android.bluetooth.le.AdvertiseData p0) { meglerProps.put("ScanResponseData", p0); }
     protected AdvertisingSet() {}
 }

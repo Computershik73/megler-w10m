@@ -527,7 +527,7 @@ public class WebViewClient {
     }
 
     private void onUnhandledInputEventInternal(WebView view, InputEvent event) {
-        // Meglet: this framework has no ViewRootImpl to hand an unhandled event back to; it is dropped.
+        // Megler: this framework has no ViewRootImpl to hand an unhandled event back to; it is dropped.
     }
 
     /**

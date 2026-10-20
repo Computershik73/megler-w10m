@@ -3,12 +3,12 @@ package android.adservices.adid;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AdIdManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ADID_SERVICE = "adid_service";
     public AdIdManager(android.content.Context p0) {}
     public static android.adservices.adid.AdIdManager get(android.content.Context p0) { return new AdIdManager(); }
     public void deleteAdId() {}
-    public android.adservices.adid.AdId getAdId() { return (android.adservices.adid.AdId) megletProps.get("AdId"); }
+    public android.adservices.adid.AdId getAdId() { return (android.adservices.adid.AdId) meglerProps.get("AdId"); }
     public void getAdId(java.util.concurrent.Executor p0, android.adservices.common.AdServicesOutcomeReceiver p1) {}
     public void getAdId(java.util.concurrent.Executor p0, android.os.OutcomeReceiver p1) {}
     public android.adservices.adid.AdIdManager initialize(android.content.Context p0) { return this; }

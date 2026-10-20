@@ -3,7 +3,7 @@ package android.adservices.adselection;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class TestAdSelectionManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public void overrideAdSelectionConfigRemoteInfo(android.adservices.adselection.AddAdSelectionOverrideRequest p0, java.util.concurrent.Executor p1, android.os.OutcomeReceiver p2) {}
     public void overrideAdSelectionFromOutcomesConfigRemoteInfo(android.adservices.adselection.AddAdSelectionFromOutcomesOverrideRequest p0, java.util.concurrent.Executor p1, android.os.OutcomeReceiver p2) {}
     public void removeAdCounterHistogramOverride(android.adservices.adselection.RemoveAdCounterHistogramOverrideRequest p0, java.util.concurrent.Executor p1, android.os.OutcomeReceiver p2) {}

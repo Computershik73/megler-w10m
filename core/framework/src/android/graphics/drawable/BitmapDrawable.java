@@ -45,7 +45,7 @@ public class BitmapDrawable extends Drawable {
     @Override public int getOpacity() { return mBitmap == null || mBitmap.hasAlpha() || mPaint.getAlpha() < 255 ? PixelFormat.TRANSLUCENT : PixelFormat.OPAQUE; }
     @Override public void draw(Canvas c) {
         if (mBitmap == null || mBitmap.isRecycled()) return;
-        mPaint.setColorFilter(megletTintFilter());
+        mPaint.setColorFilter(meglerTintFilter());
         Rect b = getBounds();
         if (mTileX != null || mTileY != null) {
             if (mShader == null) mShader = new BitmapShader(mBitmap, mTileX == null ? Shader.TileMode.CLAMP : mTileX, mTileY == null ? Shader.TileMode.CLAMP : mTileY);

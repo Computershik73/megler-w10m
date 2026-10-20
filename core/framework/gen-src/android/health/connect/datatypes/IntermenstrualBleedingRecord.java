@@ -3,16 +3,16 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class IntermenstrualBleedingRecord extends android.health.connect.datatypes.InstantRecord {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public android.health.connect.internal.datatypes.IntermenstrualBleedingRecordInternal toRecordInternal() { return null; }
     protected IntermenstrualBleedingRecord() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.health.connect.datatypes.Metadata p0, java.time.Instant p1) {}
-        public android.health.connect.datatypes.IntermenstrualBleedingRecord build() { android.health.connect.datatypes.IntermenstrualBleedingRecord x = new android.health.connect.datatypes.IntermenstrualBleedingRecord(); x.megletProps.putAll(megletProps); return x; }
+        public android.health.connect.datatypes.IntermenstrualBleedingRecord build() { android.health.connect.datatypes.IntermenstrualBleedingRecord x = new android.health.connect.datatypes.IntermenstrualBleedingRecord(); x.meglerProps.putAll(meglerProps); return x; }
         public android.health.connect.datatypes.IntermenstrualBleedingRecord buildWithoutValidation() { return null; }
         public android.health.connect.datatypes.IntermenstrualBleedingRecord.Builder clearZoneOffset() { return this; }
-        public android.health.connect.datatypes.IntermenstrualBleedingRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { megletProps.put("ZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.IntermenstrualBleedingRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("ZoneOffset", p0); return this; }
         Builder() { this((android.health.connect.datatypes.Metadata) null, (java.time.Instant) null); }
     }
 }

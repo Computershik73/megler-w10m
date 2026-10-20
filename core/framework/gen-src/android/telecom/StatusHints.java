@@ -3,7 +3,7 @@ package android.telecom;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class StatusHints implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public StatusHints(android.content.ComponentName p0, java.lang.CharSequence p1, int p2, android.os.Bundle p3) {}
     public StatusHints(android.graphics.drawable.Icon p0) {}
@@ -11,13 +11,13 @@ public final class StatusHints implements android.os.Parcelable {
     public static int getUserIdFromAuthority(java.lang.String p0, int p1) { return 0; }
     public static android.graphics.drawable.Icon validateAccountIconUserBoundary(android.graphics.drawable.Icon p0, android.os.UserHandle p1) { return null; }
     public int describeContents() { return 0; }
-    public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
+    public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
     public android.graphics.drawable.Drawable getIcon(android.content.Context p0) { return null; }
-    public android.graphics.drawable.Icon getIcon() { return (android.graphics.drawable.Icon) megletProps.get("Icon"); }
-    public int getIconResId() { return (megletProps.get("IconResId") instanceof Integer ? (Integer) megletProps.get("IconResId") : 0); }
-    public java.lang.CharSequence getLabel() { return (java.lang.CharSequence) megletProps.get("Label"); }
-    public android.content.ComponentName getPackageName() { return (android.content.ComponentName) megletProps.get("PackageName"); }
-    public void setIcon(android.graphics.drawable.Icon p0) { megletProps.put("Icon", p0); }
+    public android.graphics.drawable.Icon getIcon() { return (android.graphics.drawable.Icon) meglerProps.get("Icon"); }
+    public int getIconResId() { return (meglerProps.get("IconResId") instanceof Integer ? (Integer) meglerProps.get("IconResId") : 0); }
+    public java.lang.CharSequence getLabel() { return (java.lang.CharSequence) meglerProps.get("Label"); }
+    public android.content.ComponentName getPackageName() { return (android.content.ComponentName) meglerProps.get("PackageName"); }
+    public void setIcon(android.graphics.drawable.Icon p0) { meglerProps.put("Icon", p0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     StatusHints() { this((android.graphics.drawable.Icon) null); }
 }

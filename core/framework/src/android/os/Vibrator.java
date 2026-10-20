@@ -1,6 +1,6 @@
 package android.os;
 
-/** The phone's haptics (meglet.Native.vibrate): one-shots and the first step of a pattern; amplitude is not controllable. */
+/** The phone's haptics (megler.Native.vibrate): one-shots and the first step of a pattern; amplitude is not controllable. */
 public class Vibrator {
     public static final int VIBRATION_EFFECT_SUPPORT_UNKNOWN = 0, VIBRATION_EFFECT_SUPPORT_YES = 1, VIBRATION_EFFECT_SUPPORT_NO = 2;
     public interface OnVibratorStateChangedListener { void onVibratorStateChanged(boolean isVibrating); }
@@ -21,11 +21,11 @@ public class Vibrator {
     public void addVibratorStateListener(OnVibratorStateChangedListener l) {}
     public void addVibratorStateListener(java.util.concurrent.Executor e, OnVibratorStateChangedListener l) {}
     public void removeVibratorStateListener(OnVibratorStateChangedListener l) {}
-    @Deprecated public void vibrate(long ms) { if (ms > 0) meglet.Native.vibrate(ms); }
+    @Deprecated public void vibrate(long ms) { if (ms > 0) megler.Native.vibrate(ms); }
     @Deprecated public void vibrate(long ms, android.media.AudioAttributes a) { vibrate(ms); }
-    @Deprecated public void vibrate(long[] pattern, int repeat) { if (pattern != null) { for (int i = 1; i < pattern.length; i += 2) if (pattern[i] > 0) { meglet.Native.vibrate(pattern[i]); break; } } }
+    @Deprecated public void vibrate(long[] pattern, int repeat) { if (pattern != null) { for (int i = 1; i < pattern.length; i += 2) if (pattern[i] > 0) { megler.Native.vibrate(pattern[i]); break; } } }
     @Deprecated public void vibrate(long[] pattern, int repeat, android.media.AudioAttributes a) { vibrate(pattern, repeat); }
-    public void vibrate(VibrationEffect e) { long ms = e != null ? e.megletDuration() : 0; if (ms > 0) meglet.Native.vibrate(ms); }
+    public void vibrate(VibrationEffect e) { long ms = e != null ? e.meglerDuration() : 0; if (ms > 0) megler.Native.vibrate(ms); }
     public void vibrate(VibrationEffect e, android.media.AudioAttributes a) { vibrate(e); }
     public void vibrate(VibrationEffect e, VibrationAttributes a) { vibrate(e); }
     public void cancel() {}

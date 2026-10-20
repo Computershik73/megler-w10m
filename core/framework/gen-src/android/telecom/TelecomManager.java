@@ -3,7 +3,7 @@ package android.telecom;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class TelecomManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_CALL_BACK = "android.telecom.action.CALL_BACK";
     public static final java.lang.String ACTION_CHANGE_DEFAULT_DIALER = "android.telecom.action.CHANGE_DEFAULT_DIALER";
     public static final java.lang.String ACTION_CHANGE_PHONE_ACCOUNTS = "android.telecom.action.CHANGE_PHONE_ACCOUNTS";
@@ -135,54 +135,54 @@ public class TelecomManager {
     public void enablePhoneAccount(android.telecom.PhoneAccountHandle p0, boolean p1) {}
     public boolean endCall() { return false; }
     public android.net.Uri getAdnUriForPhoneAccount(android.telecom.PhoneAccountHandle p0) { return null; }
-    public java.util.List getAllPhoneAccountHandles() { return (megletProps.get("AllPhoneAccountHandles") != null ? (java.util.List) megletProps.get("AllPhoneAccountHandles") : new java.util.ArrayList()); }
-    public java.util.List getAllPhoneAccounts() { return (megletProps.get("AllPhoneAccounts") != null ? (java.util.List) megletProps.get("AllPhoneAccounts") : new java.util.ArrayList()); }
-    public int getAllPhoneAccountsCount() { return (megletProps.get("AllPhoneAccountsCount") instanceof Integer ? (Integer) megletProps.get("AllPhoneAccountsCount") : 0); }
-    public java.util.List getCallCapablePhoneAccounts() { return (megletProps.get("CallCapablePhoneAccounts") != null ? (java.util.List) megletProps.get("CallCapablePhoneAccounts") : new java.util.ArrayList()); }
+    public java.util.List getAllPhoneAccountHandles() { return (meglerProps.get("AllPhoneAccountHandles") != null ? (java.util.List) meglerProps.get("AllPhoneAccountHandles") : new java.util.ArrayList()); }
+    public java.util.List getAllPhoneAccounts() { return (meglerProps.get("AllPhoneAccounts") != null ? (java.util.List) meglerProps.get("AllPhoneAccounts") : new java.util.ArrayList()); }
+    public int getAllPhoneAccountsCount() { return (meglerProps.get("AllPhoneAccountsCount") instanceof Integer ? (Integer) meglerProps.get("AllPhoneAccountsCount") : 0); }
+    public java.util.List getCallCapablePhoneAccounts() { return (meglerProps.get("CallCapablePhoneAccounts") != null ? (java.util.List) meglerProps.get("CallCapablePhoneAccounts") : new java.util.ArrayList()); }
     public java.util.List getCallCapablePhoneAccounts(boolean p0) { return new java.util.ArrayList(); }
-    public java.util.List getCallCapablePhoneAccountsAcrossProfiles() { return (megletProps.get("CallCapablePhoneAccountsAcrossProfiles") != null ? (java.util.List) megletProps.get("CallCapablePhoneAccountsAcrossProfiles") : new java.util.ArrayList()); }
+    public java.util.List getCallCapablePhoneAccountsAcrossProfiles() { return (meglerProps.get("CallCapablePhoneAccountsAcrossProfiles") != null ? (java.util.List) meglerProps.get("CallCapablePhoneAccountsAcrossProfiles") : new java.util.ArrayList()); }
     public java.util.List getCallCapablePhoneAccountsAcrossProfiles(boolean p0) { return new java.util.ArrayList(); }
-    public int getCallConnectedIndicatorPreference() { return (megletProps.get("CallConnectedIndicatorPreference") instanceof Integer ? (Integer) megletProps.get("CallConnectedIndicatorPreference") : 0); }
-    public int getCallState() { return (megletProps.get("CallState") instanceof Integer ? (Integer) megletProps.get("CallState") : 0); }
-    public android.telecom.PhoneAccountHandle getConnectionManager() { return (android.telecom.PhoneAccountHandle) megletProps.get("ConnectionManager"); }
-    public int getCurrentTtyMode() { return (megletProps.get("CurrentTtyMode") instanceof Integer ? (Integer) megletProps.get("CurrentTtyMode") : 0); }
-    public java.lang.String getDefaultDialerPackage() { return (java.lang.String) megletProps.get("DefaultDialerPackage"); }
+    public int getCallConnectedIndicatorPreference() { return (meglerProps.get("CallConnectedIndicatorPreference") instanceof Integer ? (Integer) meglerProps.get("CallConnectedIndicatorPreference") : 0); }
+    public int getCallState() { return (meglerProps.get("CallState") instanceof Integer ? (Integer) meglerProps.get("CallState") : 0); }
+    public android.telecom.PhoneAccountHandle getConnectionManager() { return (android.telecom.PhoneAccountHandle) meglerProps.get("ConnectionManager"); }
+    public int getCurrentTtyMode() { return (meglerProps.get("CurrentTtyMode") instanceof Integer ? (Integer) meglerProps.get("CurrentTtyMode") : 0); }
+    public java.lang.String getDefaultDialerPackage() { return (java.lang.String) meglerProps.get("DefaultDialerPackage"); }
     public java.lang.String getDefaultDialerPackage(android.os.UserHandle p0) { return null; }
     public android.telecom.PhoneAccountHandle getDefaultOutgoingPhoneAccount(java.lang.String p0) { return null; }
-    public android.content.ComponentName getDefaultPhoneApp() { return (android.content.ComponentName) megletProps.get("DefaultPhoneApp"); }
+    public android.content.ComponentName getDefaultPhoneApp() { return (android.content.ComponentName) meglerProps.get("DefaultPhoneApp"); }
     public java.lang.String getLine1Number(android.telecom.PhoneAccountHandle p0) { return null; }
-    public java.util.List getOwnSelfManagedPhoneAccounts() { return (megletProps.get("OwnSelfManagedPhoneAccounts") != null ? (java.util.List) megletProps.get("OwnSelfManagedPhoneAccounts") : new java.util.ArrayList()); }
+    public java.util.List getOwnSelfManagedPhoneAccounts() { return (meglerProps.get("OwnSelfManagedPhoneAccounts") != null ? (java.util.List) meglerProps.get("OwnSelfManagedPhoneAccounts") : new java.util.ArrayList()); }
     public android.telecom.PhoneAccount getPhoneAccount(android.telecom.PhoneAccountHandle p0) { return null; }
-    public java.util.List getPhoneAccountsForPackage() { return (megletProps.get("PhoneAccountsForPackage") != null ? (java.util.List) megletProps.get("PhoneAccountsForPackage") : new java.util.ArrayList()); }
+    public java.util.List getPhoneAccountsForPackage() { return (meglerProps.get("PhoneAccountsForPackage") != null ? (java.util.List) meglerProps.get("PhoneAccountsForPackage") : new java.util.ArrayList()); }
     public java.util.List getPhoneAccountsSupportingScheme(java.lang.String p0) { return new java.util.ArrayList(); }
-    public java.util.List getRegisteredPhoneAccounts() { return (megletProps.get("RegisteredPhoneAccounts") != null ? (java.util.List) megletProps.get("RegisteredPhoneAccounts") : new java.util.ArrayList()); }
-    public java.util.List getSelfManagedPhoneAccounts() { return (megletProps.get("SelfManagedPhoneAccounts") != null ? (java.util.List) megletProps.get("SelfManagedPhoneAccounts") : new java.util.ArrayList()); }
-    public android.telecom.PhoneAccountHandle getSimCallManager() { return (android.telecom.PhoneAccountHandle) megletProps.get("SimCallManager"); }
+    public java.util.List getRegisteredPhoneAccounts() { return (meglerProps.get("RegisteredPhoneAccounts") != null ? (java.util.List) meglerProps.get("RegisteredPhoneAccounts") : new java.util.ArrayList()); }
+    public java.util.List getSelfManagedPhoneAccounts() { return (meglerProps.get("SelfManagedPhoneAccounts") != null ? (java.util.List) meglerProps.get("SelfManagedPhoneAccounts") : new java.util.ArrayList()); }
+    public android.telecom.PhoneAccountHandle getSimCallManager() { return (android.telecom.PhoneAccountHandle) meglerProps.get("SimCallManager"); }
     public android.telecom.PhoneAccountHandle getSimCallManager(int p0) { return null; }
     public android.telecom.PhoneAccountHandle getSimCallManagerForSubscription(int p0) { return null; }
-    public java.lang.String getSystemDialerPackage() { return (java.lang.String) megletProps.get("SystemDialerPackage"); }
-    public android.telecom.PhoneAccountHandle getUserSelectedOutgoingPhoneAccount() { return (android.telecom.PhoneAccountHandle) megletProps.get("UserSelectedOutgoingPhoneAccount"); }
+    public java.lang.String getSystemDialerPackage() { return (java.lang.String) meglerProps.get("SystemDialerPackage"); }
+    public android.telecom.PhoneAccountHandle getUserSelectedOutgoingPhoneAccount() { return (android.telecom.PhoneAccountHandle) meglerProps.get("UserSelectedOutgoingPhoneAccount"); }
     public java.lang.String getVoiceMailNumber(android.telecom.PhoneAccountHandle p0) { return null; }
     public void handleCallIntent(android.content.Intent p0, java.lang.String p1) {}
     public boolean handleMmi(java.lang.String p0) { return false; }
     public boolean handleMmi(java.lang.String p0, android.telecom.PhoneAccountHandle p1) { return false; }
     public boolean hasForegroundServiceDelegation(android.telecom.PhoneAccountHandle p0) { return false; }
     public boolean hasManageOngoingCallsPermission() { return false; }
-    public boolean isInCall() { return (megletProps.get("InCall") instanceof Boolean ? (Boolean) megletProps.get("InCall") : false); }
-    public boolean isInEmergencyCall() { return (megletProps.get("InEmergencyCall") instanceof Boolean ? (Boolean) megletProps.get("InEmergencyCall") : false); }
-    public boolean isInExternalCall() { return (megletProps.get("InExternalCall") instanceof Boolean ? (Boolean) megletProps.get("InExternalCall") : false); }
-    public boolean isInManagedCall() { return (megletProps.get("InManagedCall") instanceof Boolean ? (Boolean) megletProps.get("InManagedCall") : false); }
+    public boolean isInCall() { return (meglerProps.get("InCall") instanceof Boolean ? (Boolean) meglerProps.get("InCall") : false); }
+    public boolean isInEmergencyCall() { return (meglerProps.get("InEmergencyCall") instanceof Boolean ? (Boolean) meglerProps.get("InEmergencyCall") : false); }
+    public boolean isInExternalCall() { return (meglerProps.get("InExternalCall") instanceof Boolean ? (Boolean) meglerProps.get("InExternalCall") : false); }
+    public boolean isInManagedCall() { return (meglerProps.get("InManagedCall") instanceof Boolean ? (Boolean) meglerProps.get("InManagedCall") : false); }
     public boolean isInSelfManagedCall(java.lang.String p0, android.os.UserHandle p1) { return false; }
     public boolean isIncomingCallPermitted(android.telecom.PhoneAccountHandle p0) { return false; }
     public boolean isOutgoingCallPermitted(android.telecom.PhoneAccountHandle p0) { return false; }
-    public boolean isRinging() { return (megletProps.get("Ringing") instanceof Boolean ? (Boolean) megletProps.get("Ringing") : false); }
-    public boolean isTtySupported() { return (megletProps.get("TtySupported") instanceof Boolean ? (Boolean) megletProps.get("TtySupported") : false); }
+    public boolean isRinging() { return (meglerProps.get("Ringing") instanceof Boolean ? (Boolean) meglerProps.get("Ringing") : false); }
+    public boolean isTtySupported() { return (meglerProps.get("TtySupported") instanceof Boolean ? (Boolean) meglerProps.get("TtySupported") : false); }
     public boolean isVoiceMailNumber(android.telecom.PhoneAccountHandle p0, java.lang.String p1) { return false; }
     public void placeCall(android.net.Uri p0, android.os.Bundle p1) {}
     public void registerPhoneAccount(android.telecom.PhoneAccount p0) {}
-    public void setCallConnectedIndicatorPreference(int p0) { megletProps.put("CallConnectedIndicatorPreference", Integer.valueOf(p0)); }
+    public void setCallConnectedIndicatorPreference(int p0) { meglerProps.put("CallConnectedIndicatorPreference", Integer.valueOf(p0)); }
     public boolean setDefaultDialer(java.lang.String p0) { return false; }
-    public void setUserSelectedOutgoingPhoneAccount(android.telecom.PhoneAccountHandle p0) { megletProps.put("UserSelectedOutgoingPhoneAccount", p0); }
+    public void setUserSelectedOutgoingPhoneAccount(android.telecom.PhoneAccountHandle p0) { meglerProps.put("UserSelectedOutgoingPhoneAccount", p0); }
     public void showInCallScreen(boolean p0) {}
     public void silenceRinger() {}
     public void startConference(java.util.List p0, android.os.Bundle p1) {}

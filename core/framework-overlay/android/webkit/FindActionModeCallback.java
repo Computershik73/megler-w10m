@@ -64,7 +64,7 @@ public class FindActionModeCallback implements ActionMode.Callback, TextWatcher,
         mInput = context.getSystemService(InputMethodManager.class);
     }
 
-    /** Meglet: one of the platform's own resources, by its name in the Android root's framework-res.apk. */
+    /** Megler: one of the platform's own resources, by its name in the Android root's framework-res.apk. */
     private int internal(String type, String name) {
         return mResources.getIdentifier(name, type, "android");
     }
@@ -183,7 +183,7 @@ public class FindActionModeCallback implements ActionMode.Callback, TextWatcher,
         if (mNumberOfMatches == 0) {
             mMatches.setText(internal("string", "no_matches"));
         } else {
-            // Meglet: Android 9's framework-res has matches_found as plurals; Android 15's is an ICU message.
+            // Megler: Android 9's framework-res has matches_found as plurals; Android 15's is an ICU message.
             mMatches.setText(mResources.getQuantityString(internal("plurals", "matches_found"),
                     mNumberOfMatches, mActiveMatchIndex + 1, mNumberOfMatches));
         }

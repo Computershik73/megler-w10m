@@ -15,7 +15,7 @@
  * documentation has it do, is told the truth.
  *
  * libandroid: ANativeWindow_fromSurface on the framework's Surface of a
- * SurfaceView (its megletView) or of a SurfaceTexture (its megletTexture): a
+ * SurfaceView (its meglerView) or of a SurfaceTexture (its meglerTexture): a
  * window of the view's surface or of the texture, below. A Surface a driver
  * made carries its window as it always did.
  */
@@ -97,12 +97,12 @@ static int g_bitmap_unlock(void *env, mg_jobj *bitmap)
  * view's hole, composed into the window as the frames of an EGL surface made from Java on the view are. Drawn on in software
  * (ANativeWindow_lock, unlockAndPost), the buffer is memory of the window's own, kept from one frame to the next as Android's
  * is in effect (it copies the last frame back); a post turns it into one of two Bitmaps in turn, B, G, R, A, opaque, and hands
- * that to the view as a whole frame (SurfaceView.megletPostBitmap, which the camera's preview uses too), which the view draws in
+ * that to the view as a whole frame (SurfaceView.meglerPostBitmap, which the camera's preview uses too), which the view draws in
  * its place scaled to it. Posts are paced at sixty a second, as a swap is.
  *
  * A SurfaceTexture's Surface (a TextureView's, or one an app made) has a window of the texture: its size the texture's default
  * buffer size, its format RGBA_8888, valid until the texture is released. Its frames go to the texture through the framework's
- * way in for a native producer's frame (SurfaceTexture.megletPostRgba): an EGL surface on it is a pbuffer on no view whose frame
+ * way in for a native producer's frame (SurfaceTexture.meglerPostRgba): an EGL surface on it is a pbuffer on no view whose frame
  * is read back at each swap, R, G, B, A, and handed over the right way up; a software buffer is handed over as R, G, B, A.
  */
 
@@ -223,7 +223,7 @@ static void post_rgba(mg_jobj *texture, const void *rgba, int width, int height,
     args[1].i = width;
     args[2].i = height;
     args[3].z = flip;
-    if (!mg_dvm_call_virtual(texture, "megletPostRgba", "(JIIZ)V", args, NULL)) mg_dvm_clear_pending();
+    if (!mg_dvm_call_virtual(texture, "meglerPostRgba", "(JIIZ)V", args, NULL)) mg_dvm_clear_pending();
 }
 
 static void *vw_egl_create(mg_nwindow *b, void *const *configs, int count)
@@ -431,7 +431,7 @@ static void post(view_window *w)
     memset(args, 0, sizeof(args));
     args[0].l = w->bitmaps[w->next];
     ret.j = 0;
-    if (!mg_dvm_call_virtual(w->view, "megletPostBitmap", "(Landroid/graphics/Bitmap;)Z", args, &ret)) mg_dvm_clear_pending();
+    if (!mg_dvm_call_virtual(w->view, "meglerPostBitmap", "(Landroid/graphics/Bitmap;)Z", args, &ret)) mg_dvm_clear_pending();
     /* The view has this one as its front buffer now: the next post goes into the other. */
     else if (ret.z) w->next ^= 1;
 }
@@ -558,10 +558,10 @@ static mg_nwindow *g_window_from_surface(void *env, mg_jobj *surface)
         return w;
     }
     v.j = 0;
-    if (!mg_dvm_get_field(surface, "megletView", &v)) mg_dvm_clear_pending();
+    if (!mg_dvm_get_field(surface, "meglerView", &v)) mg_dvm_clear_pending();
     if (v.l) return window_of(v.l, NULL);
     v.j = 0;
-    if (!mg_dvm_get_field(surface, "megletTexture", &v)) mg_dvm_clear_pending();
+    if (!mg_dvm_get_field(surface, "meglerTexture", &v)) mg_dvm_clear_pending();
     if (v.l) return window_of(NULL, v.l);
     mg_note_once("java: ANativeWindow_fromSurface on a Surface of neither a SurfaceView nor a SurfaceTexture: no window of it here, NULL");
     return NULL;

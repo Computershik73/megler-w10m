@@ -3,20 +3,20 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class StepsRecord extends android.health.connect.datatypes.IntervalRecord {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.health.connect.datatypes.AggregationType STEPS_COUNT_TOTAL;
-    public long getCount() { return (megletProps.get("Count") instanceof Long ? (Long) megletProps.get("Count") : 0L); }
+    public long getCount() { return (meglerProps.get("Count") instanceof Long ? (Long) meglerProps.get("Count") : 0L); }
     public android.health.connect.internal.datatypes.StepsRecordInternal toRecordInternal() { return null; }
     protected StepsRecord() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.health.connect.datatypes.Metadata p0, java.time.Instant p1, java.time.Instant p2, long p3) {}
-        public android.health.connect.datatypes.StepsRecord build() { android.health.connect.datatypes.StepsRecord x = new android.health.connect.datatypes.StepsRecord(); x.megletProps.putAll(megletProps); return x; }
+        public android.health.connect.datatypes.StepsRecord build() { android.health.connect.datatypes.StepsRecord x = new android.health.connect.datatypes.StepsRecord(); x.meglerProps.putAll(meglerProps); return x; }
         public android.health.connect.datatypes.StepsRecord buildWithoutValidation() { return null; }
         public android.health.connect.datatypes.StepsRecord.Builder clearEndZoneOffset() { return this; }
         public android.health.connect.datatypes.StepsRecord.Builder clearStartZoneOffset() { return this; }
-        public android.health.connect.datatypes.StepsRecord.Builder setEndZoneOffset(java.time.ZoneOffset p0) { megletProps.put("EndZoneOffset", p0); return this; }
-        public android.health.connect.datatypes.StepsRecord.Builder setStartZoneOffset(java.time.ZoneOffset p0) { megletProps.put("StartZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.StepsRecord.Builder setEndZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("EndZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.StepsRecord.Builder setStartZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("StartZoneOffset", p0); return this; }
         Builder() { this((android.health.connect.datatypes.Metadata) null, (java.time.Instant) null, (java.time.Instant) null, (long) 0L); }
     }
 }

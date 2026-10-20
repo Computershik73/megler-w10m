@@ -3,7 +3,7 @@ package android.hardware.usb;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class UsbConstants {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int USB_CLASS_APP_SPEC = 254;
     public static final int USB_CLASS_AUDIO = 1;
     public static final int USB_CLASS_CDC_DATA = 10;

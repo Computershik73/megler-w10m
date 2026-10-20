@@ -3,18 +3,18 @@ package android.nfc;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Tag implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public Tag(byte[] p0, int[] p1, android.os.Bundle[] p2, int p3, long p4, android.nfc.INfcTag p5) {}
     public static android.nfc.Tag createMockTag(byte[] p0, int[] p1, android.os.Bundle[] p2, long p3) { return new Tag(); }
     public int describeContents() { return 0; }
-    public int getConnectedTechnology() { return (megletProps.get("ConnectedTechnology") instanceof Integer ? (Integer) megletProps.get("ConnectedTechnology") : 0); }
-    public byte[] getId() { return (byte[]) megletProps.get("Id"); }
-    public int getServiceHandle() { return (megletProps.get("ServiceHandle") instanceof Integer ? (Integer) megletProps.get("ServiceHandle") : 0); }
-    public android.nfc.INfcTag getTagService() { return (android.nfc.INfcTag) megletProps.get("TagService"); }
-    public int[] getTechCodeList() { return (int[]) megletProps.get("TechCodeList"); }
+    public int getConnectedTechnology() { return (meglerProps.get("ConnectedTechnology") instanceof Integer ? (Integer) meglerProps.get("ConnectedTechnology") : 0); }
+    public byte[] getId() { return (byte[]) meglerProps.get("Id"); }
+    public int getServiceHandle() { return (meglerProps.get("ServiceHandle") instanceof Integer ? (Integer) meglerProps.get("ServiceHandle") : 0); }
+    public android.nfc.INfcTag getTagService() { return (android.nfc.INfcTag) meglerProps.get("TagService"); }
+    public int[] getTechCodeList() { return (int[]) meglerProps.get("TechCodeList"); }
     public android.os.Bundle getTechExtras(int p0) { return null; }
-    public java.lang.String[] getTechList() { return (java.lang.String[]) megletProps.get("TechList"); }
+    public java.lang.String[] getTechList() { return (java.lang.String[]) meglerProps.get("TechList"); }
     public boolean hasTech(int p0) { return false; }
     public android.nfc.Tag rediscover() { return this; }
     public boolean setConnectedTechnology(int p0) { return false; }

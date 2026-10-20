@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MediaActionSound {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int FOCUS_COMPLETE = 1;
     public static final int SHUTTER_CLICK = 0;
     public static final int START_VIDEO_RECORDING = 2;

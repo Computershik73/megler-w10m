@@ -3,13 +3,13 @@ package android.renderscript;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ScriptIntrinsicBlur extends android.renderscript.ScriptIntrinsic {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.renderscript.ScriptIntrinsicBlur create(android.renderscript.RenderScript p0, android.renderscript.Element p1) { return new ScriptIntrinsicBlur(); }
     public void forEach(android.renderscript.Allocation p0) {}
     public void forEach(android.renderscript.Allocation p0, android.renderscript.Script.LaunchOptions p1) {}
-    public android.renderscript.Script.FieldID getFieldID_Input() { return (android.renderscript.Script.FieldID) megletProps.get("FieldID_Input"); }
-    public android.renderscript.Script.KernelID getKernelID() { return (android.renderscript.Script.KernelID) megletProps.get("KernelID"); }
-    public void setInput(android.renderscript.Allocation p0) { megletProps.put("Input", p0); }
-    public void setRadius(float p0) { megletProps.put("Radius", Float.valueOf(p0)); }
+    public android.renderscript.Script.FieldID getFieldID_Input() { return (android.renderscript.Script.FieldID) meglerProps.get("FieldID_Input"); }
+    public android.renderscript.Script.KernelID getKernelID() { return (android.renderscript.Script.KernelID) meglerProps.get("KernelID"); }
+    public void setInput(android.renderscript.Allocation p0) { meglerProps.put("Input", p0); }
+    public void setRadius(float p0) { meglerProps.put("Radius", Float.valueOf(p0)); }
     protected ScriptIntrinsicBlur() { super(); }
 }

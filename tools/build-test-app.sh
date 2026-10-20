@@ -27,26 +27,26 @@
 # Nothing is rebuilt when an APK is newer than its sources, unless --force is
 # given. Nothing is downloaded.
 #
-#   MEGLET_JDK          a JDK's folder (C:\Program Files\Java\jdk1.8.0_202)
-#   MEGLET_ANDROID_SDK  an Android SDK with build-tools 29.0.3 (aapt2, d8)
+#   MEGLER_JDK          a JDK's folder (C:\Program Files\Java\jdk1.8.0_202)
+#   MEGLER_ANDROID_SDK  an Android SDK with build-tools 29.0.3 (aapt2, d8)
 #                          and platforms/android-29 (the user's Documents
 #                          folder). The apps use nothing newer than API 28.
-#   MEGLET_NDK          an Android NDK (android-ndk-r21e in the user's
+#   MEGLER_NDK          an Android NDK (android-ndk-r21e in the user's
 #                          Documents folder), for the apps with jni/.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-JDK="${MEGLET_JDK:-/c/Program Files/Java/jdk1.8.0_202}"
-SDK="${MEGLET_ANDROID_SDK:-$USERPROFILE/Documents}"
+JDK="${MEGLER_JDK:-/c/Program Files/Java/jdk1.8.0_202}"
+SDK="${MEGLER_ANDROID_SDK:-$USERPROFILE/Documents}"
 BT="$SDK/build-tools/29.0.3"
-NDK="${MEGLET_NDK:-$USERPROFILE/Documents/android-ndk-r21e}"
+NDK="${MEGLER_NDK:-$USERPROFILE/Documents/android-ndk-r21e}"
 NDKCC="$NDK/toolchains/llvm/prebuilt/windows-x86_64/bin/clang.exe"
 JAR="$SDK/platforms/android-29/android.jar"
 APPS="$ROOT/core/tests/app"
 OUT="$ROOT/build/guest/java"
 FORCE=0
 [ "${1:-}" = --force ] && FORCE=1
-[ -f "$BT/aapt2.exe" ] && [ -f "$BT/lib/d8.jar" ] && [ -f "$JAR" ] || { echo "no build-tools/29.0.3 (aapt2.exe, lib/d8.jar) or platforms/android-29/android.jar in $SDK (MEGLET_ANDROID_SDK)" >&2; exit 1; }
-[ -f "$JDK/bin/javac.exe" ] || [ -x "$JDK/bin/javac" ] || { echo "no javac in $JDK (MEGLET_JDK)" >&2; exit 1; }
+[ -f "$BT/aapt2.exe" ] && [ -f "$BT/lib/d8.jar" ] && [ -f "$JAR" ] || { echo "no build-tools/29.0.3 (aapt2.exe, lib/d8.jar) or platforms/android-29/android.jar in $SDK (MEGLER_ANDROID_SDK)" >&2; exit 1; }
+[ -f "$JDK/bin/javac.exe" ] || [ -x "$JDK/bin/javac" ] || { echo "no javac in $JDK (MEGLER_JDK)" >&2; exit 1; }
 m() { cygpath -m "$1"; }
 mkdir -p "$OUT"
 
@@ -82,7 +82,7 @@ for app in "$APPS"/*/; do
     CC=-
     [ -f "$NDKCC" ] && CC="$(m "$NDKCC")"
     if [ -d "$app/jni" ] && [ "$CC" = - ]; then
-      echo "(no NDK at $NDK (MEGLET_NDK): the test app $name, which has native code, is not built)"
+      echo "(no NDK at $NDK (MEGLER_NDK): the test app $name, which has native code, is not built)"
       rm -f "$OUT/$name.apks" "$OUT/$name.xapk" "$OUT/$name-base.apk"
       continue
     fi
@@ -96,7 +96,7 @@ for app in "$APPS"/*/; do
     continue
   fi
   if [ -d "$app/jni" ] && [ ! -f "$NDKCC" ]; then
-    echo "(no NDK at $NDK (MEGLET_NDK): the test app $name, which has native code, is not built)"
+    echo "(no NDK at $NDK (MEGLER_NDK): the test app $name, which has native code, is not built)"
     rm -f "$apk"
     continue
   fi

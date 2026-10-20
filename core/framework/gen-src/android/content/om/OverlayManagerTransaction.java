@@ -3,29 +3,29 @@ package android.content.om;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class OverlayManagerTransaction implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static android.content.om.OverlayManagerTransaction newInstance() { return new OverlayManagerTransaction(); }
     public int describeContents() { return 0; }
-    public java.util.Iterator getRequests() { return (java.util.Iterator) megletProps.get("Requests"); }
+    public java.util.Iterator getRequests() { return (java.util.Iterator) meglerProps.get("Requests"); }
     public void registerFabricatedOverlay(android.content.om.FabricatedOverlay p0) {}
     public void unregisterFabricatedOverlay(android.content.om.OverlayIdentifier p0) {}
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected OverlayManagerTransaction() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.content.om.OverlayManagerTransaction build() { android.content.om.OverlayManagerTransaction x = new android.content.om.OverlayManagerTransaction(); x.megletProps.putAll(megletProps); return x; }
+        public android.content.om.OverlayManagerTransaction build() { android.content.om.OverlayManagerTransaction x = new android.content.om.OverlayManagerTransaction(); x.meglerProps.putAll(meglerProps); return x; }
         public android.content.om.OverlayManagerTransaction.Builder registerFabricatedOverlay(android.content.om.FabricatedOverlay p0) { return this; }
         public android.content.om.OverlayManagerTransaction.Builder setEnabled(android.content.om.OverlayIdentifier p0, boolean p1) { return this; }
         public android.content.om.OverlayManagerTransaction.Builder setEnabled(android.content.om.OverlayIdentifier p0, boolean p1, int p2) { return this; }
         public android.content.om.OverlayManagerTransaction.Builder setEnabled(android.content.om.OverlayIdentifier p0, boolean p1, int p2, java.util.List p3) { return this; }
         public android.content.om.OverlayManagerTransaction.Builder setEnabled(android.content.om.OverlayIdentifier p0, boolean p1, java.util.List p2) { return this; }
-        public android.content.om.OverlayManagerTransaction.Builder setSelfTargeting(boolean p0) { megletProps.put("SelfTargeting", Boolean.valueOf(p0)); return this; }
+        public android.content.om.OverlayManagerTransaction.Builder setSelfTargeting(boolean p0) { meglerProps.put("SelfTargeting", Boolean.valueOf(p0)); return this; }
         public android.content.om.OverlayManagerTransaction.Builder unregisterFabricatedOverlay(android.content.om.OverlayIdentifier p0) { return this; }
     }
     public static final class Request {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String BUNDLE_FABRICATED_OVERLAY = "fabricated_overlay";
         public static final int TYPE_REGISTER_FABRICATED = 2;
         public static final int TYPE_SET_DISABLED = 1;

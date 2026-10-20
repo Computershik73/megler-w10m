@@ -3,7 +3,7 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class LocalSocket implements java.io.Closeable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int SOCKET_DGRAM = 1;
     public static final int SOCKET_SEQPACKET = 3;
     public static final int SOCKET_STREAM = 2;
@@ -14,25 +14,25 @@ public class LocalSocket implements java.io.Closeable {
     public void close() {}
     public void connect(android.net.LocalSocketAddress p0) {}
     public void connect(android.net.LocalSocketAddress p0, int p1) {}
-    public java.io.FileDescriptor[] getAncillaryFileDescriptors() { return (java.io.FileDescriptor[]) megletProps.get("AncillaryFileDescriptors"); }
-    public java.io.FileDescriptor getFileDescriptor() { return (java.io.FileDescriptor) megletProps.get("FileDescriptor"); }
-    public java.io.InputStream getInputStream() { return (java.io.InputStream) megletProps.get("InputStream"); }
-    public android.net.LocalSocketAddress getLocalSocketAddress() { return (android.net.LocalSocketAddress) megletProps.get("LocalSocketAddress"); }
-    public java.io.OutputStream getOutputStream() { return (java.io.OutputStream) megletProps.get("OutputStream"); }
-    public android.net.Credentials getPeerCredentials() { return (android.net.Credentials) megletProps.get("PeerCredentials"); }
-    public int getReceiveBufferSize() { return (megletProps.get("ReceiveBufferSize") instanceof Integer ? (Integer) megletProps.get("ReceiveBufferSize") : 0); }
-    public android.net.LocalSocketAddress getRemoteSocketAddress() { return (android.net.LocalSocketAddress) megletProps.get("RemoteSocketAddress"); }
-    public int getSendBufferSize() { return (megletProps.get("SendBufferSize") instanceof Integer ? (Integer) megletProps.get("SendBufferSize") : 0); }
-    public int getSoTimeout() { return (megletProps.get("SoTimeout") instanceof Integer ? (Integer) megletProps.get("SoTimeout") : 0); }
-    public boolean isBound() { return (megletProps.get("Bound") instanceof Boolean ? (Boolean) megletProps.get("Bound") : false); }
-    public boolean isClosed() { return (megletProps.get("Closed") instanceof Boolean ? (Boolean) megletProps.get("Closed") : false); }
-    public boolean isConnected() { return (megletProps.get("Connected") instanceof Boolean ? (Boolean) megletProps.get("Connected") : false); }
-    public boolean isInputShutdown() { return (megletProps.get("InputShutdown") instanceof Boolean ? (Boolean) megletProps.get("InputShutdown") : false); }
-    public boolean isOutputShutdown() { return (megletProps.get("OutputShutdown") instanceof Boolean ? (Boolean) megletProps.get("OutputShutdown") : false); }
-    public void setFileDescriptorsForSend(java.io.FileDescriptor[] p0) { megletProps.put("FileDescriptorsForSend", p0); }
-    public void setReceiveBufferSize(int p0) { megletProps.put("ReceiveBufferSize", Integer.valueOf(p0)); }
-    public void setSendBufferSize(int p0) { megletProps.put("SendBufferSize", Integer.valueOf(p0)); }
-    public void setSoTimeout(int p0) { megletProps.put("SoTimeout", Integer.valueOf(p0)); }
+    public java.io.FileDescriptor[] getAncillaryFileDescriptors() { return (java.io.FileDescriptor[]) meglerProps.get("AncillaryFileDescriptors"); }
+    public java.io.FileDescriptor getFileDescriptor() { return (java.io.FileDescriptor) meglerProps.get("FileDescriptor"); }
+    public java.io.InputStream getInputStream() { return (java.io.InputStream) meglerProps.get("InputStream"); }
+    public android.net.LocalSocketAddress getLocalSocketAddress() { return (android.net.LocalSocketAddress) meglerProps.get("LocalSocketAddress"); }
+    public java.io.OutputStream getOutputStream() { return (java.io.OutputStream) meglerProps.get("OutputStream"); }
+    public android.net.Credentials getPeerCredentials() { return (android.net.Credentials) meglerProps.get("PeerCredentials"); }
+    public int getReceiveBufferSize() { return (meglerProps.get("ReceiveBufferSize") instanceof Integer ? (Integer) meglerProps.get("ReceiveBufferSize") : 0); }
+    public android.net.LocalSocketAddress getRemoteSocketAddress() { return (android.net.LocalSocketAddress) meglerProps.get("RemoteSocketAddress"); }
+    public int getSendBufferSize() { return (meglerProps.get("SendBufferSize") instanceof Integer ? (Integer) meglerProps.get("SendBufferSize") : 0); }
+    public int getSoTimeout() { return (meglerProps.get("SoTimeout") instanceof Integer ? (Integer) meglerProps.get("SoTimeout") : 0); }
+    public boolean isBound() { return (meglerProps.get("Bound") instanceof Boolean ? (Boolean) meglerProps.get("Bound") : false); }
+    public boolean isClosed() { return (meglerProps.get("Closed") instanceof Boolean ? (Boolean) meglerProps.get("Closed") : false); }
+    public boolean isConnected() { return (meglerProps.get("Connected") instanceof Boolean ? (Boolean) meglerProps.get("Connected") : false); }
+    public boolean isInputShutdown() { return (meglerProps.get("InputShutdown") instanceof Boolean ? (Boolean) meglerProps.get("InputShutdown") : false); }
+    public boolean isOutputShutdown() { return (meglerProps.get("OutputShutdown") instanceof Boolean ? (Boolean) meglerProps.get("OutputShutdown") : false); }
+    public void setFileDescriptorsForSend(java.io.FileDescriptor[] p0) { meglerProps.put("FileDescriptorsForSend", p0); }
+    public void setReceiveBufferSize(int p0) { meglerProps.put("ReceiveBufferSize", Integer.valueOf(p0)); }
+    public void setSendBufferSize(int p0) { meglerProps.put("SendBufferSize", Integer.valueOf(p0)); }
+    public void setSoTimeout(int p0) { meglerProps.put("SoTimeout", Integer.valueOf(p0)); }
     public void shutdownInput() {}
     public void shutdownOutput() {}
 }

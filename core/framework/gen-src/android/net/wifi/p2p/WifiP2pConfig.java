@@ -3,7 +3,7 @@ package android.net.wifi.p2p;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class WifiP2pConfig implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int GROUP_CLIENT_IP_PROVISIONING_MODE_IPV4_DHCP = 0;
     public static final int GROUP_CLIENT_IP_PROVISIONING_MODE_IPV6_LINK_LOCAL = 1;
@@ -32,35 +32,35 @@ public class WifiP2pConfig implements android.os.Parcelable {
     public WifiP2pConfig(android.net.wifi.p2p.WifiP2pConfig p0) {}
     public WifiP2pConfig(java.lang.String p0) {}
     public int describeContents() { return 0; }
-    public int getGroupClientIpProvisioningMode() { return (megletProps.get("GroupClientIpProvisioningMode") instanceof Integer ? (Integer) megletProps.get("GroupClientIpProvisioningMode") : 0); }
-    public int getGroupOwnerBand() { return (megletProps.get("GroupOwnerBand") instanceof Integer ? (Integer) megletProps.get("GroupOwnerBand") : 0); }
-    public int getGroupOwnerVersion() { return (megletProps.get("GroupOwnerVersion") instanceof Integer ? (Integer) megletProps.get("GroupOwnerVersion") : 0); }
-    public int getNetworkId() { return (megletProps.get("NetworkId") instanceof Integer ? (Integer) megletProps.get("NetworkId") : 0); }
-    public java.lang.String getNetworkName() { return (java.lang.String) megletProps.get("NetworkName"); }
-    public android.net.wifi.p2p.WifiP2pPairingBootstrappingConfig getPairingBootstrappingConfig() { return (android.net.wifi.p2p.WifiP2pPairingBootstrappingConfig) megletProps.get("PairingBootstrappingConfig"); }
-    public java.lang.String getPassphrase() { return (java.lang.String) megletProps.get("Passphrase"); }
-    public int getPccModeConnectionType() { return (megletProps.get("PccModeConnectionType") instanceof Integer ? (Integer) megletProps.get("PccModeConnectionType") : 0); }
-    public java.util.List getVendorData() { return (megletProps.get("VendorData") != null ? (java.util.List) megletProps.get("VendorData") : new java.util.ArrayList()); }
+    public int getGroupClientIpProvisioningMode() { return (meglerProps.get("GroupClientIpProvisioningMode") instanceof Integer ? (Integer) meglerProps.get("GroupClientIpProvisioningMode") : 0); }
+    public int getGroupOwnerBand() { return (meglerProps.get("GroupOwnerBand") instanceof Integer ? (Integer) meglerProps.get("GroupOwnerBand") : 0); }
+    public int getGroupOwnerVersion() { return (meglerProps.get("GroupOwnerVersion") instanceof Integer ? (Integer) meglerProps.get("GroupOwnerVersion") : 0); }
+    public int getNetworkId() { return (meglerProps.get("NetworkId") instanceof Integer ? (Integer) meglerProps.get("NetworkId") : 0); }
+    public java.lang.String getNetworkName() { return (java.lang.String) meglerProps.get("NetworkName"); }
+    public android.net.wifi.p2p.WifiP2pPairingBootstrappingConfig getPairingBootstrappingConfig() { return (android.net.wifi.p2p.WifiP2pPairingBootstrappingConfig) meglerProps.get("PairingBootstrappingConfig"); }
+    public java.lang.String getPassphrase() { return (java.lang.String) meglerProps.get("Passphrase"); }
+    public int getPccModeConnectionType() { return (meglerProps.get("PccModeConnectionType") instanceof Integer ? (Integer) meglerProps.get("PccModeConnectionType") : 0); }
+    public java.util.List getVendorData() { return (meglerProps.get("VendorData") != null ? (java.util.List) meglerProps.get("VendorData") : new java.util.ArrayList()); }
     public void invalidate() {}
-    public boolean isAuthorizeConnectionFromPeerEnabled() { return (megletProps.get("AuthorizeConnectionFromPeerEnabled") instanceof Boolean ? (Boolean) megletProps.get("AuthorizeConnectionFromPeerEnabled") : false); }
-    public boolean isJoinExistingGroup() { return (megletProps.get("JoinExistingGroup") instanceof Boolean ? (Boolean) megletProps.get("JoinExistingGroup") : false); }
-    public void setGroupOwnerVersion(int p0) { megletProps.put("GroupOwnerVersion", Integer.valueOf(p0)); }
-    public void setVendorData(java.util.List p0) { megletProps.put("VendorData", p0); }
+    public boolean isAuthorizeConnectionFromPeerEnabled() { return (meglerProps.get("AuthorizeConnectionFromPeerEnabled") instanceof Boolean ? (Boolean) meglerProps.get("AuthorizeConnectionFromPeerEnabled") : false); }
+    public boolean isJoinExistingGroup() { return (meglerProps.get("JoinExistingGroup") instanceof Boolean ? (Boolean) meglerProps.get("JoinExistingGroup") : false); }
+    public void setGroupOwnerVersion(int p0) { meglerProps.put("GroupOwnerVersion", Integer.valueOf(p0)); }
+    public void setVendorData(java.util.List p0) { meglerProps.put("VendorData", p0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.net.wifi.p2p.WifiP2pConfig build() { android.net.wifi.p2p.WifiP2pConfig x = new android.net.wifi.p2p.WifiP2pConfig(); x.megletProps.putAll(megletProps); return x; }
+        public android.net.wifi.p2p.WifiP2pConfig build() { android.net.wifi.p2p.WifiP2pConfig x = new android.net.wifi.p2p.WifiP2pConfig(); x.meglerProps.putAll(meglerProps); return x; }
         public android.net.wifi.p2p.WifiP2pConfig.Builder enablePersistentMode(boolean p0) { return this; }
-        public android.net.wifi.p2p.WifiP2pConfig.Builder setAuthorizeConnectionFromPeerEnabled(boolean p0) { megletProps.put("AuthorizeConnectionFromPeerEnabled", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.p2p.WifiP2pConfig.Builder setDeviceAddress(android.net.MacAddress p0) { megletProps.put("DeviceAddress", p0); return this; }
-        public android.net.wifi.p2p.WifiP2pConfig.Builder setGroupClientIpProvisioningMode(int p0) { megletProps.put("GroupClientIpProvisioningMode", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.p2p.WifiP2pConfig.Builder setGroupOperatingBand(int p0) { megletProps.put("GroupOperatingBand", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.p2p.WifiP2pConfig.Builder setGroupOperatingFrequency(int p0) { megletProps.put("GroupOperatingFrequency", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.p2p.WifiP2pConfig.Builder setJoinExistingGroup(boolean p0) { megletProps.put("JoinExistingGroup", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.p2p.WifiP2pConfig.Builder setNetworkName(java.lang.String p0) { megletProps.put("NetworkName", p0); return this; }
-        public android.net.wifi.p2p.WifiP2pConfig.Builder setPairingBootstrappingConfig(android.net.wifi.p2p.WifiP2pPairingBootstrappingConfig p0) { megletProps.put("PairingBootstrappingConfig", p0); return this; }
-        public android.net.wifi.p2p.WifiP2pConfig.Builder setPassphrase(java.lang.String p0) { megletProps.put("Passphrase", p0); return this; }
-        public android.net.wifi.p2p.WifiP2pConfig.Builder setPccModeConnectionType(int p0) { megletProps.put("PccModeConnectionType", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.p2p.WifiP2pConfig.Builder setAuthorizeConnectionFromPeerEnabled(boolean p0) { meglerProps.put("AuthorizeConnectionFromPeerEnabled", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.p2p.WifiP2pConfig.Builder setDeviceAddress(android.net.MacAddress p0) { meglerProps.put("DeviceAddress", p0); return this; }
+        public android.net.wifi.p2p.WifiP2pConfig.Builder setGroupClientIpProvisioningMode(int p0) { meglerProps.put("GroupClientIpProvisioningMode", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.p2p.WifiP2pConfig.Builder setGroupOperatingBand(int p0) { meglerProps.put("GroupOperatingBand", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.p2p.WifiP2pConfig.Builder setGroupOperatingFrequency(int p0) { meglerProps.put("GroupOperatingFrequency", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.p2p.WifiP2pConfig.Builder setJoinExistingGroup(boolean p0) { meglerProps.put("JoinExistingGroup", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.p2p.WifiP2pConfig.Builder setNetworkName(java.lang.String p0) { meglerProps.put("NetworkName", p0); return this; }
+        public android.net.wifi.p2p.WifiP2pConfig.Builder setPairingBootstrappingConfig(android.net.wifi.p2p.WifiP2pPairingBootstrappingConfig p0) { meglerProps.put("PairingBootstrappingConfig", p0); return this; }
+        public android.net.wifi.p2p.WifiP2pConfig.Builder setPassphrase(java.lang.String p0) { meglerProps.put("Passphrase", p0); return this; }
+        public android.net.wifi.p2p.WifiP2pConfig.Builder setPccModeConnectionType(int p0) { meglerProps.put("PccModeConnectionType", Integer.valueOf(p0)); return this; }
     }
 }

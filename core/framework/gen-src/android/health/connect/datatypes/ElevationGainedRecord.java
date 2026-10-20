@@ -3,20 +3,20 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ElevationGainedRecord extends android.health.connect.datatypes.IntervalRecord {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.health.connect.datatypes.AggregationType ELEVATION_GAINED_TOTAL;
-    public android.health.connect.datatypes.units.Length getElevation() { return (android.health.connect.datatypes.units.Length) megletProps.get("Elevation"); }
+    public android.health.connect.datatypes.units.Length getElevation() { return (android.health.connect.datatypes.units.Length) meglerProps.get("Elevation"); }
     public android.health.connect.internal.datatypes.ElevationGainedRecordInternal toRecordInternal() { return null; }
     protected ElevationGainedRecord() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.health.connect.datatypes.Metadata p0, java.time.Instant p1, java.time.Instant p2, android.health.connect.datatypes.units.Length p3) {}
-        public android.health.connect.datatypes.ElevationGainedRecord build() { android.health.connect.datatypes.ElevationGainedRecord x = new android.health.connect.datatypes.ElevationGainedRecord(); x.megletProps.putAll(megletProps); return x; }
+        public android.health.connect.datatypes.ElevationGainedRecord build() { android.health.connect.datatypes.ElevationGainedRecord x = new android.health.connect.datatypes.ElevationGainedRecord(); x.meglerProps.putAll(meglerProps); return x; }
         public android.health.connect.datatypes.ElevationGainedRecord buildWithoutValidation() { return null; }
         public android.health.connect.datatypes.ElevationGainedRecord.Builder clearEndZoneOffset() { return this; }
         public android.health.connect.datatypes.ElevationGainedRecord.Builder clearStartZoneOffset() { return this; }
-        public android.health.connect.datatypes.ElevationGainedRecord.Builder setEndZoneOffset(java.time.ZoneOffset p0) { megletProps.put("EndZoneOffset", p0); return this; }
-        public android.health.connect.datatypes.ElevationGainedRecord.Builder setStartZoneOffset(java.time.ZoneOffset p0) { megletProps.put("StartZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.ElevationGainedRecord.Builder setEndZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("EndZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.ElevationGainedRecord.Builder setStartZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("StartZoneOffset", p0); return this; }
         Builder() { this((android.health.connect.datatypes.Metadata) null, (java.time.Instant) null, (java.time.Instant) null, (android.health.connect.datatypes.units.Length) null); }
     }
 }

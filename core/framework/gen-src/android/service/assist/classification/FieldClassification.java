@@ -3,14 +3,14 @@ package android.service.assist.classification;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class FieldClassification implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public FieldClassification(android.view.autofill.AutofillId p0, java.util.Set p1) {}
     public FieldClassification(android.view.autofill.AutofillId p0, java.util.Set p1, java.util.Set p2) {}
     public int describeContents() { return 0; }
-    public android.view.autofill.AutofillId getAutofillId() { return (android.view.autofill.AutofillId) megletProps.get("AutofillId"); }
-    public java.util.Set getGroupHints() { return (megletProps.get("GroupHints") != null ? (java.util.Set) megletProps.get("GroupHints") : new java.util.HashSet()); }
-    public java.util.Set getHints() { return (megletProps.get("Hints") != null ? (java.util.Set) megletProps.get("Hints") : new java.util.HashSet()); }
+    public android.view.autofill.AutofillId getAutofillId() { return (android.view.autofill.AutofillId) meglerProps.get("AutofillId"); }
+    public java.util.Set getGroupHints() { return (meglerProps.get("GroupHints") != null ? (java.util.Set) meglerProps.get("GroupHints") : new java.util.HashSet()); }
+    public java.util.Set getHints() { return (meglerProps.get("Hints") != null ? (java.util.Set) meglerProps.get("Hints") : new java.util.HashSet()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     FieldClassification() { this((android.view.autofill.AutofillId) null, (java.util.Set) null); }
 }

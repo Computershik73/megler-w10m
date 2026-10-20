@@ -3,17 +3,17 @@ package android.app.appsearch;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PutDocumentsRequest {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public java.util.List getGenericDocuments() { return (megletProps.get("GenericDocuments") != null ? (java.util.List) megletProps.get("GenericDocuments") : new java.util.ArrayList()); }
-    public java.util.List getTakenActionGenericDocuments() { return (megletProps.get("TakenActionGenericDocuments") != null ? (java.util.List) megletProps.get("TakenActionGenericDocuments") : new java.util.ArrayList()); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public java.util.List getGenericDocuments() { return (meglerProps.get("GenericDocuments") != null ? (java.util.List) meglerProps.get("GenericDocuments") : new java.util.ArrayList()); }
+    public java.util.List getTakenActionGenericDocuments() { return (meglerProps.get("TakenActionGenericDocuments") != null ? (java.util.List) meglerProps.get("TakenActionGenericDocuments") : new java.util.ArrayList()); }
     protected PutDocumentsRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
         public android.app.appsearch.PutDocumentsRequest.Builder addGenericDocuments(java.util.Collection p0) { return this; }
         public android.app.appsearch.PutDocumentsRequest.Builder addGenericDocuments(android.app.appsearch.GenericDocument[] p0) { return this; }
         public android.app.appsearch.PutDocumentsRequest.Builder addTakenActionGenericDocuments(java.util.Collection p0) { return this; }
         public android.app.appsearch.PutDocumentsRequest.Builder addTakenActionGenericDocuments(android.app.appsearch.GenericDocument[] p0) { return this; }
-        public android.app.appsearch.PutDocumentsRequest build() { android.app.appsearch.PutDocumentsRequest x = new android.app.appsearch.PutDocumentsRequest(); x.megletProps.putAll(megletProps); return x; }
+        public android.app.appsearch.PutDocumentsRequest build() { android.app.appsearch.PutDocumentsRequest x = new android.app.appsearch.PutDocumentsRequest(); x.meglerProps.putAll(meglerProps); return x; }
     }
 }

@@ -3,7 +3,7 @@ package android.content;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class AsyncQueryHandler extends android.os.Handler {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public AsyncQueryHandler(android.content.ContentResolver p0) { super(); }
     public void cancelOperation(int p0) {}
     protected android.os.Handler createHandler(android.os.Looper p0) { return null; }
@@ -17,7 +17,7 @@ public abstract class AsyncQueryHandler extends android.os.Handler {
     public void startUpdate(int p0, java.lang.Object p1, android.net.Uri p2, android.content.ContentValues p3, java.lang.String p4, java.lang.String[] p5) {}
     AsyncQueryHandler() { this((android.content.ContentResolver) null); }
     public static final class WorkerArgs {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public java.lang.Object cookie;
         public android.os.Handler handler;
         public java.lang.String orderBy;
@@ -30,7 +30,7 @@ public abstract class AsyncQueryHandler extends android.os.Handler {
         protected WorkerArgs() {}
     }
     public static class WorkerHandler extends android.os.Handler {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public WorkerHandler(android.content.AsyncQueryHandler p0, android.os.Looper p1) { super(); }
         public void handleMessage(android.os.Message p0) {}
         WorkerHandler() { this((android.content.AsyncQueryHandler) null, (android.os.Looper) null); }

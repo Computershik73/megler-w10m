@@ -3,10 +3,10 @@ package android.adservices.adselection;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AddAdSelectionFromOutcomesOverrideRequest {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public AddAdSelectionFromOutcomesOverrideRequest(android.adservices.adselection.AdSelectionFromOutcomesConfig p0, java.lang.String p1, android.adservices.common.AdSelectionSignals p2) {}
-    public android.adservices.adselection.AdSelectionFromOutcomesConfig getAdSelectionFromOutcomesConfig() { return (android.adservices.adselection.AdSelectionFromOutcomesConfig) megletProps.get("AdSelectionFromOutcomesConfig"); }
-    public java.lang.String getOutcomeSelectionLogicJs() { return (java.lang.String) megletProps.get("OutcomeSelectionLogicJs"); }
-    public android.adservices.common.AdSelectionSignals getOutcomeSelectionTrustedSignals() { return (android.adservices.common.AdSelectionSignals) megletProps.get("OutcomeSelectionTrustedSignals"); }
+    public android.adservices.adselection.AdSelectionFromOutcomesConfig getAdSelectionFromOutcomesConfig() { return (android.adservices.adselection.AdSelectionFromOutcomesConfig) meglerProps.get("AdSelectionFromOutcomesConfig"); }
+    public java.lang.String getOutcomeSelectionLogicJs() { return (java.lang.String) meglerProps.get("OutcomeSelectionLogicJs"); }
+    public android.adservices.common.AdSelectionSignals getOutcomeSelectionTrustedSignals() { return (android.adservices.common.AdSelectionSignals) meglerProps.get("OutcomeSelectionTrustedSignals"); }
     AddAdSelectionFromOutcomesOverrideRequest() { this((android.adservices.adselection.AdSelectionFromOutcomesConfig) null, (java.lang.String) null, (android.adservices.common.AdSelectionSignals) null); }
 }

@@ -3,19 +3,19 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PictureInPictureUiState implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public PictureInPictureUiState(boolean p0) {}
     public int describeContents() { return 0; }
-    public boolean isStashed() { return (megletProps.get("Stashed") instanceof Boolean ? (Boolean) megletProps.get("Stashed") : false); }
-    public boolean isTransitioningToPip() { return (megletProps.get("TransitioningToPip") instanceof Boolean ? (Boolean) megletProps.get("TransitioningToPip") : false); }
+    public boolean isStashed() { return (meglerProps.get("Stashed") instanceof Boolean ? (Boolean) meglerProps.get("Stashed") : false); }
+    public boolean isTransitioningToPip() { return (meglerProps.get("TransitioningToPip") instanceof Boolean ? (Boolean) meglerProps.get("TransitioningToPip") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     PictureInPictureUiState() { this((boolean) false); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.app.PictureInPictureUiState build() { android.app.PictureInPictureUiState x = new android.app.PictureInPictureUiState(); x.megletProps.putAll(megletProps); return x; }
-        public android.app.PictureInPictureUiState.Builder setStashed(boolean p0) { megletProps.put("Stashed", Boolean.valueOf(p0)); return this; }
-        public android.app.PictureInPictureUiState.Builder setTransitioningToPip(boolean p0) { megletProps.put("TransitioningToPip", Boolean.valueOf(p0)); return this; }
+        public android.app.PictureInPictureUiState build() { android.app.PictureInPictureUiState x = new android.app.PictureInPictureUiState(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.app.PictureInPictureUiState.Builder setStashed(boolean p0) { meglerProps.put("Stashed", Boolean.valueOf(p0)); return this; }
+        public android.app.PictureInPictureUiState.Builder setTransitioningToPip(boolean p0) { meglerProps.put("TransitioningToPip", Boolean.valueOf(p0)); return this; }
     }
 }

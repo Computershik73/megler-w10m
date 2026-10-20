@@ -3,30 +3,30 @@ package android.telecom;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class RemoteConnection {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.telecom.RemoteConnection failure(android.telecom.DisconnectCause p0) { return new RemoteConnection(); }
     public void abort() {}
     public void addConferenceParticipants(java.util.List p0) {}
     public void answer() {}
     public void answer(int p0) {}
     public void disconnect() {}
-    public android.net.Uri getAddress() { return (android.net.Uri) megletProps.get("Address"); }
-    public int getAddressPresentation() { return (megletProps.get("AddressPresentation") instanceof Integer ? (Integer) megletProps.get("AddressPresentation") : 0); }
-    public java.lang.CharSequence getCallerDisplayName() { return (java.lang.CharSequence) megletProps.get("CallerDisplayName"); }
-    public int getCallerDisplayNamePresentation() { return (megletProps.get("CallerDisplayNamePresentation") instanceof Integer ? (Integer) megletProps.get("CallerDisplayNamePresentation") : 0); }
-    public android.telecom.RemoteConference getConference() { return (android.telecom.RemoteConference) megletProps.get("Conference"); }
-    public java.util.List getConferenceableConnections() { return (megletProps.get("ConferenceableConnections") != null ? (java.util.List) megletProps.get("ConferenceableConnections") : new java.util.ArrayList()); }
-    public int getConnectionCapabilities() { return (megletProps.get("ConnectionCapabilities") instanceof Integer ? (Integer) megletProps.get("ConnectionCapabilities") : 0); }
-    public int getConnectionProperties() { return (megletProps.get("ConnectionProperties") instanceof Integer ? (Integer) megletProps.get("ConnectionProperties") : 0); }
-    public android.telecom.DisconnectCause getDisconnectCause() { return (android.telecom.DisconnectCause) megletProps.get("DisconnectCause"); }
-    public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
-    public int getState() { return (megletProps.get("State") instanceof Integer ? (Integer) megletProps.get("State") : 0); }
-    public android.telecom.StatusHints getStatusHints() { return (android.telecom.StatusHints) megletProps.get("StatusHints"); }
-    public android.telecom.RemoteConnection.VideoProvider getVideoProvider() { return (android.telecom.RemoteConnection.VideoProvider) megletProps.get("VideoProvider"); }
-    public int getVideoState() { return (megletProps.get("VideoState") instanceof Integer ? (Integer) megletProps.get("VideoState") : 0); }
+    public android.net.Uri getAddress() { return (android.net.Uri) meglerProps.get("Address"); }
+    public int getAddressPresentation() { return (meglerProps.get("AddressPresentation") instanceof Integer ? (Integer) meglerProps.get("AddressPresentation") : 0); }
+    public java.lang.CharSequence getCallerDisplayName() { return (java.lang.CharSequence) meglerProps.get("CallerDisplayName"); }
+    public int getCallerDisplayNamePresentation() { return (meglerProps.get("CallerDisplayNamePresentation") instanceof Integer ? (Integer) meglerProps.get("CallerDisplayNamePresentation") : 0); }
+    public android.telecom.RemoteConference getConference() { return (android.telecom.RemoteConference) meglerProps.get("Conference"); }
+    public java.util.List getConferenceableConnections() { return (meglerProps.get("ConferenceableConnections") != null ? (java.util.List) meglerProps.get("ConferenceableConnections") : new java.util.ArrayList()); }
+    public int getConnectionCapabilities() { return (meglerProps.get("ConnectionCapabilities") instanceof Integer ? (Integer) meglerProps.get("ConnectionCapabilities") : 0); }
+    public int getConnectionProperties() { return (meglerProps.get("ConnectionProperties") instanceof Integer ? (Integer) meglerProps.get("ConnectionProperties") : 0); }
+    public android.telecom.DisconnectCause getDisconnectCause() { return (android.telecom.DisconnectCause) meglerProps.get("DisconnectCause"); }
+    public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
+    public int getState() { return (meglerProps.get("State") instanceof Integer ? (Integer) meglerProps.get("State") : 0); }
+    public android.telecom.StatusHints getStatusHints() { return (android.telecom.StatusHints) meglerProps.get("StatusHints"); }
+    public android.telecom.RemoteConnection.VideoProvider getVideoProvider() { return (android.telecom.RemoteConnection.VideoProvider) meglerProps.get("VideoProvider"); }
+    public int getVideoState() { return (meglerProps.get("VideoState") instanceof Integer ? (Integer) meglerProps.get("VideoState") : 0); }
     public void hold() {}
-    public boolean isRingbackRequested() { return (megletProps.get("RingbackRequested") instanceof Boolean ? (Boolean) megletProps.get("RingbackRequested") : false); }
-    public boolean isVoipAudioMode() { return (megletProps.get("VoipAudioMode") instanceof Boolean ? (Boolean) megletProps.get("VoipAudioMode") : false); }
+    public boolean isRingbackRequested() { return (meglerProps.get("RingbackRequested") instanceof Boolean ? (Boolean) meglerProps.get("RingbackRequested") : false); }
+    public boolean isVoipAudioMode() { return (meglerProps.get("VoipAudioMode") instanceof Boolean ? (Boolean) meglerProps.get("VoipAudioMode") : false); }
     public void onCallFilteringCompleted(android.telecom.Connection.CallFilteringCompletionInfo p0) {}
     public void playDtmfTone(char p0) {}
     public void postDialContinue(boolean p0) {}
@@ -35,8 +35,8 @@ public final class RemoteConnection {
     public void registerCallback(android.telecom.RemoteConnection.Callback p0, android.os.Handler p1) {}
     public void reject() {}
     public void sendRttUpgradeResponse(android.telecom.Connection.RttTextStream p0) {}
-    public void setAudioState(android.telecom.AudioState p0) { megletProps.put("AudioState", p0); }
-    public void setCallAudioState(android.telecom.CallAudioState p0) { megletProps.put("CallAudioState", p0); }
+    public void setAudioState(android.telecom.AudioState p0) { meglerProps.put("AudioState", p0); }
+    public void setCallAudioState(android.telecom.CallAudioState p0) { meglerProps.put("CallAudioState", p0); }
     public void startRtt(android.telecom.Connection.RttTextStream p0) {}
     public void stopDtmfTone() {}
     public void stopRtt() {}
@@ -44,7 +44,7 @@ public final class RemoteConnection {
     public void unregisterCallback(android.telecom.RemoteConnection.Callback p0) {}
     protected RemoteConnection() {}
     public static abstract class Callback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Callback() {}
         public void onAddressChanged(android.telecom.RemoteConnection p0, android.net.Uri p1, int p2) {}
         public void onCallerDisplayNameChanged(android.telecom.RemoteConnection p0, java.lang.String p1, int p2) {}
@@ -70,22 +70,22 @@ public final class RemoteConnection {
         public void onVoipAudioChanged(android.telecom.RemoteConnection p0, boolean p1) {}
     }
     public static class VideoProvider {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public void registerCallback(android.telecom.RemoteConnection.VideoProvider.Callback p0) {}
         public void requestCallDataUsage() {}
         public void requestCameraCapabilities() {}
         public void sendSessionModifyRequest(android.telecom.VideoProfile p0, android.telecom.VideoProfile p1) {}
         public void sendSessionModifyResponse(android.telecom.VideoProfile p0) {}
-        public void setCamera(java.lang.String p0) { megletProps.put("Camera", p0); }
-        public void setDeviceOrientation(int p0) { megletProps.put("DeviceOrientation", Integer.valueOf(p0)); }
-        public void setDisplaySurface(android.view.Surface p0) { megletProps.put("DisplaySurface", p0); }
-        public void setPauseImage(android.net.Uri p0) { megletProps.put("PauseImage", p0); }
-        public void setPreviewSurface(android.view.Surface p0) { megletProps.put("PreviewSurface", p0); }
-        public void setZoom(float p0) { megletProps.put("Zoom", Float.valueOf(p0)); }
+        public void setCamera(java.lang.String p0) { meglerProps.put("Camera", p0); }
+        public void setDeviceOrientation(int p0) { meglerProps.put("DeviceOrientation", Integer.valueOf(p0)); }
+        public void setDisplaySurface(android.view.Surface p0) { meglerProps.put("DisplaySurface", p0); }
+        public void setPauseImage(android.net.Uri p0) { meglerProps.put("PauseImage", p0); }
+        public void setPreviewSurface(android.view.Surface p0) { meglerProps.put("PreviewSurface", p0); }
+        public void setZoom(float p0) { meglerProps.put("Zoom", Float.valueOf(p0)); }
         public void unregisterCallback(android.telecom.RemoteConnection.VideoProvider.Callback p0) {}
         protected VideoProvider() {}
         public static abstract class Callback {
-            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
             public Callback() {}
             public void onCallDataUsageChanged(android.telecom.RemoteConnection.VideoProvider p0, long p1) {}
             public void onCallSessionEvent(android.telecom.RemoteConnection.VideoProvider p0, int p1) {}

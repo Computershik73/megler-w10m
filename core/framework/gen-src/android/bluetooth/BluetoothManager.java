@@ -3,9 +3,9 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BluetoothManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public BluetoothManager(android.content.Context p0) {}
-    public android.bluetooth.BluetoothAdapter getAdapter() { return (android.bluetooth.BluetoothAdapter) megletProps.get("Adapter"); }
+    public android.bluetooth.BluetoothAdapter getAdapter() { return (android.bluetooth.BluetoothAdapter) meglerProps.get("Adapter"); }
     public java.util.List getConnectedDevices(int p0) { return new java.util.ArrayList(); }
     public int getConnectionState(android.bluetooth.BluetoothDevice p0, int p1) { return 0; }
     public java.util.List getDevicesMatchingConnectionStates(int p0, int[] p1) { return new java.util.ArrayList(); }

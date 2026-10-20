@@ -13,7 +13,7 @@ import java.nio.ByteOrder;
 import java.util.ArrayDeque;
 
 /**
- * A decoder (meglet.MediaCodecNative). Input is decoded as it is queued, on the queuing thread; outputs wait in order for
+ * A decoder (megler.MediaCodecNative). Input is decoded as it is queued, on the queuing thread; outputs wait in order for
  * dequeueOutputBuffer, or go to the Callback on its handler (the async mode ExoPlayer uses). A video frame released with render
  * is drawn into the output Surface (a SurfaceView's software buffer), scaled to it. No encoders, no DRM.
  */
@@ -71,24 +71,24 @@ public final class MediaCodec {
 
     private MediaCodec(String name, String mime) throws IOException {
         mName = name; mMime = mime; mVideo = mime.startsWith("video/");
-        mNative = meglet.MediaCodecNative.create(mime);
+        mNative = megler.MediaCodecNative.create(mime);
         if (mNative == 0) throw new IOException("Failed to initialize " + name + ", error 0xfffffff4");
     }
     protected MediaCodec() { mName = ""; mMime = ""; mVideo = false; }
     public static MediaCodec createByCodecName(String name) throws IOException {
         MediaCodecInfo i = MediaCodecList.getInfoFor(name);
         if (i == null) throw new IllegalArgumentException("Failed to initialize " + name + ", error 0xfffffffe");
-        if (i.isEncoder()) throw new IOException("Meglet has no encoder " + name);
+        if (i.isEncoder()) throw new IOException("Megler has no encoder " + name);
         return new MediaCodec(name, i.getSupportedTypes()[0]);
     }
     public static MediaCodec createByCodecNameForClient(String name, int pid, int uid) throws IOException { return createByCodecName(name); }
     public static MediaCodec createDecoderByType(String type) throws IOException {
         if (type == null) throw new NullPointerException();
         for (MediaCodecInfo i : MediaCodecList.infos()) for (String t : i.getSupportedTypes()) if (t.equalsIgnoreCase(type)) return new MediaCodec(i.getName(), t);
-        throw new IOException("Failed to create a decoder for " + type + " (Meglet decodes H.264, HEVC, AAC and MP3)");
+        throw new IOException("Failed to create a decoder for " + type + " (Megler decodes H.264, HEVC, AAC and MP3)");
     }
-    public static MediaCodec createEncoderByType(String type) throws IOException { throw new IOException("Meglet has no " + type + " encoder"); }
-    public static Surface createPersistentInputSurface() { throw new IllegalArgumentException("Meglet has no encoders"); }
+    public static MediaCodec createEncoderByType(String type) throws IOException { throw new IOException("Megler has no " + type + " encoder"); }
+    public static Surface createPersistentInputSurface() { throw new IllegalArgumentException("Megler has no encoders"); }
     public static java.util.List getGloballyAvailableResources() { return new java.util.ArrayList(); }
     public static android.media.Image mapHardwareBuffer(android.hardware.HardwareBuffer b) { return null; }
 
@@ -100,19 +100,19 @@ public final class MediaCodec {
     public void configure(MediaFormat format, Surface surface, MediaCrypto crypto, int flags) {
         synchronized (mLock) {
             if (mState != ST_UNINITIALIZED) throw new IllegalStateException("configure in state " + mState);
-            if ((flags & CONFIGURE_FLAG_ENCODE) != 0) throw new IllegalStateException("Meglet has no encoders");
+            if ((flags & CONFIGURE_FLAG_ENCODE) != 0) throw new IllegalStateException("Megler has no encoders");
             MediaFormat f = format != null ? new MediaFormat(format) : new MediaFormat();
             mInputFormat = f; mSurface = surface;
             int w = f.getInteger(MediaFormat.KEY_WIDTH, 0), h = f.getInteger(MediaFormat.KEY_HEIGHT, 0);
             int rate = f.getInteger(MediaFormat.KEY_SAMPLE_RATE, 0), ch = f.getInteger(MediaFormat.KEY_CHANNEL_COUNT, 0);
-            if (!meglet.MediaCodecNative.configure(mNative, w, h, rate, ch, bytes(f.getByteBuffer("csd-0")), bytes(f.getByteBuffer("csd-1")), bytes(f.getByteBuffer("csd-2"))))
+            if (!megler.MediaCodecNative.configure(mNative, w, h, rate, ch, bytes(f.getByteBuffer("csd-0")), bytes(f.getByteBuffer("csd-1")), bytes(f.getByteBuffer("csd-2"))))
                 throw new CodecException(0x80001000, "the codec refused the format " + format);
             int max = f.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 0);
             if (max <= 0) max = mVideo ? Math.max(1 << 20, w * h * 3 / 2) : 1 << 16;
             mInputs = new ByteBuffer[INPUTS];
             for (int i = 0; i < INPUTS; i++) mInputs[i] = ByteBuffer.allocateDirect(max).order(ByteOrder.nativeOrder());
             if (mVideo) {
-                int s = meglet.MediaCodecNative.size(mNative);
+                int s = megler.MediaCodecNative.size(mNative);
                 mOutW = s > 0 ? s >>> 16 : w; mOutH = s > 0 ? s & 0xffff : h;
                 mOutputFormat = videoFormat(mOutW, mOutH);
             } else {
@@ -179,7 +179,7 @@ public final class MediaCodec {
         if (mCallback != null) postInput(gen, index);
     }
     public void queueSecureInputBuffer(int index, int offset, CryptoInfo info, long ptsUs, int flags) {
-        if (info != null && info.mode != CRYPTO_MODE_UNENCRYPTED) throw new CryptoException(CryptoException.ERROR_UNSUPPORTED_OPERATION, "Meglet cannot decrypt protected media");
+        if (info != null && info.mode != CRYPTO_MODE_UNENCRYPTED) throw new CryptoException(CryptoException.ERROR_UNSUPPORTED_OPERATION, "Megler cannot decrypt protected media");
         int size = 0;
         if (info != null && info.numBytesOfClearData != null) for (int i = 0; i < info.numSubSamples; i++) size += info.numBytesOfClearData[i] + (info.numBytesOfEncryptedData != null ? info.numBytesOfEncryptedData[i] : 0);
         queueInputBuffer(index, offset, size, ptsUs, flags);
@@ -187,9 +187,9 @@ public final class MediaCodec {
     public void queueInputBuffers(int index, ArrayDeque infos) {
         for (Object o : infos) { BufferInfo b = (BufferInfo) o; queueInputBuffer(index, b.offset, b.size, b.presentationTimeUs, b.flags); }
     }
-    public void queueSecureInputBuffers(int index, ArrayDeque infos, ArrayDeque cryptos) { throw new CryptoException(CryptoException.ERROR_UNSUPPORTED_OPERATION, "Meglet cannot decrypt protected media"); }
+    public void queueSecureInputBuffers(int index, ArrayDeque infos, ArrayDeque cryptos) { throw new CryptoException(CryptoException.ERROR_UNSUPPORTED_OPERATION, "Megler cannot decrypt protected media"); }
     private void decode(byte[] data, int size, long pts, int flags) {
-        meglet.MediaCodecNative.decode(mNative, data, size, pts, flags);
+        megler.MediaCodecNative.decode(mNative, data, size, pts, flags);
         collect();
         if ((flags & BUFFER_FLAG_END_OF_STREAM) != 0) { Out e = new Out(); e.pts = pts; e.flags = BUFFER_FLAG_END_OF_STREAM; emit(e, false); }
     }
@@ -198,14 +198,14 @@ public final class MediaCodec {
             Out o = new Out();
             boolean changed = false;
             if (mVideo) {
-                long f = meglet.MediaCodecNative.nextFrame(mNative, mInfo);
+                long f = megler.MediaCodecNative.nextFrame(mNative, mInfo);
                 if (f == 0) return;
                 o.frame = f; o.pts = mInfo[0];
                 int w = (int) mInfo[1], h = (int) mInfo[2];
                 o.size = Math.max(1, w * h * 3 / 2);
                 if (w != mOutW || h != mOutH || mFormatPendingFirst) { mOutW = w; mOutH = h; mOutputFormat = videoFormat(w, h); changed = true; }
             } else {
-                byte[] p = meglet.MediaCodecNative.nextPcm(mNative, mInfo);
+                byte[] p = megler.MediaCodecNative.nextPcm(mNative, mInfo);
                 if (p == null) return;
                 o.data = ByteBuffer.allocateDirect(p.length).order(ByteOrder.nativeOrder()); o.data.put(p); o.data.flip();
                 o.size = p.length; o.pts = mInfo[0];
@@ -279,7 +279,7 @@ public final class MediaCodec {
         if (o.frame == 0) return;
         if (TRACE && !render) mSkipped++;
         long t0 = TRACE ? System.nanoTime() : 0;
-        try { if (render) draw(o); } finally { meglet.MediaCodecNative.freeFrame(o.frame); }
+        try { if (render) draw(o); } finally { megler.MediaCodecNative.freeFrame(o.frame); }
         if (TRACE && render) mDrawNs += System.nanoTime() - t0;
     }
     private static final boolean TRACE = System.getenv("TL_MEDIA_TRACE") != null;
@@ -287,10 +287,10 @@ public final class MediaCodec {
     private long mDrawNs;
     private void draw(Out o) {
         Surface s = mSurface;
-        if (TRACE && mDrawn++ % 30 == 0) android.util.Log.d("MediaCodec", mName + ": frame " + mDrawn + " at " + o.pts + " (" + mSkipped + " skipped, " + (mDrawn > 1 ? mDrawNs / 1000000 / (mDrawn - 1) : 0) + " ms a draw) " + mOutW + "x" + mOutH + " to " + (s != null ? s.megletView : null));
+        if (TRACE && mDrawn++ % 30 == 0) android.util.Log.d("MediaCodec", mName + ": frame " + mDrawn + " at " + o.pts + " (" + mSkipped + " skipped, " + (mDrawn > 1 ? mDrawNs / 1000000 / (mDrawn - 1) : 0) + " ms a draw) " + mOutW + "x" + mOutH + " to " + (s != null ? s.meglerView : null));
         if (s == null || !s.isValid() || mOutW <= 0 || mOutH <= 0) return;
         if (mFrame == null || mFrame.getWidth() != mOutW || mFrame.getHeight() != mOutH) mFrame = Bitmap.createBitmap(mOutW, mOutH, Bitmap.Config.ARGB_8888);
-        if (!meglet.MediaCodecNative.renderFrame(o.frame, mFrame)) return;
+        if (!megler.MediaCodecNative.renderFrame(o.frame, mFrame)) return;
         Canvas c;
         try { c = s.lockCanvas(null); } catch (RuntimeException e) { return; }
         if (c == null) return;
@@ -318,14 +318,14 @@ public final class MediaCodec {
             for (int i = 0; i < mSlots.length; i++) if (mSlots[i] != null) { drop.add(mSlots[i]); mSlots[i] = null; }
             mQueue.clear();
         }
-        for (Out o : drop) if (o.frame != 0) meglet.MediaCodecNative.freeFrame(o.frame);
+        for (Out o : drop) if (o.frame != 0) megler.MediaCodecNative.freeFrame(o.frame);
     }
     public void flush() {
         synchronized (mLock) {
             if (mState != ST_RUNNING) throw new IllegalStateException("flush when not executing");
             mGeneration++;
         }
-        meglet.MediaCodecNative.flush(mNative);
+        megler.MediaCodecNative.flush(mNative);
         dropOutputs();
         synchronized (mLock) {
             mFreeInputs.clear(); for (int i = 0; i < INPUTS; i++) mFreeInputs.add(i);
@@ -335,15 +335,15 @@ public final class MediaCodec {
     }
     public void stop() {
         synchronized (mLock) { if (mState == ST_RELEASED) throw new IllegalStateException(); mGeneration++; }
-        if (mNative != 0) meglet.MediaCodecNative.flush(mNative);
+        if (mNative != 0) megler.MediaCodecNative.flush(mNative);
         dropOutputs();
         synchronized (mLock) { if (mState == ST_RUNNING) mState = ST_CONFIGURED; mStartPending = false; mLock.notifyAll(); }
     }
     public void reset() {
         stop();
         synchronized (mLock) {
-            if (mNative != 0) meglet.MediaCodecNative.destroy(mNative);
-            mNative = meglet.MediaCodecNative.create(mMime);
+            if (mNative != 0) megler.MediaCodecNative.destroy(mNative);
+            mNative = megler.MediaCodecNative.create(mMime);
             mState = ST_UNINITIALIZED; mCallback = null; mCallbackHandler = null; mFormatPending = false; mFormatPendingFirst = true;
         }
     }
@@ -351,7 +351,7 @@ public final class MediaCodec {
         synchronized (mLock) { if (mState == ST_RELEASED) return; mGeneration++; mState = ST_RELEASED; mLock.notifyAll(); }
         dropOutputs();
         long n; synchronized (mLock) { n = mNative; mNative = 0; }
-        if (n != 0) meglet.MediaCodecNative.destroy(n);
+        if (n != 0) megler.MediaCodecNative.destroy(n);
         mFrame = null;
     }
     protected void finalize() { release(); }
@@ -370,9 +370,9 @@ public final class MediaCodec {
     public void setVideoScalingMode(int mode) { mScaling = mode; }
     public void setParameters(android.os.Bundle b) {}
     public void setAudioPresentation(AudioPresentation p) {}
-    public void setInputSurface(Surface s) { throw new IllegalStateException("Meglet has no encoders"); }
-    public Surface createInputSurface() { throw new IllegalStateException("Meglet has no encoders"); }
-    public void signalEndOfInputStream() { throw new IllegalStateException("Meglet has no encoders"); }
+    public void setInputSurface(Surface s) { throw new IllegalStateException("Megler has no encoders"); }
+    public Surface createInputSurface() { throw new IllegalStateException("Megler has no encoders"); }
+    public void signalEndOfInputStream() { throw new IllegalStateException("Megler has no encoders"); }
     public String getName() { return mName; }
     public String getCanonicalName() { return mName; }
     public MediaCodecInfo getCodecInfo() { return MediaCodecList.getInfoFor(mName); }
@@ -453,54 +453,54 @@ public final class MediaCodec {
         }
     }
     public static final class GlobalResourceInfo {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public GlobalResourceInfo() {}
-        public long getAvailable() { return (megletProps.get("Available") instanceof Long ? (Long) megletProps.get("Available") : 0L); }
-        public long getCapacity() { return (megletProps.get("Capacity") instanceof Long ? (Long) megletProps.get("Capacity") : 0L); }
-        public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
+        public long getAvailable() { return (meglerProps.get("Available") instanceof Long ? (Long) meglerProps.get("Available") : 0L); }
+        public long getCapacity() { return (meglerProps.get("Capacity") instanceof Long ? (Long) meglerProps.get("Capacity") : 0L); }
+        public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
     }
     public static class IncompatibleWithBlockModelException extends java.lang.RuntimeException {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         protected IncompatibleWithBlockModelException() { super(); }
     }
     public static final class InstanceResourceInfo {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public InstanceResourceInfo() {}
-        public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
-        public long getPerFrameCount() { return (megletProps.get("PerFrameCount") instanceof Long ? (Long) megletProps.get("PerFrameCount") : 0L); }
-        public long getStaticCount() { return (megletProps.get("StaticCount") instanceof Long ? (Long) megletProps.get("StaticCount") : 0L); }
+        public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
+        public long getPerFrameCount() { return (meglerProps.get("PerFrameCount") instanceof Long ? (Long) meglerProps.get("PerFrameCount") : 0L); }
+        public long getStaticCount() { return (meglerProps.get("StaticCount") instanceof Long ? (Long) meglerProps.get("StaticCount") : 0L); }
     }
     public static class InvalidBufferFlagsException extends java.lang.RuntimeException {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         protected InvalidBufferFlagsException() { super(); }
     }
     public static final class LinearBlock {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static boolean isCodecCopyFreeCompatible(java.lang.String[] p0) { return false; }
         public static android.media.MediaCodec.LinearBlock obtain(int p0, java.lang.String[] p1) { return new LinearBlock(); }
         protected void finalize() {}
-        public boolean isMappable() { return (megletProps.get("Mappable") instanceof Boolean ? (Boolean) megletProps.get("Mappable") : false); }
+        public boolean isMappable() { return (meglerProps.get("Mappable") instanceof Boolean ? (Boolean) meglerProps.get("Mappable") : false); }
         public java.nio.ByteBuffer map() { return null; }
         public void recycle() {}
         protected LinearBlock() {}
     }
     public static class MediaImage extends android.media.Image {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public MediaImage(java.nio.ByteBuffer p0, java.nio.ByteBuffer p1, boolean p2, long p3, int p4, int p5, android.graphics.Rect p6) { super(); }
         public MediaImage(java.nio.ByteBuffer[] p0, int[] p1, int[] p2, int p3, int p4, int p5, boolean p6, long p7, int p8, int p9, android.graphics.Rect p10, long p11) { super(); }
         public void close() {}
-        public int getFormat() { return (megletProps.get("Format") instanceof Integer ? (Integer) megletProps.get("Format") : 0); }
-        public int getHeight() { return (megletProps.get("Height") instanceof Integer ? (Integer) megletProps.get("Height") : 0); }
-        public android.media.Image.Plane[] getPlanes() { return (android.media.Image.Plane[]) megletProps.get("Planes"); }
-        public int getScalingMode() { return (megletProps.get("ScalingMode") instanceof Integer ? (Integer) megletProps.get("ScalingMode") : 0); }
-        public long getTimestamp() { return (megletProps.get("Timestamp") instanceof Long ? (Long) megletProps.get("Timestamp") : 0L); }
-        public int getTransform() { return (megletProps.get("Transform") instanceof Integer ? (Integer) megletProps.get("Transform") : 0); }
-        public int getWidth() { return (megletProps.get("Width") instanceof Integer ? (Integer) megletProps.get("Width") : 0); }
-        public void setCropRect(android.graphics.Rect p0) { megletProps.put("CropRect", p0); }
+        public int getFormat() { return (meglerProps.get("Format") instanceof Integer ? (Integer) meglerProps.get("Format") : 0); }
+        public int getHeight() { return (meglerProps.get("Height") instanceof Integer ? (Integer) meglerProps.get("Height") : 0); }
+        public android.media.Image.Plane[] getPlanes() { return (android.media.Image.Plane[]) meglerProps.get("Planes"); }
+        public int getScalingMode() { return (meglerProps.get("ScalingMode") instanceof Integer ? (Integer) meglerProps.get("ScalingMode") : 0); }
+        public long getTimestamp() { return (meglerProps.get("Timestamp") instanceof Long ? (Long) meglerProps.get("Timestamp") : 0L); }
+        public int getTransform() { return (meglerProps.get("Transform") instanceof Integer ? (Integer) meglerProps.get("Transform") : 0); }
+        public int getWidth() { return (meglerProps.get("Width") instanceof Integer ? (Integer) meglerProps.get("Width") : 0); }
+        public void setCropRect(android.graphics.Rect p0) { meglerProps.put("CropRect", p0); }
         MediaImage() { this((java.nio.ByteBuffer) null, (java.nio.ByteBuffer) null, (boolean) false, (long) 0L, (int) 0, (int) 0, (android.graphics.Rect) null); }
     }
     public static final class MetricsConstants {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String CODEC = "android.media.mediacodec.codec";
         public static final java.lang.String ENCODER = "android.media.mediacodec.encoder";
         public static final java.lang.String HEIGHT = "android.media.mediacodec.height";
@@ -520,36 +520,36 @@ public final class MediaCodec {
         void onFrameRendered(android.media.MediaCodec p0, long p1, long p2);
     }
     public static final class OutputFrame {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public java.util.ArrayDeque getBufferInfos() { return (java.util.ArrayDeque) megletProps.get("BufferInfos"); }
-        public java.util.Set getChangedKeys() { return (megletProps.get("ChangedKeys") != null ? (java.util.Set) megletProps.get("ChangedKeys") : new java.util.HashSet()); }
-        public int getFlags() { return (megletProps.get("Flags") instanceof Integer ? (Integer) megletProps.get("Flags") : 0); }
-        public android.media.MediaFormat getFormat() { return (android.media.MediaFormat) megletProps.get("Format"); }
-        public android.hardware.HardwareBuffer getHardwareBuffer() { return (android.hardware.HardwareBuffer) megletProps.get("HardwareBuffer"); }
-        public android.media.MediaCodec.LinearBlock getLinearBlock() { return (android.media.MediaCodec.LinearBlock) megletProps.get("LinearBlock"); }
-        public long getPresentationTimeUs() { return (megletProps.get("PresentationTimeUs") instanceof Long ? (Long) megletProps.get("PresentationTimeUs") : 0L); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public java.util.ArrayDeque getBufferInfos() { return (java.util.ArrayDeque) meglerProps.get("BufferInfos"); }
+        public java.util.Set getChangedKeys() { return (meglerProps.get("ChangedKeys") != null ? (java.util.Set) meglerProps.get("ChangedKeys") : new java.util.HashSet()); }
+        public int getFlags() { return (meglerProps.get("Flags") instanceof Integer ? (Integer) meglerProps.get("Flags") : 0); }
+        public android.media.MediaFormat getFormat() { return (android.media.MediaFormat) meglerProps.get("Format"); }
+        public android.hardware.HardwareBuffer getHardwareBuffer() { return (android.hardware.HardwareBuffer) meglerProps.get("HardwareBuffer"); }
+        public android.media.MediaCodec.LinearBlock getLinearBlock() { return (android.media.MediaCodec.LinearBlock) meglerProps.get("LinearBlock"); }
+        public long getPresentationTimeUs() { return (meglerProps.get("PresentationTimeUs") instanceof Long ? (Long) meglerProps.get("PresentationTimeUs") : 0L); }
         protected OutputFrame() {}
     }
     public static class ParameterDescriptor {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-        public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
-        public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
+        public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
         protected ParameterDescriptor() {}
     }
     public static final class QueueRequest {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public void queue() {}
         public android.media.MediaCodec.QueueRequest setByteBufferParameter(java.lang.String p0, java.nio.ByteBuffer p1) { return this; }
         public android.media.MediaCodec.QueueRequest setEncryptedLinearBlock(android.media.MediaCodec.LinearBlock p0, int p1, int p2, android.media.MediaCodec.CryptoInfo p3) { return this; }
-        public android.media.MediaCodec.QueueRequest setFlags(int p0) { megletProps.put("Flags", Integer.valueOf(p0)); return this; }
+        public android.media.MediaCodec.QueueRequest setFlags(int p0) { meglerProps.put("Flags", Integer.valueOf(p0)); return this; }
         public android.media.MediaCodec.QueueRequest setFloatParameter(java.lang.String p0, float p1) { return this; }
-        public android.media.MediaCodec.QueueRequest setHardwareBuffer(android.hardware.HardwareBuffer p0) { megletProps.put("HardwareBuffer", p0); return this; }
+        public android.media.MediaCodec.QueueRequest setHardwareBuffer(android.hardware.HardwareBuffer p0) { meglerProps.put("HardwareBuffer", p0); return this; }
         public android.media.MediaCodec.QueueRequest setIntegerParameter(java.lang.String p0, int p1) { return this; }
         public android.media.MediaCodec.QueueRequest setLinearBlock(android.media.MediaCodec.LinearBlock p0, int p1, int p2) { return this; }
         public android.media.MediaCodec.QueueRequest setLongParameter(java.lang.String p0, long p1) { return this; }
         public android.media.MediaCodec.QueueRequest setMultiFrameEncryptedLinearBlock(android.media.MediaCodec.LinearBlock p0, java.util.ArrayDeque p1, java.util.ArrayDeque p2) { return this; }
         public android.media.MediaCodec.QueueRequest setMultiFrameLinearBlock(android.media.MediaCodec.LinearBlock p0, java.util.ArrayDeque p1) { return this; }
-        public android.media.MediaCodec.QueueRequest setPresentationTimeUs(long p0) { megletProps.put("PresentationTimeUs", Long.valueOf(p0)); return this; }
+        public android.media.MediaCodec.QueueRequest setPresentationTimeUs(long p0) { meglerProps.put("PresentationTimeUs", Long.valueOf(p0)); return this; }
         public android.media.MediaCodec.QueueRequest setStringParameter(java.lang.String p0, java.lang.String p1) { return this; }
         protected QueueRequest() {}
     }

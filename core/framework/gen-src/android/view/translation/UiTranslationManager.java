@@ -3,7 +3,7 @@ package android.view.translation;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class UiTranslationManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String EXTRA_PACKAGE_NAME = "package_name";
     public static final java.lang.String EXTRA_SOURCE_LOCALE = "source_locale";
     public static final java.lang.String EXTRA_STATE = "state";

@@ -1,20 +1,20 @@
-    // Meglet: members added to the original's android.view.Window (tools/build-framework.sh, "X.java.members").
+    // Megler: members added to the original's android.view.Window (tools/build-framework.sh, "X.java.members").
     // Whether the decor keeps the content off the status bar, and off the navigation bar, each by itself, as Android decides a
     // window's fitInsetsTypes from its flags: not where the app lays the window out under the bar -- setDecorFitsSystemWindows
     // (false), FLAG_LAYOUT_NO_LIMITS, SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or _LAYOUT_HIDE_NAVIGATION set on the decor, in the
-    // window's attributes or on any view of the window (`systemUi`, meglet.ViewRoot's), FLAG_TRANSLUCENT_STATUS or
-    // _NAVIGATION. The original's megletDecorFits decided both bars at once and left the translucent flags out.
-    public boolean megletFitsStatusBar(int systemUi) { return megletFits(systemUi, View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN, WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS); }
-    public boolean megletFitsNavigationBar(int systemUi) { return megletFits(systemUi, View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION, WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION); }
-    private boolean megletFits(int systemUi, int layoutFlag, int translucentFlag) {
+    // window's attributes or on any view of the window (`systemUi`, megler.ViewRoot's), FLAG_TRANSLUCENT_STATUS or
+    // _NAVIGATION. The original's meglerDecorFits decided both bars at once and left the translucent flags out.
+    public boolean meglerFitsStatusBar(int systemUi) { return meglerFits(systemUi, View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN, WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS); }
+    public boolean meglerFitsNavigationBar(int systemUi) { return meglerFits(systemUi, View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION, WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION); }
+    private boolean meglerFits(int systemUi, int layoutFlag, int translucentFlag) {
         if (!mDecorFits) return false;
         int f = mAttrs.flags;
         if ((f & (WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS | translucentFlag)) != 0) return false;
         int sys = systemUi | mAttrs.systemUiVisibility | (mDecor != null ? mDecor.getSystemUiVisibility() : 0);
         return (sys & layoutFlag) == 0;
     }
-    /** Meglet: what decides the two above, for the log: whether the decor fits at all, the window's flags and its system UI. */
-    public String megletFitsWhy(int systemUi) {
+    /** Megler: what decides the two above, for the log: whether the decor fits at all, the window's flags and its system UI. */
+    public String meglerFitsWhy(int systemUi) {
         int sys = systemUi | mAttrs.systemUiVisibility | (mDecor != null ? mDecor.getSystemUiVisibility() : 0);
         return "decorFits " + mDecorFits + ", flags 0x" + Integer.toHexString(mAttrs.flags) + ", system UI 0x" + Integer.toHexString(sys);
     }

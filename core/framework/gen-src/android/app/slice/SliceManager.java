@@ -3,7 +3,7 @@ package android.app.slice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SliceManager {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_REQUEST_SLICE_PERMISSION = "com.android.intent.action.REQUEST_SLICE_PERMISSION";
     public static final java.lang.String CATEGORY_SLICE = "android.app.slice.category.SLICE";
     public static final java.lang.String SLICE_METADATA_KEY = "android.metadata.SLICE_URI";
@@ -12,7 +12,7 @@ public class SliceManager {
     public android.app.slice.Slice bindSlice(android.net.Uri p0, java.util.Set p1) { return null; }
     public int checkSlicePermission(android.net.Uri p0, int p1, int p2) { return 0; }
     public void enforceSlicePermission(android.net.Uri p0, int p1, int p2, java.lang.String[] p3) {}
-    public java.util.List getPinnedSlices() { return (megletProps.get("PinnedSlices") != null ? (java.util.List) megletProps.get("PinnedSlices") : new java.util.ArrayList()); }
+    public java.util.List getPinnedSlices() { return (meglerProps.get("PinnedSlices") != null ? (java.util.List) meglerProps.get("PinnedSlices") : new java.util.ArrayList()); }
     public java.util.Set getPinnedSpecs(android.net.Uri p0) { return new java.util.HashSet(); }
     public java.util.Collection getSliceDescendants(android.net.Uri p0) { return new java.util.ArrayList(); }
     public void grantPermissionFromUser(android.net.Uri p0, java.lang.String p1, boolean p2) {}

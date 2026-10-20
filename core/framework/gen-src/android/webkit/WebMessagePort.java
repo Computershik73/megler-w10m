@@ -3,14 +3,14 @@ package android.webkit;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class WebMessagePort {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public WebMessagePort() {}
     public abstract void close();
     public abstract void postMessage(android.webkit.WebMessage p0);
     public abstract void setWebMessageCallback(android.webkit.WebMessagePort.WebMessageCallback p0);
     public abstract void setWebMessageCallback(android.webkit.WebMessagePort.WebMessageCallback p0, android.os.Handler p1);
     public static abstract class WebMessageCallback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public WebMessageCallback() {}
         public void onMessage(android.webkit.WebMessagePort p0, android.webkit.WebMessage p1) {}
     }

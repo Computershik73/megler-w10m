@@ -3,7 +3,7 @@ package android.renderscript;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ScriptIntrinsicBlend extends android.renderscript.ScriptIntrinsic {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.renderscript.ScriptIntrinsicBlend create(android.renderscript.RenderScript p0, android.renderscript.Element p1) { return new ScriptIntrinsicBlend(); }
     public void forEachAdd(android.renderscript.Allocation p0, android.renderscript.Allocation p1) {}
     public void forEachAdd(android.renderscript.Allocation p0, android.renderscript.Allocation p1, android.renderscript.Script.LaunchOptions p2) {}
@@ -35,20 +35,20 @@ public class ScriptIntrinsicBlend extends android.renderscript.ScriptIntrinsic {
     public void forEachSubtract(android.renderscript.Allocation p0, android.renderscript.Allocation p1, android.renderscript.Script.LaunchOptions p2) {}
     public void forEachXor(android.renderscript.Allocation p0, android.renderscript.Allocation p1) {}
     public void forEachXor(android.renderscript.Allocation p0, android.renderscript.Allocation p1, android.renderscript.Script.LaunchOptions p2) {}
-    public android.renderscript.Script.KernelID getKernelIDAdd() { return (android.renderscript.Script.KernelID) megletProps.get("KernelIDAdd"); }
-    public android.renderscript.Script.KernelID getKernelIDClear() { return (android.renderscript.Script.KernelID) megletProps.get("KernelIDClear"); }
-    public android.renderscript.Script.KernelID getKernelIDDst() { return (android.renderscript.Script.KernelID) megletProps.get("KernelIDDst"); }
-    public android.renderscript.Script.KernelID getKernelIDDstAtop() { return (android.renderscript.Script.KernelID) megletProps.get("KernelIDDstAtop"); }
-    public android.renderscript.Script.KernelID getKernelIDDstIn() { return (android.renderscript.Script.KernelID) megletProps.get("KernelIDDstIn"); }
-    public android.renderscript.Script.KernelID getKernelIDDstOut() { return (android.renderscript.Script.KernelID) megletProps.get("KernelIDDstOut"); }
-    public android.renderscript.Script.KernelID getKernelIDDstOver() { return (android.renderscript.Script.KernelID) megletProps.get("KernelIDDstOver"); }
-    public android.renderscript.Script.KernelID getKernelIDMultiply() { return (android.renderscript.Script.KernelID) megletProps.get("KernelIDMultiply"); }
-    public android.renderscript.Script.KernelID getKernelIDSrc() { return (android.renderscript.Script.KernelID) megletProps.get("KernelIDSrc"); }
-    public android.renderscript.Script.KernelID getKernelIDSrcAtop() { return (android.renderscript.Script.KernelID) megletProps.get("KernelIDSrcAtop"); }
-    public android.renderscript.Script.KernelID getKernelIDSrcIn() { return (android.renderscript.Script.KernelID) megletProps.get("KernelIDSrcIn"); }
-    public android.renderscript.Script.KernelID getKernelIDSrcOut() { return (android.renderscript.Script.KernelID) megletProps.get("KernelIDSrcOut"); }
-    public android.renderscript.Script.KernelID getKernelIDSrcOver() { return (android.renderscript.Script.KernelID) megletProps.get("KernelIDSrcOver"); }
-    public android.renderscript.Script.KernelID getKernelIDSubtract() { return (android.renderscript.Script.KernelID) megletProps.get("KernelIDSubtract"); }
-    public android.renderscript.Script.KernelID getKernelIDXor() { return (android.renderscript.Script.KernelID) megletProps.get("KernelIDXor"); }
+    public android.renderscript.Script.KernelID getKernelIDAdd() { return (android.renderscript.Script.KernelID) meglerProps.get("KernelIDAdd"); }
+    public android.renderscript.Script.KernelID getKernelIDClear() { return (android.renderscript.Script.KernelID) meglerProps.get("KernelIDClear"); }
+    public android.renderscript.Script.KernelID getKernelIDDst() { return (android.renderscript.Script.KernelID) meglerProps.get("KernelIDDst"); }
+    public android.renderscript.Script.KernelID getKernelIDDstAtop() { return (android.renderscript.Script.KernelID) meglerProps.get("KernelIDDstAtop"); }
+    public android.renderscript.Script.KernelID getKernelIDDstIn() { return (android.renderscript.Script.KernelID) meglerProps.get("KernelIDDstIn"); }
+    public android.renderscript.Script.KernelID getKernelIDDstOut() { return (android.renderscript.Script.KernelID) meglerProps.get("KernelIDDstOut"); }
+    public android.renderscript.Script.KernelID getKernelIDDstOver() { return (android.renderscript.Script.KernelID) meglerProps.get("KernelIDDstOver"); }
+    public android.renderscript.Script.KernelID getKernelIDMultiply() { return (android.renderscript.Script.KernelID) meglerProps.get("KernelIDMultiply"); }
+    public android.renderscript.Script.KernelID getKernelIDSrc() { return (android.renderscript.Script.KernelID) meglerProps.get("KernelIDSrc"); }
+    public android.renderscript.Script.KernelID getKernelIDSrcAtop() { return (android.renderscript.Script.KernelID) meglerProps.get("KernelIDSrcAtop"); }
+    public android.renderscript.Script.KernelID getKernelIDSrcIn() { return (android.renderscript.Script.KernelID) meglerProps.get("KernelIDSrcIn"); }
+    public android.renderscript.Script.KernelID getKernelIDSrcOut() { return (android.renderscript.Script.KernelID) meglerProps.get("KernelIDSrcOut"); }
+    public android.renderscript.Script.KernelID getKernelIDSrcOver() { return (android.renderscript.Script.KernelID) meglerProps.get("KernelIDSrcOver"); }
+    public android.renderscript.Script.KernelID getKernelIDSubtract() { return (android.renderscript.Script.KernelID) meglerProps.get("KernelIDSubtract"); }
+    public android.renderscript.Script.KernelID getKernelIDXor() { return (android.renderscript.Script.KernelID) meglerProps.get("KernelIDXor"); }
     protected ScriptIntrinsicBlend() { super(); }
 }

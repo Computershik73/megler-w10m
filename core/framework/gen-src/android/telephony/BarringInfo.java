@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BarringInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int BARRING_SERVICE_TYPE_CS_FALLBACK = 5;
     public static final int BARRING_SERVICE_TYPE_CS_SERVICE = 0;
     public static final int BARRING_SERVICE_TYPE_CS_VOICE = 2;
@@ -21,10 +21,10 @@ public final class BarringInfo implements android.os.Parcelable {
     public android.telephony.BarringInfo createLocationInfoSanitizedCopy() { return this; }
     public int describeContents() { return 0; }
     public android.telephony.BarringInfo.BarringServiceInfo getBarringServiceInfo(int p0) { return null; }
-    public android.telephony.CellIdentity getCellIdentity() { return (android.telephony.CellIdentity) megletProps.get("CellIdentity"); }
+    public android.telephony.CellIdentity getCellIdentity() { return (android.telephony.CellIdentity) meglerProps.get("CellIdentity"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public static final class BarringServiceInfo implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int BARRING_TYPE_CONDITIONAL = 1;
         public static final int BARRING_TYPE_NONE = 0;
         public static final int BARRING_TYPE_UNCONDITIONAL = 2;
@@ -34,11 +34,11 @@ public final class BarringInfo implements android.os.Parcelable {
         public BarringServiceInfo(int p0, boolean p1, int p2, int p3) {}
         public BarringServiceInfo(android.os.Parcel p0) {}
         public int describeContents() { return 0; }
-        public int getBarringType() { return (megletProps.get("BarringType") instanceof Integer ? (Integer) megletProps.get("BarringType") : 0); }
-        public int getConditionalBarringFactor() { return (megletProps.get("ConditionalBarringFactor") instanceof Integer ? (Integer) megletProps.get("ConditionalBarringFactor") : 0); }
-        public int getConditionalBarringTimeSeconds() { return (megletProps.get("ConditionalBarringTimeSeconds") instanceof Integer ? (Integer) megletProps.get("ConditionalBarringTimeSeconds") : 0); }
-        public boolean isBarred() { return (megletProps.get("Barred") instanceof Boolean ? (Boolean) megletProps.get("Barred") : false); }
-        public boolean isConditionallyBarred() { return (megletProps.get("ConditionallyBarred") instanceof Boolean ? (Boolean) megletProps.get("ConditionallyBarred") : false); }
+        public int getBarringType() { return (meglerProps.get("BarringType") instanceof Integer ? (Integer) meglerProps.get("BarringType") : 0); }
+        public int getConditionalBarringFactor() { return (meglerProps.get("ConditionalBarringFactor") instanceof Integer ? (Integer) meglerProps.get("ConditionalBarringFactor") : 0); }
+        public int getConditionalBarringTimeSeconds() { return (meglerProps.get("ConditionalBarringTimeSeconds") instanceof Integer ? (Integer) meglerProps.get("ConditionalBarringTimeSeconds") : 0); }
+        public boolean isBarred() { return (meglerProps.get("Barred") instanceof Boolean ? (Boolean) meglerProps.get("Barred") : false); }
+        public boolean isConditionallyBarred() { return (meglerProps.get("ConditionallyBarred") instanceof Boolean ? (Boolean) meglerProps.get("ConditionallyBarred") : false); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         BarringServiceInfo() { this((int) 0); }
     }

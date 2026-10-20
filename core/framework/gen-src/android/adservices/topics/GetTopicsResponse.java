@@ -3,15 +3,15 @@ package android.adservices.topics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GetTopicsResponse {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public java.util.List getEncryptedTopics() { return (megletProps.get("EncryptedTopics") != null ? (java.util.List) megletProps.get("EncryptedTopics") : new java.util.ArrayList()); }
-    public java.util.List getTopics() { return (megletProps.get("Topics") != null ? (java.util.List) megletProps.get("Topics") : new java.util.ArrayList()); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public java.util.List getEncryptedTopics() { return (meglerProps.get("EncryptedTopics") != null ? (java.util.List) meglerProps.get("EncryptedTopics") : new java.util.ArrayList()); }
+    public java.util.List getTopics() { return (meglerProps.get("Topics") != null ? (java.util.List) meglerProps.get("Topics") : new java.util.ArrayList()); }
     protected GetTopicsResponse() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(java.util.List p0) {}
         public Builder(java.util.List p0, java.util.List p1) {}
-        public android.adservices.topics.GetTopicsResponse build() { android.adservices.topics.GetTopicsResponse x = new android.adservices.topics.GetTopicsResponse(); x.megletProps.putAll(megletProps); return x; }
+        public android.adservices.topics.GetTopicsResponse build() { android.adservices.topics.GetTopicsResponse x = new android.adservices.topics.GetTopicsResponse(); x.meglerProps.putAll(meglerProps); return x; }
         Builder() { this((java.util.List) null); }
     }
 }

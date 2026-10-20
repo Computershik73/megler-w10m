@@ -3,7 +3,7 @@ package android.content.res;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ObbScanner {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.content.res.ObbInfo getObbInfo(java.lang.String p0) { return null; }
     protected ObbScanner() {}
 }

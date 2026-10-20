@@ -3,23 +3,23 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MediaController2 implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public void cancelSessionCommand(java.lang.Object p0) {}
     public void close() {}
-    public android.media.Session2Token getConnectedToken() { return (android.media.Session2Token) megletProps.get("ConnectedToken"); }
-    public boolean isPlaybackActive() { return (megletProps.get("PlaybackActive") instanceof Boolean ? (Boolean) megletProps.get("PlaybackActive") : false); }
+    public android.media.Session2Token getConnectedToken() { return (android.media.Session2Token) meglerProps.get("ConnectedToken"); }
+    public boolean isPlaybackActive() { return (meglerProps.get("PlaybackActive") instanceof Boolean ? (Boolean) meglerProps.get("PlaybackActive") : false); }
     public java.lang.Object sendSessionCommand(android.media.Session2Command p0, android.os.Bundle p1) { return null; }
     protected MediaController2() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.content.Context p0, android.media.Session2Token p1) {}
-        public android.media.MediaController2 build() { android.media.MediaController2 x = new android.media.MediaController2(); x.megletProps.putAll(megletProps); return x; }
-        public android.media.MediaController2.Builder setConnectionHints(android.os.Bundle p0) { megletProps.put("ConnectionHints", p0); return this; }
+        public android.media.MediaController2 build() { android.media.MediaController2 x = new android.media.MediaController2(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.media.MediaController2.Builder setConnectionHints(android.os.Bundle p0) { meglerProps.put("ConnectionHints", p0); return this; }
         public android.media.MediaController2.Builder setControllerCallback(java.util.concurrent.Executor p0, android.media.MediaController2.ControllerCallback p1) { return this; }
         Builder() { this((android.content.Context) null, (android.media.Session2Token) null); }
     }
     public static abstract class ControllerCallback {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public ControllerCallback() {}
         public void onCommandResult(android.media.MediaController2 p0, java.lang.Object p1, android.media.Session2Command p2, android.media.Session2Command.Result p3) {}
         public void onConnected(android.media.MediaController2 p0, android.media.Session2CommandGroup p1) {}

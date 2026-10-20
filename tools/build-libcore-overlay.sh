@@ -6,9 +6,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="$ROOT/build/android9/aosp/libcore/ojluni/src/main/java"
 OVERLAY="$ROOT/core/libcore-overlay"
 OUT="$ROOT/build/libcore-overlay"
-JDK="${MEGLET_JDK:-/c/Program Files/Java/jdk1.8.0_202}"
-SDK="${MEGLET_ANDROID_SDK:-$USERPROFILE/Documents}"
-DEX="$OUT/meglet-libcore.dex"
+JDK="${MEGLER_JDK:-/c/Program Files/Java/jdk1.8.0_202}"
+SDK="${MEGLER_ANDROID_SDK:-$USERPROFILE/Documents}"
+DEX="$OUT/megler-libcore.dex"
 if [ -f "$DEX" ] && [ -z "$(find "$SRC/javax/net/ssl" "$OVERLAY" "$0" -type f -newer "$DEX" -print -quit)" ]; then exit 0; fi
 mkdir -p "$OUT/src" "$OUT/classes" "$OUT/dex"
 python - "$(cygpath -m "$SRC")" "$(cygpath -m "$OVERLAY")" "$(cygpath -m "$OUT")" <<'PY'
@@ -30,4 +30,4 @@ PY
 (cd "$OUT/classes" && "$JDK/bin/jar" cf ../classes.jar .)
 "$JDK/bin/java" -cp "$(cygpath -m "$SDK/build-tools/29.0.3/lib/d8.jar")" com.android.tools.r8.D8 --release --min-api 26 --lib "$(cygpath -m "$SDK/platforms/android-29/android.jar")" --output "$(cygpath -m "$OUT/dex")" "$(cygpath -m "$OUT/classes.jar")"
 mv "$OUT/dex/classes.dex" "$DEX"
-echo "built build/libcore-overlay/meglet-libcore.dex"
+echo "built build/libcore-overlay/megler-libcore.dex"

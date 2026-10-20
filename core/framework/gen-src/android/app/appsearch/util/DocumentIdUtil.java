@@ -3,7 +3,7 @@ package android.app.appsearch.util;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DocumentIdUtil {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static java.lang.String createQualifiedId(java.lang.String p0, java.lang.String p1, android.app.appsearch.GenericDocument p2) { return null; }
     public static java.lang.String createQualifiedId(java.lang.String p0, java.lang.String p1, java.lang.String p2, java.lang.String p3) { return null; }
     protected DocumentIdUtil() {}

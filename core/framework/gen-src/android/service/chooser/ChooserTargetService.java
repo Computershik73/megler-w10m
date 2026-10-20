@@ -3,7 +3,7 @@ package android.service.chooser;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class ChooserTargetService extends android.app.Service {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String BIND_PERMISSION = "android.permission.BIND_CHOOSER_TARGET_SERVICE";
     public static final java.lang.String META_DATA_NAME = "android.service.chooser.chooser_target_service";
     public static final java.lang.String SERVICE_INTERFACE = "android.service.chooser.ChooserTargetService";

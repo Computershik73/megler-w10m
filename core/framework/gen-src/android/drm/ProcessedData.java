@@ -3,9 +3,9 @@ package android.drm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ProcessedData {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
-    public java.lang.String getAccountId() { return (java.lang.String) megletProps.get("AccountId"); }
-    public byte[] getData() { return (byte[]) megletProps.get("Data"); }
-    public java.lang.String getSubscriptionId() { return (java.lang.String) megletProps.get("SubscriptionId"); }
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    public java.lang.String getAccountId() { return (java.lang.String) meglerProps.get("AccountId"); }
+    public byte[] getData() { return (byte[]) meglerProps.get("Data"); }
+    public java.lang.String getSubscriptionId() { return (java.lang.String) meglerProps.get("SubscriptionId"); }
     protected ProcessedData() {}
 }

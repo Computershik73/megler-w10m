@@ -3,13 +3,13 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class StreamEventResponse extends android.media.tv.BroadcastInfoResponse implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public StreamEventResponse(int p0, int p1, int p2, int p3, long p4, byte[] p5) { super(); }
     public int describeContents() { return 0; }
-    public byte[] getData() { return (byte[]) megletProps.get("Data"); }
-    public int getEventId() { return (megletProps.get("EventId") instanceof Integer ? (Integer) megletProps.get("EventId") : 0); }
-    public long getNptMillis() { return (megletProps.get("NptMillis") instanceof Long ? (Long) megletProps.get("NptMillis") : 0L); }
+    public byte[] getData() { return (byte[]) meglerProps.get("Data"); }
+    public int getEventId() { return (meglerProps.get("EventId") instanceof Integer ? (Integer) meglerProps.get("EventId") : 0); }
+    public long getNptMillis() { return (meglerProps.get("NptMillis") instanceof Long ? (Long) meglerProps.get("NptMillis") : 0L); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     StreamEventResponse() { this((int) 0, (int) 0, (int) 0, (int) 0, (long) 0L, (byte[]) null); }
 }

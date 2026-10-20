@@ -3,7 +3,7 @@ package android.provider;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class CallLog {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String AUTHORITY = "call_log";
     public static android.net.Uri CALL_COMPOSER_PICTURE_URI;
     public static final java.lang.String CALL_COMPOSER_SEGMENT = "call_composer";
@@ -13,17 +13,17 @@ public class CallLog {
     public CallLog() {}
     public static void storeCallComposerPicture(android.content.Context p0, java.io.InputStream p1, java.util.concurrent.Executor p2, android.os.OutcomeReceiver p3) {}
     public static class CallComposerLoggingException extends java.lang.Throwable {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final int ERROR_INPUT_CLOSED = 3;
         public static final int ERROR_REMOTE_END_CLOSED = 1;
         public static final int ERROR_STORAGE_FULL = 2;
         public static int ERROR_UNKNOWN;
         public CallComposerLoggingException(int p0) { super(); }
-        public int getErrorCode() { return (megletProps.get("ErrorCode") instanceof Integer ? (Integer) megletProps.get("ErrorCode") : 0); }
+        public int getErrorCode() { return (meglerProps.get("ErrorCode") instanceof Integer ? (Integer) meglerProps.get("ErrorCode") : 0); }
         CallComposerLoggingException() { this((int) 0); }
     }
     public static class Calls implements android.provider.BaseColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String ADD_FOR_ALL_USERS = "add_for_all_users";
         public static final java.lang.String ALLOW_VOICEMAILS_PARAM_KEY = "allow_voicemails";
         public static final int ANSWERED_EXTERNALLY_TYPE = 7;
@@ -133,7 +133,7 @@ public class CallLog {
         public static boolean shouldHaveSharedCallLogEntries(android.content.Context p0, android.os.UserManager p1, int p2) { return false; }
     }
     public static class Locations implements android.provider.BaseColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String AUTHORITY = "call_composer_locations";
         public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/call_composer_location";
         public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/call_composer_location";

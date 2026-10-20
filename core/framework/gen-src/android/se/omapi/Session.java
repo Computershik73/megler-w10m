@@ -3,12 +3,12 @@ package android.se.omapi;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Session {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public void close() {}
     public void closeChannels() {}
-    public byte[] getATR() { return (byte[]) megletProps.get("ATR"); }
-    public android.se.omapi.Reader getReader() { return (android.se.omapi.Reader) megletProps.get("Reader"); }
-    public boolean isClosed() { return (megletProps.get("Closed") instanceof Boolean ? (Boolean) megletProps.get("Closed") : false); }
+    public byte[] getATR() { return (byte[]) meglerProps.get("ATR"); }
+    public android.se.omapi.Reader getReader() { return (android.se.omapi.Reader) meglerProps.get("Reader"); }
+    public boolean isClosed() { return (meglerProps.get("Closed") instanceof Boolean ? (Boolean) meglerProps.get("Closed") : false); }
     public android.se.omapi.Channel openBasicChannel(byte[] p0) { return null; }
     public android.se.omapi.Channel openBasicChannel(byte[] p0, byte p1) { return null; }
     public android.se.omapi.Channel openLogicalChannel(byte[] p0) { return null; }

@@ -3,7 +3,7 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class OnDevicePersonalizationException extends java.lang.Exception {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int ERROR_INFERENCE_FAILED = 9;
     public static final int ERROR_INFERENCE_MODEL_NOT_FOUND = 8;
     public static final int ERROR_INVALID_TRAINING_MANIFEST = 7;
@@ -18,6 +18,6 @@ public class OnDevicePersonalizationException extends java.lang.Exception {
     public OnDevicePersonalizationException(int p0, java.lang.String p1, java.lang.Throwable p2) { super(); }
     public OnDevicePersonalizationException(int p0, java.lang.Throwable p1) { super(); }
     public static boolean isValidErrorCode(int p0) { return false; }
-    public int getErrorCode() { return (megletProps.get("ErrorCode") instanceof Integer ? (Integer) megletProps.get("ErrorCode") : 0); }
+    public int getErrorCode() { return (meglerProps.get("ErrorCode") instanceof Integer ? (Integer) meglerProps.get("ErrorCode") : 0); }
     OnDevicePersonalizationException() { this((int) 0); }
 }

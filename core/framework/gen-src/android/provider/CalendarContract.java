@@ -3,7 +3,7 @@ package android.provider;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CalendarContract {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final java.lang.String ACCOUNT_TYPE_LOCAL = "LOCAL";
     public static final java.lang.String ACTION_EVENT_REMINDER = "android.intent.action.EVENT_REMINDER";
     public static final java.lang.String ACTION_HANDLE_CUSTOM_EVENT = "android.provider.calendar.action.HANDLE_CUSTOM_EVENT";
@@ -20,7 +20,7 @@ public final class CalendarContract {
     public static boolean startViewCalendarEventInManagedProfile(android.content.Context p0, long p1, long p2, long p3, boolean p4, int p5) { return false; }
     protected CalendarContract() {}
     public static final class Attendees implements android.provider.BaseColumns, android.provider.CalendarContract.AttendeesColumns, android.provider.CalendarContract.EventsColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.net.Uri CONTENT_URI = android.net.Uri.parse("content://com.android.calendar/attendees");
         public static android.database.Cursor query(android.content.ContentResolver p0, long p1, java.lang.String[] p2) { return null; }
         protected Attendees() {}
@@ -50,7 +50,7 @@ public final class CalendarContract {
         int TYPE_RESOURCE = 3;
     }
     public static final class CalendarAlerts implements android.provider.BaseColumns, android.provider.CalendarContract.CalendarAlertsColumns, android.provider.CalendarContract.EventsColumns, android.provider.CalendarContract.CalendarColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.net.Uri CONTENT_URI;
         public static android.net.Uri CONTENT_URI_BY_INSTANCE;
         public static final java.lang.String TABLE_NAME = "CalendarAlerts";
@@ -77,7 +77,7 @@ public final class CalendarContract {
         int STATE_SCHEDULED = 0;
     }
     public static final class CalendarCache implements android.provider.CalendarContract.CalendarCacheColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String KEY_TIMEZONE_INSTANCES = "timezoneInstances";
         public static final java.lang.String KEY_TIMEZONE_INSTANCES_PREVIOUS = "timezoneInstancesPrevious";
         public static final java.lang.String KEY_TIMEZONE_TYPE = "timezoneType";
@@ -117,13 +117,13 @@ public final class CalendarContract {
         java.lang.String VISIBLE = "visible";
     }
     public static final class CalendarEntity implements android.provider.BaseColumns, android.provider.CalendarContract.SyncColumns, android.provider.CalendarContract.CalendarColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.net.Uri CONTENT_URI;
         public static android.content.EntityIterator newEntityIterator(android.database.Cursor p0) { return null; }
         protected CalendarEntity() {}
     }
     public static final class CalendarMetaData implements android.provider.CalendarContract.CalendarMetaDataColumns, android.provider.BaseColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         protected CalendarMetaData() {}
     }
     public interface CalendarMetaDataColumns {
@@ -146,7 +146,7 @@ public final class CalendarContract {
         java.lang.String CAL_SYNC9 = "cal_sync9";
     }
     public static final class Calendars implements android.provider.BaseColumns, android.provider.CalendarContract.SyncColumns, android.provider.CalendarContract.CalendarColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String CALENDAR_LOCATION = "calendar_location";
         public static android.net.Uri CONTENT_URI = android.net.Uri.parse("content://com.android.calendar/calendars");
         public static final java.lang.String DEFAULT_SORT_ORDER = "calendar_displayName";
@@ -156,7 +156,7 @@ public final class CalendarContract {
         protected Calendars() {}
     }
     public static final class Colors implements android.provider.CalendarContract.ColorsColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.net.Uri CONTENT_URI;
         public static final java.lang.String TABLE_NAME = "Colors";
         protected Colors() {}
@@ -169,7 +169,7 @@ public final class CalendarContract {
         int TYPE_EVENT = 1;
     }
     public static final class EventDays implements android.provider.CalendarContract.EventDaysColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.net.Uri CONTENT_URI;
         public static android.database.Cursor query(android.content.ContentResolver p0, int p1, int p2, java.lang.String[] p3) { return null; }
         protected EventDays() {}
@@ -179,7 +179,7 @@ public final class CalendarContract {
         java.lang.String STARTDAY = "startDay";
     }
     public static final class Events implements android.provider.BaseColumns, android.provider.CalendarContract.SyncColumns, android.provider.CalendarContract.EventsColumns, android.provider.CalendarContract.CalendarColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.net.Uri CONTENT_EXCEPTION_URI = android.net.Uri.parse("content://com.android.calendar/exception");
         public static android.net.Uri CONTENT_URI = android.net.Uri.parse("content://com.android.calendar/events");
         public static android.net.Uri ENTERPRISE_CONTENT_URI;
@@ -249,14 +249,14 @@ public final class CalendarContract {
         java.lang.String UID_2445 = "uid2445";
     }
     public static final class EventsEntity implements android.provider.BaseColumns, android.provider.CalendarContract.SyncColumns, android.provider.CalendarContract.EventsColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.net.Uri CONTENT_URI;
         public static android.content.EntityIterator newEntityIterator(android.database.Cursor p0, android.content.ContentProviderClient p1) { return null; }
         public static android.content.EntityIterator newEntityIterator(android.database.Cursor p0, android.content.ContentResolver p1) { return null; }
         protected EventsEntity() {}
     }
     public static final class EventsRawTimes implements android.provider.BaseColumns, android.provider.CalendarContract.EventsRawTimesColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         protected EventsRawTimes() {}
     }
     public interface EventsRawTimesColumns {
@@ -267,7 +267,7 @@ public final class CalendarContract {
         java.lang.String ORIGINAL_INSTANCE_TIME_2445 = "originalInstanceTime2445";
     }
     public static final class ExtendedProperties implements android.provider.BaseColumns, android.provider.CalendarContract.ExtendedPropertiesColumns, android.provider.CalendarContract.EventsColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.net.Uri CONTENT_URI;
         protected ExtendedProperties() {}
     }
@@ -277,7 +277,7 @@ public final class CalendarContract {
         java.lang.String VALUE = "value";
     }
     public static final class Instances implements android.provider.BaseColumns, android.provider.CalendarContract.EventsColumns, android.provider.CalendarContract.CalendarColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static final java.lang.String BEGIN = "begin";
         public static android.net.Uri CONTENT_BY_DAY_URI = android.net.Uri.parse("content://com.android.calendar/instances/whenbyday");
         public static android.net.Uri CONTENT_SEARCH_BY_DAY_URI = android.net.Uri.parse("content://com.android.calendar/instances/searchbyday");
@@ -298,7 +298,7 @@ public final class CalendarContract {
         protected Instances() {}
     }
     public static final class Reminders implements android.provider.BaseColumns, android.provider.CalendarContract.RemindersColumns, android.provider.CalendarContract.EventsColumns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.net.Uri CONTENT_URI = android.net.Uri.parse("content://com.android.calendar/reminders");
         public static android.database.Cursor query(android.content.ContentResolver p0, long p1, java.lang.String[] p2) { return null; }
         protected Reminders() {}
@@ -324,7 +324,7 @@ public final class CalendarContract {
         java.lang.String _SYNC_ID = "_sync_id";
     }
     public static final class SyncState implements android.provider.SyncStateContract.Columns {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public static android.net.Uri CONTENT_URI;
         protected SyncState() {}
     }

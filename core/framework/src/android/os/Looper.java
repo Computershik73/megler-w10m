@@ -13,11 +13,11 @@ public final class Looper {
     static void deliverInput() {
         InputSink s = sInput;
         if (s == null) return;
-        int[] ev = meglet.Native.pollInput();
+        int[] ev = megler.Native.pollInput();
         if (ev != null) s.deliver(ev);
     }
 
-    public static void prepare() { if (sThreadLocal.get() == null) { sThreadLocal.set(new Looper()); meglet.Native.nativeLooperPrepare(); } }
+    public static void prepare() { if (sThreadLocal.get() == null) { sThreadLocal.set(new Looper()); megler.Native.nativeLooperPrepare(); } }
     public static void prepareMainLooper() { prepare(); sMain = myLooper(); }
     public static Looper getMainLooper() { return sMain; }
     public static Looper myLooper() { return sThreadLocal.get(); }

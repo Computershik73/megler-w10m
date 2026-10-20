@@ -3,22 +3,22 @@ package android.service.autofill;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CustomDescription implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public android.util.SparseArray getActions() { return (android.util.SparseArray) megletProps.get("Actions"); }
-    public android.widget.RemoteViews getPresentation() { return (android.widget.RemoteViews) megletProps.get("Presentation"); }
-    public java.util.ArrayList getTransformations() { return (megletProps.get("Transformations") != null ? (java.util.ArrayList) megletProps.get("Transformations") : new java.util.ArrayList()); }
-    public java.util.ArrayList getUpdates() { return (megletProps.get("Updates") != null ? (java.util.ArrayList) megletProps.get("Updates") : new java.util.ArrayList()); }
+    public android.util.SparseArray getActions() { return (android.util.SparseArray) meglerProps.get("Actions"); }
+    public android.widget.RemoteViews getPresentation() { return (android.widget.RemoteViews) meglerProps.get("Presentation"); }
+    public java.util.ArrayList getTransformations() { return (meglerProps.get("Transformations") != null ? (java.util.ArrayList) meglerProps.get("Transformations") : new java.util.ArrayList()); }
+    public java.util.ArrayList getUpdates() { return (meglerProps.get("Updates") != null ? (java.util.ArrayList) meglerProps.get("Updates") : new java.util.ArrayList()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected CustomDescription() {}
     public static class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(android.widget.RemoteViews p0) {}
         public android.service.autofill.CustomDescription.Builder addChild(int p0, android.service.autofill.Transformation p1) { return this; }
         public android.service.autofill.CustomDescription.Builder addOnClickAction(int p0, android.service.autofill.OnClickAction p1) { return this; }
         public android.service.autofill.CustomDescription.Builder batchUpdate(android.service.autofill.Validator p0, android.service.autofill.BatchUpdates p1) { return this; }
-        public android.service.autofill.CustomDescription build() { android.service.autofill.CustomDescription x = new android.service.autofill.CustomDescription(); x.megletProps.putAll(megletProps); return x; }
+        public android.service.autofill.CustomDescription build() { android.service.autofill.CustomDescription x = new android.service.autofill.CustomDescription(); x.meglerProps.putAll(meglerProps); return x; }
         Builder() { this((android.widget.RemoteViews) null); }
     }
 }

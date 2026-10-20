@@ -3,13 +3,13 @@ package android.app.sdksandbox;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AppOwnedSdkSandboxInterface implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public AppOwnedSdkSandboxInterface(java.lang.String p0, long p1, android.os.IBinder p2) {}
     public int describeContents() { return 0; }
-    public android.os.IBinder getInterface() { return (android.os.IBinder) megletProps.get("Interface"); }
-    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
-    public long getVersion() { return (megletProps.get("Version") instanceof Long ? (Long) megletProps.get("Version") : 0L); }
+    public android.os.IBinder getInterface() { return (android.os.IBinder) meglerProps.get("Interface"); }
+    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
+    public long getVersion() { return (meglerProps.get("Version") instanceof Long ? (Long) meglerProps.get("Version") : 0L); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     AppOwnedSdkSandboxInterface() { this((java.lang.String) null, (long) 0L, (android.os.IBinder) null); }
 }

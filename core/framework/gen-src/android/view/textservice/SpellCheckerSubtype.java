@@ -3,7 +3,7 @@ package android.view.textservice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SpellCheckerSubtype implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int SUBTYPE_ID_NONE = 0;
     public SpellCheckerSubtype(int p0, java.lang.String p1, java.lang.String p2) {}
@@ -12,12 +12,12 @@ public final class SpellCheckerSubtype implements android.os.Parcelable {
     public boolean containsExtraValueKey(java.lang.String p0) { return false; }
     public int describeContents() { return 0; }
     public java.lang.CharSequence getDisplayName(android.content.Context p0, java.lang.String p1, android.content.pm.ApplicationInfo p2) { return null; }
-    public java.lang.String getExtraValue() { return (java.lang.String) megletProps.get("ExtraValue"); }
+    public java.lang.String getExtraValue() { return (java.lang.String) meglerProps.get("ExtraValue"); }
     public java.lang.String getExtraValueOf(java.lang.String p0) { return null; }
-    public java.lang.String getLanguageTag() { return (java.lang.String) megletProps.get("LanguageTag"); }
-    public java.lang.String getLocale() { return (java.lang.String) megletProps.get("Locale"); }
-    public java.util.Locale getLocaleObject() { return (java.util.Locale) megletProps.get("LocaleObject"); }
-    public int getNameResId() { return (megletProps.get("NameResId") instanceof Integer ? (Integer) megletProps.get("NameResId") : 0); }
+    public java.lang.String getLanguageTag() { return (java.lang.String) meglerProps.get("LanguageTag"); }
+    public java.lang.String getLocale() { return (java.lang.String) meglerProps.get("Locale"); }
+    public java.util.Locale getLocaleObject() { return (java.util.Locale) meglerProps.get("LocaleObject"); }
+    public int getNameResId() { return (meglerProps.get("NameResId") instanceof Integer ? (Integer) meglerProps.get("NameResId") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     SpellCheckerSubtype() { this((int) 0, (java.lang.String) null, (java.lang.String) null); }
 }

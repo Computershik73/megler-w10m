@@ -1,5 +1,5 @@
 """What tools/android9-natives.sh built, held against what it has to fit: Android's own
-libraries, the bytecode, Meglet's linker and the layer's libc.
+libraries, the bytecode, Megler's linker and the layer's libc.
 
   report.py                              all of the below, into build/android9/lib/report/
   report.py libraries | layer | elf | jni | loadtest
@@ -29,7 +29,7 @@ jni         the JNINativeMethod tables in libjavacore.so and libopenjdk.so
             declare; and the native methods neither library has, by class,
             which are the runtime's own, with whether ART's source
             (art/runtime/native) registers each.
-loadtest    what Meglet's linker said when tools/android9-natives/loadtest.sh had
+loadtest    what Megler's linker said when tools/android9-natives/loadtest.sh had
             it load the libraries (report/loadtest.txt), against what the files
             and the layer's tables predict: the unresolved names, the PLT
             entries rewritten, the probe's answers. Skipped when loadtest.sh
@@ -58,17 +58,17 @@ LIB = os.path.join(A9, 'lib')
 UNSTRIPPED = os.path.join(A9, 'obj', 'unstripped')
 REF = os.path.join(A9, 'system', 'lib64-for-reference')
 OUT = os.path.join(LIB, 'report')
-NDK = os.environ.get('MEGLET_NDK', r'C:\Users\User\Documents\android-ndk-r21e')
+NDK = os.environ.get('MEGLER_NDK', r'C:\Users\User\Documents\android-ndk-r21e')
 if NDK.startswith('/') and len(NDK) > 2 and NDK[2] == '/':       # /c/Users/... as Git Bash writes it
     NDK = NDK[1].upper() + ':' + NDK[2:]
-TC = os.path.join(NDK, 'toolchains', 'llvm', 'prebuilt', os.environ.get('MEGLET_NDK_HOST', 'windows-x86_64'))
+TC = os.path.join(NDK, 'toolchains', 'llvm', 'prebuilt', os.environ.get('MEGLER_NDK_HOST', 'windows-x86_64'))
 EXE = '.exe' if os.name == 'nt' else ''
 SYSLIB = os.path.join(TC, 'sysroot', 'usr', 'lib', 'arm-linux-androideabi', '28')
 SYSINC = os.path.join(TC, 'sysroot', 'usr', 'include')
 
 BUILT = ['libicuuc.so', 'libicui18n.so', 'libnativehelper.so', 'libexpat.so', 'libjavacore.so', 'libopenjdk.so']
 COPIED = ['libcrypto.so']
-# The libraries Meglet's layer is itself (mg_bionic_is_system_lib); the NDK has a stub of each of these six.
+# The libraries Megler's layer is itself (mg_bionic_is_system_lib); the NDK has a stub of each of these six.
 SYSTEM = ['libc.so', 'libm.so', 'libdl.so', 'liblog.so', 'libz.so', 'libstdc++.so']
 LINKER_OWN = {'__bss_start', '_edata', '_end', '__bss_start__', '__bss_end__', '__end__', '_bss_end__'}
 
@@ -985,7 +985,7 @@ def jni():
 # ------------------------------------------------------------------ loadtest
 
 def loadtest():
-    """What Meglet's linker said when it loaded the libraries (loadtest.sh's output) against what the files say."""
+    """What Megler's linker said when it loaded the libraries (loadtest.sh's output) against what the files say."""
     path = os.path.join(OUT, 'loadtest.txt')
     if not os.path.exists(path):
         print('no %s: run tools/android9-natives/loadtest.sh first' % path)

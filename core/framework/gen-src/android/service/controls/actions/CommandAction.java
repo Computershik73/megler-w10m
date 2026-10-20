@@ -3,9 +3,9 @@ package android.service.controls.actions;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CommandAction extends android.service.controls.actions.ControlAction {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public CommandAction(java.lang.String p0) { super(); }
     public CommandAction(java.lang.String p0, java.lang.String p1) { super(); }
-    public int getActionType() { return (megletProps.get("ActionType") instanceof Integer ? (Integer) megletProps.get("ActionType") : 0); }
+    public int getActionType() { return (meglerProps.get("ActionType") instanceof Integer ? (Integer) meglerProps.get("ActionType") : 0); }
     CommandAction() { this((java.lang.String) null); }
 }

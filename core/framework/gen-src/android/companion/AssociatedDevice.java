@@ -3,13 +3,13 @@ package android.companion;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AssociatedDevice implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public AssociatedDevice(android.os.Parcelable p0) {}
     public int describeContents() { return 0; }
-    public android.bluetooth.le.ScanResult getBleDevice() { return (android.bluetooth.le.ScanResult) megletProps.get("BleDevice"); }
-    public android.bluetooth.BluetoothDevice getBluetoothDevice() { return (android.bluetooth.BluetoothDevice) megletProps.get("BluetoothDevice"); }
-    public android.net.wifi.ScanResult getWifiDevice() { return (android.net.wifi.ScanResult) megletProps.get("WifiDevice"); }
+    public android.bluetooth.le.ScanResult getBleDevice() { return (android.bluetooth.le.ScanResult) meglerProps.get("BleDevice"); }
+    public android.bluetooth.BluetoothDevice getBluetoothDevice() { return (android.bluetooth.BluetoothDevice) meglerProps.get("BluetoothDevice"); }
+    public android.net.wifi.ScanResult getWifiDevice() { return (android.net.wifi.ScanResult) meglerProps.get("WifiDevice"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     AssociatedDevice() { this((android.os.Parcelable) null); }
 }

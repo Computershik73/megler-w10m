@@ -3,13 +3,13 @@ package android.view.translation;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TranslationSpec implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int DATA_FORMAT_TEXT = 1;
     public TranslationSpec(java.lang.String p0, int p1) {}
     public int describeContents() { return 0; }
-    public int getDataFormat() { return (megletProps.get("DataFormat") instanceof Integer ? (Integer) megletProps.get("DataFormat") : 0); }
-    public java.lang.String getLanguage() { return (java.lang.String) megletProps.get("Language"); }
+    public int getDataFormat() { return (meglerProps.get("DataFormat") instanceof Integer ? (Integer) meglerProps.get("DataFormat") : 0); }
+    public java.lang.String getLanguage() { return (java.lang.String) meglerProps.get("Language"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     TranslationSpec() { this((java.lang.String) null, (int) 0); }
 }

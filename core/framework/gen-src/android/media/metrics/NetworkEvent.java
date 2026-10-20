@@ -3,7 +3,7 @@ package android.media.metrics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class NetworkEvent extends android.media.metrics.Event implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int NETWORK_TYPE_2G = 4;
     public static final int NETWORK_TYPE_3G = 5;
@@ -17,17 +17,17 @@ public final class NetworkEvent extends android.media.metrics.Event implements a
     public static final int NETWORK_TYPE_WIFI = 2;
     public static java.lang.String networkTypeToString(int p0) { return null; }
     public int describeContents() { return 0; }
-    public android.os.Bundle getMetricsBundle() { return (android.os.Bundle) megletProps.get("MetricsBundle"); }
-    public int getNetworkType() { return (megletProps.get("NetworkType") instanceof Integer ? (Integer) megletProps.get("NetworkType") : 0); }
-    public long getTimeSinceCreatedMillis() { return (megletProps.get("TimeSinceCreatedMillis") instanceof Long ? (Long) megletProps.get("TimeSinceCreatedMillis") : 0L); }
+    public android.os.Bundle getMetricsBundle() { return (android.os.Bundle) meglerProps.get("MetricsBundle"); }
+    public int getNetworkType() { return (meglerProps.get("NetworkType") instanceof Integer ? (Integer) meglerProps.get("NetworkType") : 0); }
+    public long getTimeSinceCreatedMillis() { return (meglerProps.get("TimeSinceCreatedMillis") instanceof Long ? (Long) meglerProps.get("TimeSinceCreatedMillis") : 0L); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected NetworkEvent() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.media.metrics.NetworkEvent build() { android.media.metrics.NetworkEvent x = new android.media.metrics.NetworkEvent(); x.megletProps.putAll(megletProps); return x; }
-        public android.media.metrics.NetworkEvent.Builder setMetricsBundle(android.os.Bundle p0) { megletProps.put("MetricsBundle", p0); return this; }
-        public android.media.metrics.NetworkEvent.Builder setNetworkType(int p0) { megletProps.put("NetworkType", Integer.valueOf(p0)); return this; }
-        public android.media.metrics.NetworkEvent.Builder setTimeSinceCreatedMillis(long p0) { megletProps.put("TimeSinceCreatedMillis", Long.valueOf(p0)); return this; }
+        public android.media.metrics.NetworkEvent build() { android.media.metrics.NetworkEvent x = new android.media.metrics.NetworkEvent(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.media.metrics.NetworkEvent.Builder setMetricsBundle(android.os.Bundle p0) { meglerProps.put("MetricsBundle", p0); return this; }
+        public android.media.metrics.NetworkEvent.Builder setNetworkType(int p0) { meglerProps.put("NetworkType", Integer.valueOf(p0)); return this; }
+        public android.media.metrics.NetworkEvent.Builder setTimeSinceCreatedMillis(long p0) { meglerProps.put("TimeSinceCreatedMillis", Long.valueOf(p0)); return this; }
     }
 }

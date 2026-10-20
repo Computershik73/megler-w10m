@@ -3,11 +3,11 @@ package android.app.appsearch.exceptions;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AppSearchException extends java.lang.Exception {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public AppSearchException(int p0) { super(); }
     public AppSearchException(int p0, java.lang.String p1) { super(); }
     public AppSearchException(int p0, java.lang.String p1, java.lang.Throwable p2) { super(); }
-    public int getResultCode() { return (megletProps.get("ResultCode") instanceof Integer ? (Integer) megletProps.get("ResultCode") : 0); }
+    public int getResultCode() { return (meglerProps.get("ResultCode") instanceof Integer ? (Integer) meglerProps.get("ResultCode") : 0); }
     public android.app.appsearch.AppSearchResult toAppSearchResult() { return null; }
     AppSearchException() { this((int) 0); }
 }

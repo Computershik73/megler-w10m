@@ -3,28 +3,28 @@ package android.widget;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ActionMenuView extends android.widget.LinearLayout {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public ActionMenuView(android.content.Context p0) { super(p0); }
     public ActionMenuView(android.content.Context p0, android.util.AttributeSet p1) { super(p0, p1); }
     public void dismissPopupMenus() {}
     public boolean dispatchPopulateAccessibilityEventInternal(android.view.accessibility.AccessibilityEvent p0) { return false; }
     public android.widget.ActionMenuView.LayoutParams generateOverflowButtonLayoutParams() { return null; }
-    public android.view.Menu getMenu() { return (android.view.Menu) megletProps.get("Menu"); }
-    public android.graphics.drawable.Drawable getOverflowIcon() { return (android.graphics.drawable.Drawable) megletProps.get("OverflowIcon"); }
-    public int getPopupTheme() { return (megletProps.get("PopupTheme") instanceof Integer ? (Integer) megletProps.get("PopupTheme") : 0); }
-    public int getWindowAnimations() { return (megletProps.get("WindowAnimations") instanceof Integer ? (Integer) megletProps.get("WindowAnimations") : 0); }
+    public android.view.Menu getMenu() { return (android.view.Menu) meglerProps.get("Menu"); }
+    public android.graphics.drawable.Drawable getOverflowIcon() { return (android.graphics.drawable.Drawable) meglerProps.get("OverflowIcon"); }
+    public int getPopupTheme() { return (meglerProps.get("PopupTheme") instanceof Integer ? (Integer) meglerProps.get("PopupTheme") : 0); }
+    public int getWindowAnimations() { return (meglerProps.get("WindowAnimations") instanceof Integer ? (Integer) meglerProps.get("WindowAnimations") : 0); }
     public boolean hideOverflowMenu() { return false; }
-    public boolean isOverflowMenuShowPending() { return (megletProps.get("OverflowMenuShowPending") instanceof Boolean ? (Boolean) megletProps.get("OverflowMenuShowPending") : false); }
-    public boolean isOverflowMenuShowing() { return (megletProps.get("OverflowMenuShowing") instanceof Boolean ? (Boolean) megletProps.get("OverflowMenuShowing") : false); }
-    public boolean isOverflowReserved() { return (megletProps.get("OverflowReserved") instanceof Boolean ? (Boolean) megletProps.get("OverflowReserved") : false); }
+    public boolean isOverflowMenuShowPending() { return (meglerProps.get("OverflowMenuShowPending") instanceof Boolean ? (Boolean) meglerProps.get("OverflowMenuShowPending") : false); }
+    public boolean isOverflowMenuShowing() { return (meglerProps.get("OverflowMenuShowing") instanceof Boolean ? (Boolean) meglerProps.get("OverflowMenuShowing") : false); }
+    public boolean isOverflowReserved() { return (meglerProps.get("OverflowReserved") instanceof Boolean ? (Boolean) meglerProps.get("OverflowReserved") : false); }
     public void onConfigurationChanged(android.content.res.Configuration p0) {}
     public void onDetachedFromWindow() {}
-    public void setExpandedActionViewsExclusive(boolean p0) { megletProps.put("ExpandedActionViewsExclusive", Boolean.valueOf(p0)); }
-    public void setOnMenuItemClickListener(android.widget.ActionMenuView.OnMenuItemClickListener p0) { megletProps.put("OnMenuItemClickListener", p0); }
-    public void setOverflowIcon(android.graphics.drawable.Drawable p0) { megletProps.put("OverflowIcon", p0); }
-    public void setOverflowReserved(boolean p0) { megletProps.put("OverflowReserved", Boolean.valueOf(p0)); }
-    public void setPopupTheme(int p0) { megletProps.put("PopupTheme", Integer.valueOf(p0)); }
-    public void setPresenter(android.widget.ActionMenuPresenter p0) { megletProps.put("Presenter", p0); }
+    public void setExpandedActionViewsExclusive(boolean p0) { meglerProps.put("ExpandedActionViewsExclusive", Boolean.valueOf(p0)); }
+    public void setOnMenuItemClickListener(android.widget.ActionMenuView.OnMenuItemClickListener p0) { meglerProps.put("OnMenuItemClickListener", p0); }
+    public void setOverflowIcon(android.graphics.drawable.Drawable p0) { meglerProps.put("OverflowIcon", p0); }
+    public void setOverflowReserved(boolean p0) { meglerProps.put("OverflowReserved", Boolean.valueOf(p0)); }
+    public void setPopupTheme(int p0) { meglerProps.put("PopupTheme", Integer.valueOf(p0)); }
+    public void setPresenter(android.widget.ActionMenuPresenter p0) { meglerProps.put("Presenter", p0); }
     public boolean showOverflowMenu() { return false; }
     ActionMenuView() { this((android.content.Context) null); }
     public interface ActionMenuChildView {
@@ -32,7 +32,7 @@ public class ActionMenuView extends android.widget.LinearLayout {
         boolean needsDividerBefore();
     }
     public static class LayoutParams extends android.widget.LinearLayout.LayoutParams {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public int cellsUsed;
         public boolean expandable;
         public boolean expanded;

@@ -3,37 +3,37 @@ package android.view.inputmethod;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class InlineSuggestionsRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int SUGGESTION_COUNT_UNLIMITED = 2147483647;
     public int describeContents() { return 0; }
     public void filterContentTypes() {}
-    public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
-    public int getHostDisplayId() { return (megletProps.get("HostDisplayId") instanceof Integer ? (Integer) megletProps.get("HostDisplayId") : 0); }
-    public android.os.IBinder getHostInputToken() { return (android.os.IBinder) megletProps.get("HostInputToken"); }
-    public java.lang.String getHostPackageName() { return (java.lang.String) megletProps.get("HostPackageName"); }
-    public java.util.List getInlinePresentationSpecs() { return (megletProps.get("InlinePresentationSpecs") != null ? (java.util.List) megletProps.get("InlinePresentationSpecs") : new java.util.ArrayList()); }
-    public android.widget.inline.InlinePresentationSpec getInlineTooltipPresentationSpec() { return (android.widget.inline.InlinePresentationSpec) megletProps.get("InlineTooltipPresentationSpec"); }
-    public int getMaxSuggestionCount() { return (megletProps.get("MaxSuggestionCount") instanceof Integer ? (Integer) megletProps.get("MaxSuggestionCount") : 0); }
-    public android.os.LocaleList getSupportedLocales() { return (android.os.LocaleList) megletProps.get("SupportedLocales"); }
-    public void setHostDisplayId(int p0) { megletProps.put("HostDisplayId", Integer.valueOf(p0)); }
-    public void setHostInputToken(android.os.IBinder p0) { megletProps.put("HostInputToken", p0); }
+    public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
+    public int getHostDisplayId() { return (meglerProps.get("HostDisplayId") instanceof Integer ? (Integer) meglerProps.get("HostDisplayId") : 0); }
+    public android.os.IBinder getHostInputToken() { return (android.os.IBinder) meglerProps.get("HostInputToken"); }
+    public java.lang.String getHostPackageName() { return (java.lang.String) meglerProps.get("HostPackageName"); }
+    public java.util.List getInlinePresentationSpecs() { return (meglerProps.get("InlinePresentationSpecs") != null ? (java.util.List) meglerProps.get("InlinePresentationSpecs") : new java.util.ArrayList()); }
+    public android.widget.inline.InlinePresentationSpec getInlineTooltipPresentationSpec() { return (android.widget.inline.InlinePresentationSpec) meglerProps.get("InlineTooltipPresentationSpec"); }
+    public int getMaxSuggestionCount() { return (meglerProps.get("MaxSuggestionCount") instanceof Integer ? (Integer) meglerProps.get("MaxSuggestionCount") : 0); }
+    public android.os.LocaleList getSupportedLocales() { return (android.os.LocaleList) meglerProps.get("SupportedLocales"); }
+    public void setHostDisplayId(int p0) { meglerProps.put("HostDisplayId", Integer.valueOf(p0)); }
+    public void setHostInputToken(android.os.IBinder p0) { meglerProps.put("HostInputToken", p0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected InlineSuggestionsRequest() {}
     public static abstract class BaseBuilder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         protected BaseBuilder() {}
     }
     public static final class Builder extends android.view.inputmethod.InlineSuggestionsRequest.BaseBuilder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(java.util.List p0) { super(); }
         public android.view.inputmethod.InlineSuggestionsRequest.Builder addInlinePresentationSpecs(android.widget.inline.InlinePresentationSpec p0) { return this; }
-        public android.view.inputmethod.InlineSuggestionsRequest build() { android.view.inputmethod.InlineSuggestionsRequest x = new android.view.inputmethod.InlineSuggestionsRequest(); x.megletProps.putAll(megletProps); return x; }
-        public android.view.inputmethod.InlineSuggestionsRequest.Builder setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); return this; }
-        public android.view.inputmethod.InlineSuggestionsRequest.Builder setInlinePresentationSpecs(java.util.List p0) { megletProps.put("InlinePresentationSpecs", p0); return this; }
-        public android.view.inputmethod.InlineSuggestionsRequest.Builder setInlineTooltipPresentationSpec(android.widget.inline.InlinePresentationSpec p0) { megletProps.put("InlineTooltipPresentationSpec", p0); return this; }
-        public android.view.inputmethod.InlineSuggestionsRequest.Builder setMaxSuggestionCount(int p0) { megletProps.put("MaxSuggestionCount", Integer.valueOf(p0)); return this; }
-        public android.view.inputmethod.InlineSuggestionsRequest.Builder setSupportedLocales(android.os.LocaleList p0) { megletProps.put("SupportedLocales", p0); return this; }
+        public android.view.inputmethod.InlineSuggestionsRequest build() { android.view.inputmethod.InlineSuggestionsRequest x = new android.view.inputmethod.InlineSuggestionsRequest(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.view.inputmethod.InlineSuggestionsRequest.Builder setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); return this; }
+        public android.view.inputmethod.InlineSuggestionsRequest.Builder setInlinePresentationSpecs(java.util.List p0) { meglerProps.put("InlinePresentationSpecs", p0); return this; }
+        public android.view.inputmethod.InlineSuggestionsRequest.Builder setInlineTooltipPresentationSpec(android.widget.inline.InlinePresentationSpec p0) { meglerProps.put("InlineTooltipPresentationSpec", p0); return this; }
+        public android.view.inputmethod.InlineSuggestionsRequest.Builder setMaxSuggestionCount(int p0) { meglerProps.put("MaxSuggestionCount", Integer.valueOf(p0)); return this; }
+        public android.view.inputmethod.InlineSuggestionsRequest.Builder setSupportedLocales(android.os.LocaleList p0) { meglerProps.put("SupportedLocales", p0); return this; }
         Builder() { this((java.util.List) null); }
     }
 }

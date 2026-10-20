@@ -3,7 +3,7 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PlannedExerciseStep {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static final int EXERCISE_CATEGORY_ACTIVE = 3;
     public static final int EXERCISE_CATEGORY_COOLDOWN = 4;
     public static final int EXERCISE_CATEGORY_RECOVERY = 5;
@@ -11,24 +11,24 @@ public final class PlannedExerciseStep {
     public static final int EXERCISE_CATEGORY_UNKNOWN = 0;
     public static final int EXERCISE_CATEGORY_WARMUP = 1;
     public static boolean isValidExerciseCategory(int p0) { return false; }
-    public android.health.connect.datatypes.ExerciseCompletionGoal getCompletionGoal() { return (android.health.connect.datatypes.ExerciseCompletionGoal) megletProps.get("CompletionGoal"); }
-    public java.lang.CharSequence getDescription() { return (java.lang.CharSequence) megletProps.get("Description"); }
-    public int getExerciseCategory() { return (megletProps.get("ExerciseCategory") instanceof Integer ? (Integer) megletProps.get("ExerciseCategory") : 0); }
-    public int getExerciseType() { return (megletProps.get("ExerciseType") instanceof Integer ? (Integer) megletProps.get("ExerciseType") : 0); }
-    public java.util.List getPerformanceGoals() { return (megletProps.get("PerformanceGoals") != null ? (java.util.List) megletProps.get("PerformanceGoals") : new java.util.ArrayList()); }
+    public android.health.connect.datatypes.ExerciseCompletionGoal getCompletionGoal() { return (android.health.connect.datatypes.ExerciseCompletionGoal) meglerProps.get("CompletionGoal"); }
+    public java.lang.CharSequence getDescription() { return (java.lang.CharSequence) meglerProps.get("Description"); }
+    public int getExerciseCategory() { return (meglerProps.get("ExerciseCategory") instanceof Integer ? (Integer) meglerProps.get("ExerciseCategory") : 0); }
+    public int getExerciseType() { return (meglerProps.get("ExerciseType") instanceof Integer ? (Integer) meglerProps.get("ExerciseType") : 0); }
+    public java.util.List getPerformanceGoals() { return (meglerProps.get("PerformanceGoals") != null ? (java.util.List) meglerProps.get("PerformanceGoals") : new java.util.ArrayList()); }
     public android.health.connect.internal.datatypes.PlannedExerciseStepInternal toInternalObject() { return null; }
     protected PlannedExerciseStep() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(int p0, int p1, android.health.connect.datatypes.ExerciseCompletionGoal p2) {}
         public android.health.connect.datatypes.PlannedExerciseStep.Builder addPerformanceGoal(android.health.connect.datatypes.ExercisePerformanceGoal p0) { return this; }
-        public android.health.connect.datatypes.PlannedExerciseStep build() { android.health.connect.datatypes.PlannedExerciseStep x = new android.health.connect.datatypes.PlannedExerciseStep(); x.megletProps.putAll(megletProps); return x; }
+        public android.health.connect.datatypes.PlannedExerciseStep build() { android.health.connect.datatypes.PlannedExerciseStep x = new android.health.connect.datatypes.PlannedExerciseStep(); x.meglerProps.putAll(meglerProps); return x; }
         public android.health.connect.datatypes.PlannedExerciseStep.Builder clearPerformanceGoals() { return this; }
-        public android.health.connect.datatypes.PlannedExerciseStep.Builder setCompletionGoal(android.health.connect.datatypes.ExerciseCompletionGoal p0) { megletProps.put("CompletionGoal", p0); return this; }
-        public android.health.connect.datatypes.PlannedExerciseStep.Builder setDescription(java.lang.CharSequence p0) { megletProps.put("Description", p0); return this; }
-        public android.health.connect.datatypes.PlannedExerciseStep.Builder setExerciseCategory(int p0) { megletProps.put("ExerciseCategory", Integer.valueOf(p0)); return this; }
-        public android.health.connect.datatypes.PlannedExerciseStep.Builder setExerciseType(int p0) { megletProps.put("ExerciseType", Integer.valueOf(p0)); return this; }
-        public android.health.connect.datatypes.PlannedExerciseStep.Builder setPerformanceGoals(java.util.List p0) { megletProps.put("PerformanceGoals", p0); return this; }
+        public android.health.connect.datatypes.PlannedExerciseStep.Builder setCompletionGoal(android.health.connect.datatypes.ExerciseCompletionGoal p0) { meglerProps.put("CompletionGoal", p0); return this; }
+        public android.health.connect.datatypes.PlannedExerciseStep.Builder setDescription(java.lang.CharSequence p0) { meglerProps.put("Description", p0); return this; }
+        public android.health.connect.datatypes.PlannedExerciseStep.Builder setExerciseCategory(int p0) { meglerProps.put("ExerciseCategory", Integer.valueOf(p0)); return this; }
+        public android.health.connect.datatypes.PlannedExerciseStep.Builder setExerciseType(int p0) { meglerProps.put("ExerciseType", Integer.valueOf(p0)); return this; }
+        public android.health.connect.datatypes.PlannedExerciseStep.Builder setPerformanceGoals(java.util.List p0) { meglerProps.put("PerformanceGoals", p0); return this; }
         Builder() { this((int) 0, (int) 0, (android.health.connect.datatypes.ExerciseCompletionGoal) null); }
     }
 }

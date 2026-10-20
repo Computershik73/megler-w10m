@@ -3,18 +3,18 @@ package android.adservices.measurement;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SourceRegistrationRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public android.view.InputEvent getInputEvent() { return (android.view.InputEvent) megletProps.get("InputEvent"); }
-    public java.util.List getRegistrationUris() { return (megletProps.get("RegistrationUris") != null ? (java.util.List) megletProps.get("RegistrationUris") : new java.util.ArrayList()); }
+    public android.view.InputEvent getInputEvent() { return (android.view.InputEvent) meglerProps.get("InputEvent"); }
+    public java.util.List getRegistrationUris() { return (meglerProps.get("RegistrationUris") != null ? (java.util.List) meglerProps.get("RegistrationUris") : new java.util.ArrayList()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected SourceRegistrationRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
         public Builder(java.util.List p0) {}
-        public android.adservices.measurement.SourceRegistrationRequest build() { android.adservices.measurement.SourceRegistrationRequest x = new android.adservices.measurement.SourceRegistrationRequest(); x.megletProps.putAll(megletProps); return x; }
-        public android.adservices.measurement.SourceRegistrationRequest.Builder setInputEvent(android.view.InputEvent p0) { megletProps.put("InputEvent", p0); return this; }
+        public android.adservices.measurement.SourceRegistrationRequest build() { android.adservices.measurement.SourceRegistrationRequest x = new android.adservices.measurement.SourceRegistrationRequest(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.adservices.measurement.SourceRegistrationRequest.Builder setInputEvent(android.view.InputEvent p0) { meglerProps.put("InputEvent", p0); return this; }
         Builder() { this((java.util.List) null); }
     }
 }
