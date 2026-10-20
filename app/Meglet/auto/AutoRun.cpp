@@ -57,14 +57,14 @@
 // has any of it.
 #include "player/GfxHost.h"
 
-#include "../../../core/tests/hk_gfx_scenes.h"
+#include "../../../core/tests/mg_gfx_scenes.h"
 #endif
 
 #if MEGLET_AUTO_CODEC
 // Likewise for a Java app's MediaCodec: the core's tests of its codec, run over the shell's own decoders.
 #include "player/CodecHost.h"
 
-#include "../../../core/tests/hk_codec_tests.h"
+#include "../../../core/tests/mg_codec_tests.h"
 #endif
 
 namespace meglet::app::autorun {
@@ -121,7 +121,7 @@ void runStage(checks::Kind kind) {
 }
 
 #if MEGLET_AUTO_GFX
-/// The scenes of core/tests/hk_gfx_scenes.c drawn by the shell's own
+/// The scenes of core/tests/mg_gfx_scenes.c drawn by the shell's own
 /// meglet_gfx_host on this device, on this thread (never the UI thread, as an
 /// app's drawing never is): what they say goes to meglet-auto.log line by
 /// line, and the pictures into LocalState as shot-gfx-NN-name.bmp, which is
@@ -147,13 +147,13 @@ void runGfx() {
     }
     const meglet_gfx_host host = gfx.callbacks();
     const std::string folder = narrow(local);
-    hk_gfx_scenes_config config = {};
+    mg_gfx_scenes_config config = {};
     config.host = &host;
     config.out_dir = folder.c_str();
     config.file_prefix = "shot-gfx-";
     config.bmp = true;
     int checks = 0;
-    const int failed = hk_gfx_scenes_run(&config, [](const char* line, void*) { autoLine(line); }, nullptr, &checks);
+    const int failed = mg_gfx_scenes_run(&config, [](const char* line, void*) { autoLine(line); }, nullptr, &checks);
     gfx.setLog([](const char* line, void*) { shellLog::write(line); }, nullptr);
     const GfxHost::Counts counts = gfx.counts();
     const std::string done = format("DONE gfx: %d checks, %d failed; %llu canvases, %llu drawing calls put on by Direct2D and %llu by the host's own "
@@ -227,7 +227,7 @@ void runNet() {
 
 #if MEGLET_AUTO_CODEC
 /// The decoders a Java app's MediaCodec has here (CodecHost, Media Foundation's transforms) under the core's codec for
-/// it, through the tests of core/tests/hk_codec_tests.c on the streams in the package's folder `codec`: which decoders
+/// it, through the tests of core/tests/mg_codec_tests.c on the streams in the package's folder `codec`: which decoders
 /// the phone has, whether they give what the streams hold, and how fast they are. It runs no app.
 void runCodec() {
     autoLine("codec: started");
@@ -240,8 +240,8 @@ void runCodec() {
     };
     int checks = 0, failed = 0;
     try {
-        failed = hk_codec_tests_run(folder.c_str(), &host, line, nullptr, &checks);
-        failed += hk_codec_speed_run(folder.c_str(), &host, line, nullptr, &checks);
+        failed = mg_codec_tests_run(folder.c_str(), &host, line, nullptr, &checks);
+        failed += mg_codec_speed_run(folder.c_str(), &host, line, nullptr, &checks);
     } catch (...) {
         autoLine("codec: aborted by an exception");
         failed++;

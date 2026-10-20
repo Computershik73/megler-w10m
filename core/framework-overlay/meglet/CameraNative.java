@@ -1,5 +1,5 @@
 // Overlay: a class of this framework's own, new (the original has no camera). The natives behind
-// android.hardware.Camera (the overlay's), which core/src/drivers/hk_java_camera.c answers over the shell's cameras
+// android.hardware.Camera (the overlay's), which core/src/drivers/mg_java_camera.c answers over the shell's cameras
 // (meglet_camera_host in core/include/meglet.h: Windows.Media.Capture on a phone).
 package meglet;
 

@@ -202,7 +202,7 @@ private:
                 while (!tag.empty() && tag.front() == ' ') tag.erase(tag.begin());
                 for (char& ch : tag)
                     if (ch == '_') ch = '-';
-                // As the core takes one (hk_locale_set): letters, digits and hyphens, beginning with a language of two or three letters.
+                // As the core takes one (mg_locale_set): letters, digits and hyphens, beginning with a language of two or three letters.
                 bool ok = !tag.empty() && tag.size() < 36;
                 size_t first = tag.find('-');
                 if (first == std::string::npos) first = tag.size();

@@ -1,5 +1,5 @@
 """Checks a package (.appx) the way Windows will, as far as a PC without the signer's trust can: for packages made by
-core/src/appx/hk_appx.c (tools/appx-tool), and for makeappx's and signtool's, to check this script itself.
+core/src/appx/mg_appx.c (tools/appx-tool), and for makeappx's and signtool's, to check this script itself.
 
     python tools/appx-verify.py <package.appx>
 

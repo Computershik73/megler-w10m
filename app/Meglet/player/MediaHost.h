@@ -3,7 +3,7 @@
 // included) and which needs no capability for a file in the app's own folder.
 //
 // The core has no decoders of its own. When an app plays a film (Unity's
-// VideoPlayer through libmediandk, core/src/ndk/hk_media.c) the core copies
+// VideoPlayer through libmediandk, core/src/ndk/mg_media.c) the core copies
 // the film to a file under the data folder and asks for it to be opened here,
 // then asks for one picture or one block of sound at a time: RGBA with the
 // top row first, and 16-bit PCM. MP4 with H.264 and AAC is what Windows

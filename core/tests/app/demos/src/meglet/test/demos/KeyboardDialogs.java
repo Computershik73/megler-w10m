@@ -16,7 +16,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 /**
- * Dialogs with a text field, over which the keyboard comes up (core/tests/hk_java_tests.c, keyboard_and_dialogs), one after
+ * Dialogs with a text field, over which the keyboard comes up (core/tests/mg_java_tests.c, keyboard_and_dialogs), one after
  * the other as each is closed:
  *  - "top": its field at its top, and it asks to be resized (SOFT_INPUT_ADJUST_RESIZE);
  *  - "bottom": its field at the bottom of a tall dialog, and it asks to be panned (SOFT_INPUT_ADJUST_PAN);

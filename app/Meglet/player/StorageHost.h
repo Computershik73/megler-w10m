@@ -64,7 +64,7 @@ public:
     void start();
     /// In place of start(): nothing is looked for, and these folders are the
     /// links, each under its name. For the tests' program on a PC, which has
-    /// folders of its own for it (core/tests/hk_storage_windows.cpp); there
+    /// folders of its own for it (core/tests/mg_storage_windows.cpp); there
     /// the user's real libraries are the last thing to be written into. On a
     /// thread that may wait for Windows.Storage (not a UI thread).
     void startWith(std::vector<std::pair<std::string, winrt::Windows::Storage::StorageFolder>> folders);

@@ -1,6 +1,6 @@
 """
-Writes core/tests/hk_webp_fixtures.inc: five small WebP files as C arrays, for the test of the core's WebP decoding
-(core/tests/hk_gfx_natives_tests.c). The file is kept in the repository, so the tests need neither this script nor what it
+Writes core/tests/mg_webp_fixtures.inc: five small WebP files as C arrays, for the test of the core's WebP decoding
+(core/tests/mg_gfx_natives_tests.c). The file is kept in the repository, so the tests need neither this script nor what it
 needs; it is for when the pictures are to change.
 
     python tools/webp-fixtures.py
@@ -17,7 +17,7 @@ Needs ffmpeg with libwebp on the PATH (it is the encoder; this repository has on
 import os, struct, subprocess, sys, tempfile, zlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = os.path.join(ROOT, 'core', 'tests', 'hk_webp_fixtures.inc')
+OUT = os.path.join(ROOT, 'core', 'tests', 'mg_webp_fixtures.inc')
 
 
 def png(path, width, height, pixel):

@@ -1,5 +1,5 @@
 # java.lang.Object, as far as bytecode needs it with no libcore.
-# What is declared native here is in core/src/dvm/hk_dvm_boot.c.
+# What is declared native here is in core/src/dvm/mg_dvm_boot.c.
 .class public Ljava/lang/Object;
 
 .method public constructor <init>()V

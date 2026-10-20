@@ -1,7 +1,7 @@
 /*
  * A second guest library that needs the first (DT_NEEDED libt_basic.so): its
  * calls into it go through this library's PLT, whose entries the linker wrote
- * in ARM mode and the loader rewrote (arm/hk_patch.c).
+ * in ARM mode and the loader rewrote (arm/mg_patch.c).
  */
 int t_add(int a, int b);
 int *t_counter_ptr(void);

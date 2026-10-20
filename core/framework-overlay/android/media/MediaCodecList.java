@@ -3,7 +3,7 @@
 // the original listed H.264, AAC and MP3 always and asked only for HEVC.
 //
 // Why. The list must be what MediaCodec can make, and here that is whatever the shell's decoders are (meglet_codec_host in
-// meglet.h; core/src/drivers/hk_java_media.c asks it in supported()), which a phone may lack one of. With none the list is
+// meglet.h; core/src/drivers/mg_java_media.c asks it in supported()), which a phone may lack one of. With none the list is
 // empty, which Android allows: an app finds no decoder and createDecoderByType throws IOException, as on a phone without
 // one. Before, AIDA64's Codecs page listed three decoders that could not be made. Everything else is the original's,
 // unchanged.

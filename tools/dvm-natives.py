@@ -7,7 +7,7 @@ Which native methods a boot class path declares, and who must answer for them.
 A native method of libcore is implemented in one of two places on Android: in
 libcore's own libraries (libjavacore.so, libopenjdk.so), which register theirs
 when they are loaded, or inside the runtime (art/runtime/native/*.cc). The
-second kind is this port's to write (core/src/dvm/hk_dvm_art.c). This lists,
+second kind is this port's to write (core/src/dvm/mg_dvm_art.c). This lists,
 for each class the runtime answers for in Android's source, the native methods
 the DEX files declare; with --all, every class that declares any.
 

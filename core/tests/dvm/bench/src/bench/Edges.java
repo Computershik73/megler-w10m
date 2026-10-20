@@ -1,7 +1,7 @@
 package bench;
 
 /**
- * What the interpreter does in place of a call must be what the call does, at the edges too (core/tests/hk_dvm_tests_libcore.c
+ * What the interpreter does in place of a call must be what the call does, at the edges too (core/tests/mg_dvm_tests_libcore.c
  * checks the text run() returns, which is the JVM's answer for each case): the intrinsics, where each declines and the
  * method itself runs and throws; and the trivial methods, where a getter's class must still be initialised first.
  */

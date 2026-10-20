@@ -69,7 +69,7 @@ confirmed that its "no network" message no longer appears.
 
 VK now receives an anonymous authorization response and advances to the
 server's CAPTCHA challenge. The challenge page is blank because `meglet.Web`
-is still registered as `Absent` in `core/src/drivers/hk_java.c`; the Windows
+is still registered as `Absent` in `core/src/drivers/mg_java.c`; the Windows
 shell has no WebView host. This is a separate, unresolved blocker to completing
 that login flow. Do not bypass the challenge or describe VK login as fixed.
 The logs contain session URLs/tokens and are intentionally not copied here.

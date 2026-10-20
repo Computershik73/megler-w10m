@@ -1,0 +1,911 @@
+/*
+ * malloc and mmap for guest code.
+ *
+ * The guest frees with free() whatever malloc, memalign or posix_memalign gave
+ * it, and the host's allocators do not all agree to that (an aligned block on
+ * Windows has its own free). So every guest block carries a small header that
+ * says where the host's block starts, and free() needs to know nothing else.
+ */
+#include "mg_bionic.h"
+#include "mg_fd.h"
+
+#include "../mg_core.h"
+#include "../ld/mg_ld.h"
+
+typedef struct ghdr {
+    u32 offset;            /* from the host block's start to the guest pointer */
+    u32 size;              /* what the guest asked for */
+} ghdr;
+
+#define HDR(p) ((ghdr *)((u8 *)(p) - sizeof(ghdr)))
+
+void *mg_g_malloc(size_t n)
+{
+    u8 *raw;
+    if (n > 0x7FFFFF00u) {
+        mg_set_errno(GE_NOMEM);
+        return NULL;
+    }
+    raw = (u8 *)malloc(n + sizeof(ghdr));
+    if (!raw) {
+        mg_set_errno(GE_NOMEM);
+        return NULL;
+    }
+    ((ghdr *)raw)->offset = sizeof(ghdr);
+    ((ghdr *)raw)->size = (u32)n;
+    return raw + sizeof(ghdr);
+}
+
+void *mg_g_calloc(size_t n, size_t m)
+{
+    u64 total = (u64)n * (u64)m;
+    u8 *raw;
+    if (total > 0x7FFFFF00u) {
+        mg_set_errno(GE_NOMEM);
+        return NULL;
+    }
+    raw = (u8 *)calloc(1, (size_t)total + sizeof(ghdr));
+    if (!raw) {
+        mg_set_errno(GE_NOMEM);
+        return NULL;
+    }
+    ((ghdr *)raw)->offset = sizeof(ghdr);
+    ((ghdr *)raw)->size = (u32)total;
+    return raw + sizeof(ghdr);
+}
+
+void mg_g_free(void *p)
+{
+    if (p) free((u8 *)p - HDR(p)->offset);
+}
+
+static void *g_memalign(size_t align, size_t n)
+{
+    u8 *raw, *p;
+    if (align <= 8) return mg_g_malloc(n);
+    if ((align & (align - 1)) || n > 0x7FFFFF00u - align) {
+        mg_set_errno(GE_INVAL);
+        return NULL;
+    }
+    raw = (u8 *)malloc(n + align + sizeof(ghdr));
+    if (!raw) {
+        mg_set_errno(GE_NOMEM);
+        return NULL;
+    }
+    p = (u8 *)MG_ALIGN_UP((mg_addr)raw + sizeof(ghdr), (mg_addr)align);
+    HDR(p)->offset = (u32)(p - raw);
+    HDR(p)->size = (u32)n;
+    return p;
+}
+
+void *mg_g_realloc(void *p, size_t n)
+{
+    void *q;
+    u32 old;
+    if (!p) return mg_g_malloc(n);
+    if (!n) {
+        mg_g_free(p);
+        return NULL;
+    }
+    if (n > 0x7FFFFF00u) {
+        mg_set_errno(GE_NOMEM);
+        return NULL;
+    }
+    if (HDR(p)->offset == sizeof(ghdr)) {
+        u8 *raw = (u8 *)realloc((u8 *)p - sizeof(ghdr), n + sizeof(ghdr));
+        if (!raw) {
+            mg_set_errno(GE_NOMEM);
+            return NULL;
+        }
+        ((ghdr *)raw)->size = (u32)n;
+        return raw + sizeof(ghdr);
+    }
+    /* An aligned block: the host cannot grow it in place and keep the alignment. */
+    old = HDR(p)->size;
+    q = mg_g_malloc(n);
+    if (!q) return NULL;
+    memcpy(q, p, old < n ? old : n);
+    mg_g_free(p);
+    return q;
+}
+
+char *mg_g_strdup(const char *s)
+{
+    size_t n = strlen(s) + 1;
+    char *d = (char *)mg_g_malloc(n);
+    if (d) memcpy(d, s, n);
+    return d;
+}
+
+static int g_posix_memalign(void **out, size_t align, size_t n)
+{
+    void *p;
+    if (align < sizeof(void *) || (align & (align - 1))) return GE_INVAL;
+    p = g_memalign(align, n);
+    if (!p) return GE_NOMEM;
+    *out = p;
+    return 0;
+}
+
+static void *g_aligned_alloc(size_t align, size_t n) { return g_memalign(align, n); }
+static void *g_valloc(size_t n) { return g_memalign(MG_PAGE, n); }
+static void *g_pvalloc(size_t n) { return g_memalign(MG_PAGE, MG_ALIGN_UP(n, MG_PAGE)); }
+static size_t g_malloc_usable_size(const void *p) { return p ? HDR(p)->size : 0; }
+static int g_mallopt(int param, int value) { (void)param; (void)value; return 1; }
+static int g_malloc_trim(size_t pad) { (void)pad; return 0; }
+
+typedef struct g_mallinfo_t {
+    u32 arena, ordblks, smblks, hblks, hblkhd, usmblks, fsmblks, uordblks, fordblks, keepcost;
+} g_mallinfo_t;
+
+static g_mallinfo_t g_mallinfo(void)
+{
+    g_mallinfo_t m;
+    u64 used = mg_mem_usage();
+    memset(&m, 0, sizeof(m));
+    m.uordblks = used > 0xFFFFFFFFu ? 0xFFFFFFFFu : (u32)used;
+    m.arena = m.uordblks;
+    return m;
+}
+
+static void *g_reallocarray(void *p, size_t n, size_t m)
+{
+    u64 total = (u64)n * (u64)m;
+    if (total > 0x7FFFFF00u) {
+        mg_set_errno(GE_NOMEM);
+        return NULL;
+    }
+    return mg_g_realloc(p, (size_t)total);
+}
+
+/* The C++ runtime's allocation functions, for apps that link the system's minimal libstdc++. */
+static void *g_new(size_t n)
+{
+    void *p = mg_g_malloc(n ? n : 1);
+    if (!p) mg_fatal("guest: operator new(%u) failed", (unsigned)n);
+    return p;
+}
+static void *g_new_nothrow(size_t n, const void *tag) { (void)tag; return mg_g_malloc(n ? n : 1); }
+static void g_delete(void *p) { mg_g_free(p); }
+static void g_delete_nothrow(void *p, const void *tag) { (void)tag; mg_g_free(p); }
+static void g_delete_sized(void *p, size_t n) { (void)n; mg_g_free(p); }
+
+/* -------------------------------------------------------------------- mmap
+ *
+ * Anonymous memory and private copies of files, and shared memory: a MAP_SHARED mapping of an ashmem region or a memfd is
+ * a view of the region's own pages (mg_fd_shm_map), so that every mapping of it, in any thread, is the same memory, as on
+ * Linux. Chromium moves everything between its browser and its renderer through such regions (Mojo's data pipes, which
+ * carry a page's bytes), mapping one twice: with each mapping a copy of the region, the renderer read nothing of what the
+ * network wrote, and every page the WebView loaded was empty. A region asked for as
+ * writable and executable at once -- a JIT's code heap -- cannot exist on the
+ * host, so it is writable until something executes in it and executable until
+ * something writes to it: the fault handler flips the page (mg_mmap_fix_fault).
+ * So are the pages of the app's own libraries it asks so of, to patch its code
+ * (an inline hook: Instagram's libdistract rewrites a function of its
+ * libc++_shared.so, and ended on the write while the page stayed executable).
+ *
+ * Anonymous memory mapped with no access (PROT_NONE) is address space and nothing more, as on Linux: reserved, not
+ * committed, until mprotect gives some of it access (committed then, zeroed the first time); mapped again over itself
+ * with no access (MAP_FIXED, PROT_NONE), what was there is given back, as Linux gives zeroed pages for it. Allocators
+ * reserve that way and commit what they use: Chromium's PartitionAlloc its 2 MB super pages, a Chromium browser's linker
+ * the range its library goes into. Each was committed whole before, and Windows counts committed memory against the app's
+ * limit whether it is touched or not: a WebView in Spotify ended out of memory with 1586 MB committed and 307 MB of
+ * address space free.
+ *
+ * A file mapped read-only and shared (MAP_SHARED, PROT_READ, the descriptor opened read-only) is a view of the file
+ * itself (mg_fd_file_map), which costs the app no memory of its own: the WebView maps its ICU data and its .pak files so,
+ * 55 MB of them, each read into memory of the app's before. Any other mapping of a file is a copy of what it holds.
+ */
+#define G_PROT_READ 1
+#define G_PROT_WRITE 2
+#define G_PROT_EXEC 4
+#define G_MAP_SHARED 1
+#define G_MAP_FIXED 0x10
+#define G_MAP_ANONYMOUS 0x20
+#define G_MAP_FAILED ((void *)(mg_addr)-1)
+
+typedef struct region {
+    u8 *base;
+    size_t size;
+    bool wx;               /* some page was asked for as writable and executable */
+    /*
+     * Which pages the app still has, a bit each. The host gives address
+     * space back only a whole reservation at a time, and apps unmap in
+     * pieces (an allocator maps a little more than it wants, unmaps the end
+     * to line the block up, and unmaps the rest when it is done with it):
+     * the reservation goes when its last page has. Without this count the
+     * second unmapping looked like one more piece, and the addresses of
+     * every big block an engine ever freed stayed taken (755 MB of a 2 GB
+     * process, with Unity, half a minute in).
+     */
+    u8 *live;
+    u32 live_pages;
+    /*
+     * A shared writable mapping of a file (MAP_SHARED, PROT_WRITE): the file, held, and which of its bytes the region
+     * holds from its base. The pages are the layer's own copy of them; what the app writes into them is written back to
+     * the file at msync, at munmap, and when the app ends (mg_mem_write_back) -- not as it is written, as the kernel would.
+     */
+    void *file;
+    u64 file_offset;
+    size_t file_bytes;
+    /* A view of shared memory (mg_fd_shm_map): unmapped, not released, when its last page goes; its pages stay till then. */
+    void *view;
+    size_t view_size;
+    struct region *next;
+} region;
+
+/* Marks the pages of [offset, offset + size) of a region as the app's or not; both are multiples of a page. */
+static void region_mark(region *r, size_t offset, size_t size, bool on)
+{
+    size_t page = offset / MG_PAGE, end = (offset + size) / MG_PAGE;
+    for (; page < end; page++) {
+        u8 bit = (u8)(1u << (page & 7));
+        bool was = (r->live[page >> 3] & bit) != 0;
+        if (was == on) continue;
+        r->live[page >> 3] ^= bit;
+        if (on) r->live_pages++;
+        else r->live_pages--;
+    }
+}
+
+static region *g_regions;
+static mg_lock g_region_lock = MG_LOCK_INIT;
+
+/* What the app wrote into [from, from + size) of a shared file mapping, back to the file: the pages it still has. Under the lock. */
+static void write_back(region *r, size_t from, size_t size)
+{
+    size_t end = from + size, page;
+    if (!r->file) return;
+    if (end > r->file_bytes) end = r->file_bytes;
+    for (page = from / MG_PAGE; page * MG_PAGE < end; page++) {
+        size_t a = page * MG_PAGE < from ? from : page * MG_PAGE, b = (page + 1) * MG_PAGE < end ? (page + 1) * MG_PAGE : end;
+        if (!(r->live[page >> 3] & (1u << (page & 7)))) continue;
+        mg_fd_held_pwrite(r->file, r->base + a, (u32)(b - a), r->file_offset + a);
+    }
+}
+
+void mg_mem_write_back(void)
+{
+    region *r;
+    /* At the app's end, which may be a fault's: a lock left taken is not waited for, and nothing is written then. */
+    if (!mg_lock_try(&g_region_lock)) return;
+    for (r = g_regions; r; r = r->next) write_back(r, 0, r->file_bytes);
+    mg_lock_release(&g_region_lock);
+}
+
+static region *region_of(const void *p)
+{
+    region *r;
+    for (r = g_regions; r; r = r->next)
+        if ((const u8 *)p >= r->base && (const u8 *)p < r->base + r->size) return r;
+    return NULL;
+}
+
+static int host_prot(int prot)
+{
+    if (prot & G_PROT_WRITE) return MG_PROT_RW;
+    if (prot & G_PROT_EXEC) return MG_PROT_RX;
+    if (prot & G_PROT_READ) return MG_PROT_R;
+    return MG_PROT_NONE;
+}
+
+/* fd-backed mappings read the file through the io layer. */
+i32 mg_fd_pread(int fd, void *buf, u32 n, u64 offset);
+
+static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, u64 offset)
+{
+    size_t size = MG_ALIGN_UP(len, MG_PAGE), reserve = MG_ALIGN_UP(len, 65536);
+    region *r;
+    u8 *p;
+    if (!len) {
+        mg_set_errno(GE_INVAL);
+        return G_MAP_FAILED;
+    }
+    if (!(flags & G_MAP_ANONYMOUS)) {
+        /* Shared memory whose protection was narrowed (ASharedMemory_setProt) maps no wider, as ashmem refuses it. */
+        int allowed = mg_fd_shm_prot(fd);
+        if (allowed >= 0 && (prot & ~allowed & 7)) {
+            mg_set_errno(GE_PERM);
+            return G_MAP_FAILED;
+        }
+    }
+    if ((flags & G_MAP_SHARED) && !(flags & (G_MAP_FIXED | G_MAP_ANONYMOUS))) {
+        /* Shared memory: a view of the region's pages (see the top). Anything else that is not shared memory goes on below. */
+        void *base = NULL;
+        size_t mapped = 0;
+        bool writable = false;
+        p = (u8 *)mg_fd_shm_map(fd, offset, len, &writable, &base, &mapped);
+        if (p) {
+            if ((prot & G_PROT_WRITE) && !writable) {
+                mg_section_unmap(base, mapped);
+                mg_set_errno(GE_ACCES);
+                return G_MAP_FAILED;
+            }
+            r = (region *)mg_alloc(sizeof(*r));
+            r->base = p;
+            r->size = size;
+            r->view = base;
+            r->view_size = mapped;
+            r->live = (u8 *)mg_alloc(size / MG_PAGE / 8 + 1);
+            region_mark(r, 0, size, true);
+            mg_lock_acquire(&g_region_lock);
+            r->next = g_regions;
+            g_regions = r;
+            mg_lock_release(&g_region_lock);
+            if (host_prot(prot) != MG_PROT_RW) mg_mem_protect(p, size, host_prot(prot));
+            mg_trace("mmap(%p, %u, prot %d, flags 0x%x, fd %d) -> %p, shared memory", addr, (unsigned)len, prot, (unsigned)flags, fd, (void *)p);
+            return p;
+        }
+        if (*mg_errno_ptr() != GE_NODEV) return G_MAP_FAILED;
+        if ((prot & 7) == G_PROT_READ) {
+            /* A file read-only: a view of the file (see the top), where it is a regular file opened read-only. */
+            p = (u8 *)mg_fd_file_map(fd, offset, len, &base, &mapped);
+            if (p) {
+                r = (region *)mg_alloc(sizeof(*r));
+                r->base = p;
+                r->size = size;
+                r->view = base;
+                r->view_size = mapped;
+                r->live = (u8 *)mg_alloc(size / MG_PAGE / 8 + 1);
+                region_mark(r, 0, size, true);
+                mg_lock_acquire(&g_region_lock);
+                r->next = g_regions;
+                g_regions = r;
+                mg_lock_release(&g_region_lock);
+                mg_trace("mmap(%p, %u, prot %d, flags 0x%x, fd %d) -> %p, a view of the file", addr, (unsigned)len, prot, (unsigned)flags, fd, (void *)p);
+                return p;
+            }
+        }
+    }
+    if (flags & G_MAP_FIXED) {
+        bool view;
+        /* Only over memory this layer already owns: a fresh address cannot be demanded of the host. */
+        mg_lock_acquire(&g_region_lock);
+        r = region_of(addr);
+        if (!r || (u8 *)addr + size > r->base + r->size || ((mg_addr)addr & (MG_PAGE - 1))) {
+            mg_lock_release(&g_region_lock);
+            mg_note_once("mmap(MAP_FIXED) at an address the layer does not own");
+            mg_set_errno(GE_NOMEM);
+            return G_MAP_FAILED;
+        }
+        region_mark(r, (size_t)((u8 *)addr - r->base), size, true);
+        view = r->view != NULL;
+        mg_lock_release(&g_region_lock);
+        p = (u8 *)addr;
+        if (!(prot & 7) && (flags & G_MAP_ANONYMOUS) && !view) {
+            /* No access: given back, to be committed (zeroed) when mprotect gives it some. */
+            mg_mem_decommit(p, size);
+            mg_trace("mmap(%p, %u, prot %d, flags 0x%x, fd %d) -> %p, decommitted", addr, (unsigned)len, prot, (unsigned)flags, fd, (void *)p);
+            return p;
+        }
+        if (!mg_mem_commit(p, size, MG_PROT_RW) || !mg_mem_protect(p, size, MG_PROT_RW)) {
+            mg_set_errno(GE_NOMEM);
+            return G_MAP_FAILED;
+        }
+        memset(p, 0, size);
+    } else {
+        /*
+         * An address asked for without MAP_FIXED is a hint, which Linux follows when the range is free: so it is here, where
+         * the host can reserve that range (an address on the host's 64 KB granularity); anywhere else otherwise. Chromium's
+         * PartitionAlloc reserves its 2 MB super pages at addresses it picks, at random and then one after another, until one
+         * suits its pool, and gave up with an out-of-memory crash when every answer was the same place, which it had banned.
+         */
+        p = addr && !((mg_addr)addr & 0xFFFF) ? (u8 *)mg_mem_reserve_at(addr, reserve) : NULL;
+        if (!p) p = (u8 *)mg_mem_reserve(reserve);
+        /* (Anonymous and with no access, reserved alone: see the top.) */
+        if (!p || (((prot & 7) || !(flags & G_MAP_ANONYMOUS)) && !mg_mem_commit(p, size, MG_PROT_RW))) {
+            if (p) mg_mem_release(p, reserve);
+            mg_set_errno(GE_NOMEM);
+            return G_MAP_FAILED;
+        }
+        r = (region *)mg_alloc(sizeof(*r));
+        r->base = p;
+        r->size = reserve;
+        r->live = (u8 *)mg_alloc(reserve / MG_PAGE / 8 + 1);
+        region_mark(r, 0, size, true);
+        mg_lock_acquire(&g_region_lock);
+        r->next = g_regions;
+        g_regions = r;
+        mg_lock_release(&g_region_lock);
+    }
+    if (!(flags & G_MAP_ANONYMOUS)) {
+        size_t got = 0;
+        while (got < len) {
+            i32 n = mg_fd_pread(fd, p + got, (u32)(len - got), offset + got);
+            if (n <= 0) break;
+            got += (size_t)n;
+        }
+        if ((flags & G_MAP_SHARED) && (prot & G_PROT_WRITE)) {
+            if (flags & G_MAP_FIXED) {
+                mg_note_once("mmap: a shared writable file mapping over memory already mapped is a private copy here; writes do not reach the file");
+            } else {
+                /* The file, to write back to (region.file). */
+                mg_lock_acquire(&g_region_lock);
+                r = region_of(p);
+                if (r && !r->file) {
+                    r->file = mg_fd_hold(fd);
+                    r->file_offset = offset;
+                    r->file_bytes = len;
+                }
+                mg_lock_release(&g_region_lock);
+            }
+        }
+    }
+    if ((prot & G_PROT_WRITE) && (prot & G_PROT_EXEC)) {
+        mg_lock_acquire(&g_region_lock);
+        r = region_of(p);
+        if (r) r->wx = true;
+        mg_lock_release(&g_region_lock);
+    } else if (host_prot(prot) != MG_PROT_RW && ((prot & 7) || !(flags & G_MAP_ANONYMOUS))) {
+        mg_mem_protect(p, size, host_prot(prot));
+        if (prot & G_PROT_EXEC) mg_icache_flush(p, size);
+    }
+    mg_trace("mmap(%p, %u, prot %d, flags 0x%x, fd %d) -> %p", addr, (unsigned)len, prot, (unsigned)flags, fd, (void *)p);
+    return p;
+}
+
+static void *g_mmap(void *addr, size_t len, int prot, int flags, int fd, i32 offset)
+{
+    return g_mmap_common(addr, len, prot, flags, fd, (u64)(u32)offset);
+}
+
+static void *g_mmap64(void *addr, size_t len, int prot, int flags, int fd, i64 offset)
+{
+    return g_mmap_common(addr, len, prot, flags, fd, (u64)offset);
+}
+
+/* mmap2's offset is in pages. */
+void *mg_g_mmap2(void *addr, size_t len, int prot, int flags, int fd, u32 pgoffset)
+{
+    return g_mmap_common(addr, len, prot, flags, fd, (u64)pgoffset * MG_PAGE);
+}
+
+static int g_munmap(void *addr, size_t len)
+{
+    region *r, **link;
+    size_t size = MG_ALIGN_UP(len, MG_PAGE);
+    u8 *keep_lo, *keep_hi;
+    mg_trace("munmap(%p, %u)", addr, (unsigned)len);
+    /*
+     * What a library loaded into the app's own range occupies stays mapped (mg_ld_placed_overlap): its image, and the code
+     * the patcher added right after it, which on Android is the free end of the range. Chromium's linker unmaps that end
+     * once the library is in, and the stubs there went with it.
+     */
+    if (size && mg_ld_placed_overlap(addr, size, &keep_lo, &keep_hi)) {
+        if ((u8 *)addr < keep_lo) g_munmap(addr, (size_t)(keep_lo - (u8 *)addr));
+        if (keep_hi < (u8 *)addr + size) g_munmap(keep_hi, (size_t)((u8 *)addr + size - keep_hi));
+        return 0;
+    }
+    mg_lock_acquire(&g_region_lock);
+    for (link = &g_regions; (r = *link) != NULL; link = &r->next) {
+        size_t offset;
+        if ((u8 *)addr < r->base || (u8 *)addr >= r->base + r->size) continue;
+        offset = (size_t)((u8 *)addr - r->base) & ~(size_t)(MG_PAGE - 1);
+        if (size > r->size - offset) size = r->size - offset;
+        write_back(r, offset, size);
+        region_mark(r, offset, size, false);
+        if (!r->live_pages) {
+            /* The last of it: the reservation goes back. */
+            *link = r->next;
+            mg_lock_release(&g_region_lock);
+            mg_fd_let_go(r->file);
+            if (r->view) mg_section_unmap(r->view, r->view_size);
+            else mg_mem_release(r->base, r->size);
+            free(r->live);
+            free(r);
+            return 0;
+        }
+        /*
+         * Part of a region: the host frees address space only whole, so the
+         * pages go and the addresses stay reserved until the rest has gone
+         * too. (Under the lock: once it is let go another thread may unmap
+         * the rest, and the addresses may be someone else's the moment after.)
+         */
+        if (!r->view) mg_mem_decommit(r->base + offset, size);
+        mg_lock_release(&g_region_lock);
+        return 0;
+    }
+    mg_lock_release(&g_region_lock);
+    return 0;
+}
+
+/*
+ * mremap, as allocators use it to shrink or grow a block they mapped (NSS's arenas, Chromium's): shrinking unmaps the
+ * tail; growing moves the block (MREMAP_MAYMOVE) to a new private anonymous mapping, readable and writable, with the old
+ * bytes copied, since nothing here grows a mapping in place; without MREMAP_MAYMOVE growing fails with ENOMEM, which a
+ * caller must expect on Linux too when the pages after are taken. MREMAP_FIXED is not done. A shared file mapping moved
+ * so is a private copy from then on.
+ */
+static void *g_mremap(void *old, size_t old_size, size_t new_size, int flags)
+{
+    size_t o = MG_ALIGN_UP(old_size, MG_PAGE), n = MG_ALIGN_UP(new_size, MG_PAGE);
+    void *p;
+    if (((mg_addr)old & (MG_PAGE - 1)) || !o || !n || (flags & ~1)) {
+        mg_set_errno(GE_INVAL);
+        return G_MAP_FAILED;
+    }
+    if (n <= o) {
+        if (n < o) g_munmap((u8 *)old + n, o - n);
+        return old;
+    }
+    if (!(flags & 1)) {
+        mg_set_errno(GE_NOMEM);
+        return G_MAP_FAILED;
+    }
+    p = g_mmap_common(NULL, n, G_PROT_READ | G_PROT_WRITE, 0x02 | G_MAP_ANONYMOUS, -1, 0);   /* MAP_PRIVATE */
+    if (p == G_MAP_FAILED) return p;
+    memcpy(p, old, o);
+    g_munmap(old, o);
+    return p;
+}
+
+/*
+ * Pages of the app's libraries (not mmap'd memory, so no region's) asked to be writable and executable at once: an inline
+ * hook patching the app's own code. Few, and never given back: a hook stays as long as the library. Under g_region_lock.
+ *
+ * What the pages held when asked for so is kept (before) until they are made not writable again, and what the app changed
+ * in them is said then, by library, function and offset: the patch of each hook, in the log.
+ */
+static struct { u8 *lo, *hi, *before; } g_wx_code[64];
+static u32 g_wx_code_count;
+
+static bool wx_code_has(const u8 *page)
+{
+    u32 i;
+    for (i = 0; i < g_wx_code_count; i++)
+        if (page >= g_wx_code[i].lo && page < g_wx_code[i].hi) return true;
+    return false;
+}
+
+static bool wx_code_add(u8 *p, size_t size)
+{
+    u32 i;
+    for (i = 0; i < g_wx_code_count; i++)
+        if (p >= g_wx_code[i].lo && p + size <= g_wx_code[i].hi) break;
+    if (i == g_wx_code_count) {
+        if (g_wx_code_count == MG_COUNT(g_wx_code)) return false;
+        g_wx_code[i].lo = p;
+        g_wx_code[i].hi = p + size;
+        g_wx_code[i].before = NULL;
+        g_wx_code_count++;
+    }
+    if (!g_wx_code[i].before && (g_wx_code[i].before = malloc((size_t)(g_wx_code[i].hi - g_wx_code[i].lo))) != NULL)
+        memcpy(g_wx_code[i].before, g_wx_code[i].lo, (size_t)(g_wx_code[i].hi - g_wx_code[i].lo));
+    return true;
+}
+
+static void hex_of(char *out, const u8 *b, size_t n)
+{
+    static const char digits[] = "0123456789abcdef";
+    size_t i;
+    for (i = 0; i < n; i++) {
+        *out++ = digits[b[i] >> 4];
+        *out++ = digits[b[i] & 15];
+        if ((i & 3) == 3 && i + 1 < n) *out++ = ' ';
+    }
+    *out = 0;
+}
+
+/* Says the spans that differ between what the page held (before) and what it holds; changes fewer than 8 bytes apart are one span. */
+static void wx_code_say(const u8 *lo, const u8 *before, size_t size)
+{
+    size_t i = 0;
+    u32 said = 0;
+    while (i < size && said < 8) {
+        size_t start, end, k;
+        char was[80], now[80];
+        const char *lib = NULL, *sym;
+        const void *sym_addr = NULL, *base = NULL;
+        if (lo[i] == before[i]) {
+            i++;
+            continue;
+        }
+        start = i;
+        end = i + 1;
+        for (k = end; k < size && k < end + 8 && k - start < 32; k++)
+            if (lo[k] != before[k]) end = k + 1;
+        hex_of(was, before + start, end - start);
+        hex_of(now, lo + start, end - start);
+        sym = mg_ld_symbol_at(lo + start, &lib, &sym_addr, &base);
+        mg_info("mprotect: the app changed %u bytes of its code at %p (%s+0x%x %s+0x%x): %s, was %s", (unsigned)(end - start),
+                (void *)(lo + start), lib ? lib : "?", (unsigned)(lo + start - (const u8 *)base), sym ? sym : "?",
+                sym ? (unsigned)(lo + start - (const u8 *)sym_addr) : 0u, now, was);
+        said++;
+        i = end;
+    }
+}
+
+/*
+ * Traps the app wrote into its code, for its SIGILL handler to be called there: an inline hook's (Facebook's libdistract
+ * makes a hooked function's first instruction `udf #0xfa`, and its handler moves the pc to the hook). Told by what the app
+ * changed when it makes the page not writable again: an undefined instruction, Thumb's (0xdeXX) or ARM's (0xe7fXXXfX),
+ * written by itself, with what is on either side left as it was -- a hook's trap, not a part of other code.
+ *
+ * The phone's system takes Thumb's `udf #0xf8` to `#0xff` for its own: met in an app's code, `udf #0xfa` reached no fault
+ * handler, and the thread went on at the next instruction with r0 to r2 changed (Instagram's hook on __cxa_throw: the
+ * function got garbage for its arguments and wrote through it). Those are made `udf #0`, which is reported as any other
+ * undefined instruction; the others are left as they are. A fault at a trap so recorded is the app's SIGILL
+ * (mg_signal_fault). Kept for as long as the app runs: at most 256, under g_region_lock.
+ */
+#define APP_TRAP_THUMB 0xde00u
+static struct { mg_addr at; u32 value; } g_app_traps[256];
+static u32 g_app_trap_count;
+
+static bool app_trap_add(mg_addr at, u32 value)
+{
+    u32 i;
+    bool ok = true;
+    mg_lock_acquire(&g_region_lock);
+    for (i = 0; i < g_app_trap_count && g_app_traps[i].at != at; i++) {}
+    if (i == g_app_trap_count) {
+        if (i == MG_COUNT(g_app_traps)) ok = false;
+        else g_app_trap_count++;
+    }
+    if (ok) {
+        g_app_traps[i].at = at;
+        g_app_traps[i].value = value;
+    }
+    mg_lock_release(&g_region_lock);
+    return ok;
+}
+
+/* For the fault handler: pc is a trap the app wrote, and still there. */
+bool mg_mmap_app_trap(mg_addr pc)
+{
+    u32 i;
+    bool found = false;
+    mg_lock_acquire(&g_region_lock);
+    for (i = 0; i < g_app_trap_count && !found; i++) {
+        if (g_app_traps[i].at != pc) continue;
+        if (g_app_traps[i].value >> 16) found = *(const u32 *)pc == g_app_traps[i].value;
+        else found = *(const u16 *)pc == g_app_traps[i].value;
+    }
+    mg_lock_release(&g_region_lock);
+    return found;
+}
+
+static bool same16(const u8 *lo, const u8 *before, size_t i, size_t n) { return i >= n || (lo[i] == before[i] && lo[i + 1] == before[i + 1]); }
+
+/* The traps among what changed in [lo, lo + n): recorded, and the system's own made udf #0 (pages outside [p, p + size) put back executable). */
+static void wx_code_traps(u8 *lo, const u8 *before, size_t n, const u8 *p, size_t size)
+{
+    size_t i;
+    for (i = 0; i + 2 <= n; i += 2) {
+        u16 now = (u16)(lo[i] | lo[i + 1] << 8);
+        u32 word;
+        u8 *page = (u8 *)MG_ALIGN_DOWN((mg_addr)(lo + i), (mg_addr)MG_PAGE);
+        const char *lib = NULL;
+        const void *base = NULL;
+        if (same16(lo, before, i, n)) continue;
+        mg_ld_symbol_at(lo + i, &lib, NULL, &base);
+        if ((now & 0xff00u) == 0xde00u && (i < 2 || same16(lo, before, i - 2, n)) && same16(lo, before, i + 2, n)) {
+            u16 put = (now & 0xfff8u) == 0xdef8u ? (u16)APP_TRAP_THUMB : now;
+            if (!app_trap_add((mg_addr)(lo + i), put)) {
+                mg_note_once("mprotect: more traps in the app's code than are kept; %p is left as it is", (void *)(lo + i));
+                continue;
+            }
+            if (put != now) {
+                mg_mem_protect(page, MG_PAGE, MG_PROT_RW);
+                *(volatile u16 *)(lo + i) = put;
+                if (page < p || page >= p + size) {
+                    mg_mem_protect(page, MG_PAGE, MG_PROT_RX);
+                    mg_icache_flush(page, MG_PAGE);
+                }
+            }
+            mg_info("mprotect: a trap the app wrote at %p (%s+0x%x), udf #0x%x, is its SIGILL%s", (void *)(lo + i), lib ? lib : "?",
+                    (unsigned)(lo + i - (const u8 *)base), now & 0xffu, put != now ? "; made udf #0, as the system keeps that one" : "");
+            continue;
+        }
+        if (!(i & 2) && i + 4 <= n) {
+            word = (u32)now | (u32)(lo[i + 2] | lo[i + 3] << 8) << 16;
+            if ((word & 0xfff000f0u) == 0xe7f000f0u && (i < 4 || (same16(lo, before, i - 4, n) && same16(lo, before, i - 2, n))) &&
+                same16(lo, before, i + 4, n) && same16(lo, before, i + 6, n) && app_trap_add((mg_addr)(lo + i), word)) {
+                mg_info("mprotect: a trap the app wrote at %p (%s+0x%x), an ARM udf, is its SIGILL", (void *)(lo + i), lib ? lib : "?",
+                        (unsigned)(lo + i - (const u8 *)base));
+                i += 2;
+            }
+        }
+    }
+}
+
+/* Pages of g_wx_code made not writable: what the app changed in them is said, its traps found, and what they held let go. */
+static void wx_code_written(u8 *p, size_t size)
+{
+    u32 i;
+    for (i = 0;; i++) {
+        u8 *lo, *before;
+        size_t n;
+        mg_lock_acquire(&g_region_lock);
+        if (i >= g_wx_code_count) {
+            mg_lock_release(&g_region_lock);
+            return;
+        }
+        lo = g_wx_code[i].lo;
+        n = (size_t)(g_wx_code[i].hi - lo);
+        before = g_wx_code[i].before;
+        if (before && lo < p + size && p < lo + n) g_wx_code[i].before = NULL;
+        else before = NULL;
+        mg_lock_release(&g_region_lock);
+        if (before) {
+            wx_code_say(lo, before, n);
+            wx_code_traps(lo, before, n, p, size);
+            free(before);
+        }
+    }
+}
+
+/*
+ * The flag trace-hooks: the first bytes of memory the app mapped writable and executable at once, as it makes them
+ * executable only (by mprotect) -- a hook's trampoline, and a JIT's code, which is why it is a flag.
+ */
+static void wx_region_say(const u8 *p)
+{
+    static int wanted = -1;
+    static volatile i32 said;
+    char hex[3 * 128];
+    if (wanted < 0) wanted = mg_flag("trace-hooks") ? 1 : 0;
+    if (!wanted || mg_atomic_add(&said, 1) > 32) return;
+    hex_of(hex, p, 64);
+    mg_info("mprotect: code the app wrote at %p: %s", (const void *)p, hex);
+    hex_of(hex, p + 64, 64);
+    mg_info("mprotect: code the app wrote at %p: %s", (const void *)(p + 64), hex);
+}
+
+static int g_mprotect(void *addr, size_t len, int prot)
+{
+    size_t size = MG_ALIGN_UP(len + ((mg_addr)addr & (MG_PAGE - 1)), MG_PAGE);
+    u8 *p = (u8 *)MG_ALIGN_DOWN((mg_addr)addr, (mg_addr)MG_PAGE);
+    bool owned;
+    mg_lock_acquire(&g_region_lock);
+    owned = region_of(p) != NULL;
+    mg_lock_release(&g_region_lock);
+    if (!owned) owned = mg_ld_is_guest_code((mg_addr)p);
+    mg_trace("mprotect(%p, %u, prot %d)%s", addr, (unsigned)len, prot, owned ? "" : " -- not the app's memory, left alone");
+    if (!owned) {
+        /* An inline hook may target a bionic export implemented in the host
+         * executable. Do not promise executable access we cannot grant: the
+         * caller would then patch read-only host code (WhatsApp's abort hook).
+         * Keep the existing treatment of non-executable stack guard requests. */
+        if (prot & G_PROT_EXEC) {
+            mg_warn("mprotect(%p, %u, prot %d): host memory, executable access refused", addr, (unsigned)len, prot);
+            mg_set_errno(GE_ACCES);
+            return -1;
+        }
+        /*
+         * Memory the app did not get from mmap and that is not one of its
+         * libraries: a thread's stack, where Android code puts a guard page
+         * of its own, or something found by reading the process's map. Those
+         * are the host's -- a Windows stack has its own guard page, and
+         * changing a page of it, or of anything else of the system's, breaks
+         * whoever owns it. The app is told it worked.
+         */
+        static volatile i32 said;
+        if (mg_atomic_add(&said, 1) <= 6)
+            mg_warn("mprotect(%p, %u, prot %d): not memory this layer gave the app; left as it is", addr, (unsigned)len, prot);
+        return 0;
+    }
+    {
+        /* Memory of a region of the app's that may have been reserved alone (PROT_NONE, see mmap) is committed to be given access. */
+        region *r;
+        bool view;
+        mg_lock_acquire(&g_region_lock);
+        r = region_of(p);
+        view = r && r->view;
+        mg_lock_release(&g_region_lock);
+        if (r && !view && (prot & 7) && !mg_mem_commit(p, size, MG_PROT_RW)) {
+            mg_set_errno(GE_NOMEM);
+            return -1;
+        }
+        if (r && !view && !(prot & 7)) {
+            /* No access: for what is committed; what is not is no-access already. */
+            return mg_mem_protect_committed(p, size, MG_PROT_NONE) ? 0 : (mg_set_errno(GE_ACCES), -1);
+        }
+    }
+    if ((prot & G_PROT_WRITE) && (prot & G_PROT_EXEC)) {
+        region *r;
+        bool kept;
+        mg_lock_acquire(&g_region_lock);
+        r = region_of(p);
+        if (r) r->wx = true;
+        kept = r || wx_code_add(p, size);
+        mg_lock_release(&g_region_lock);
+        if (!kept) mg_note_once("mprotect: writable and executable at once, more library pages than are kept (%p); it stays as it is", addr);
+        else mg_mem_protect(p, size, MG_PROT_RW);
+        return 0;
+    }
+    if (!(prot & G_PROT_WRITE)) {
+        region *r;
+        bool wx;
+        wx_code_written(p, size);
+        mg_lock_acquire(&g_region_lock);
+        r = region_of(p);
+        wx = r && r->wx;
+        mg_lock_release(&g_region_lock);
+        if (wx && (prot & G_PROT_EXEC)) wx_region_say(p);
+    }
+    if (!mg_mem_protect(p, size, host_prot(prot))) {
+        mg_set_errno(GE_ACCES);
+        return -1;
+    }
+    if (prot & G_PROT_EXEC) mg_icache_flush(p, size);
+    return 0;
+}
+
+/* A write-or-execute fault in a region, or a library's page, that wants both: give the page what this access needs. */
+bool mg_mmap_fix_fault(mg_addr address, bool write, bool exec)
+{
+    region *r;
+    bool wx;
+    u8 *page = (u8 *)MG_ALIGN_DOWN(address, (mg_addr)MG_PAGE);
+    if (!write && !exec) return false;
+    mg_lock_acquire(&g_region_lock);
+    r = region_of((const void *)address);
+    wx = r ? r->wx : wx_code_has(page);
+    mg_lock_release(&g_region_lock);
+    if (!wx) return false;
+    if (exec) {
+        if (!mg_mem_protect(page, MG_PAGE, MG_PROT_RX)) return false;
+        mg_icache_flush(page, MG_PAGE);
+        return true;
+    }
+    return mg_mem_protect(page, MG_PAGE, MG_PROT_RW);
+}
+
+static int g_madvise(void *addr, size_t len, int advice) { (void)addr; (void)len; (void)advice; return 0; }
+static int g_mlock(const void *addr, size_t len) { (void)addr; (void)len; return 0; }
+/* msync: what was written into a shared file mapping goes to the file now. */
+static int g_msync(void *addr, size_t len, int flags)
+{
+    region *r;
+    (void)flags;
+    mg_lock_acquire(&g_region_lock);
+    r = region_of(addr);
+    if (r) write_back(r, (size_t)((u8 *)addr - r->base), len);
+    mg_lock_release(&g_region_lock);
+    return 0;
+}
+static int g_mincore(void *addr, size_t len, u8 *vec)
+{
+    size_t i, n = MG_ALIGN_UP(len, MG_PAGE) / MG_PAGE;
+    (void)addr;
+    for (i = 0; i < n; i++) vec[i] = 1;
+    return 0;
+}
+
+const mg_sym mg_tab_mem[] = {
+    MG_WRAP("malloc", mg_g_malloc),
+    MG_WRAP("calloc", mg_g_calloc),
+    MG_WRAP("realloc", mg_g_realloc),
+    MG_WRAP("free", mg_g_free),
+    MG_WRAP("memalign", g_memalign),
+    MG_WRAP("posix_memalign", g_posix_memalign),
+    MG_WRAP("aligned_alloc", g_aligned_alloc),
+    MG_WRAP("valloc", g_valloc),
+    MG_WRAP("pvalloc", g_pvalloc),
+    MG_WRAP("malloc_usable_size", g_malloc_usable_size),
+    MG_WRAP("mallopt", g_mallopt),
+    MG_WRAP("malloc_trim", g_malloc_trim),
+    MG_WRAP("mallinfo", g_mallinfo),
+    MG_WRAP("reallocarray", g_reallocarray),
+    MG_WRAP("_Znwj", g_new),
+    MG_WRAP("_Znaj", g_new),
+    MG_WRAP("_ZnwjRKSt9nothrow_t", g_new_nothrow),
+    MG_WRAP("_ZnajRKSt9nothrow_t", g_new_nothrow),
+    MG_WRAP("_ZdlPv", g_delete),
+    MG_WRAP("_ZdaPv", g_delete),
+    MG_WRAP("_ZdlPvRKSt9nothrow_t", g_delete_nothrow),
+    MG_WRAP("_ZdaPvRKSt9nothrow_t", g_delete_nothrow),
+    MG_WRAP("_ZdlPvj", g_delete_sized),
+    MG_WRAP("_ZdaPvj", g_delete_sized),
+    MG_WRAP("mmap", g_mmap), MG_WRAP("__mmap2", mg_g_mmap2),
+    MG_WRAP("mmap64", g_mmap64),
+    MG_WRAP("munmap", g_munmap), MG_WRAP("mremap", g_mremap),
+    MG_WRAP("mprotect", g_mprotect),
+    MG_WRAP("madvise", g_madvise),
+    MG_WRAP("posix_madvise", g_madvise),
+    MG_WRAP("mlock", g_mlock),
+    MG_WRAP("munlock", g_mlock),
+    MG_WRAP("msync", g_msync),
+    MG_WRAP("mincore", g_mincore),
+    MG_END
+};

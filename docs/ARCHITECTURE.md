@@ -68,7 +68,7 @@ a `double` would look for it in `d0` while the guest put it in `r0:r1`.
 So **nothing that crosses the boundary has a float in its signature.** A wrapper for
 `sin` is `u64 g_sin(u64 x)`: a 64-bit integer goes in an even pair of registers,
 exactly where softfp puts a double, and a 32-bit one where it puts a float. The
-wrapper converts bits to a value (`hk_d`, `hk_f`), calls the host's function, and
+wrapper converts bits to a value (`mg_d`, `mg_f`), calls the host's function, and
 converts back. All of libm, every OpenGL ES function with a float parameter, the JNI
 calls that return floats, and the NDK's `AMotionEvent_getX` are written this way; no
 assembly is involved.
@@ -149,7 +149,7 @@ handler with a context that can be resumed: the device probe does exactly this 2
 times, at 5 µs each on a Snapdragon 820. One thing differs from Linux there. Windows
 takes the state a thread resumes in from bit 0 of the context's `Pc` and ignores
 the T bit of `Cpsr`, so the handler resumes Thumb code at an odd address
-(`hk_fault_resume_at`).
+(`mg_fault_resume_at`).
 
 **Whole functions.** Real libraries are built in ARM mode too: all 3885 functions
 of the OpenSSL build the loader was tried on, and 42 of the 44 in CPU-Z's
@@ -222,14 +222,14 @@ This passes under qemu; the Instagram run on Windows still needs verification.
 | file descriptors | pipes, eventfd, epoll, sockets | this layer's own table; pipes and eventfds are implemented here, sockets are the host's behind it (see "The network") |
 | paths | `/data/data/<pkg>`, `/sdcard`, `/proc/cpuinfo` | a mount table onto folders under `LocalState` (see "Files and the shared storage"); the `/proc` and `/sys` files code reads are made up |
 | signals | delivered asynchronously | between the app's own threads they are: a thread in the middle of Android code is stopped, sent to the handler and put back (`SuspendThread`, `SetThreadContext`, the vectored handler); one that waits or sleeps in this layer is woken for it. Nothing comes from outside the process |
-| a thread's stack | all there from the start; code moves `sp` by any amount and writes | Windows hands a stack out a page at a time, through a guard page that code built for Windows touches in order. Android code does not, and a write beyond the guard page ends the process with no handler run. So the whole stack is committed, down to a guard page of its own, the first time a thread is given a guest thread pointer (`hk_thread_whole_stack`) |
+| a thread's stack | all there from the start; code moves `sp` by any amount and writes | Windows hands a stack out a page at a time, through a guard page that code built for Windows touches in order. Android code does not, and a write beyond the guard page ends the process with no handler run. So the whole stack is committed, down to a guard page of its own, the first time a thread is given a guest thread pointer (`mg_thread_whole_stack`) |
 | `mmap`/`munmap` | any range of pages, unmapped in any pieces; an address asked for without `MAP_FIXED` is a hint, followed when that range is free | a reservation of the host's, which gives addresses back only whole: a region remembers which of its pages the app still has, decommits what is unmapped, and is released with its last page. A hint is followed where the host can reserve the range (on its 64 KB granularity): Chromium's PartitionAlloc picks the addresses of its 2 MB super pages itself, and gave up (an out-of-memory crash) when every answer was the same place Anonymous memory mapped with no access (`PROT_NONE`) is reserved and not committed until `mprotect` gives part of it access, and mapped again over itself with no access (`MAP_FIXED`) it is decommitted, zero when it comes back, as Linux has it: Windows charges committed memory against the app whether it is touched or not, and allocators such as PartitionAlloc reserve that way. A file mapped read-only and shared, from a descriptor opened read-only, is a view of the file itself (no memory of the app's); any other mapping of a file is a copy |
-| shared memory (ashmem, `memfd_create`, `ASharedMemory`) | every `MAP_SHARED` mapping of a region is the same memory | a section of the host's (`hk_section`: a pagefile-backed file mapping on Windows, `MapViewOfFileFromApp`; a memfd on Linux), of which each mapping is a view at an address of its own; the descriptor holds no view of its own, its read and write mapping what they copy for the copy (a view of its own took a region's size in address space once more while the descriptor was open: Spotify's WebView ended out of memory on an image of 126 MB). Chromium maps a region twice, once where it writes and once where it reads (Mojo's data pipes, which carry everything between its browser and its renderer); with each mapping a copy of the region, as mappings of a file still are, every page the WebView loaded arrived empty |
-| address space | about 4 GB for a 32-bit process on a 64-bit kernel | 2 GB. An APK is read, never mapped; large textures an app uploads as plain RGBA8 are kept as DXT5 once it has asked for a great deal, and ETC textures, which ANGLE would keep as RGBA8, go to it as BC1 or DXT5, their own size (`hk_gltex.c`) |
+| shared memory (ashmem, `memfd_create`, `ASharedMemory`) | every `MAP_SHARED` mapping of a region is the same memory | a section of the host's (`mg_section`: a pagefile-backed file mapping on Windows, `MapViewOfFileFromApp`; a memfd on Linux), of which each mapping is a view at an address of its own; the descriptor holds no view of its own, its read and write mapping what they copy for the copy (a view of its own took a region's size in address space once more while the descriptor was open: Spotify's WebView ended out of memory on an image of 126 MB). Chromium maps a region twice, once where it writes and once where it reads (Mojo's data pipes, which carry everything between its browser and its renderer); with each mapping a copy of the region, as mappings of a file still are, every page the WebView loaded arrived empty |
+| address space | about 4 GB for a 32-bit process on a 64-bit kernel | 2 GB. An APK is read, never mapped; large textures an app uploads as plain RGBA8 are kept as DXT5 once it has asked for a great deal, and ETC textures, which ANGLE would keep as RGBA8, go to it as BC1 or DXT5, their own size (`mg_gltex.c`) |
 
 ## Loading a library
 
-`ld/hk_ld.c` follows Android's linker where that decides whether a library works: an
+`ld/mg_ld.c` follows Android's linker where that decides whether a library works: an
 import is looked up first in the importing library's own scope (itself, then its
 `DT_NEEDED` closure breadth-first) and only then in the system; dependencies are
 mapped, relocated and initialised first; initialisers get `(argc, argv, envp)`.
@@ -253,7 +253,7 @@ something writes to it: the fault handler flips the page.
 So is a page of one of the app's own libraries asked for so: an inline hook patching
 the app's code. Instagram's `libdistract.so` hooks a function of its
 `libc++_shared.so`; the page stayed executable only, and the app ended on the
-write. Up to 64 such ranges are kept (`g_wx_code` in `bionic/hk_libc_mem.c`), never
+write. Up to 64 such ranges are kept (`g_wx_code` in `bionic/mg_libc_mem.c`), never
 given back, as a hook stays as long as its library. Executable access to Meglet's
 own code is still refused (above).
 
@@ -286,15 +286,15 @@ garbage for its arguments and ended writing through it.
 So when the app makes a library page not writable again, an undefined
 instruction it wrote there, alone (the halfwords on either side as they were; for
 ARM's `udf`, the words), is taken for its trap and recorded (`g_app_traps` in
-`bionic/hk_libc_mem.c`, up to 256), and one of the system's `#0xf8` to `#0xff` is
+`bionic/mg_libc_mem.c`, up to 256), and one of the system's `#0xf8` to `#0xff` is
 made `udf #0`, which reaches the fault handler as any other. A fault at a recorded
-trap, still there, is the app's SIGILL (`hk_signal_fault` in
-`bionic/hk_libc_misc.c`): its handler, one that takes a siginfo, is called on the
+trap, still there, is the app's SIGILL (`mg_signal_fault` in
+`bionic/mg_libc_misc.c`): its handler, one that takes a siginfo, is called on the
 faulting thread, inside the fault handler, with a siginfo (`ILL_ILLOPC`, the pc) and
 a ucontext laid out as bionic's for ARM (registers from 0x20, pc at 0x5c, cpsr at
 0x60), and the thread goes on with the registers the ucontext then holds. This is
 the one fault delivered to a guest handler; the others stay this layer's to repair
-or report (`hk_core.c`). A trap the app writes and later reads back reads `udf #0`.
+or report (`mg_core.c`). A trap the app writes and later reads back reads `udf #0`.
 
 The guest test `t_trap_hook` hooks a function so, Thumb's `udf #0xfa` in the Thumb
 library and an ARM `udf` in the ARM one, with a handler that moves the pc as
@@ -322,11 +322,11 @@ ANGLE's functions. This layer adds the display, the window, and the float adapte
 - In a Java app, the window of a `SurfaceView`'s `Surface` (from
   `ANativeWindow_fromSurface`) is drawn on as the view would be from Java:
   "Native code on a SurfaceView", under "OpenGL ES from an app's Java" below.
-- Hardware buffers (`AHardwareBuffer`, `ndk/hk_ahb.c`) are memory of the layer's
+- Hardware buffers (`AHardwareBuffer`, `ndk/mg_ahb.c`) are memory of the layer's
   for the CPU and, from the first EGL image of one
   (`EGL_ANDROID_image_native_buffer`), a texture of ANGLE's made for it in a
   context of the layer's own, on a thread of its own that keeps that context
-  current (`ndk/hk_egl.c`; one of each for each display, the buffer's texture on
+  current (`ndk/mg_egl.c`; one of each for each display, the buffer's texture on
   the display of its first image); the image is an image of that texture
   (`EGL_KHR_gl_texture_2D_image`). A lock for reading reads the texture back
   when the graphics processor may have drawn into it; an unlock after writing
@@ -381,7 +381,7 @@ contract, and keeps the software way for when there is no device for it.
   changes, is put on in memory as before, and is uploaded again. GfxHost.cpp
   lists which is which.
 - **Display lists.** A `RenderNode` or a `Picture` is a list of the calls
-  recorded on its canvas, kept by the core (`hk_java_gfx.c`), and drawing it
+  recorded on its canvas, kept by the core (`mg_java_gfx.c`), and drawing it
   is those calls again on the canvas that draws it: the shell sees only
   ordinary drawing calls, and no canvas, target or read-back for a node.
   Before, every node was a bitmap of its size, drawn into through a canvas
@@ -396,7 +396,7 @@ contract, and keeps the software way for when there is no device for it.
   bitmap are its own; the kept bitmaps, and the contexts and targets kept for the
   next canvas, have locks.
 
-`tools/build-tests.sh win` draws the scenes (core/tests/hk_gfx_scenes.c) both
+`tools/build-tests.sh win` draws the scenes (core/tests/mg_gfx_scenes.c) both
 ways, on this PC's graphics processor and in memory, and replays the Java test
 apps' recorded drawing.
 
@@ -409,11 +409,11 @@ made it. So the window's picture is not read back:
   part of the window that changed from the shell's own picture of the canvas,
   without a flush. False when it cannot; the core then flushes and calls
   `present_pixels` as before, which is also what NULL means.
-- The core (`G_present` in `drivers/hk_java_gfx.c`, `present_canvas` in
-  `drivers/hk_java.c`) calls it in place of flushing the window's bitmap and
+- The core (`G_present` in `drivers/mg_java_gfx.c`, `present_canvas` in
+  `drivers/mg_java.c`) calls it in place of flushing the window's bitmap and
   calling `present_pixels(_part)`, when one canvas alone draws the bitmap,
   nothing was written into its memory behind it, and the core does not compose
-  OpenGL frames under the views itself (`hk_java_gl_composing`; where the shell
+  OpenGL frames under the views itself (`mg_java_gl_composing`; where the shell
   composes them, "OpenGL ES from an app's Java" below). The canvas then stays
   unflushed: whatever reads the window's memory later flushes it first, as the
   core always does before a read (`bm_settle`), and the shell reads back then.
@@ -473,10 +473,10 @@ Android's picture of it is kept: the surface lies *under* the window, and the
 views are drawn over it with a hole where the `SurfaceView` is.
 
 **One OpenGL ES in the process.** The Java natives call the very functions native
-code is bound to, ANGLE's, by name through the core (`hk_egl_host`). Two things
+code is bound to, ANGLE's, by name through the core (`mg_egl_host`). Two things
 differ from a guest's binding: a function with float parameters is ANGLE's own and
 not its adapter (the caller is the core, which passes floats as the host does),
-and nothing is traced. The texture policy (`hk_gltex.c`) is the same for both.
+and nothing is traced. The texture policy (`mg_gltex.c`) is the same for both.
 EGL is the core's too: its display (made on the layer's service thread), its
 configuration rules (no 10-bit configurations), contexts made without a
 configuration where ANGLE allows it.
@@ -485,7 +485,7 @@ configuration where ANGLE allows it.
 methods in the framework. They are mechanical and generated:
 `tools/gles-natives.py` reads the framework's Java declarations and Khronos' C
 prototypes (the NDK's headers) and lays one onto the other in order, as Android's
-own generator does, into `core/src/drivers/hk_java_gles.c` (checked in). An array
+own generator does, into `core/src/drivers/mg_java_gles.c` (checked in). An array
 and the offset after it are one pointer: the array's own memory from that element
 on (the runtime never moves or copies an array). A `java.nio` buffer is one
 pointer: what Android's `NIOAccess` gives -- a direct buffer's address plus its
@@ -494,7 +494,7 @@ memory from `arrayOffset + position`. An `int` or `long` where C has a pointer i
 an offset into the bound buffer object (`glDrawElements(..., int offset)`). A
 `String` where C has `const GLchar *` is its UTF-8. What returns a string or a
 buffer, takes a `String[]` or a callback, or otherwise differs from C (39 of the
-832) is written by hand in `core/src/drivers/hk_java_gl.c`.
+832) is written by hand in `core/src/drivers/mg_java_gl.c`.
 
 **EGL from Java** is the framework's own Java -- `javax.microedition.khronos.egl`
 (`MegletEGL`, EGL10 and EGL11) and `android.opengl.EGL14` over it -- on the natives
@@ -509,7 +509,7 @@ all of them are that one underneath. A version-1 context (`GL10`, the default of
 version-2 one, said in the log.
 
 **`GLSurfaceView`.** `meglet.Native.startGL(view, renderer, version)` starts a GL
-thread of the layer's own for that view (C, in `hk_java_gl.c`), a thread of the
+thread of the layer's own for that view (C, in `mg_java_gl.c`), a thread of the
 app's (Java attached, named `GLThread N`, and a guest thread, since the renderer
 may call the app's native code). It makes its context, and then each turn asks the
 view (`GLSurfaceView.megletFrame`, the overlay's) what to do: the events queued with
@@ -532,7 +532,7 @@ can share (`eglGetCurrentContext` as the share of a context made elsewhere).
 The configuration `onSurfaceCreated` is given is what the app's
 `EGLConfigChooser` chose, or one of the sizes it asked for.
 
-**Composition, as built (the first way; `hk_java_gl.c`).** A window surface is a pbuffer on
+**Composition, as built (the first way; `mg_java_gl.c`).** A window surface is a pbuffer on
 ANGLE's device. At each swap its frame is read back into memory (`glReadPixels`
 on the default framebuffer, whatever the app had bound; as B, G, R, A where
 ANGLE offers `GL_EXT_read_format_bgra`, so that rows are copied as they are).
@@ -621,7 +621,7 @@ composed there and nothing is read back, neither the frames nor the views:
   shell made of one too; the first app to show it on the phone was Asphalt 9,
   black while it swapped 28 frames a second (package 270). Now the layer's
   `eglCreatePbufferSurface` has ANGLE's device acquire a new pbuffer's mutex
-  at once (`ndk/hk_egl.c`; its device is made safe for several threads first,
+  at once (`ndk/mg_egl.c`; its device is made safe for several threads first,
   since the app's other threads draw on it meanwhile), and keeps it, as an
   Android app's pbuffer is simply its own; a swap that hands a frame to the
   shell releases it for the call, the shell copies holding it (`AcquireSync`,
@@ -632,27 +632,27 @@ composed there and nothing is read back, neither the frames nor the views:
   composing; the same picture checks hold for both. The stand-in's surfaces
   have keyed mutexes as ANGLE's do and drop what is done without one held, and
   the test shell takes it before it copies a frame. On the PC's graphics
-  processor a second Direct3D device stands for ANGLE's (`hk_gfx_windows.cpp`),
+  processor a second Direct3D device stands for ANGLE's (`mg_gfx_windows.cpp`),
   its texture shared plainly and then with a keyed mutex.
 
 **Native code on a SurfaceView.** A game with a Java activity and a native
 engine (Asphalt 9) hands its `SurfaceView`'s `Surface` to native code, which
 asks `ANativeWindow_fromSurface` for its window and draws there with EGL from
 a thread of its own (docs/JAVA.md, "A SurfaceView drawn by native code"). The
-window is an `hk_nwindow` with operations of its own (`hk_nwindow_ops`,
-`ndk/hk_ndk.h`; `drivers/hk_java_ndk.c`): its size follows the view's surface,
+window is an `mg_nwindow` with operations of its own (`mg_nwindow_ops`,
+`ndk/mg_ndk.h`; `drivers/mg_java_ndk.c`): its size follows the view's surface,
 and it is no longer valid once the view has said its surface is gone
 (`EGLNative.forget`). An EGL window surface on it is not over the shell's
 texture, as on the app's whole window, but the same as a window surface Java
 makes on the view: a pbuffer on the view's layer, swapped by the same swap,
 composed by the shell on the graphics processor or by the core, paced alike
-(`hk_java_gl_window_*` in `hk_java_gl.c`). Two things differ. The context is
+(`mg_java_gl_window_*` in `mg_java_gl.c`). Two things differ. The context is
 the app's own, made by its `eglCreateContext` (without a configuration, so it
 goes with the pbuffer's 8888 one), and the swap asks its version for what a
 read-back must restore. And a window's buffers change size with its surface
 or its geometry at the next frame on Android, while a pbuffer of ANGLE's has
 one size: so the app's `EGLSurface` for such a window is an entry of the
-layer's (`ndk/hk_egl.c`), which stands for the window's pbuffer now; a swap
+layer's (`ndk/mg_egl.c`), which stands for the window's pbuffer now; a swap
 that finds the size changed makes a new pbuffer, current in the old one's
 place, and EGL's calls that take a surface are given whichever it stands for.
 A `SurfaceTexture`'s `Surface` (a `TextureView`'s) has a window of the texture
@@ -662,8 +662,8 @@ back at each swap and handed to the texture in memory, as Java's EGL on a
 
 ## Sound
 
-An app's PCM goes through OpenSL ES buffer queues; `ndk/hk_opensles.c` is the object
-model and `ndk/hk_audio.c` a mixer. Each player is a voice: a queue of the app's own
+An app's PCM goes through OpenSL ES buffer queues; `ndk/mg_opensles.c` is the object
+model and `ndk/mg_audio.c` a mixer. Each player is a voice: a queue of the app's own
 buffers in the app's own format. One thread mixes the playing voices to 16-bit
 stereo at 44.1 kHz, ten milliseconds at a time, calls each player's "buffer done"
 callback (where apps queue the next buffer, as from Android's audio thread), and
@@ -674,7 +674,7 @@ keeps running.
 *Proven:* a guest playing three buffers at 22050 Hz mono through the callback chain
 arrives as the right number of frames at the right level on both channels.
 
-AAudio's output streams (`ndk/hk_aaudio.c`, as `libaaudio.so`) are voices of the same
+AAudio's output streams (`ndk/mg_aaudio.c`, as `libaaudio.so`) are voices of the same
 mixer, each fed from a ring of sixteen buffers of its own, a burst long (10 ms, or the
 frames per callback the app asked for), of which four wait to be played at a time
 (`setBufferSizeInFrames` changes how many). A stream with a data callback starts on
@@ -696,7 +696,7 @@ Spotify's native core does (`core/tests/guest/t_aaudio.c`):
 ### Films
 
 The core decodes nothing. An app that plays a film asks Android for an extractor
-(the film's tracks and samples) and a decoder for each track; `ndk/hk_media.c` is
+(the film's tracks and samples) and a decoder for each track; `ndk/mg_media.c` is
 both, as `libmediandk.so`, and passes the work through. The extractor copies the
 film (a range of the APK, or whatever a data source reads) to a file under the data
 folder and has the shell open it: `meglet_media_host` in `meglet.h` is open, the next
@@ -716,7 +716,7 @@ and hands `android.media.MediaCodec` one sample at a time. Those decoders are a
 second call of the shell's, `meglet_codec_host`: a decoder of a kind (H.264,
 H.265, AAC, MP3) is opened with the stream's configuration, pushed one sample
 at a time, and gives pictures (NV12) and blocks of 16-bit sound back.
-`drivers/hk_java_media.c` takes whatever form an app hands the samples in and
+`drivers/mg_java_media.c` takes whatever form an app hands the samples in and
 gives the shell one: Annex-B with the parameter sets in front of the first
 unit, raw AAC with its AudioSpecificConfig, MP3 frames; it puts pictures in
 display order where a decoder does not, and turns NV12 into the `Bitmap`
@@ -781,10 +781,10 @@ what 1703 has (frame readers and source groups came with 1607):
   answers come on Windows' own threads.
 
 *Proven:* under qemu and on this PC, the core's side and the framework's on a
-stand-in for the shell's cameras (`core/tests/hk_camera_standin.c`: the core's
+stand-in for the shell's cameras (`core/tests/mg_camera_standin.c`: the core's
 tests, and the test app `camera` under qemu, whose previews' pictures are
 checked in the window). `tools/build-tests.sh win` builds `CameraHost.cpp`
-into the test program and runs `hk_tests --camera-windows`, which opens the
+into the test program and runs `mg_tests --camera-windows`, which opens the
 PC's first camera through it and the core's camera code: on the PC this was
 written on, Windows' one camera is DroidCam's virtual one, which the host
 finds as a source group with no panel, opens, and streams from (640 x 480 at
@@ -796,7 +796,7 @@ a phone.
 
 ## Files and the shared storage
 
-Android's paths are looked up in a mount table (`bionic/hk_libc_io.c`). What an
+Android's paths are looked up in a mount table (`bionic/mg_libc_io.c`). What an
 app sees, and where it is under the data folder (`LocalState` on a phone):
 
 | Android | Here |
@@ -804,12 +804,12 @@ app sees, and where it is under the data folder (`LocalState` on a phone):
 | `/data/app/<package>-1/` | the folder the app's APK is in (the shell's library, `LocalState\apks`), and each of its split APKs, wherever it is, as `split_<name>.apk` in it, a mount of that file alone (docs/JAVA.md, "Split APKs and bundles") |
 | `/data/data/<package>`, `/data/user/0/<package>` | `apps/<package>/data` |
 | `/storage/emulated/0`, and its other names `/sdcard`, `/mnt/sdcard`, `/storage/self/primary`, `/storage/sdcard0` | `sdcard`: **one storage for every app**, with Android's standard folders in it from the start (`Alarms`, `DCIM`, `Documents`, `Download`, `Movies`, `Music`, `Notifications`, `Pictures`, `Podcasts`, `Ringtones`) |
-| `/storage/emulated/0/Android/data/<package>`, `.../Android/obb/<package>` | `apps/<package>/sdcard/Android/data/<package>`, `.../obb/<package>`: the app's own part stays with the app. Another package's is that package's own part, if it has run here (`hk_fs_other_app`), as Android 9 lets an app with the storage permission reach every app's; a package that has not run has none |
+| `/storage/emulated/0/Android/data/<package>`, `.../Android/obb/<package>` | `apps/<package>/sdcard/Android/data/<package>`, `.../obb/<package>`: the app's own part stays with the app. Another package's is that package's own part, if it has run here (`mg_fs_other_app`), as Android 9 lets an app with the storage permission reach every app's; a package that has not run has none |
 | `/storage/emulated/0/<name>` for a link | a folder of the phone's own, through the shell |
 
 An app's own part of the storage is written to before the app has ever run
 when it comes in an .xapk: the expansion files the bundle brings are put
-there as it is unpacked (`meglet_bundle_unpack`, which asks `hk_run_own_storage`
+there as it is unpacked (`meglet_bundle_unpack`, which asks `mg_run_own_storage`
 where that is), so a game finds its OBB at its first start, as on Android.
 
 The other names of the storage are rewritten to the one before a path is looked
@@ -825,7 +825,7 @@ of ASCII letters, as Android's storage does not tell `Music` from `music`.
 of the volume the data folder is on, in 4 KB blocks.
 
 The `/proc` and `/sys` files code reads to learn about the device are made up
-(`synthetic` in `bionic/hk_libc_io.c`):
+(`synthetic` in `bionic/mg_libc_io.c`):
 - `/proc/cpuinfo`, `/proc/meminfo`, `/proc/stat` and `/proc/version`;
 - `/proc/self/cmdline` and `/proc/self/status`;
 - `/proc/self/maps`, with a region for each loaded library's segment;
@@ -841,7 +841,7 @@ The guest test `t_smaps` reads the page size as Instagram does.
 the phone tried, `CreateFile2` and `FindFirstFileExW` are refused there (error
 5) with every library capability declared. What Windows gives an app is
 handles, through Windows.Storage's broker. So the host layer has *foreign
-paths* (`host/hk_host.h`): `meglet-link:/2/Camera Roll/a.jpg` is a file of root
+paths* (`host/mg_host.h`): `meglet-link:/2/Camera Roll/a.jpg` is a file of root
 2, and whoever owns the roots is asked for the operating system's own handle
 for it -- a file's, a directory's to list, or whichever is there for its size
 and times -- and to make, remove and rename by name. Every function of the
@@ -850,7 +850,7 @@ link is read, written, mapped and listed by the same code as any other. A
 link is a mount whose host path is such a root. The owner of the roots is the
 shell, through `meglet_storage_host` in `meglet.h`: its links by name, each
 writable or not, and four functions. A link that is not writable is refused
-every change in `run/hk_run.c`, before the shell is asked, whichever part of
+every change in `run/mg_run.c`, before the shell is asked, whichever part of
 the layer wanted it. A rename between a link and anything else is `EXDEV`, as
 between two file systems: the app copies and removes.
 
@@ -876,13 +876,13 @@ COM apartment, so every call is done on one of up to four threads of the
 host's own, in the multithreaded apartment, while the caller waits.
 
 *Proven:* with a stand-in for the shell that opens folders of the tests'
-scratch folder with the plain calls (`core/tests/hk_storage_tests.c`), on both
+scratch folder with the plain calls (`core/tests/mg_storage_tests.c`), on both
 hosts, through the C library's functions as an app binds them: the five names
 of the storage, the standard folders and each link once in a listing, files
 and folders in a link, renames in a link, between links and refused across,
 the app's own part where it was, a link that is only to be read, two threads
 at once. And the same tests with the shell's own `StorageHost.cpp` in the
-stand-in's place, on a PC (`hk_tests --storage-windows`): Windows.Storage's
+stand-in's place, on a PC (`mg_tests --storage-windows`): Windows.Storage's
 real objects, but a test program is no app container and no broker stands in
 between. *Expected:* that the broker hands an app on a phone what a PC's
 Windows.Storage hands a program there. A phone was seen to give a file handle
@@ -904,12 +904,12 @@ use (the package declares `internetClient`, `internetClientServer` and
 `privateNetworkClientServer`, which together are what Android's INTERNET
 permission allows). Three layers:
 
-- **The host** (`host/hk_host.h`, "sockets"; Winsock in `hk_host_win32.c`,
-  BSD sockets in `hk_host_posix.c`) has sockets, the system's resolver and the
+- **The host** (`host/mg_host.h`, "sockets"; Winsock in `mg_host_win32.c`,
+  BSD sockets in `mg_host_posix.c`) has sockets, the system's resolver and the
   list of interfaces in neutral terms of its own: its own families, options,
   flags and errors, an address structure of its own. A host socket never
   blocks.
-- **bionic** (`bionic/hk_net.c`: sockets; `bionic/hk_netdb.c`: names,
+- **bionic** (`bionic/mg_net.c`: sockets; `bionic/mg_netdb.c`: names,
   addresses, interfaces) is what an app links against. It turns Linux's ABI
   into the host's and back: the numbers (`AF_INET6` is 10 on Linux and 23 on
   Windows, `SOL_SOCKET` 1 and 0xFFFF, the `SO_*`, `IPPROTO_*`, `TCP_*` and
@@ -919,7 +919,7 @@ permission allows). Three layers:
   is bionic's, whose order is BSD's -- `ai_canonname` before `ai_addr`, the
   same as Windows', the other way round from glibc's. An option with no
   meaning on the host succeeds and is logged once.
-- **The descriptor table** (`bionic/hk_libc_io.c`): a socket is a descriptor
+- **The descriptor table** (`bionic/mg_libc_io.c`): a socket is a descriptor
   like a file, so `read`, `write`, `close`, `dup`, `fcntl` (`O_NONBLOCK`,
   `FD_CLOEXEC`), `ioctl` (`FIONREAD`, `FIONBIO`, the `SIOCGIF*` questions)
   and `fstat` (`S_IFSOCK`) work on it.
@@ -952,7 +952,7 @@ entry (`AF_PACKET`) and its addresses, as Linux's `getifaddrs` lists them;
 own tunnels are left out.
 
 **The app's own sockets.** `AF_UNIX` is implemented in the process, in
-`hk_net.c`: `socketpair` of stream, datagram and seqpacket sockets, and names
+`mg_net.c`: `socketpair` of stream, datagram and seqpacket sockets, and names
 (paths or abstract) bound, listened on and connected to. Nothing outside the
 app could be reached on a phone anyway. Libraries make such a pair as a
 wake-up channel, and libcore makes one to stand in for a socket it closes
@@ -1002,7 +1002,7 @@ own for that. poll, select and epoll end with `EINTR` when any handler ran,
 as Linux's do; the looper's own waits go on.
 
 *Proven:* on this PC (the Win32 host) and under qemu (Linux), by
-`core/tests/hk_net_tests.c` over loopback, through the C library as an app
+`core/tests/mg_net_tests.c` over loopback, through the C library as an app
 calls it -- TCP over IPv4 and over IPv6 reached as `::ffff:127.0.0.1`,
 blocking and not, refusal, accept with a timeout, 6 MB with a blocked and with
 a polling writer, shutdown and the end of a stream, UDP, options, AF_UNIX,
@@ -1031,9 +1031,9 @@ too.
 
 ## The Java side
 
-No Java runs. `jni/hk_jni.c` is a `JNIEnv` over classes, methods and fields that are
+No Java runs. `jni/mg_jni.c` is a `JNIEnv` over classes, methods and fields that are
 looked up by name; a method is either implemented in C by a driver or logs once and
-returns zero. `jni/hk_jni_android.c` has what every app asks of an activity: the
+returns zero. `jni/mg_jni_android.c` has what every app asks of an activity: the
 package name, the data directories, the display, `Build`.
 
 A **driver** (`drivers/`) plays the part of one kind of app's Java shell. There is

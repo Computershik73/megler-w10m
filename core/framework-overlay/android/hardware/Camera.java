@@ -6,7 +6,7 @@
 // open, the parameters, a preview on a SurfaceView, preview frames in callback buffers, autofocus), and so do most scanners.
 //
 // What it is: Android 9's class as an app sees it, over the phone's cameras (meglet.CameraNative: core/src/drivers/
-// hk_java_camera.c over the shell's meglet_camera_host, Windows.Media.Capture on a phone). Parameters are Android's: a map of
+// mg_java_camera.c over the shell's meglet_camera_host, Windows.Media.Capture on a phone). Parameters are Android's: a map of
 // keys and values, flatten and unflatten with Android's keys, and every getter and setter reading and writing those keys,
 // so that code reading get("preview-size-values") works; what a camera's driver ("the HAL") would offer is made here from
 // what the shell says the camera does, and setParameters refuses what it does not offer, as a HAL does. CameraInfo, Size,

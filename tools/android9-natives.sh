@@ -52,14 +52,14 @@
 # build attributes of what it linked.
 #
 # How the libraries are linked follows from what Meglet's linker
-# (core/src/ld/hk_ld.c, core/src/arm/hk_patch.c) does:
+# (core/src/ld/mg_ld.c, core/src/arm/mg_patch.c) does:
 #
-#   - ld.lld: its PLT entries are a shape hk_patch.c recognises and rewrites
+#   - ld.lld: its PLT entries are a shape mg_patch.c recognises and rewrites
 #     (and the shape the core's own test libraries have).
-#   - Plain REL relocations, no packing (no APS2, no RELR): hk_ld.c reads all
+#   - Plain REL relocations, no packing (no APS2, no RELR): mg_ld.c reads all
 #     three, and the plain table is the one with nothing to go wrong in.
 #   - Both hash tables: lookup uses the GNU one, and the SysV one gives
-#     hk_ld.c the exact number of symbols instead of a derived one.
+#     mg_ld.c the exact number of symbols instead of a derived one.
 #   - Emulated TLS (the compiler's default below API 29), so no PT_TLS and no
 #     TLS relocations; thread-local data goes through pthread keys, as on
 #     Android 9 itself.
@@ -244,7 +244,7 @@ CXXRT=(-lc++_static -lc++abi)
 COMPILER_RT=(-lunwind -lcompiler_rt-extras -lgcc_real)
 SYSTEM=(-lc -lm -ldl)
 
-# What hk_ld.c applies; anything else in a library is a reason to stop.
+# What mg_ld.c applies; anything else in a library is a reason to stop.
 RELOCS_OK="R_ARM_RELATIVE R_ARM_ABS32 R_ARM_REL32 R_ARM_GLOB_DAT R_ARM_JUMP_SLOT R_ARM_IRELATIVE R_ARM_TLS_DTPMOD32 R_ARM_TLS_DTPOFF32 R_ARM_TLS_TPOFF32 R_ARM_NONE"
 
 # link SONAME c|c++ MODULE [its static libraries, then its shared ones]...
@@ -269,7 +269,7 @@ link() {
   for t in $("$READELF" -r "$out" | tr -d '\r' | awk '$3 ~ /^R_ARM_/ {print $3}' | sort -u); do
     case " $RELOCS_OK " in *" $t "*) ;; *) bad="$bad $t" ;; esac
   done
-  [ -z "$bad" ] || die "$so has relocations hk_ld.c does not apply:$bad"
+  [ -z "$bad" ] || die "$so has relocations mg_ld.c does not apply:$bad"
   "$READELF" -lW "$out" | tr -d '\r' | grep -qE "^ +TLS " && die "$so has a PT_TLS segment; emulated TLS was expected"
   "$READELF" -d "$out" | tr -d '\r' | grep -q "TEXTREL" && die "$so has text relocations"
   attrs="$("$GNU_READELF" -A "$out" | tr -d '\r')"

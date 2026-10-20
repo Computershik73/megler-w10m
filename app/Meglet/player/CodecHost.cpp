@@ -461,7 +461,7 @@ struct CodecHost::Codec {
         MFCreateMediaType(type.put());
         if (isVideo(kind)) {
             // Low latency: a picture comes out as soon as the stream's own reordering allows (on this PC's H.264 decoder,
-            // after two units of avc.hkau), not when the decoder's whole picture buffer is full (18 to 24 units, varying with
+            // after two units of avc.mgau), not when the decoder's whole picture buffer is full (18 to 24 units, varying with
             // its threads). Android's decoders hand pictures out as soon, and apps seek and start by it.
             winrt::com_ptr<IMFAttributes> attributes;
             lowLatency = lowLatencyWanted() && SUCCEEDED(transform->GetAttributes(attributes.put())) && attributes &&

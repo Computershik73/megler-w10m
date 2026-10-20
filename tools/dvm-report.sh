@@ -14,7 +14,7 @@
 #   tools/dvm-report.sh link-framework
 #       the same for Android 9's own framework (build/android9/boot/framework*.dex)
 #
-# They run in the PC's build of the tests (build/tests-win/hk_tests.exe), where
+# They run in the PC's build of the tests (build/tests-win/mg_tests.exe), where
 # libcore's native libraries cannot be loaded; `arm` runs the first two under
 # qemu-arm in WSL, with those libraries. The folder libcore is started from is
 # build/android9/root (tools/dvm-android-root.sh). MEGLET_WSL_BUILD names the
@@ -27,7 +27,7 @@ WHAT="${1:-}"
 shift || true
 w() { cygpath -w "$1"; }
 bash "$ROOT/tools/dvm-android-root.sh" > /dev/null
-EXE="$ROOT/build/tests-win/hk_tests.exe"
+EXE="$ROOT/build/tests-win/mg_tests.exe"
 A="$(w "$ROOT/build/android9/root")"
 pc() {
   [ -f "$EXE" ] || bash "$ROOT/tools/build-tests.sh" win --no-run > /dev/null
@@ -36,7 +36,7 @@ pc() {
 arm() { # the mode
   local wroot="/mnt/${ROOT:1:1}${ROOT:2}"
   bash "$ROOT/tools/build-tests.sh" arm --no-run > /dev/null
-  MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "mkdir -p $WB/android-root && cp -ru '$wroot/build/android9/root/.' $WB/android-root/ && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests $1 $WB/android-root 2>&1"
+  MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "mkdir -p $WB/android-root && cp -ru '$wroot/build/android9/root/.' $WB/android-root/ && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests $1 $WB/android-root 2>&1"
 }
 case "$WHAT" in
   natives|init)

@@ -29,7 +29,7 @@
 // (updateServiceIpcWrapper, registerResourcePaths) are off here, as they are on an Android 15 phone.
 //
 // One difference is this runtime's: it has one class path, not a name space per class loader. The WebView's classes join
-// it after the app's (core/src/dvm/hk_dvm_art.c, DexFile), and say they come from the app's loader; so the app's loader is
+// it after the app's (core/src/dvm/mg_dvm_art.c, DexFile), and say they come from the app's loader; so the app's loader is
 // given the WebView's native path too (addNativePath, which Android's libcore has), for Chromium's own
 // System.loadLibrary("webviewchromium") to find the library already loaded.
 package android.webkit;

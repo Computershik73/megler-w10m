@@ -1,7 +1,7 @@
 /*
  * AAudio as an app that decodes its own sound uses it: libaaudio.so opened by
  * name and its functions looked up, as Spotify's native core does. Run by
- * core/tests/hk_tests.c, which reads the results t_aaudio_run fills in.
+ * core/tests/mg_tests.c, which reads the results t_aaudio_run fills in.
  */
 #include <stdint.h>
 

@@ -7,7 +7,7 @@
 // original did the first only, and an app that shows the battery from its receiver, which is the usual way, never heard and
 // showed its zeros: Device Info's card read "Battery 0%  Voltage: 0 mV, Temperature: 0C". And the intent said four things
 // (level, scale, status, plugged) with nothing for the voltage, the temperature, the health or the technology. Now the intent
-// is made of what the core says the battery is (meglet.Native.battery, which is hk_battery_read in the core: one place, which
+// is made of what the core says the battery is (meglet.Native.battery, which is mg_battery_read in the core: one place, which
 // the shell can fill from the phone), with the extras Android's has, and is delivered. And registerReceiver(null, filter),
 // which only asks for a sticky intent, no longer puts its null into the list of receivers. And when the battery becomes
 // another -- the shell says so to the core (meglet_set_battery), and the Java driver, from the main loop, calls batteryChanged
@@ -66,7 +66,7 @@ public final class Broadcasts {
     }
     /**
      * The battery has become another: its charge, its status or what it is plugged into. The driver calls this on the main thread when the
-     * core's has (hk_java.c, battery_news), and here are Android's broadcasts for it, in Android's order: ACTION_POWER_CONNECTED or
+     * core's has (mg_java.c, battery_news), and here are Android's broadcasts for it, in Android's order: ACTION_POWER_CONNECTED or
      * ACTION_POWER_DISCONNECTED when the phone went on a charger or off it (power 1 or 2; 0 for neither), then ACTION_BATTERY_CHANGED --
      * that one, as on Android, only to receivers registered while the app runs, never to one named in the manifest.
      */

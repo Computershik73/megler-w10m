@@ -40,7 +40,7 @@ import java.nio.charset.StandardCharsets;
  *    OAuth server sends a login back, and shouldOverrideUrlLoading is asked about it and takes it;
  *  - input: the page's text field is where the log says (input-at), the test taps it, the field has the focus, the test types
  *    with the keyboard, and the field has the text.
- * The test (core/tests/hk_java_tests.c, run_webview) reads the lines, taps, types, and looks at the picture.
+ * The test (core/tests/mg_java_tests.c, run_webview) reads the lines, taps, types, and looks at the picture.
  */
 public class Main extends Activity {
     private static final String T = "WebViewTest";

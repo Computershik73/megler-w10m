@@ -1,5 +1,5 @@
 // Overlay of core/framework/src/javax/microedition/khronos/egl/MegletEGL.java (tools/build-framework.sh).
-// The same EGL10/EGL11 over meglet.EGLNative (core/src/drivers/hk_java_gl.c). What differs:
+// The same EGL10/EGL11 over meglet.EGLNative (core/src/drivers/mg_java_gl.c). What differs:
 //  - On a GLSurfaceView's GL thread the context and the surface are the thread's real ones (the GL thread tells this class,
 //    megletRenderThread), not stand-ins with no handle: a context made on another thread can share with it
 //    (eglGetCurrentContext there as the share), and eglQuerySurface gives the surface's size. The app still cannot make
@@ -46,7 +46,7 @@ final class MegletEGL implements EGL11 {
     private static boolean render() { return meglet.EGLNative.isRenderThread(); }
     private static boolean err(int e) { sError.set(e); return false; }
 
-    /** @hide The GL thread (hk_java_gl.c): its context and surface now (0: none), for what EGL answers on it. */
+    /** @hide The GL thread (mg_java_gl.c): its context and surface now (0: none), for what EGL answers on it. */
     static void megletRenderThread(long ctx, long surf, int w, int h, int version, android.view.SurfaceView view) {
         if (ctx == 0) { sCurrent.set(null); return; }
         Object[] cur = sCurrent.get();

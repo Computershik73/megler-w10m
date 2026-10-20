@@ -1,5 +1,5 @@
 // Meglet: new in the overlay. The phone's location over the shell's meglet_location_host (core/include/meglet.h), answered by
-// core/src/drivers/hk_java_location.c; meglet/LocationService.java is what calls it.
+// core/src/drivers/mg_java_location.c; meglet/LocationService.java is what calls it.
 package meglet;
 
 public final class LocationNative {

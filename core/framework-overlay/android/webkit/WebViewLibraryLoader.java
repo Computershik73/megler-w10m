@@ -22,8 +22,8 @@
 // natives, over android_dlopen_ext). Here there is one process and no zygote: loadNativeLibrary reserves the address space
 // itself, as the zygote would (130 MB for 32-bit ARM, AOSP's figure), and loads the library into it; no RELRO is written or
 // used, since there is no other process to share it with. The two natives are the core's
-// (core/src/drivers/hk_java_webview.c), which loads the library the way android_dlopen_ext with
-// ANDROID_DLEXT_RESERVED_ADDRESS_HINT does (core/src/bionic/hk_libdl.c), from the APK named by the class loader's native
+// (core/src/drivers/mg_java_webview.c), which loads the library the way android_dlopen_ext with
+// ANDROID_DLEXT_RESERVED_ADDRESS_HINT does (core/src/bionic/mg_libdl.c), from the APK named by the class loader's native
 // path, without running its JNI_OnLoad: as on Android, that is run when Chromium's own LibraryLoader calls
 // System.loadLibrary("webviewchromium").
 package android.webkit;

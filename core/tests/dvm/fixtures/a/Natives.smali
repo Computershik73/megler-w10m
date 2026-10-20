@@ -1,4 +1,4 @@
-# Native methods: implemented in C by the tests (hk_dvm_tests_runtime.c), called from bytecode and calling back.
+# Native methods: implemented in C by the tests (mg_dvm_tests_runtime.c), called from bytecode and calling back.
 .class public final Lt/Natives;
 .super Ljava/lang/Object;
 

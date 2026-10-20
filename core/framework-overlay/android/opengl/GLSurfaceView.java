@@ -1,6 +1,6 @@
 // Overlay of core/framework/src/android/opengl/GLSurfaceView.java (tools/build-framework.sh).
 // The renderer runs on a GL thread of the layer's own, as in the original (meglet.Native.startGL), but that thread is
-// core/src/drivers/hk_java_gl.c here, and what it does each turn this class decides in megletFrame: the queued events,
+// core/src/drivers/mg_java_gl.c here, and what it does each turn this class decides in megletFrame: the queued events,
 // then end, no surface, paused, draw, or nothing to draw. What differs from the original, which drew on one render thread
 // that also put the views on the screen:
 //  - the surface's life as Android's GLThread follows it: its size from surfaceChanged (a fixed size included), its going
@@ -20,7 +20,7 @@ import javax.microedition.khronos.egl.EGLDisplay;
 import javax.microedition.khronos.egl.EGLSurface;
 import javax.microedition.khronos.opengles.GL10;
 
-/** The renderer runs on Meglet's GL thread (core/src/drivers/hk_java_gl.c), which owns the EGL context and a surface the view's size. */
+/** The renderer runs on Meglet's GL thread (core/src/drivers/mg_java_gl.c), which owns the EGL context and a surface the view's size. */
 public class GLSurfaceView extends android.view.SurfaceView implements android.view.SurfaceHolder.Callback2 {
     public static final int RENDERMODE_WHEN_DIRTY = 0, RENDERMODE_CONTINUOUSLY = 1, DEBUG_CHECK_GL_ERROR = 1, DEBUG_LOG_GL_CALLS = 2;
     public interface Renderer { void onSurfaceCreated(GL10 gl, EGLConfig config); void onSurfaceChanged(GL10 gl, int w, int h); void onDrawFrame(GL10 gl); }
@@ -29,7 +29,7 @@ public class GLSurfaceView extends android.view.SurfaceView implements android.v
     public interface EGLWindowSurfaceFactory { EGLSurface createWindowSurface(EGL10 egl, EGLDisplay d, EGLConfig c, Object w); void destroySurface(EGL10 egl, EGLDisplay d, EGLSurface s); }
     public interface GLWrapper { javax.microedition.khronos.opengles.GL wrap(javax.microedition.khronos.opengles.GL gl); }
 
-    /* What megletFrame answers, with the surface's width and height above it: as hk_java_gl.c reads it. */
+    /* What megletFrame answers, with the surface's width and height above it: as mg_java_gl.c reads it. */
     private static final int FRAME_DRAW = 1, FRAME_EXIT = 2, FRAME_NO_SURFACE = 4, FRAME_PAUSED = 8, FRAME_PRESERVE = 16;
 
     private Renderer renderer;
@@ -136,7 +136,7 @@ public class GLSurfaceView extends android.view.SurfaceView implements android.v
         return n[0] > 0 ? found[0] : null;
     }
 
-    /** @hide The GL thread, each turn: the queued events, then what to do and the surface's size (hk_java_gl.c reads it). */
+    /** @hide The GL thread, each turn: the queued events, then what to do and the surface's size (mg_java_gl.c reads it). */
     public final long megletFrame() {
         Integer mine = threadGeneration.get();
         if (mine == null) threadGeneration.set(mine = generation);

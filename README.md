@@ -99,9 +99,9 @@ bash tools/build-tests.sh win      # the Win32 host layer and the APK reader, on
 bash tools/build-appx.sh arm       # → app/Meglet/AppPackages/Meglet_<ver>_ARM.appx
 ```
 
-`build/tests-win/hk_tests.exe --apk some.apk` prints what the layer makes of an APK;
-`hk_tests --load <dir> <lib>...` (the ARM build, under qemu) loads real Android
-libraries from a folder and says what each needed; `hk_tests --run <apk> <data dir>`
+`build/tests-win/mg_tests.exe --apk some.apk` prints what the layer makes of an APK;
+`mg_tests --load <dir> <lib>...` (the ARM build, under qemu) loads real Android
+libraries from a folder and says what each needed; `mg_tests --run <apk> <data dir>`
 starts an APK there with a stand-in for OpenGL ES, touches it and presses Back.
 
 ## On the phone

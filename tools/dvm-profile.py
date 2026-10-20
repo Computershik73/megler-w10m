@@ -1,6 +1,6 @@
-"""Where a benchmark item's time goes, from the samples hk_dvm_bench.c wrote (tools/dvm-bench.sh profile).
+"""Where a benchmark item's time goes, from the samples mg_dvm_bench.c wrote (tools/dvm-bench.sh profile).
 
-    python tools/dvm-profile.py <samples> <hk_tests.map> <hk_tests.exe> [function [lines]]
+    python tools/dvm-profile.py <samples> <mg_tests.map> <mg_tests.exe> [function [lines]]
 
 The samples are addresses where the running thread was found; the linker map names the function each is in. With a
 function named, its hottest instructions are shown in their surroundings, from dumpbin's disassembly, with the share of

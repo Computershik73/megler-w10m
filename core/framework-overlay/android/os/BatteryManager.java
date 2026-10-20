@@ -1,6 +1,6 @@
 // Overlay of core/framework/src/android/os/BatteryManager.java (tools/build-framework.sh).
 // It differs in getIntProperty, isCharging and isPlugWired, which answer from what the core says the battery is
-// (meglet.Native.battery: hk_battery_read in the core) where the original had a full battery written in, not charging.
+// (meglet.Native.battery: mg_battery_read in the core) where the original had a full battery written in, not charging.
 //
 // Why. This is the second way an app reads the battery, beside the sticky ACTION_BATTERY_CHANGED intent (the overlay's
 // meglet.Broadcasts), and the two must agree: the capacity is the intent's level as a percentage, the status is the intent's.

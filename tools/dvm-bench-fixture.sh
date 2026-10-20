@@ -2,7 +2,7 @@
 # Rebuilds the interpreter's benchmark: core/tests/dvm/bench/src/bench/Bench.java, compiled by javac and then d8, into
 # core/tests/dvm/bench/bench.dex. The file is kept in the repository, so building and running the tests needs neither a JDK
 # nor d8 (tools/build-dvm-fixtures.sh only copies it beside the other fixtures, and tools/build-appx.sh packs it for the
-# phone's Self-test). Run this when Bench.java changes. What runs it is core/tests/hk_dvm_bench.c.
+# phone's Self-test). Run this when Bench.java changes. What runs it is core/tests/mg_dvm_bench.c.
 #
 #   MEGLET_JDK          a JDK's folder (default: C:\Program Files\Java\jdk1.8.0_202)
 #   MEGLET_ANDROID_SDK  an Android SDK with build-tools 29.0.3 and platforms/android-29 (default: the user's Documents)

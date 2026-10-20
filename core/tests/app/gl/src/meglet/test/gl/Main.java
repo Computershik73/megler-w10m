@@ -28,13 +28,13 @@ import javax.microedition.khronos.egl.EGLSurface;
 import javax.microedition.khronos.opengles.GL10;
 
 /**
- * OpenGL ES from an app's Java (core/src/drivers/hk_java_gl.c). The top half of the screen is a GLSurfaceView whose renderer
+ * OpenGL ES from an app's Java (core/src/drivers/mg_java_gl.c). The top half of the screen is a GLSurfaceView whose renderer
  * reads the GPU's strings, clears to a blue and draws a yellow triangle with a shader, with a magenta label over its bottom
  * right corner; the bottom half a SurfaceView that a thread of the app's own clears to green with EGL10 and GL10, in a
  * configuration of 565 found by exact match as apps' choosers find one. And an EGL14 pbuffer on another thread, as an app
  * asks the GPU's name. After thirty frames drawn continuously the renderer goes to RENDERMODE_WHEN_DIRTY: none while not
  * asked, one when asked; an event queued to the GL thread; the surface given a fixed size of half the view's. Each step is a
- * line of the log; the test (core/tests/hk_java_tests.c, run_gl) reads them and looks at the picture, and pauses and resumes
+ * line of the log; the test (core/tests/mg_java_tests.c, run_gl) reads them and looks at the picture, and pauses and resumes
  * the app.
  */
 public class Main extends Activity {

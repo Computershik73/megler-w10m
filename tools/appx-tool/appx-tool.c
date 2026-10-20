@@ -1,5 +1,5 @@
 /*
- * The core's package maker (core/src/appx/hk_appx.c) on a PC, to try it where makeappx and signtool are at hand:
+ * The core's package maker (core/src/appx/mg_appx.c) on a PC, to try it where makeappx and signtool are at hand:
  *
  *   appx-tool <folder> <out.appx> <key file> <certificate file> [<publisher>]
  *
@@ -11,9 +11,9 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "appx/hk_appx.h"
+#include "appx/mg_appx.h"
 
-static int add_folder(hk_appx *a, const wchar_t *root, const wchar_t *rel)
+static int add_folder(mg_appx *a, const wchar_t *root, const wchar_t *rel)
 {
     wchar_t pattern[1024];
     WIN32_FIND_DATAW f;
@@ -38,7 +38,7 @@ static int add_folder(hk_appx *a, const wchar_t *root, const wchar_t *rel)
         WideCharToMultiByte(CP_UTF8, 0, full, -1, path, sizeof(path), NULL, NULL);
         for (char *s = name; *s; s++)
             if (*s == '\\') *s = '/';
-        if (!hk_appx_add_file(a, name, path)) return -100000;
+        if (!mg_appx_add_file(a, name, path)) return -100000;
         count++;
     } while (FindNextFileW(h, &f));
     FindClose(h);
@@ -48,8 +48,8 @@ static int add_folder(hk_appx *a, const wchar_t *root, const wchar_t *rel)
 int wmain(int argc, wchar_t **argv)
 {
     char out[1024], key[1024], cert[1024], publisher[256] = "CN=Computershik", err[300];
-    hk_appx_key *k;
-    hk_appx *a;
+    mg_appx_key *k;
+    mg_appx *a;
     int n;
     if (argc < 5) {
         fprintf(stderr, "appx-tool <folder> <out.appx> <key file> <certificate file> [<publisher>]\n");
@@ -59,22 +59,22 @@ int wmain(int argc, wchar_t **argv)
     WideCharToMultiByte(CP_UTF8, 0, argv[3], -1, key, sizeof(key), NULL, NULL);
     WideCharToMultiByte(CP_UTF8, 0, argv[4], -1, cert, sizeof(cert), NULL, NULL);
     if (argc > 5) WideCharToMultiByte(CP_UTF8, 0, argv[5], -1, publisher, sizeof(publisher), NULL, NULL);
-    k = hk_appx_key_open(key, cert, publisher, err, sizeof(err));
+    k = mg_appx_key_open(key, cert, publisher, err, sizeof(err));
     if (!k) {
         fprintf(stderr, "key: %s\n", err);
         return 1;
     }
-    a = hk_appx_begin(out, err, sizeof(err));
+    a = mg_appx_begin(out, err, sizeof(err));
     if (!a) {
         fprintf(stderr, "begin: %s\n", err);
         return 1;
     }
     n = add_folder(a, argv[1], L"");
-    if (!hk_appx_finish(a, k, err, sizeof(err))) {
+    if (!mg_appx_finish(a, k, err, sizeof(err))) {
         fprintf(stderr, "finish: %s\n", err);
         return 1;
     }
     printf("%d files packed into %s\n", n, out);
-    hk_appx_key_close(k);
+    mg_appx_key_close(k);
     return 0;
 }

@@ -6,7 +6,7 @@
 // The core hands over one sample at a time, already in the form a transform
 // takes: H.264 and H.265 access units in Annex-B with the parameter sets in
 // front of the first, raw AAC with its AudioSpecificConfig, MP3 frames
-// (core/src/drivers/hk_java_media.c). Each push is decoded at once, and what
+// (core/src/drivers/mg_java_media.c). Each push is decoded at once, and what
 // comes out is kept here until the core pulls it:
 // - a picture as the decoder wrote it, NV12, in the order the decoder hands
 //   them out, which for Media Foundation's decoders is display order. Its

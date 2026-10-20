@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The test app for OpenGL ES from Java (tools/build-test-app.sh): a GLSurfaceView whose renderer clears, draws a triangle
      with a shader and reads the GPU's strings, a view over it, a SurfaceView an EGL10 thread of the app's own draws on with
-     GL10, and an EGL14 pbuffer on another thread. Each step is a line of the log, which the test (core/tests/hk_java_tests.c,
+     GL10, and an EGL14 pbuffer on another thread. Each step is a line of the log, which the test (core/tests/mg_java_tests.c,
      run_gl) reads, with the picture. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="meglet.test.gl" android:versionCode="1" android:versionName="1.0">
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />

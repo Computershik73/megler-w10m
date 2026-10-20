@@ -1,5 +1,5 @@
 # meglet.security.NoTlsContext: SSLContext "TLS", "Default", "TLSv1.2" and their kin while there is no TLS -- while
-# conscrypt's native library is not in the Android root (hk_dvm_art.c, "the security providers").
+# conscrypt's native library is not in the Android root (mg_dvm_art.c, "the security providers").
 #
 # Why it is there at all. Without any SSLContext an app that opens an https URL does not get a failed connection: Android's
 # own HTTP client (com.android.okhttp, behind URL.openConnection) asks SSLContext.getInstance("TLS"), and when that throws

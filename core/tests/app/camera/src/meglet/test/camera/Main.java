@@ -38,8 +38,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 /**
- * The old camera API as a code scanner uses it (core/src/drivers/hk_java_camera.c and the overlay's android.hardware.Camera),
- * on the test's stand-in for the shell's cameras (core/tests/hk_camera_standin.c): a camera at the back turned 90 degrees,
+ * The old camera API as a code scanner uses it (core/src/drivers/mg_java_camera.c and the overlay's android.hardware.Camera),
+ * on the test's stand-in for the shell's cameras (core/tests/mg_camera_standin.c): a camera at the back turned 90 degrees,
  * with focus and a torch, and one at the front turned 270, whose pictures are four quarters of known colours with their
  * number in the first four bytes. The top half of the screen is a SurfaceView for the back camera's preview, the bottom
  * half a TextureView for the front camera's. A thread of the app's goes through the steps and says how each went; the back

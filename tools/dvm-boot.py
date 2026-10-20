@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Builds the Dalvik runtime's built-in java.lang: core/src/dvm/hk_dvm_boot_dex.h.
+Builds the Dalvik runtime's built-in java.lang: core/src/dvm/mg_dvm_boot_dex.h.
 
     python tools/dvm-boot.py [--keep DIR]
 
@@ -8,7 +8,7 @@ The classes are the .smali files in core/src/dvm/boot plus what is generated her
 because it is the same few lines many times over: the marker interfaces, the
 exception classes (each a superclass and four constructors), and the numeric
 boxes. tools/dexasm.py assembles them into one DEX file, which is written out
-as a C array for hk_dvm_boot.c to include. --keep also writes the generated
+as a C array for mg_dvm_boot.c to include. --keep also writes the generated
 .smali files and the .dex to a directory, to look at.
 
 This is a stand-in for libcore, to be dropped when libcore's own bytecode is
@@ -192,7 +192,7 @@ def main(argv):
     except dexasm.AsmError as e:
         print('dvm-boot: %s' % e, file=sys.stderr)
         return 1
-    out = os.path.join(ROOT, 'core', 'src', 'dvm', 'hk_dvm_boot_dex.h')
+    out = os.path.join(ROOT, 'core', 'src', 'dvm', 'mg_dvm_boot_dex.h')
     text = dexasm.c_array(dex, 'k_dvm_boot_dex', 'the .smali files of core/src/dvm/boot and tools/dvm-boot.py')
     old = None
     if os.path.exists(out):

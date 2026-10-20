@@ -620,7 +620,7 @@ public class Main extends Activity {
 
     /**
      * The battery, the two ways an app reads it: the sticky ACTION_BATTERY_CHANGED intent and BatteryManager. They must agree
-     * with each other; what the numbers are is the test's to say, which sets them in the core (hk_battery_set) before the run.
+     * with each other; what the numbers are is the test's to say, which sets them in the core (mg_battery_set) before the run.
      * A receiver registered for the intent is called with it, later.
      */
     private void battery() {
@@ -1181,7 +1181,7 @@ public class Main extends Activity {
 
     /**
      * The decoders an app can have: those the shell has, which under the test runner is its stand-in's H.264, AAC and MP3
-     * and not H.265 (core/tests/hk_codec_standin.c). They are listed every way the list is asked for, one is found for a
+     * and not H.265 (core/tests/mg_codec_standin.c). They are listed every way the list is asked for, one is found for a
      * film's format, one is made by its type, and asking for H.265 is the IOException Android throws when there is none.
      */
     private void codecs() {
@@ -1769,8 +1769,8 @@ public class Main extends Activity {
 
     /**
      * MediaCodec as apps use it, over the shell's decoders (under the test runner, its stand-in, which hands pictures out in
-     * decode order: the layer puts them in display order). The streams are the assets avc.hkau (24 pictures with two
-     * B-pictures between references, an IDR at 0 and 12), aac.hkau (23 packets) and mp3.hkau (21 frames):
+     * decode order: the layer puts them in display order). The streams are the assets avc.mgau (24 pictures with two
+     * B-pictures between references, an IDR at 0 and 12), aac.mgau (23 packets) and mp3.mgau (21 frames):
      * - "codec-avc": the parameter sets as csd-0 and csd-1, every picture shown on a Surface over a SurfaceTexture: the
      *   output format first, then all 24 pictures in display order, then the end of the stream; the last one shown is in
      *   the SurfaceTexture, in the grey the stand-in made for its time;
@@ -1789,7 +1789,7 @@ public class Main extends Activity {
      */
     private void mediaCodec() {
         step("codec-avc", () -> {
-            Stream s = Stream.read(getAssets(), "avc.hkau");
+            Stream s = Stream.read(getAssets(), "avc.mgau");
             android.graphics.SurfaceTexture texture = new android.graphics.SurfaceTexture(false);
             texture.setDefaultBufferSize(s.width, s.height);
             android.view.Surface surface = new android.view.Surface(texture);
@@ -1810,7 +1810,7 @@ public class Main extends Activity {
                     && out.format.getInteger(android.media.MediaFormat.KEY_HEIGHT) == s.height && pixel == (0xFF000000 | grey << 16 | grey << 8 | grey);
         });
         step("codec-avc-flush", () -> {
-            Stream s = Stream.read(getAssets(), "avc.hkau");
+            Stream s = Stream.read(getAssets(), "avc.mgau");
             android.media.MediaCodec codec = android.media.MediaCodec.createDecoderByType("video/avc");
             codec.configure(s.format(true), null, null, 0);
             codec.start();
@@ -1825,7 +1825,7 @@ public class Main extends Activity {
             return idr > 7 && after.inOrder(12, 12) && after.ended;
         });
         step("codec-avc-inband", () -> {
-            Stream s = Stream.read(getAssets(), "avc.hkau");
+            Stream s = Stream.read(getAssets(), "avc.mgau");
             android.media.MediaCodec codec = android.media.MediaCodec.createDecoderByType("video/avc");
             codec.configure(s.format(false), null, null, 0);
             codec.start();
@@ -1840,7 +1840,7 @@ public class Main extends Activity {
             return out.inOrder(0, 24) && out.ended;
         });
         step("codec-avc-async", () -> {
-            final Stream s = Stream.read(getAssets(), "avc.hkau");
+            final Stream s = Stream.read(getAssets(), "avc.mgau");
             final android.os.HandlerThread thread = new android.os.HandlerThread("codec-callbacks");
             thread.start();
             final android.os.Handler handler = new android.os.Handler(thread.getLooper());
@@ -1883,7 +1883,7 @@ public class Main extends Activity {
             return true;
         });
         step("codec-aac", () -> {
-            Stream s = Stream.read(getAssets(), "aac.hkau");
+            Stream s = Stream.read(getAssets(), "aac.mgau");
             android.media.MediaCodec codec = android.media.MediaCodec.createDecoderByType(s.mime);
             codec.configure(s.format(true), null, null, 0);
             codec.start();
@@ -1895,7 +1895,7 @@ public class Main extends Activity {
                     && out.format.getInteger(android.media.MediaFormat.KEY_SAMPLE_RATE) == 44100 && out.format.getInteger(android.media.MediaFormat.KEY_CHANNEL_COUNT) == 2;
         });
         step("codec-aac-adts", () -> {
-            Stream s = Stream.read(getAssets(), "aac.hkau");
+            Stream s = Stream.read(getAssets(), "aac.mgau");
             for (int k = 0; k < s.samples.size(); k++) s.samples.set(k, adts(s.samples.get(k)));
             android.media.MediaFormat f = s.format(false);
             f.setInteger(android.media.MediaFormat.KEY_IS_ADTS, 1);
@@ -1909,7 +1909,7 @@ public class Main extends Activity {
             return out.ended && out.blocks == s.samples.size() && out.pcm == s.samples.size() * 1024L * 2 * 2;
         });
         step("codec-avc-full", () -> {
-            Stream s = Stream.read(getAssets(), "avc.hkau");
+            Stream s = Stream.read(getAssets(), "avc.mgau");
             android.media.MediaCodec codec = android.media.MediaCodec.createDecoderByType("video/avc");
             codec.configure(s.format(true), null, null, 0);
             codec.start();
@@ -1947,7 +1947,7 @@ public class Main extends Activity {
             return full && waiting.size() >= 8 && back >= 0 && out.inOrder(0, s.samples.size()) && out.ended;
         });
         step("codec-mp3", () -> {
-            Stream s = Stream.read(getAssets(), "mp3.hkau");
+            Stream s = Stream.read(getAssets(), "mp3.mgau");
             android.media.MediaCodec codec = android.media.MediaCodec.createDecoderByType(s.mime);
             codec.configure(s.format(false), null, null, 0);
             codec.start();

@@ -17,7 +17,7 @@ import android.widget.LinearLayout;
  * the library's own draws with EGL on the window ANativeWindow_fromSurface gave for its surface; the middle one is drawn in
  * software through ANativeWindow_lock each time its surface changes; the TextureView's texture is drawn through a Surface made
  * on it, in software when it is there and once with EGL after the first tap. The renderer's progress (Windows.phase) is said in
- * the log with where the views are; the test (core/tests/hk_java_tests.c, run_natives) looks at the window's picture and taps,
+ * the log with where the views are; the test (core/tests/mg_java_tests.c, run_natives) looks at the window's picture and taps,
  * and each tap takes the next step: after phase 1 the EGL view's surface is given a fixed size of half the view's (the same
  * window, resized: the renderer's surface follows at its next swap), after phase 2 the view is taken out of the window (its
  * surface destroyed while the renderer swaps), after phase 3 it is put back (a new surface, a new window).

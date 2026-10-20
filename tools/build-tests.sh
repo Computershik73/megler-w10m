@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds and runs the core's tests.
 #
-#   tools/build-tests.sh arm [--no-run] [--no-libcore] [--no-java] [-- extra arguments for hk_tests]
+#   tools/build-tests.sh arm [--no-run] [--no-libcore] [--no-java] [-- extra arguments for mg_tests]
 #       The 32-bit ARM build, in WSL with arm-linux-gnueabihf-gcc, run under
 #       qemu-arm: the one that executes guest code. Thumb-2 and hard-float,
 #       like the phone's build. Needs the guest libraries (tools/build-guest.sh).
@@ -39,8 +39,8 @@
 #       through the core's camera code and a few pictures taken, or, on a PC
 #       without one, a line that says so.
 #
-# Both builds unpack bundles of split APKs as the shell does (hk_tests
-# --bundles, core/tests/hk_bundle_tests.c): the test app `splits` as an .apks
+# Both builds unpack bundles of split APKs as the shell does (mg_tests
+# --bundles, core/tests/mg_bundle_tests.c): the test app `splits` as an .apks
 # and an .xapk (build/guest/java, made by tools/build-test-app.sh), and the
 # real bundles that are in build/bundles, which are not in the repository
 # (BiP, MangaDex and Magnit: copied there from where they were downloaded;
@@ -117,23 +117,23 @@ if [ "$JAVA" = 1 ] && [ "$MODE" = arm ] && [ "$RUN" = 1 ]; then
   fi
 fi
 STATUS=0
-# SQLite is compiled into the core where its amalgamation is (build/sqlite/sqlite3.c, tools/sqlite-fetch.sh): core/src/sqlite/hk_sqlite3.c
+# SQLite is compiled into the core where its amalgamation is (build/sqlite/sqlite3.c, tools/sqlite-fetch.sh): core/src/sqlite/mg_sqlite3.c
 # includes it. Without it the core builds as before and says, when an app asks for a database, that it has none.
 SQLITE_GCC=""
 SQLITE_CL=()
 if [ -f "$ROOT/build/sqlite/sqlite3.c" ] && [ -f "$ROOT/build/sqlite/sqlite3.h" ]; then
-  SQLITE_GCC="-DHK_HAVE_SQLITE=1 -Ibuild/sqlite"
-  SQLITE_CL=(/DHK_HAVE_SQLITE=1 "/I$(cygpath -w "$ROOT/build/sqlite")")
+  SQLITE_GCC="-DMG_HAVE_SQLITE=1 -Ibuild/sqlite"
+  SQLITE_CL=(/DMG_HAVE_SQLITE=1 "/I$(cygpath -w "$ROOT/build/sqlite")")
 else
   echo "(no build/sqlite/sqlite3.c: the core is built without SQLite, and the tests that need it are left out)"
 fi
-# libwebp's decoder likewise, where its sources are (build/webp/src, tools/webp-fetch.sh): core/src/webp/hk_webp_*.c each compile one
+# libwebp's decoder likewise, where its sources are (build/webp/src, tools/webp-fetch.sh): core/src/webp/mg_webp_*.c each compile one
 # of its files. Without it a WebP picture goes to the shell's decoder like any other, and the tests of the core's own are left out.
 WEBP_GCC=""
 WEBP_CL=()
 if [ -f "$ROOT/build/webp/src/dec/webp_dec.c" ] && [ -f "$ROOT/build/webp/src/webp/decode.h" ]; then
-  WEBP_GCC="-DHK_HAVE_WEBP=1 -Ibuild/webp"
-  WEBP_CL=(/DHK_HAVE_WEBP=1 "/I$(cygpath -w "$ROOT/build/webp")")
+  WEBP_GCC="-DMG_HAVE_WEBP=1 -Ibuild/webp"
+  WEBP_CL=(/DMG_HAVE_WEBP=1 "/I$(cygpath -w "$ROOT/build/webp")")
 else
   echo "(no build/webp/src: the core is built without its WebP decoder, and the tests that need it are left out)"
 fi
@@ -155,7 +155,7 @@ CFLAGS="-std=gnu11 -O1 -g -mthumb -march=armv7-a -mfpu=neon -mfloat-abi=hard -Wa
 compile() {
   src="\$1"; obj="\$OUT/obj/\$(echo "\$src" | tr '/' '_').o"
   if [ ! -f "\$obj" ] || [ "\$src" -nt "\$obj" ] || [ -n "\$(find core/include core/src core/tests \( -name '*.h' -o -name '*.inc' \) -newer "\$obj" -print -quit)" ] \\
-     || { [ "\$src" = core/src/sqlite/hk_sqlite3.c ] && [ -f build/sqlite/sqlite3.c ] && [ build/sqlite/sqlite3.c -nt "\$obj" ]; }; then
+     || { [ "\$src" = core/src/sqlite/mg_sqlite3.c ] && [ -f build/sqlite/sqlite3.c ] && [ build/sqlite/sqlite3.c -nt "\$obj" ]; }; then
     arm-linux-gnueabihf-gcc \$CFLAGS \$2 -c "\$src" -o "\$obj" || exit 1
   fi
 }
@@ -166,21 +166,21 @@ export -f compile
 export OUT CFLAGS
 printf '%s\n' ${SRCS[*]} | xargs -P 8 -I{} bash -c 'compile {} ""'
 printf '%s\n' ${ZSRCS[*]} | xargs -P 8 -I{} bash -c 'compile {} "-w"'
-arm-linux-gnueabihf-gcc -mthumb -o \$OUT/hk_tests \$OUT/obj/*.o -lm -lpthread -ldl
-echo "built \$OUT/hk_tests"
+arm-linux-gnueabihf-gcc -mthumb -o \$OUT/mg_tests \$OUT/obj/*.o -lm -lpthread -ldl
+echo "built \$OUT/mg_tests"
 EOF
   MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash "$WROOT/build/tests-arm.sh"
   if [ "$RUN" = 1 ]; then
     # (The layer's log is the program's standard error; the two are joined inside WSL, where lines stay whole.)
-    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/scratch && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests '$WROOT/build/guest/armeabi-v7a' $WB/scratch \$([ -f $WB/hk.apk ] && echo --dvm-apk $WB/hk.apk) ${EXTRA[*]:-} 2>&1" || STATUS=1
+    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/scratch && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests '$WROOT/build/guest/armeabi-v7a' $WB/scratch \$([ -f $WB/mg.apk ] && echo --dvm-apk $WB/mg.apk) ${EXTRA[*]:-} 2>&1" || STATUS=1
     if [ "$LIBCORE" = 1 ]; then
       bash "$ROOT/tools/dvm-android-root.sh"
       echo "$AGAIN"
       # The folder is copied into WSL's own disk: the Windows drive is slow from there, and ICU maps 24 MB of it.
-      MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "mkdir -p $WB/android-root && cp -ru '$WROOT/build/android9/root/.' $WB/android-root/ && rm -rf $WB/scratch && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests '$WROOT/build/guest/armeabi-v7a' $WB/scratch --dvm-android $WB/android-root \$([ -f $WB/hk.apk ] && echo --dvm-apk $WB/hk.apk) ${EXTRA[*]:-} 2>&1" || STATUS=1
+      MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "mkdir -p $WB/android-root && cp -ru '$WROOT/build/android9/root/.' $WB/android-root/ && rm -rf $WB/scratch && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests '$WROOT/build/guest/armeabi-v7a' $WB/scratch --dvm-android $WB/android-root \$([ -f $WB/mg.apk ] && echo --dvm-apk $WB/mg.apk) ${EXTRA[*]:-} 2>&1" || STATUS=1
     fi
     # Bundles of split APKs, unpacked as the shell unpacks them.
-    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/scratch-bundles && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --bundles '$WROOT/build/guest/java' $WB/scratch-bundles '$WROOT/build/bundles' 2>&1; STATUS=\$?; rm -rf $WB/scratch-bundles; exit \$STATUS" || STATUS=1
+    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/scratch-bundles && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --bundles '$WROOT/build/guest/java' $WB/scratch-bundles '$WROOT/build/bundles' 2>&1; STATUS=\$?; rm -rf $WB/scratch-bundles; exit \$STATUS" || STATUS=1
     if [ "$JAVA" = 1 ]; then
       for app in hello demos natives crash gc gl; do
         if [ ! -f "$ROOT/build/guest/java/$app.apk" ]; then
@@ -188,7 +188,7 @@ EOF
           continue
         fi
         echo "the Java test app $app (build/guest/java/$app.apk), through meglet_run"
-        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/$app.apk' $WB/$app.apk && rm -rf $WB/java-data-$app && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --java $app $WB/$app.apk $WB/java-data-$app $WB/android-root '$WROOT/build/java-pictures' 2>&1" || STATUS=1
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/$app.apk' $WB/$app.apk && rm -rf $WB/java-data-$app && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java $app $WB/$app.apk $WB/java-data-$app $WB/android-root '$WROOT/build/java-pictures' 2>&1" || STATUS=1
       done
       # The app in several APKs, from each of its bundles: unpacked as the shell unpacks one, for a screen of 320 dpi, and run.
       for bundle in apks xapk; do
@@ -197,7 +197,7 @@ EOF
           continue
         fi
         echo "the Java test app splits (build/guest/java/splits.$bundle), unpacked and run through meglet_run"
-        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/splits.$bundle' $WB/splits.$bundle && rm -rf $WB/java-data-splits && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --java splits $WB/splits.$bundle $WB/java-data-splits $WB/android-root '$WROOT/build/java-pictures' 0 720x1280@320 2>&1" || STATUS=1
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/splits.$bundle' $WB/splits.$bundle && rm -rf $WB/java-data-splits && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java splits $WB/splits.$bundle $WB/java-data-splits $WB/android-root '$WROOT/build/java-pictures' 0 720x1280@320 2>&1" || STATUS=1
       done
       # The database app, twice: the second run on the data folder the first left, to find what it wrote. Only where the core has SQLite in it.
       if [ -n "$SQLITE_GCC" ] && [ -f "$ROOT/build/guest/java/data.apk" ]; then
@@ -205,9 +205,9 @@ EOF
           echo "the Java test app data (build/guest/java/data.apk), through meglet_run: run $run on its database"
           CLEAN=""
           [ "$run" = 1 ] && CLEAN="rm -rf $WB/java-data-data &&"
-          # The second run with the flags trace-net, trace-exceptions, trace-stacks, trace-cpu, trace-native-stacks, trace-profile and a trace-calls on, which hk_java_tests.c finds the lines of.
+          # The second run with the flags trace-net, trace-exceptions, trace-stacks, trace-cpu, trace-native-stacks, trace-profile and a trace-calls on, which mg_java_tests.c finds the lines of.
           [ "$run" = 2 ] && CLEAN="mkdir -p $WB/java-data-data/flags && touch $WB/java-data-data/flags/trace-net $WB/java-data-data/flags/trace-exceptions $WB/java-data-data/flags/trace-stacks $WB/java-data-data/flags/trace-cpu $WB/java-data-data/flags/trace-native-stacks $WB/java-data-data/flags/trace-profile $WB/java-data-data/flags/trace-calls-android.media.session.PlaybackState &&"
-          MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/data.apk' $WB/data.apk && $CLEAN qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --java data $WB/data.apk $WB/java-data-data $WB/android-root '$WROOT/build/java-pictures' 0 480x800@160 run:$run 2>&1" || STATUS=1
+          MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/data.apk' $WB/data.apk && $CLEAN qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java data $WB/data.apk $WB/java-data-data $WB/android-root '$WROOT/build/java-pictures' 0 480x800@160 run:$run 2>&1" || STATUS=1
         done
       else
         echo "(the Java test app data is not run: the core was built without SQLite)"
@@ -216,11 +216,11 @@ EOF
       # of the app's own server on loopback. Only where the root carries it.
       if [ -f "$ROOT/build/guest/java/webview.apk" ] && [ -f "$ROOT/build/android9/root/app/webview/webview.apk" ]; then
         echo "the Java test app webview (build/guest/java/webview.apk), through meglet_run: Android's System WebView from the Android root"
-        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/webview.apk' $WB/webview.apk && rm -rf $WB/java-data-webview && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --java webview $WB/webview.apk $WB/java-data-webview $WB/android-root '$WROOT/build/java-pictures' 0 480x800@160 2>&1" || STATUS=1
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/webview.apk' $WB/webview.apk && rm -rf $WB/java-data-webview && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java webview $WB/webview.apk $WB/java-data-webview $WB/android-root '$WROOT/build/java-pictures' 0 480x800@160 2>&1" || STATUS=1
       else
         echo "(the Java test app webview is not run: no WebView in the Android root -- tools/webview-fetch.sh fetches it)"
       fi
-      # The camera app: the old android.hardware.Camera on a stand-in for the shell's cameras (core/tests/hk_camera_standin.c),
+      # The camera app: the old android.hardware.Camera on a stand-in for the shell's cameras (core/tests/mg_camera_standin.c),
       # its previews' pictures checked in the window; and once more with every camera refused, as Windows refuses Meglet the
       # camera when the user has said no.
       if [ -f "$ROOT/build/guest/java/camera.apk" ]; then
@@ -228,32 +228,32 @@ EOF
           SCRIPT=""
           [ "$run" = 2 ] && SCRIPT="denied"
           echo "the Java test app camera (build/guest/java/camera.apk), through meglet_run${SCRIPT:+, every camera refused}"
-          MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/camera.apk' $WB/camera.apk && rm -rf $WB/java-data-camera && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --java camera $WB/camera.apk $WB/java-data-camera $WB/android-root '$WROOT/build/java-pictures' 0 480x800@160 $SCRIPT 2>&1" || STATUS=1
+          MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/camera.apk' $WB/camera.apk && rm -rf $WB/java-data-camera && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java camera $WB/camera.apk $WB/java-data-camera $WB/android-root '$WROOT/build/java-pictures' 0 480x800@160 $SCRIPT 2>&1" || STATUS=1
         done
       fi
       # The GL app again with a shell that does not compose the window (gl_frame says no): the core reads the frames back and
       # composes the window itself, the way taken where EGL shares no textures; the same checks of the picture.
       if [ -f "$ROOT/build/guest/java/gl.apk" ]; then
         echo "the Java test app gl again, the window composed by the core (the shell takes no frames)"
-        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/java-data-gl && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --java gl $WB/gl.apk $WB/java-data-gl $WB/android-root '$WROOT/build/java-pictures-readback' 0 480x800@160 readback 2>&1" || STATUS=1
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/java-data-gl && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java gl $WB/gl.apk $WB/java-data-gl $WB/android-root '$WROOT/build/java-pictures-readback' 0 480x800@160 readback 2>&1" || STATUS=1
       fi
       # And natives likewise: the EGL surfaces its native code makes on a SurfaceView, in a context of its own, read back.
       if [ -f "$ROOT/build/guest/java/natives.apk" ]; then
         echo "the Java test app natives again, the window composed by the core (the shell takes no frames)"
-        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/java-data-natives && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --java natives $WB/natives.apk $WB/java-data-natives $WB/android-root '$WROOT/build/java-pictures-readback' 0 480x800@160 readback 2>&1" || STATUS=1
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/java-data-natives && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java natives $WB/natives.apk $WB/java-data-natives $WB/android-root '$WROOT/build/java-pictures-readback' 0 480x800@160 readback 2>&1" || STATUS=1
       fi
       # And an upright surface, as a phone held upright gives an app that does not ask for landscape: the same app, the same checks.
       echo "the Java test app hello again, on an upright surface (720 x 1280 at 320 dpi)"
-      MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/hello.apk' $WB/hello.apk && rm -rf $WB/java-data-hello && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --java hello $WB/hello.apk $WB/java-data-hello $WB/android-root '$WROOT/build/java-pictures-upright' 0 720x1280@320 2>&1" || STATUS=1
+      MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/hello.apk' $WB/hello.apk && rm -rf $WB/java-data-hello && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java hello $WB/hello.apk $WB/java-data-hello $WB/android-root '$WROOT/build/java-pictures-upright' 0 720x1280@320 2>&1" || STATUS=1
       # Each of them once more, with every call it makes of the shell's drawing written to build/gfx-records/<app>.rec
-      # (core/tests/hk_gfx_record.c): what `tools/build-tests.sh win` draws again with Direct2D and DirectWrite.
+      # (core/tests/mg_gfx_record.c): what `tools/build-tests.sh win` draws again with Direct2D and DirectWrite.
       mkdir -p "$ROOT/build/gfx-records"
       for app in hello demos; do
-        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/java-data-$app && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --gfx-record $app $WB/$app.apk $WB/java-data-$app $WB/android-root $WB/$app.rec 2>/dev/null && cp $WB/$app.rec '$WROOT/build/gfx-records/$app.rec'" || STATUS=1
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/java-data-$app && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --gfx-record $app $WB/$app.apk $WB/java-data-$app $WB/android-root $WB/$app.rec 2>/dev/null && cp $WB/$app.rec '$WROOT/build/gfx-records/$app.rec'" || STATUS=1
       done
     fi
     # The shell's drawing (Direct2D, DirectWrite, WIC) is only in the Windows build: this one has the mode and says so.
-    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --gfx-windows - 2>&1" || STATUS=1
+    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --gfx-windows - 2>&1" || STATUS=1
   fi
 elif [ "$MODE" = win ]; then
   for cl in "/c/Program Files/Microsoft Visual Studio/2022/"*/VC/Tools/MSVC/*/bin/Hostx64/x64/cl.exe; do
@@ -279,22 +279,22 @@ elif [ "$MODE" = win ]; then
   for s in "${SRCS[@]}"; do ALL+=("$(w "$ROOT/$s")"); done
   ZALL=()
   for s in "${ZSRCS[@]}"; do ZALL+=("$(w "$ROOT/$s")"); done
-  # (HK_GFX_WINDOWS, HK_STORAGE_WINDOWS, HK_CODEC_WINDOWS, HK_CAMERA_WINDOWS: this build has the shell's drawing, its storage
-  # host, its decoders and its cameras in it; hk_tests_main.c's --gfx-windows, --storage-windows, --codec-windows and
+  # (MG_GFX_WINDOWS, MG_STORAGE_WINDOWS, MG_CODEC_WINDOWS, MG_CAMERA_WINDOWS: this build has the shell's drawing, its storage
+  # host, its decoders and its cameras in it; mg_tests_main.c's --gfx-windows, --storage-windows, --codec-windows and
   # --camera-windows modes.)
-  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c "$OPT" /MT /W3 /std:c11 /utf-8 /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DHK_GFX_WINDOWS /DHK_STORAGE_WINDOWS /DHK_CODEC_WINDOWS /DHK_CAMERA_WINDOWS "${SQLITE_CL[@]}" "${WEBP_CL[@]}" \
+  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c "$OPT" /MT /W3 /std:c11 /utf-8 /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DMG_GFX_WINDOWS /DMG_STORAGE_WINDOWS /DMG_CODEC_WINDOWS /DMG_CAMERA_WINDOWS "${SQLITE_CL[@]}" "${WEBP_CL[@]}" \
     "/I$(w "$ROOT/core/third_party/zlib")" "/Fo$(w "$OUT/obj")\\" "${ALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
   "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /O1 /MT /w /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS \
     "/Fo$(w "$OUT/zobj")\\" "${ZALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
   # The shell's drawing itself, the very file the phone's package is built from (it is plain COM, no WinRT), and the few
   # lines that hand it to the tests: C++, with the shell's own flags.
-  GFX_SRC=("$(w "$ROOT/app/Meglet/player/GfxHost.cpp")" "$(w "$ROOT/core/tests/hk_gfx_windows.cpp")")
+  GFX_SRC=("$(w "$ROOT/app/Meglet/player/GfxHost.cpp")" "$(w "$ROOT/core/tests/mg_gfx_windows.cpp")")
   GFX_FLAGS=(/nologo /c /MT /W3 /EHsc /GR /permissive- /std:c++20 /utf-8 /DUNICODE /D_UNICODE /DNOMINMAX /D_CRT_SECURE_NO_WARNINGS
              "/I$(w "$ROOT/app/Meglet")" "/I$(w "$ROOT/core/include")")
   mkdir -p "$OUT/gfxobj"
   rm -f "$OUT/gfxobj/"*.obj
   "$VC/bin/Hostx64/x64/cl.exe" "${GFX_FLAGS[@]}" /O2 /MP "/Fo$(w "$OUT/gfxobj")\\" "${GFX_SRC[@]}" | grep -v -E '^[A-Za-z0-9_]+\.cpp$' || true
-  for obj in GfxHost hk_gfx_windows; do
+  for obj in GfxHost mg_gfx_windows; do
     [ -f "$OUT/gfxobj/$obj.obj" ] || { echo "compile failed: $obj.cpp" >&2; exit 1; }
   done
   # The same file against the headers of the SDK whose libraries the phone's package links (10.0.15063, Windows 10
@@ -312,47 +312,47 @@ elif [ "$MODE" = win ]; then
   fi
   # The shell's storage host too (app/Meglet/player/StorageHost.cpp: Windows.Storage, through C++/WinRT), the very file
   # the phone's package is built from, with the shell's Strings.cpp and the few lines that hand it to the tests and stand
-  # in for the rest of the shell (core/tests/hk_storage_windows.cpp). The shell's precompiled header is read as a plain
+  # in for the rest of the shell (core/tests/mg_storage_windows.cpp). The shell's precompiled header is read as a plain
   # header here; the projection's headers are the SDK's own. Compiled as for an app container (WINAPI_FAMILY_APP), which
   # is what the phone's package is compiled as: the headers then show what an app may call and nothing else.
   # And the shell's decoders for a Java app's MediaCodec (app/Meglet/player/CodecHost.cpp: Media Foundation's decoder
-  # transforms), likewise, with the lines that hand them to the tests (core/tests/hk_codec_windows.cpp), and its reader of
+  # transforms), likewise, with the lines that hand them to the tests (core/tests/mg_codec_windows.cpp), and its reader of
   # whole files (player/MediaHost.cpp), for the files of sound alone a Java app's MediaPlayer and SoundPool hand it; the
-  # shell's log they write to is hk_storage_windows.cpp's. And the shell's cameras (player/CameraHost.cpp:
-  # Windows.Media.Capture), with the lines that hand them to the tests (core/tests/hk_camera_windows.cpp).
-  STORAGE_SRC=("$(w "$ROOT/app/Meglet/player/StorageHost.cpp")" "$(w "$ROOT/app/Meglet/shell/Strings.cpp")" "$(w "$ROOT/core/tests/hk_storage_windows.cpp")"
-               "$(w "$ROOT/app/Meglet/player/CodecHost.cpp")" "$(w "$ROOT/core/tests/hk_codec_windows.cpp")"
+  # shell's log they write to is mg_storage_windows.cpp's. And the shell's cameras (player/CameraHost.cpp:
+  # Windows.Media.Capture), with the lines that hand them to the tests (core/tests/mg_camera_windows.cpp).
+  STORAGE_SRC=("$(w "$ROOT/app/Meglet/player/StorageHost.cpp")" "$(w "$ROOT/app/Meglet/shell/Strings.cpp")" "$(w "$ROOT/core/tests/mg_storage_windows.cpp")"
+               "$(w "$ROOT/app/Meglet/player/CodecHost.cpp")" "$(w "$ROOT/core/tests/mg_codec_windows.cpp")"
                "$(w "$ROOT/app/Meglet/player/MediaHost.cpp")"
-               "$(w "$ROOT/app/Meglet/player/CameraHost.cpp")" "$(w "$ROOT/core/tests/hk_camera_windows.cpp")")
+               "$(w "$ROOT/app/Meglet/player/CameraHost.cpp")" "$(w "$ROOT/core/tests/mg_camera_windows.cpp")")
   mkdir -p "$OUT/storageobj"
   rm -f "$OUT/storageobj/"*.obj
   INCLUDE="$INCLUDE;$(w "$SDK/Include/$SDKV/winrt");$(w "$SDK/Include/$SDKV/cppwinrt")" \
     "$VC/bin/Hostx64/x64/cl.exe" "${GFX_FLAGS[@]}" /Zc:__cplusplus /bigobj /DWINAPI_FAMILY=WINAPI_FAMILY_APP /O1 /MP "/Fo$(w "$OUT/storageobj")\\" "${STORAGE_SRC[@]}" \
     | grep -v -E '^[A-Za-z0-9_]+\.cpp$' || true
-  for obj in StorageHost Strings hk_storage_windows CodecHost hk_codec_windows MediaHost CameraHost hk_camera_windows; do
+  for obj in StorageHost Strings mg_storage_windows CodecHost mg_codec_windows MediaHost CameraHost mg_camera_windows; do
     [ -f "$OUT/storageobj/$obj.obj" ] || { echo "compile failed: $obj.cpp" >&2; exit 1; }
   done
-  # (MEGLET_TESTS_MAP=1: a linker map beside it, hk_tests.map, which tools/dvm-bench.sh profile reads.)
+  # (MEGLET_TESTS_MAP=1: a linker map beside it, mg_tests.map, which tools/dvm-bench.sh profile reads.)
   MAPOPT=()
-  [ "${MEGLET_TESTS_MAP:-0}" = 1 ] && MAPOPT=("/MAP:$(w "$OUT/hk_tests.map")")
+  [ "${MEGLET_TESTS_MAP:-0}" = 1 ] && MAPOPT=("/MAP:$(w "$OUT/mg_tests.map")")
   # (MEGLET_TESTS_ORDER=<file>: the functions it names first in the program's code, in that order (link /ORDER). The
   # interpreter's speed moves by half when unrelated code before it shifts its loop's alignment; tools/dvm-bench.sh puts
-  # `hk_dvm_interpret` first, so that what it measures is the change and not where the loop fell.)
+  # `mg_dvm_interpret` first, so that what it measures is the change and not where the loop fell.)
   [ -n "${MEGLET_TESTS_ORDER:-}" ] && MAPOPT+=("/ORDER:@$(w "$MEGLET_TESTS_ORDER")")
-  "$VC/bin/Hostx64/x64/link.exe" /nologo ${MAPOPT[@]+"${MAPOPT[@]}"} "/OUT:$(w "$OUT/hk_tests.exe")" "$(w "$OUT/obj")\\*.obj" "$(w "$OUT/zobj")\\*.obj" "$(w "$OUT/gfxobj")\\*.obj" \
+  "$VC/bin/Hostx64/x64/link.exe" /nologo ${MAPOPT[@]+"${MAPOPT[@]}"} "/OUT:$(w "$OUT/mg_tests.exe")" "$(w "$OUT/obj")\\*.obj" "$(w "$OUT/zobj")\\*.obj" "$(w "$OUT/gfxobj")\\*.obj" \
     "$(w "$OUT/storageobj")\\*.obj" bcrypt.lib synchronization.lib d2d1.lib d3d11.lib dwrite.lib ole32.lib oleaut32.lib ws2_32.lib iphlpapi.lib mfplat.lib mfreadwrite.lib mfuuid.lib
-  echo "built $OUT/hk_tests.exe"
+  echo "built $OUT/mg_tests.exe"
   if [ "$RUN" = 1 ]; then
     rm -rf "$OUT/scratch"
     APK="${MEGLET_TEST_APK:-$USERPROFILE/Downloads/Hollow_Knight_22.10.2022_LQ.apk}"
     DVM=(--dvm "$(w "$ROOT/build/guest/armeabi-v7a/dvm")")
     [ -f "$APK" ] && DVM+=(--dvm-apk "$APK")
-    "$OUT/hk_tests.exe" - "$(w "$OUT/scratch")" "${DVM[@]}" "${EXTRA[@]}" || STATUS=1
+    "$OUT/mg_tests.exe" - "$(w "$OUT/scratch")" "${DVM[@]}" "${EXTRA[@]}" || STATUS=1
     if [ "$LIBCORE" = 1 ]; then
       bash "$ROOT/tools/dvm-android-root.sh"
       echo "$AGAIN"
       rm -rf "$OUT/scratch"
-      "$OUT/hk_tests.exe" - "$(w "$OUT/scratch")" "${DVM[@]}" --dvm-android "$(w "$ROOT/build/android9/root")" "${EXTRA[@]}" || STATUS=1
+      "$OUT/mg_tests.exe" - "$(w "$OUT/scratch")" "${DVM[@]}" --dvm-android "$(w "$ROOT/build/android9/root")" "${EXTRA[@]}" || STATUS=1
     fi
     # The shell's drawing: its scenes on this machine's graphics processor, as PNG files in build/gfx-pictures (and in
     # memory without one, which its first line says); then, without the files, in memory by Direct2D's software
@@ -360,48 +360,48 @@ elif [ "$MODE" = win ]; then
     # refused the app's memory; and on WARP, Direct3D's software device, a second rasterizer of the graphics processor's
     # kind.
     rm -rf "$ROOT/build/gfx-pictures"
-    "$OUT/hk_tests.exe" --gfx-windows "$(w "$ROOT/build/gfx-pictures")" || STATUS=1
-    "$OUT/hk_tests.exe" --gfx-windows - memory || STATUS=1
-    "$OUT/hk_tests.exe" --gfx-windows - copy || STATUS=1
-    "$OUT/hk_tests.exe" --gfx-windows - warp || STATUS=1
+    "$OUT/mg_tests.exe" --gfx-windows "$(w "$ROOT/build/gfx-pictures")" || STATUS=1
+    "$OUT/mg_tests.exe" --gfx-windows - memory || STATUS=1
+    "$OUT/mg_tests.exe" --gfx-windows - copy || STATUS=1
+    "$OUT/mg_tests.exe" --gfx-windows - warp || STATUS=1
     # And with Android's own fonts in place of the system's, as the phone's package has them, where they have been taken
     # out of the image (tools/android9-unpack.sh fonts).
     if [ -f "$ROOT/build/android9/root/fonts/Roboto-Regular.ttf" ]; then
       echo "(with Android's own fonts)"
-      MEGLET_GFX_FONTS="$(w "$ROOT/build/android9/root/fonts")" "$OUT/hk_tests.exe" --gfx-windows - || STATUS=1
+      MEGLET_GFX_FONTS="$(w "$ROOT/build/android9/root/fonts")" "$OUT/mg_tests.exe" --gfx-windows - || STATUS=1
     fi
     # The shell's storage host: the storage's tests once more, with Windows.Storage's own objects handing the handles over
     # instead of the stand-in, on folders under a scratch folder of its own.
     rm -rf "$OUT/scratch-storage"
-    "$OUT/hk_tests.exe" --storage-windows "$(w "$OUT/scratch-storage")" || STATUS=1
+    "$OUT/mg_tests.exe" --storage-windows "$(w "$OUT/scratch-storage")" || STATUS=1
     # The shell's decoders: the core's codec for MediaCodec over Media Foundation's own decoder transforms, fed the data
     # app's streams (H.264 and H.265 with B-pictures, AAC, MP3) and checked against what they hold; and timed on longer
     # streams of 720p and 1080p, made once into build/media-speed where Python and ffmpeg are (they are not kept in the
     # repository).
     rm -rf "$OUT/scratch-codec"
     SPEED=()
-    if [ -f "$ROOT/build/media-speed/speed-avc-1080p.hkau" ] || python "$(w "$ROOT/tools/media-test-streams.py")" --speed "$(w "$ROOT/build/media-speed")" > /dev/null 2>&1; then
+    if [ -f "$ROOT/build/media-speed/speed-avc-1080p.mgau" ] || python "$(w "$ROOT/tools/media-test-streams.py")" --speed "$(w "$ROOT/build/media-speed")" > /dev/null 2>&1; then
       SPEED=("$(w "$ROOT/build/media-speed")")
     else
       echo "(the streams to time the decoders by could not be made: tools/media-test-streams.py --speed needs Python and ffmpeg)"
     fi
-    "$OUT/hk_tests.exe" --codec-windows "$(w "$ROOT/core/tests/app/data/assets")" "$(w "$OUT/scratch-codec")" ${SPEED[@]+"${SPEED[@]}"} || STATUS=1
+    "$OUT/mg_tests.exe" --codec-windows "$(w "$ROOT/core/tests/app/data/assets")" "$(w "$OUT/scratch-codec")" ${SPEED[@]+"${SPEED[@]}"} || STATUS=1
     # Bundles of split APKs, unpacked as the shell unpacks them: the test app's and the real ones in build/bundles.
     rm -rf "$OUT/scratch-bundles"
-    "$OUT/hk_tests.exe" --bundles "$(w "$ROOT/build/guest/java")" "$(w "$OUT/scratch-bundles")" "$(w "$ROOT/build/bundles")" || STATUS=1
+    "$OUT/mg_tests.exe" --bundles "$(w "$ROOT/build/guest/java")" "$(w "$OUT/scratch-bundles")" "$(w "$ROOT/build/bundles")" || STATUS=1
     rm -rf "$OUT/scratch-bundles"
     # The shell's cameras: the PC's first camera through the core's camera code, a few pictures taken; a PC without one says so.
     rm -rf "$OUT/scratch-camera"
-    "$OUT/hk_tests.exe" --camera-windows "$(w "$OUT/scratch-camera")" || STATUS=1
+    "$OUT/mg_tests.exe" --camera-windows "$(w "$OUT/scratch-camera")" || STATUS=1
     # The Java test apps' own drawing, as `tools/build-tests.sh arm` recorded it under qemu: drawn again by the stand-in,
     # which must give the recorded pictures back pixel for pixel, and then by the shell's drawing, into
     # build/gfx-pictures/app-<app>-N.png -- the app's views as a phone's Direct2D and DirectWrite would draw them, laid
     # out as the stand-in's measures of text had them laid out.
     for app in hello demos; do
       if [ -f "$ROOT/build/gfx-records/$app.rec" ]; then
-        "$OUT/hk_tests.exe" --gfx-replay "$(w "$ROOT/build/gfx-records/$app.rec")" - "app-$app" standin || STATUS=1
-        "$OUT/hk_tests.exe" --gfx-replay "$(w "$ROOT/build/gfx-records/$app.rec")" "$(w "$ROOT/build/gfx-pictures")" "app-$app" || STATUS=1
-        "$OUT/hk_tests.exe" --gfx-replay "$(w "$ROOT/build/gfx-records/$app.rec")" - "app-$app" memory || STATUS=1
+        "$OUT/mg_tests.exe" --gfx-replay "$(w "$ROOT/build/gfx-records/$app.rec")" - "app-$app" standin || STATUS=1
+        "$OUT/mg_tests.exe" --gfx-replay "$(w "$ROOT/build/gfx-records/$app.rec")" "$(w "$ROOT/build/gfx-pictures")" "app-$app" || STATUS=1
+        "$OUT/mg_tests.exe" --gfx-replay "$(w "$ROOT/build/gfx-records/$app.rec")" - "app-$app" memory || STATUS=1
       else
         echo "(no record of the Java test app $app's drawing in build/gfx-records: tools/build-tests.sh arm makes one)"
       fi

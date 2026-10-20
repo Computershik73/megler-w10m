@@ -1,5 +1,5 @@
 # meglet.security.RuntimeProvider: what stands in conscrypt's place in the list of security providers while conscrypt's native
-# library is not there (hk_dvm_art.c, "the security providers").
+# library is not there (mg_dvm_art.c, "the security providers").
 #
 # It goes by conscrypt's own name, "AndroidOpenSSL", because that name is asked for: BouncyCastle's own key derivation and
 # signatures take their digests from the provider of that name and refuse to start on Android without it, and libcore's

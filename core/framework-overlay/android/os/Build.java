@@ -11,7 +11,7 @@
 // original's Pixel 8 (a Tensor G3 of 2023) no longer. The phones this runs on have the graphics processor of 2016 -- the HP
 // Elite x3 a Snapdragon 820 and the same Adreno 530 -- and games choose their detail by the device they are told of
 // (Asphalt 9, told of a Pixel 8, drew a race at four frames a second with the graphics processor mostly idle). The system
-// properties native code reads (ro.product.*, ro.hardware, ro.board.platform: bionic/hk_bionic.c) name the same device.
+// properties native code reads (ro.product.*, ro.hardware, ro.board.platform: bionic/mg_bionic.c) name the same device.
 // The Android release stays 14: what an app does is chosen by SDK_INT. Everything else is the original's, unchanged.
 package android.os;
 

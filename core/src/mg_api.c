@@ -1,0 +1,169 @@
+/* meglet.h over the core. */
+#include "../include/meglet.h"
+
+#include <stdio.h>
+
+#include "bionic/mg_bionic.h"
+#include "mg_core.h"
+#include "host/mg_host.h"
+#include "drivers/mg_java.h"
+#include "run/mg_run.h"
+#include "webp/mg_webp.h"
+
+static meglet_log_fn g_log;
+static void *g_log_user;
+static char g_data_dir[600], g_package_dir[600], g_storage_dir[600];
+
+static void log_sink(int level, const char *line, void *user)
+{
+    (void)user;
+    if (g_log) g_log(level, line, g_log_user);
+}
+
+const char *meglet_data_dir(void) { return g_data_dir; }
+
+/*
+ * A switch for trying something on a device without building for it: on when
+ * a file of that name is in <data_dir>/flags. (It only has to be there: a
+ * file put there through the Device Portal cannot be opened by the app, but
+ * it can be seen.) The folder is made at start-up so that there is somewhere
+ * to put one.
+ */
+bool mg_flag(const char *name)
+{
+    char path[700];
+    mg_stat st;
+    bool on;
+    if (!g_data_dir[0]) return false;
+    snprintf(path, sizeof(path), "%s/flags", g_data_dir);
+    mg_path_mkdirs(path);
+    snprintf(path, sizeof(path), "%s/flags/%s", g_data_dir, name);
+    on = mg_path_stat(path, &st, NULL);
+    if (on) mg_warn("flag: %s is on (a file of that name is in the data folder's flags)", name);
+    return on;
+}
+
+struct flags_each {
+    const char *prefix;
+    void (*fn)(const char *rest, void *user);
+    void *user;
+};
+
+static void flags_each_one(const char *name, bool is_dir, void *user)
+{
+    struct flags_each *e = (struct flags_each *)user;
+    size_t n = strlen(e->prefix);
+    if (!is_dir && !strncmp(name, e->prefix, n) && name[n]) {
+        mg_warn("flag: %s is on (a file of that name is in the data folder's flags)", name);
+        e->fn(name + n, e->user);
+    }
+}
+
+/* Flags whose names carry what they are about (trace-calls-<class name prefix>): every one that starts with `prefix`. */
+void mg_flags_each(const char *prefix, void (*fn)(const char *rest, void *user), void *user)
+{
+    char path[700];
+    struct flags_each e;
+    int err = 0;
+    if (!g_data_dir[0]) return;
+    e.prefix = prefix;
+    e.fn = fn;
+    e.user = user;
+    snprintf(path, sizeof(path), "%s/flags", g_data_dir);
+    mg_path_list(path, flags_each_one, &e, &err);
+}
+
+const char *meglet_package_dir(void) { return g_package_dir; }
+const char *meglet_storage_dir(void) { return g_storage_dir[0] ? g_storage_dir : g_data_dir; }
+
+static void copy_dir(char *out, size_t cap, const char *in)
+{
+    size_t n;
+    char *p;
+    mg_strlcpy(out, in ? in : ".", cap);
+    for (p = out; *p; p++)
+        if (*p == '\\') *p = '/';
+    n = strlen(out);
+    while (n > 1 && out[n - 1] == '/') out[--n] = 0;
+}
+
+bool meglet_init(const meglet_config *config)
+{
+    copy_dir(g_data_dir, sizeof(g_data_dir), config->data_dir);
+    copy_dir(g_package_dir, sizeof(g_package_dir), config->package_dir);
+    if (config->storage_dir && config->storage_dir[0]) {
+        copy_dir(g_storage_dir, sizeof(g_storage_dir), config->storage_dir);
+        mg_path_mkdirs(g_storage_dir);
+    }
+    g_log = config->log;
+    g_log_user = config->log_user;
+    if (g_log) mg_log_set_sink(log_sink, NULL);
+    mg_mem_set_probe(config->memory_limit, config->memory_usage);
+    mg_path_mkdirs(g_data_dir);
+    return mg_core_init();
+}
+
+bool meglet_webp_size(const void *data, size_t size, int *width, int *height) { return mg_webp_size(data, size, width, height); }
+bool meglet_webp_decode(const void *data, size_t size, void *pixels, int width, int height, int stride)
+{
+    return mg_webp_decode(data, size, pixels, width, height, stride);
+}
+
+bool meglet_file_by_handle(const char *path, meglet_handle_opener open, void *user) { return mg_file_by_handle(path, open, user); }
+
+const char *meglet_version(void) { return "0.1"; }
+void meglet_free(void *p) { free(p); }
+
+bool meglet_run(const meglet_run_config *config) { return mg_run_start(config); }
+bool meglet_running(void) { return mg_run_active(); }
+const char *meglet_last_error(void) { return mg_run_last_error(); }
+void meglet_touch(int phase, int pointer_id, float x, float y) { mg_run_touch(phase, pointer_id, x, y); }
+void meglet_key(int android_keycode, bool down) { mg_run_key(android_keycode, down); }
+/* Text entry is the Java driver's alone: its framework has the text fields. For any other app these do nothing. */
+void meglet_text_commit(const char *utf8) { mg_java_text(utf8); }
+void meglet_text_key(int key) { mg_java_text_key(key); }
+void meglet_keyboard_closed(void) { mg_java_keyboard_closed(); }
+void meglet_keyboard_height(int pixels) { mg_java_keyboard_height(pixels); }
+void meglet_set_insets(int left, int top, int right, int bottom) { mg_java_set_insets(left, top, right, bottom); }
+void meglet_set_paused(bool paused) { mg_run_set_paused(paused); }
+void meglet_set_focused(bool focused) { mg_run_set_focused(focused); }
+void meglet_stop(void) { mg_run_stop(); }
+uint32_t meglet_frames(void) { return mg_run_frames(); }
+
+/* The phone, for an app. The time zone is kept where Android's own code looks for it (bionic/mg_bionic.h). */
+void meglet_set_timezone(const char *id)
+{
+    mg_timezone_set(id);
+    if (id && id[0]) mg_info("phone: the time zone is %s", mg_timezone_id());
+}
+
+void meglet_set_locale(const char *tag)
+{
+    mg_locale_set(tag);
+    mg_info("phone: the language and region are %s", mg_locale_tag());
+}
+
+/*
+ * The battery is the core's mg_battery (run/mg_run.h), which has all that Android's intent says; the shell's has what a
+ * phone with Windows can say, and the rest is made up here, plausibly: a lithium cell's voltage runs from about 3.4 V
+ * empty to 4.2 V full, and an app that shows it wants a number in that range more than it wants the truth of the curve.
+ */
+void meglet_set_battery(const meglet_battery *now)
+{
+    mg_battery b;
+    if (!now) {
+        mg_battery_set(NULL);
+        return;
+    }
+    memset(&b, 0, sizeof(b));
+    b.level = now->level < 0 ? 0 : now->level > 100 ? 100 : now->level;
+    b.scale = 100;
+    b.status = now->status >= 1 && now->status <= 5 ? now->status : 1;
+    b.plugged = now->plugged > 0 ? now->plugged : 0;
+    b.present = now->present;
+    b.health = now->present ? 2 : 1;
+    b.voltage_mv = now->voltage_mv > 0 ? now->voltage_mv : 3400 + 8 * b.level;
+    b.temperature = now->temperature == INT_MIN ? 250 : now->temperature;
+    mg_strlcpy(b.technology, "Li-ion", sizeof(b.technology));
+    mg_battery_set(&b);
+}

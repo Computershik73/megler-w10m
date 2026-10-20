@@ -442,7 +442,7 @@ typedef struct meglet_codec_host {
  * An app that scans a code or shows what the camera sees opens a camera,
  * picks a size from those it offers, has its pictures shown on a view and
  * copied to it as they come (NV21), and asks it to focus. The layer is the
- * Android side of all of that (core/src/drivers/hk_java_camera.c: the
+ * Android side of all of that (core/src/drivers/mg_java_camera.c: the
  * parameters, the rotation and mirroring for the view, the app's buffers and
  * the threads its callbacks run on); what it asks of the shell is the camera
  * itself (Windows.Media.Capture on a phone):
@@ -663,7 +663,7 @@ typedef struct meglet_storage_host {
  * shell is the drawing proper, text and image files: on a phone Direct2D,
  * DirectWrite and WIC. This comment is the whole contract. Where the numbers
  * come from, the framework's meglet.Gfx class and what it packs into arrays, is
- * written out in core/src/drivers/hk_java_gfx.c; nothing of that packing
+ * written out in core/src/drivers/mg_java_gfx.c; nothing of that packing
  * reaches the shell.
  *
  * Any function may be NULL. What it would have drawn is then missing, what it
@@ -1604,13 +1604,13 @@ int meglet_net_check(meglet_line_fn out, void *user, int *checks, int *refused);
  * The key: an RSA key and a self-signed code signing certificate whose subject is `publisher` (Meglet's Publisher), made on
  * the first use and kept in two files (the certificate as DER: what the phone has to trust).
  */
-typedef struct hk_appx_key meglet_appx_key;
+typedef struct mg_appx_key meglet_appx_key;
 meglet_appx_key *meglet_appx_key_open(const char *key_path, const char *cert_path, const char *publisher, char *err, size_t errlen);
 void meglet_appx_key_close(meglet_appx_key *key);
 
 /* A package being written: files added in order (names of letters, digits, '.', '-', '_' and '/'), then finished with its
    block map, content types and signature; finish frees `a` whatever the outcome, and removes the file on a failure. */
-typedef struct hk_appx meglet_appx;
+typedef struct mg_appx meglet_appx;
 meglet_appx *meglet_appx_begin(const char *path, char *err, size_t errlen);
 bool meglet_appx_add_file(meglet_appx *a, const char *name, const char *src_path);
 bool meglet_appx_add_data(meglet_appx *a, const char *name, const void *data, size_t size);

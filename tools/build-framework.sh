@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the Java framework an app with an Activity runs on: android.* written
 # in Java on top of libcore, with its native side in meglet.* classes that the
-# core answers (core/src/drivers/hk_java*.c).
+# core answers (core/src/drivers/mg_java*.c).
 #
 #   tools/build-framework.sh [--force]
 #

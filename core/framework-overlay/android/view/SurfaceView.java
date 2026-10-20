@@ -13,7 +13,7 @@
 // for a software surface: its frames are drawn into the window where it stands. The size: Android's surface has its
 // size before surfaceCreated is called, and lockCanvas works there; the original set it after, and a canvas asked for in
 // surfaceCreated was null (a frame drawn there was never drawn). And, for the window the core composes of the views and the
-// frames of EGL surfaces (core/src/drivers/hk_java_gl.c): the view says where its hole is each time it draws it
+// frames of EGL surfaces (core/src/drivers/mg_java_gl.c): the view says where its hole is each time it draws it
 // (EGLNative.place), and that its surface is gone when it is (EGLNative.forget, where the original hid every view's) -- said
 // for every surface, EGL or not, since native code's windows of it (ANativeWindow_fromSurface) are no longer valid from then on.
 // And a frame that is a whole bitmap already, which the camera's preview posts (android.hardware.Camera, the overlay's):
@@ -116,7 +116,7 @@ public class SurfaceView extends View {
     private void destroy() {
         if (!mCreated) return;
         for (SurfaceHolder.Callback c : callbacks()) c.surfaceDestroyed(mHolder);
-        // Told whether or not EGL drew on it: the windows native code has of the surface go with it (core/src/drivers/hk_java_ndk.c).
+        // Told whether or not EGL drew on it: the windows native code has of the surface go with it (core/src/drivers/mg_java_ndk.c).
         mGL = false;
         meglet.EGLNative.forget(this);
         synchronized (mLock) { mCreated = false; mHasFrame = false; mLock.notifyAll(); }

@@ -14,7 +14,7 @@ import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * The collector as an app meets it (core/src/dvm/hk_dvm_gc.c). Each step is a line of the log, "name ok" or "name FAILED" and
+ * The collector as an app meets it (core/src/dvm/mg_dvm_gc.c). Each step is a line of the log, "name ok" or "name FAILED" and
  * why. The objects a step drops are made in a method of their own, so that no register of the step's own frame still holds
  * one: the collector reads the interpreter's registers conservatively, and a stale copy would keep an object. For the same
  * reason a step asks for most, not all, of a hundred objects to be gone.

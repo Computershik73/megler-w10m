@@ -155,7 +155,7 @@ struct MediaHost::Film {
 
     /// Null, and why, when Windows cannot play the file. A file with no
     /// picture at all (an MP3, an M4A: what a Java app's MediaPlayer and
-    /// SoundPool hand over, drivers/hk_java_audio.c) is opened for its sound
+    /// SoundPool hand over, drivers/mg_java_audio.c) is opened for its sound
     /// alone, width and height 0, as meglet_media_host allows; a picture that is
     /// there and cannot be decoded is still a film that cannot be played.
     static Film* open(const std::wstring& url, std::string& why) {

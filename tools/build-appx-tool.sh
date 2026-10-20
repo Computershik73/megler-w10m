@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds tools/appx-tool (the core's package maker, core/src/appx/hk_appx.c, on a PC: x64) into build/appx-tool/appx-tool.exe.
+# Builds tools/appx-tool (the core's package maker, core/src/appx/mg_appx.c, on a PC: x64) into build/appx-tool/appx-tool.exe.
 # The toolchain is found as tools/build-appx.sh finds it.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -20,6 +20,6 @@ export MSYS2_ARG_CONV_EXCL="*"
 mkdir -p "$OUT"
 "$VC/bin/Hostx64/x64/cl.exe" /nologo /O2 /W3 /utf-8 /DUNICODE /D_UNICODE /D_CRT_SECURE_NO_WARNINGS \
   "/I$(w "$ROOT/core/src")" "/I$(w "$ROOT/core/third_party/zlib")" "/Fo$(w "$OUT")\\" "/Fe$(w "$OUT/appx-tool.exe")" \
-  "$(w "$ROOT/tools/appx-tool/appx-tool.c")" "$(w "$ROOT/core/src/appx/hk_appx.c")" "$(w "$ROOT/core/third_party/zlib/crc32.c")" \
+  "$(w "$ROOT/tools/appx-tool/appx-tool.c")" "$(w "$ROOT/core/src/appx/mg_appx.c")" "$(w "$ROOT/core/third_party/zlib/crc32.c")" \
   bcrypt.lib
 echo "built $OUT/appx-tool.exe"

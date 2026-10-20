@@ -1,4 +1,4 @@
-"""Tries a package made and signed by the core (core/src/appx/hk_appx.c, through tools/appx-tool) on the phone.
+"""Tries a package made and signed by the core (core/src/appx/mg_appx.c, through tools/appx-tool) on the phone.
 
     python tools/appx-phone-check.py
 

@@ -2,7 +2,7 @@
  * A guest library that uses what tools/android9-natives.sh built, for
  * tools/android9-natives/loadtest.sh: Meglet's linker loads it, and its
  * constructor calls into libicuuc, libicui18n, libexpat and libopenjdk and
- * says through the log what came back. `hk_tests --load` runs constructors and
+ * says through the log what came back. `mg_tests --load` runs constructors and
  * nothing else, and gives a guest no file to open, so:
  *
  *   - everything happens in the constructor;

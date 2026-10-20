@@ -2,7 +2,7 @@
 // It differs in its name servers: the original's getDnsServers was an empty list, and a resolver of an app's own that asks
 // Android where to send its queries (c-ares does, through ConnectivityManager.getLinkProperties(getActiveNetwork())) then
 // had none, sent them to 127.0.0.1 and timed out: urent's 2GIS map loaded nothing ("Couldn't update regions: Timeout was
-// reached"). Here they are the phone's, from the core (meglet.Native.dnsServers, hk_net_dns_servers), and the has*DnsServer
+// reached"). Here they are the phone's, from the core (meglet.Native.dnsServers, mg_net_dns_servers), and the has*DnsServer
 // questions answer from them. Everything else is the original's.
 package android.net;
 public final class LinkProperties implements android.os.Parcelable {

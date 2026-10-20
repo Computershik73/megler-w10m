@@ -11,7 +11,7 @@
 //     bitmap. computeApproximateMemoryUsage is the list's size.
 //   - megletDraw (Canvas.drawRenderNode) is meglet.Gfx.cvDrawNode: on a recording canvas the node itself is written to the
 //     outer list, and is drawn with its list and properties as they are when that list is drawn; on any other canvas the
-//     node is drawn now, by the core, as Android's RenderNodeDrawable draws it (hk_java_gfx.c, node_play).
+//     node is drawn now, by the core, as Android's RenderNodeDrawable draws it (mg_java_gfx.c, node_play).
 //   - The properties stay in this class's fields, and every setter that changes one marks the node; before anything is
 //     drawn on a canvas that is not recording, every marked node hands its properties to the core in one call (megletSync,
 //     megletPush, meglet.Gfx.rnSet). The matrix is the original's getMatrix, unchanged.
@@ -132,7 +132,7 @@ public final class RenderNode {
         sMegletDirty.clear();
     }
 
-    /** Meglet: the properties as meglet.Gfx.rnSet takes them (hk_java_gfx.c, G_rnSet, says each place). */
+    /** Meglet: the properties as meglet.Gfx.rnSet takes them (mg_java_gfx.c, G_rnSet, says each place). */
     private void megletPush() {
         mMegletDirty = false;
         float[] f = mMegletF;

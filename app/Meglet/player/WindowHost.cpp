@@ -32,7 +32,7 @@ const char* levelName(D3D_FEATURE_LEVEL level) {
 }
 
 /// A switch for trying something on a phone without building for it: on when
-/// a file of that name is in LocalState/flags (the core's hk_flag likewise).
+/// a file of that name is in LocalState/flags (the core's mg_flag likewise).
 bool flag(const wchar_t* name) {
     const bool on = files::exists(platform::localStateDirectory() + L"/flags/" + name);
     if (on) shellLog::write("flag: " + narrow(name) + " is on");

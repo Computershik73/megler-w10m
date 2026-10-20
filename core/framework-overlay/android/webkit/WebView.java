@@ -2837,7 +2837,7 @@ public class WebView extends AbsoluteLayout
         // Meglet: a canvas that says it is hardware-accelerated -- a RenderNode's, which Compose draws an AndroidView
         // into -- is given what the WebView draws in software, through a bitmap of the view's size. Chromium draws a
         // hardware-accelerated canvas through the platform's draw functor (AwDrawFn), and this platform has none: its
-        // function table is null (drivers/hk_java_webview.c), and Spotify's WebView ended the app making its functor.
+        // function table is null (drivers/mg_java_webview.c), and Spotify's WebView ended the app making its functor.
         // Every canvas here draws bitmaps, and a RenderNode's is a bitmap of the node's.
         if (canvas.isHardwareAccelerated()) {
             megletDrawThroughBitmap(canvas);

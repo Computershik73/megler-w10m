@@ -55,7 +55,7 @@ bool copyTree(const std::wstring& from, const std::wstring& to, uint64_t& copied
     return true;
 }
 
-/// A name a package's part may have as it is (core/src/appx/hk_appx.c): letters, digits, '.', '-', '_' and '/'.
+/// A name a package's part may have as it is (core/src/appx/mg_appx.c): letters, digits, '.', '-', '_' and '/'.
 bool plainName(const std::string& name) {
     for (char c : name)
         if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '_' || c == '/'))
@@ -228,7 +228,7 @@ void takeHandover() {
     if (app.package.empty() || shared.empty()) return;
     const std::wstring package = widen(app.package), handover = shared + L"\\handover\\" + package;
     if (!files::exists(handover + L"\\complete")) return;
-    // The app's private files where the core keeps them (core/src/run/hk_run.c: <data>\apps\<package>\data); its own
+    // The app's private files where the core keeps them (core/src/run/mg_run.c: <data>\apps\<package>\data); its own
     // until now put aside, and put back if the copy fails.
     const std::wstring own = platform::localStateDirectory() + L"\\apps\\" + package + L"\\data", aside = own + L".before-meglet";
     const bool hadOwn = files::exists(own);
@@ -263,7 +263,7 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     const ApkReport& r = entry.report;
     if (!entry.analysed || !r.valid || r.package.empty()) return fail("The APK hasn't been read.");
     // An app in several APKs (an .apks or .xapk unpacked) has its splits beside the base, in app\app.apk.splits, where the
-    // library looks for them (Library::splitsDirFor). Their names are the unpacking's (core/src/apk/hk_bundle.c).
+    // library looks for them (Library::splitsDirFor). Their names are the unpacking's (core/src/apk/mg_bundle.c).
     std::vector<std::wstring> splits;
     if (!entry.splitsDir.empty()) {
         splits = files::list(entry.splitsDir, L"*");
@@ -376,7 +376,7 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     }
 
     // resources.pri: XAML wants one whose resource map has the package's name. Meglet carries one made for a placeholder
-    // as long as every app package's name, and the name goes in its place (core/src/appx/hk_appx_pri.c).
+    // as long as every app package's name, and the name goes in its place (core/src/appx/mg_appx_pri.c).
     std::string priTemplate, priFacts;
     if (!files::read(install + L"\\appx-template\\resources.pri", priTemplate) || !files::read(install + L"\\appx-template\\resources.txt", priFacts))
         return fail("This Meglet carries no template of an app package's resources.pri (appx-template).");
@@ -566,7 +566,7 @@ bool installedApps(std::vector<InstalledApp>& out, std::string& error) {
             return false;
         }
         // Each package's full name is "<name>_<version>_<processor>_<resource>_<publisher id>": an app's own package's name
-        // is "MegletApp." and more (hk_appx_manifest.c), its publisher Meglet's.
+        // is "MegletApp." and more (mg_appx_manifest.c), its publisher Meglet's.
         const std::string publisherId = narrow(Package::Current().Id().PublisherId());
         for (auto const& value : json.GetNamedArray(L"InstalledPackages", JsonArray())) {
             if (value.ValueType() != JsonValueType::Object) continue;

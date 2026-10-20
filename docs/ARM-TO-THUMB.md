@@ -110,4 +110,4 @@ code is rewritten, and the rest is reported.
 Under qemu-arm an ARM function runs natively, so the test for the translator is
 differential: run each function of a real ARM library (the OpenSSL build already
 used by the loader's tests has 3885) natively and translated, on the same inputs,
-and compare results and memory. `hk_tests --load` is the place to hang it.
+and compare results and memory. `mg_tests --load` is the place to hang it.

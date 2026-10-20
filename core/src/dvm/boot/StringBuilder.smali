@@ -1,5 +1,5 @@
 # java.lang.StringBuilder: what d8 turns string concatenation into. The text is a char[] and a count;
-# the appends are native (hk_dvm_boot.c) and grow the array.
+# the appends are native (mg_dvm_boot.c) and grow the array.
 .class public final Ljava/lang/StringBuilder;
 .super Ljava/lang/Object;
 .implements Ljava/lang/CharSequence;

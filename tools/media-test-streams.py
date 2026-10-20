@@ -8,30 +8,30 @@ nothing here runs during a build.
     python tools/media-test-streams.py [output folder]     (core/tests/app/data/assets unless told)
     python tools/media-test-streams.py --speed <folder>
 
-  avc.hkau    H.264 Main, 168 x 94 (coded 176 x 96, so the decoder has a picture to crop), 30 pictures a second,
+  avc.mgau    H.264 Main, 168 x 94 (coded 176 x 96, so the decoder has a picture to crop), 30 pictures a second,
               24 pictures, two B-pictures between references (so decode order is not display order), an IDR every
               12 pictures (pictures 0 and 12). Picture N is one flat grey, Y = 16 + 8 N, U = V = 128: what a
               decoder gives back says which picture it is. Its SPS and PPS are taken out of the first access unit
               and are the codec-specific data (csd-0, csd-1, each with its start code), as an MP4's avcC gives
               them to an app; access unit delimiters and SEI are left out.
-  avc-small.hkau  12 pictures more of the same kind at 96 x 64, picture N again Y = 16 + 8 N: what an app's stream
+  avc-small.mgau  12 pictures more of the same kind at 96 x 64, picture N again Y = 16 + 8 N: what an app's stream
               that changes its size (adaptive streaming does) goes on with.
-  hevc.hkau   the same pictures as avc.hkau as H.265 Main (libx265), VPS, SPS and PPS together as csd-0.
-  hevc10.hkau the same as H.265 Main 10, ten bits a sample (Y = 64 + 32 N of 1023), which decoders hand out as P010.
-  aac.hkau    AAC LC, 44100 Hz, stereo, half a second of a 440 Hz tone (made at half of full scale, and 3 dB less in
+  hevc.mgau   the same pictures as avc.mgau as H.265 Main (libx265), VPS, SPS and PPS together as csd-0.
+  hevc10.mgau the same as H.265 Main 10, ten bits a sample (Y = 64 + 32 N of 1023), which decoders hand out as P010.
+  aac.mgau    AAC LC, 44100 Hz, stereo, half a second of a 440 Hz tone (made at half of full scale, and 3 dB less in
               each channel once ffmpeg makes it stereo: 8192 RMS): raw access units (the ADTS headers taken off) and the
               AudioSpecificConfig as csd-0.
-  mp3.hkau    the same tone as MPEG-1 Layer III at 128 kbit/s, one frame a packet, no ID3 or Xing header.
+  mp3.mgau    the same tone as MPEG-1 Layer III at 128 kbit/s, one frame a packet, no ID3 or Xing header.
 
 With --speed, what a decoder's speed is measured on instead, two seconds of ffmpeg's moving test picture (testsrc2),
 as a phone plays films; these are made where they are needed (tools/build-appx.sh --auto codec, tools/build-tests.sh
 win) and not kept in the repository:
 
-  speed-avc-720p.hkau     H.264 High, 1280 x 720, 60 pictures, three B-pictures between references, an IDR a second
-  speed-avc-1080p.hkau    the same at 1920 x 1080
-  speed-hevc-1080p.hkau   H.265 Main at 1920 x 1080
+  speed-avc-720p.mgau     H.264 High, 1280 x 720, 60 pictures, three B-pictures between references, an IDR a second
+  speed-avc-1080p.mgau    the same at 1920 x 1080
+  speed-hevc-1080p.mgau   H.265 Main at 1920 x 1080
 
-The file: "HKMEDIA1", the MIME type in 32 bytes (zero-padded), then little-endian u32 width, height, sample rate,
+The file: "MGMEDIA1", the MIME type in 32 bytes (zero-padded), then little-endian u32 width, height, sample rate,
 channels and the number of records; then each record: u32 flags (MediaCodec's: 1 key frame, 2 codec-specific
 data), u32 size, i64 time in microseconds, and the bytes. Records with flag 2 come first; the rest are in decode
 order.
@@ -55,7 +55,7 @@ def run(*args):
 def write(name, mime, width, height, rate, channels, records):
     path = os.path.join(OUT, name)
     with open(path, "wb") as f:
-        f.write(b"HKMEDIA1" + mime.encode().ljust(32, b"\0"))
+        f.write(b"MGMEDIA1" + mime.encode().ljust(32, b"\0"))
         f.write(struct.pack("<5I", width, height, rate, channels, len(records)))
         for flags, time_us, data in records:
             f.write(struct.pack("<IIq", flags, len(data), time_us))
@@ -154,8 +154,8 @@ def speed(folder):
     avc = lambda u: u[0] & 0x1F
     x264 = ["-preset", "fast", "-profile:v", "high", "-crf", "23", "-x264-params", "bframes=3:keyint=30:min-keyint=30:scenecut=0"]
     for w, h in ((1280, 720), (1920, 1080)):
-        video("speed-avc-%dp.hkau" % h, "video/avc", "libx264", x264, avc, (7, 8), (6, 9), w, h, 60, "testsrc2=s=%dx%d:r=30" % (w, h))
-    video("speed-hevc-1080p.hkau", "video/hevc", "libx265",
+        video("speed-avc-%dp.mgau" % h, "video/avc", "libx264", x264, avc, (7, 8), (6, 9), w, h, 60, "testsrc2=s=%dx%d:r=30" % (w, h))
+    video("speed-hevc-1080p.mgau", "video/hevc", "libx265",
           ["-preset", "fast", "-crf", "28", "-x265-params", "log-level=error:bframes=3:keyint=30:min-keyint=30:scenecut=0"],
           lambda u: (u[0] >> 1) & 0x3F, (32, 33, 34), (35, 39, 40), 1920, 1080, 60, "testsrc2=s=1920x1080:r=30")
 
@@ -166,11 +166,11 @@ def main():
         return
     os.makedirs(OUT, exist_ok=True)
     x264 = ["-preset", "medium", "-profile:v", "main", "-x264-params", "bframes=2:b-adapt=0:b-pyramid=none:keyint=12:min-keyint=12:scenecut=0:open-gop=0"]
-    video("avc.hkau", "video/avc", "libx264", x264, lambda u: u[0] & 0x1F, (7, 8), (6, 9))
-    video("avc-small.hkau", "video/avc", "libx264", x264, lambda u: u[0] & 0x1F, (7, 8), (6, 9), 96, 64, 12)
+    video("avc.mgau", "video/avc", "libx264", x264, lambda u: u[0] & 0x1F, (7, 8), (6, 9))
+    video("avc-small.mgau", "video/avc", "libx264", x264, lambda u: u[0] & 0x1F, (7, 8), (6, 9), 96, 64, 12)
     x265 = "log-level=error:bframes=2:b-adapt=0:b-pyramid=0:keyint=12:min-keyint=12:scenecut=0:open-gop=0"
-    video("hevc.hkau", "video/hevc", "libx265", ["-preset", "medium", "-x265-params", x265], lambda u: (u[0] >> 1) & 0x3F, (32, 33, 34), (35, 39, 40))
-    video("hevc10.hkau", "video/hevc", "libx265", ["-preset", "medium", "-profile:v", "main10", "-x265-params", x265], lambda u: (u[0] >> 1) & 0x3F,
+    video("hevc.mgau", "video/hevc", "libx265", ["-preset", "medium", "-x265-params", x265], lambda u: (u[0] >> 1) & 0x3F, (32, 33, 34), (35, 39, 40))
+    video("hevc10.mgau", "video/hevc", "libx265", ["-preset", "medium", "-profile:v", "main10", "-x265-params", x265], lambda u: (u[0] >> 1) & 0x3F,
           (32, 33, 34), (35, 39, 40), source="nullsrc=s=168x94:r=30,format=yuv420p,geq=lum='16+8*N':cb=128:cr=128,format=yuv420p10le")
     tone = "sine=frequency=440:sample_rate=44100:duration=0.5,volume=4"
     with tempfile.TemporaryDirectory() as tmp:
@@ -181,12 +181,12 @@ def main():
         profile, sfi, chan = h[2] >> 6, (h[2] >> 2) & 0xF, ((h[2] & 1) << 2) | (h[3] >> 6)
         asc = struct.pack(">H", ((profile + 1) << 11) | (sfi << 7) | (chan << 3))
         records = [(FLAG_CONFIG, 0, asc)] + [(FLAG_KEY, k * 1024 * 1000000 // 44100, f) for k, (_, f) in enumerate(frames)]
-        write("aac.hkau", "audio/mp4a-latm", 0, 0, 44100, 2, records)
+        write("aac.mgau", "audio/mp4a-latm", 0, 0, 44100, 2, records)
         mp3 = os.path.join(tmp, "a.mp3")
         run("ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", tone, "-ac", "2", "-c:a", "libmp3lame", "-b:a", "128k",
             "-write_xing", "0", "-id3v2_version", "0", "-f", "mp3", mp3)
         records = [(FLAG_KEY, k * 1152 * 1000000 // 44100, f) for k, f in enumerate(mp3_frames(open(mp3, "rb").read()))]
-        write("mp3.hkau", "audio/mpeg", 0, 0, 44100, 2, records)
+        write("mp3.mgau", "audio/mpeg", 0, 0, 44100, 2, records)
 
 
 main()

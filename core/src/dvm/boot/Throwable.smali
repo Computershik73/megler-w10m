@@ -1,5 +1,5 @@
 # java.lang.Throwable. The three fields have libcore's names, which is what the runtime looks them up by
-# (hk_dvm_describe_pending, hk_dvm_pending_stack): `backtrace` holds a long[] of (method, pc) pairs.
+# (mg_dvm_describe_pending, mg_dvm_pending_stack): `backtrace` holds a long[] of (method, pc) pairs.
 .class public Ljava/lang/Throwable;
 .super Ljava/lang/Object;
 .implements Ljava/io/Serializable;

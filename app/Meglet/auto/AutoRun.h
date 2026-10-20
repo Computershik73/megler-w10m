@@ -12,7 +12,7 @@
 // buttons (shell/Checks.h) -- and
 //
 //  * gfx: the scenes the core's tests draw through a meglet_gfx_host
-//    (core/tests/hk_gfx_scenes.c), drawn by the shell's own host
+//    (core/tests/mg_gfx_scenes.c), drawn by the shell's own host
 //    (player/GfxHost.h: Direct2D, DirectWrite, WIC) on this device and
 //    checked; what it says is in meglet-auto.log, and its pictures are
 //    LocalState\shot-gfx-*.bmp;

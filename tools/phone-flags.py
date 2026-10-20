@@ -7,7 +7,7 @@ r"""Set, list or clear Meglet's flag files on the phone (LocalState\flags).
     python tools/phone-flags.py --app com.instagram.android set trace-net
                                                  # an app's own package's flags
 
-A flag is a file whose name is all that matters (core: hk_flag; shell:
+A flag is a file whose name is all that matters (core: mg_flag; shell:
 auto/AutoRun.cpp for shots, tap-S-X-Y, key-S-C, play-N). Each package reads
 its own LocalState\flags: with --app, the package Meglet made of that Android
 app (docs/PER-APP-PACKAGES.md), found by its identity name, "MegletApp." and
@@ -30,7 +30,7 @@ PFN = None  # the package whose flags these are: Meglet's, or an app's own
 
 def app_package(android_package):
     """The full name of the package Meglet made of `android_package`. Its identity name is "MegletApp." and the package,
-    '_' made '-', filled or cut to 50 characters (core/src/appx/hk_appx_manifest.c): the first 41 are the package's."""
+    '_' made '-', filled or cut to 50 characters (core/src/appx/mg_appx_manifest.c): the first 41 are the package's."""
     prefix = ("MegletApp." + android_package.replace("_", "-"))[:41]
     pkgs = json.loads(phone.get("/api/app/packagemanager/packages"))["InstalledPackages"]
     found = [p["PackageFullName"] for p in pkgs if p["PackageFullName"].split("_")[0].startswith(prefix)]

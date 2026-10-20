@@ -3,7 +3,7 @@
 // the path, said only winding or even-odd, so a path set to INVERSE_WINDING or INVERSE_EVEN_ODD was drawn and clipped
 // by as if it were not inverse. Now toggleInverseFillType turns WINDING into INVERSE_WINDING and back, EVEN_ODD into
 // INVERSE_EVEN_ODD and back, as Android's does, and megletFill has a second bit for inverse (0 winding, 1 even-odd, 2
-// inverse winding, 3 inverse even-odd), which core/src/drivers/hk_java_gfx.c draws and clips by.
+// inverse winding, 3 inverse even-odd), which core/src/drivers/mg_java_gfx.c draws and clips by.
 //
 // Why. An inverse path is how a view rounds its corners by painting over them: VK mp3 mod's BarcodeViewfinderLayout, the
 // frame round its QR scanner's camera picture, toggles a rounded rectangle to inverse in its constructor and fills it in

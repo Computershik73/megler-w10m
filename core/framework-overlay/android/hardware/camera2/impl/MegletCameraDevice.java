@@ -1,6 +1,6 @@
 // Meglet: a class of this framework's own, new (the original has no camera2). An open camera as android.hardware.camera2
 // gives it to an app -- a CameraDevice, its capture sessions and their requests -- over meglet.CameraNative (core/src/drivers/
-// hk_java_camera.c): what CameraX, and so most apps that scan a code today, ask of a camera.
+// mg_java_camera.c): what CameraX, and so most apps that scan a code today, ask of a camera.
 package android.hardware.camera2.impl;
 
 import android.graphics.Bitmap;

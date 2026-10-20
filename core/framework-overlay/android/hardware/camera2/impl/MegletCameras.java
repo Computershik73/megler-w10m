@@ -1,5 +1,5 @@
 // Meglet: a class of this framework's own, new (the original has no camera2). The phone's cameras as android.hardware.camera2
-// says them -- their ids and their characteristics -- over meglet.CameraNative (core/src/drivers/hk_java_camera.c, the shell's
+// says them -- their ids and their characteristics -- over meglet.CameraNative (core/src/drivers/mg_java_camera.c, the shell's
 // meglet_camera_host: Windows.Media.Capture on a phone). CameraManager, the overlay's, asks this; MegletCameraDevice opens them.
 package android.hardware.camera2.impl;
 

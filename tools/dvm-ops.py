@@ -7,7 +7,7 @@ Makes the arithmetic part of the Dalvik runtime's tests.
 Writes OUTDIR/Ops.smali, a class t.Ops with one static method for each
 arithmetic, conversion, comparison and conditional-branch instruction in each
 of its forms (three registers, two registers, with a literal), and
-OUTDIR/hk_dvm_ops_cases.h, a table of calls to them with what each must
+OUTDIR/mg_dvm_ops_cases.h, a table of calls to them with what each must
 return.
 
 The expected values are worked out here, in Python, from what the Java
@@ -301,7 +301,7 @@ def main(argv):
         header.append('    { "%s", "%s", { %s, %s }, %s, %d, %s },' % (name, sig, c_value(a[0]), c_value(a[1]), c_value(want), 1 if is_nan else 0,
                                                                      '"%s"' % throws if throws else 'NULL'))
     header.append('};')
-    for path, lines in ((os.path.join(out, 'Ops.smali'), text), (os.path.join(out, 'hk_dvm_ops_cases.h'), header)):
+    for path, lines in ((os.path.join(out, 'Ops.smali'), text), (os.path.join(out, 'mg_dvm_ops_cases.h'), header)):
         body = '\n'.join(lines) + '\n'
         old = None
         if os.path.exists(path):

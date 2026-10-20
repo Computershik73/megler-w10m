@@ -9,7 +9,7 @@
 #   --auto MODES  an unattended on-device run at start-up (app/Meglet/auto,
 #              tools/phone.py auto): `probe` runs meglet_probe, `selftest` runs
 #              meglet_selftest, or `probe,selftest`; `gfx` draws the scenes of
-#              core/tests/hk_gfx_scenes.c with the shell's own Direct2D,
+#              core/tests/mg_gfx_scenes.c with the shell's own Direct2D,
 #              DirectWrite and WIC (player/GfxHost.cpp), checks them, and
 #              leaves them in LocalState as shot-gfx-*.bmp; `storage` goes
 #              through the phone's folders in an app's storage as an app
@@ -21,7 +21,7 @@
 #              loopback, and the interfaces; `codec` runs the decoders a
 #              Java app's MediaCodec has (player/CodecHost.cpp: Media
 #              Foundation's transforms) through the tests of
-#              core/tests/hk_codec_tests.c, on the data app's streams and on
+#              core/tests/mg_codec_tests.c, on the data app's streams and on
 #              streams made here to time them by (720p and 1080p H.264, 1080p
 #              H.265; tools/media-test-streams.py, ffmpeg), all in the
 #              package's folder `codec`; `play` opens the
@@ -71,7 +71,7 @@
 # "ANGLE" below.)
 #
 # All of core/ is compiled in, as C11: core/src/**/*.c, core/tests/*.c but
-# hk_tests_main.c (meglet_selftest calls the tests), and core/third_party/zlib/*.c
+# mg_tests_main.c (meglet_selftest calls the tests), and core/third_party/zlib/*.c
 # but its gz*.c. The lists are globbed on every run, since the core is still
 # growing. Every object goes onto the link line, so a core file with an
 # unresolved symbol fails the build here, not on the phone.
@@ -265,23 +265,23 @@ echo "=== core (C11) ==="
 CORE="$ROOT/core/src"
 TESTS="$ROOT/core/tests"
 # One newest-header time for the core and its tests: they include each other
-# (hk_diag.c the tests' header, the tests the core's).
+# (mg_diag.c the tests' header, the tests the core's).
 CORE_HEADERS="$(newest_mtime "$ROOT/core" '*.h')"
 CORE_FLAGS=(/TC /std:c11 /W3 "/I$(w "$ZLIB")")
 # SQLite is compiled into the core where its amalgamation is (build/sqlite/sqlite3.c: tools/sqlite-fetch.sh fetches it;
-# core/src/sqlite/hk_sqlite3.c includes it). Without it the package is built all the same, and a Java app that asks for
+# core/src/sqlite/mg_sqlite3.c includes it). Without it the package is built all the same, and a Java app that asks for
 # a database is told, once and in a sentence, that this build has none.
 if [ -f "$ROOT/build/sqlite/sqlite3.c" ] && [ -f "$ROOT/build/sqlite/sqlite3.h" ]; then
-  CORE_FLAGS+=(/DHK_HAVE_SQLITE=1 "/I$(w "$ROOT/build/sqlite")")
+  CORE_FLAGS+=(/DMG_HAVE_SQLITE=1 "/I$(w "$ROOT/build/sqlite")")
   echo "    with SQLite ($(cut -d, -f1 "$ROOT/build/sqlite/FROM" 2> /dev/null || echo "build/sqlite"))"
 else
   echo "    WITHOUT SQLite: no build/sqlite/sqlite3.c (tools/sqlite-fetch.sh)"
 fi
-# libwebp's decoder likewise, where its sources are (build/webp/src: tools/webp-fetch.sh fetches them; core/src/webp/hk_webp_*.c
+# libwebp's decoder likewise, where its sources are (build/webp/src: tools/webp-fetch.sh fetches them; core/src/webp/mg_webp_*.c
 # each compile one of its files, in plain C). The phone's own picture decoder has no WebP, so without it an app's WebP pictures
 # do not decode at all.
 if [ -f "$ROOT/build/webp/src/dec/webp_dec.c" ] && [ -f "$ROOT/build/webp/src/webp/decode.h" ]; then
-  CORE_FLAGS+=(/DHK_HAVE_WEBP=1 "/I$(w "$ROOT/build/webp")")
+  CORE_FLAGS+=(/DMG_HAVE_WEBP=1 "/I$(w "$ROOT/build/webp")")
   echo "    with the WebP decoder ($(cut -d, -f1 "$ROOT/build/webp/FROM" 2> /dev/null || echo "build/webp"))"
 else
   echo "    WITHOUT the WebP decoder: no build/webp/src (tools/webp-fetch.sh)"
@@ -294,9 +294,9 @@ for dir in "${CORE_DIRS[@]}"; do
   mapfile -t srcs < <(find "$dir" -maxdepth 1 -name '*.c' | sort)
   compile_group "$OBJ/core/${rel:-root}" "$CORE_HEADERS" "${CORE_FLAGS[@]}" -- "${srcs[@]}"
 done
-# The tests meglet_selftest runs; hk_tests_main.c is the command-line program's
+# The tests meglet_selftest runs; mg_tests_main.c is the command-line program's
 # main, and core/tests/guest is Android code (tools/build-guest.sh).
-mapfile -t TEST_SRC < <(find "$TESTS" -maxdepth 1 -name '*.c' ! -name 'hk_tests_main.c' | sort)
+mapfile -t TEST_SRC < <(find "$TESTS" -maxdepth 1 -name '*.c' ! -name 'mg_tests_main.c' | sort)
 compile_group "$OBJ/tests" "$CORE_HEADERS" "${CORE_FLAGS[@]}" -- "${TEST_SRC[@]}"
 
 echo "=== shell (C++/WinRT, C++20) ==="
@@ -357,7 +357,7 @@ rm -rf "$BUILD/link" && mkdir -p "$BUILD/link"
 # The interpreter's loop first in the program's code: its speed moves by up to two thirds when unrelated code before it
 # shifts the loop's head across a fetch window (docs/JAVA.md, the interpreter's speed). Pinned, a change elsewhere in the
 # program cannot make Java apps slower or faster on the phone.
-echo hk_dvm_interpret > "$BUILD/link/order.txt"
+echo mg_dvm_interpret > "$BUILD/link/order.txt"
 "$LINK" /nologo "${OBJS_W[@]}" "/OUT:$(w "$BUILD/link/Meglet.exe")" "/PDB:$(w "$BUILD/link/Meglet.pdb")" \
   "/MAP:$(w "$BUILD/link/Meglet.map")" "/ORDER:@$(w "$BUILD/link/order.txt")" /DEBUG /OPT:REF /OPT:ICF /INCREMENTAL:NO \
   /APPCONTAINER /SUBSYSTEM:WINDOWS "/MACHINE:$MACHINE" /DYNAMICBASE /NXCOMPAT /MANIFEST:NO \
@@ -439,7 +439,7 @@ cp "$BUILD/link/Meglet.exe" "$STAGE/"
 cp "$APP/Assets/"*.png "$STAGE/Assets/"
 
 # The self-test's guest libraries: meglet_selftest loads them from
-# <package>/selftest (core/src/hk_diag.c).
+# <package>/selftest (core/src/mg_diag.c).
 GUEST="$ROOT/build/guest/armeabi-v7a"
 DEMO="$ROOT/build/guest/demo/meglet-demo.apk"
 if ! ls "$GUEST"/*.so > /dev/null 2>&1 || [ ! -f "$DEMO" ] || [ "$ROOT/core/tests/guest/t_demo.c" -nt "$DEMO" ] \
@@ -453,7 +453,7 @@ fi
 if ls "$GUEST"/*.so > /dev/null 2>&1; then
   mkdir -p "$STAGE/selftest"
   cp "$GUEST"/*.so "$STAGE/selftest/"
-  # The runtime's libt_same.so and libt_ruser.so, in a folder of their own as on the PC (test_guest_kinds in core/tests/hk_tests.c).
+  # The runtime's libt_same.so and libt_ruser.so, in a folder of their own as on the PC (test_guest_kinds in core/tests/mg_tests.c).
   if [ -d "$GUEST/runtime" ]; then mkdir -p "$STAGE/selftest/runtime" && cp "$GUEST"/runtime/*.so "$STAGE/selftest/runtime/"; fi
   # Every library tools/build-guest.sh made is where the Self-test looks for it: one left out fails on the phone alone.
   MISSING=""
@@ -468,7 +468,7 @@ if ls "$GUEST"/*.so > /dev/null 2>&1; then
       { echo "--java: the Java framework or the test apps could not be built (build/appx-$ARCH/build-java.log)" >&2; exit 1; }
   fi
   if [ "$LIBCORE" = 1 ]; then
-    # The Android root, where meglet_run looks for it (core/src/drivers/hk_java.c) and the runtime's tests do (core/tests/hk_tests.c).
+    # The Android root, where meglet_run looks for it (core/src/drivers/mg_java.c) and the runtime's tests do (core/tests/mg_tests.c).
     bash "$ROOT/tools/dvm-android-root.sh" > /dev/null
     cp -r "$ROOT/build/android9/root" "$STAGE/android"
     echo "    android: Android 9's libcore$([ -f "$STAGE/android/framework/meglet-framework.dex" ] && echo " and the Java framework"), $(find "$STAGE/android" -type f | wc -l) files, $(du -sk "$STAGE/android" | cut -f1) KB"
@@ -481,7 +481,7 @@ fi
 # decoders by, made here with ffmpeg (they are not in the repository: 4 MB) -- without Python or ffmpeg, only the first.
 if [ "$AUTO_CODEC" = 1 ]; then
   mkdir -p "$STAGE/codec"
-  cp "$ROOT/core/tests/app/data/assets/"*.hkau "$STAGE/codec/"
+  cp "$ROOT/core/tests/app/data/assets/"*.mgau "$STAGE/codec/"
   if ! python "$(w "$ROOT/tools/media-test-streams.py")" --speed "$(w "$STAGE/codec")" > "$BUILD/media-speed.log" 2>&1; then
     echo "    WARNING: the streams to time the decoders by could not be made (build/appx-$ARCH/media-speed.log): only the tests run" >&2
   fi
@@ -649,7 +649,7 @@ cp "$STAGE/AppxManifest.xml" "$PRITMP/" && cp "$STAGE/Assets/"* "$PRITMP/Assets/
   /mn "$(w "$PRITMP/AppxManifest.xml")" /of "$(w "$STAGE/resources.pri")" /o > /dev/null
 rm -rf "$PRITMP"
 
-# The template of resources.pri for the package of one Android app (core/src/appx/hk_appx_pri.c, shell/AppPackage.cpp):
+# The template of resources.pri for the package of one Android app (core/src/appx/mg_appx_pri.c, shell/AppPackage.cpp):
 # the resource map is named after the package, which is not Meglet's, and makepri is not on the phone. So one is made for
 # a placeholder name of 50 characters (every app package's name has that length), and another for a name one character
 # apart, which tells where in the schema checksum's data the name sits (tools/pri-tails.py); the phone puts the name in

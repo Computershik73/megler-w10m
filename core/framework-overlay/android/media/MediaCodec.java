@@ -8,7 +8,7 @@
 // it makes, and players pace themselves by it. ExoPlayer feeds a renderer for as long as dequeueInputBuffer gives it a
 // buffer and its source has samples, and its source holds up to fifty seconds: given buffers without end, it decodes
 // everything loaded in one turn of its loop -- seconds of decoding in a call that is meant to take milliseconds, and every
-// picture kept until its time to be shown (at 720p, 1.4 MB each). The NDK's decoder in this layer (core/src/ndk/hk_media.c)
+// picture kept until its time to be shown (at 720p, 1.4 MB each). The NDK's decoder in this layer (core/src/ndk/mg_media.c)
 // learned the same from Unity, which played a film's whole sound in its first seconds. Everything else is the original's,
 // unchanged.
 package android.media;

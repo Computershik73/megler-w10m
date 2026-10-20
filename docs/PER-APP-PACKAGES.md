@@ -66,7 +66,7 @@ later, which sends A to the background. On the HP Elite x3 (15254.603),
 
 ## Making and signing a package on the phone
 
-`core/src/appx/hk_appx.c` makes a package and signs it, with CNG (`bcrypt.dll`,
+`core/src/appx/mg_appx.c` makes a package and signs it, with CNG (`bcrypt.dll`,
 which a packaged app may use) for SHA-256 and RSA; on other hosts its calls
 fail.
 
@@ -147,7 +147,7 @@ installed as an app of the phone's own, and Meglet is where that is done
 the user picked by its path, which is why Meglet used to copy every APK into
 `LocalState\apks` before anything else. Windows' broker hands out real handles
 to such a file (`IStorageItemHandleAccess`), and the core now takes a file by
-handle under a path of the shell's (`meglet_file_by_handle`; `hk_file_open` asks
+handle under a path of the shell's (`meglet_file_by_handle`; `mg_file_open` asks
 the shell for a new handle at each open, so that each has a position of its
 own): the report, the icon, a bundle's unpacking and the package's making read
 the picked file where it is (`shell/PickedFile.cpp`). **Install APK** in the
@@ -210,7 +210,7 @@ the private files alone: its part of the storage is the app's already.
      shorter one filled with a dot and a hash of the package, a longer one
      cut and given one; a phone product id made from the Android package (the
      same each time, so that a package made again is an update); and the
-     app's label for the shown names (`core/src/appx/hk_appx_manifest.c`).
+     app's label for the shown names (`core/src/appx/mg_appx_manifest.c`).
      Capabilities, dependencies, the entry point and the publisher cache
      folder stay Meglet's. Where the app's icon is drawn on the logos (below),
      the tile's background is `transparent`, the phone's own colour; the
@@ -229,7 +229,7 @@ the private files alone: its part of the storage is the app's already.
      `Windows.Graphics.Imaging`, or WebP, which the phone's WIC cannot read,
      decoded by the core: `meglet_webp_decode`; for an app that gives only an
      adaptive or a vector icon, a PNG the core draws from its drawables,
-     `core/src/apk/hk_icon.c`) drawn in the middle of each of
+     `core/src/apk/mg_icon.c`) drawn in the middle of each of
      Meglet's logos, with their names and sizes, which the `resources.pri`
      template lists: `StoreLogo` 50x50, `Square44x44Logo`, `Square150x150Logo`,
      `Wide310x150Logo` and `SplashScreen` 620x300, the icon taking as much of
@@ -260,7 +260,7 @@ names `Meglet`; the first app package (353), which carried Meglet's, ended at
 once when started (Total Commander). makepri is not on the phone, so Meglet
 carries one made for a placeholder name of 50 characters
 (`appx-template\resources.pri`, `tools/build-appx.sh`), and the app's name,
-as long, is put in its place (`core/src/appx/hk_appx_pri.c`). The name is in
+as long, is put in its place (`core/src/appx/mg_appx_pri.c`). The name is in
 the file twice, in UTF-16: the map's name and its unique name
 `ms-appx://<name>/`. The hierarchical schema's checksum (in `[def_hnamesx]`, 24
 bytes on) is a CRC-32 (zlib's) over data in which the name is twice too,

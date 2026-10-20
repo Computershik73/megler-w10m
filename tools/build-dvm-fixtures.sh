@@ -3,10 +3,10 @@
 # run on. tools/build-tests.sh and tools/build-appx.sh call it; it is quick and
 # changes no file whose contents would come out the same.
 #
-#   core/src/dvm/hk_dvm_boot_dex.h   the built-in java.lang (tools/dvm-boot.py)
-#   core/src/dvm/hk_dvm_art_dex.h    the classes the runtime adds to Android's libcore, from core/src/dvm/art/*.smali
-#   core/src/dvm/hk_dvm_ops.h        the instruction table (tools/dexasm.py ctable)
-#   core/tests/hk_dvm_ops_cases.h    what each arithmetic instruction must return (tools/dvm-ops.py)
+#   core/src/dvm/mg_dvm_boot_dex.h   the built-in java.lang (tools/dvm-boot.py)
+#   core/src/dvm/mg_dvm_art_dex.h    the classes the runtime adds to Android's libcore, from core/src/dvm/art/*.smali
+#   core/src/dvm/mg_dvm_ops.h        the instruction table (tools/dexasm.py ctable)
+#   core/tests/mg_dvm_ops_cases.h    what each arithmetic instruction must return (tools/dvm-ops.py)
 #   build/guest/armeabi-v7a/dvm/     the tests' DEX files, beside the guest test libraries:
 #       a.dex b.dex c.dex d.dex      one for each folder of core/tests/dvm/fixtures, assembled
 #                                    from its .smali files by tools/dexasm.py
@@ -29,12 +29,12 @@ keep() { cmp -s "$1" "$2" || cp "$1" "$2"; }
 
 "$PY" tools/dvm-boot.py > /dev/null
 "$PY" tools/dexasm.py asm -o "$GEN/art.dex" core/src/dvm/art/*.smali > /dev/null
-"$PY" tools/dexasm.py carray -o "$GEN/hk_dvm_art_dex.h" --name k_dvm_art_dex "$GEN/art.dex"
-keep "$GEN/hk_dvm_art_dex.h" core/src/dvm/hk_dvm_art_dex.h
-"$PY" tools/dexasm.py ctable -o "$GEN/hk_dvm_ops.h"
-keep "$GEN/hk_dvm_ops.h" core/src/dvm/hk_dvm_ops.h
+"$PY" tools/dexasm.py carray -o "$GEN/mg_dvm_art_dex.h" --name k_dvm_art_dex "$GEN/art.dex"
+keep "$GEN/mg_dvm_art_dex.h" core/src/dvm/mg_dvm_art_dex.h
+"$PY" tools/dexasm.py ctable -o "$GEN/mg_dvm_ops.h"
+keep "$GEN/mg_dvm_ops.h" core/src/dvm/mg_dvm_ops.h
 "$PY" tools/dvm-ops.py "$GEN"
-keep "$GEN/hk_dvm_ops_cases.h" core/tests/hk_dvm_ops_cases.h
+keep "$GEN/mg_dvm_ops_cases.h" core/tests/mg_dvm_ops_cases.h
 for dir in core/tests/dvm/fixtures/*/; do
   name="$(basename "$dir")"
   extra=()
@@ -48,5 +48,5 @@ keep "$GEN/m.dex" "$OUT/m.dex"
 keep core/tests/dvm/d8/d8t.dex "$OUT/d8t.dex"
 keep core/tests/dvm/d8/expected.txt "$OUT/expected.txt"
 for f in lib.dex lib-expected.txt lib-android.txt; do [ -f "core/tests/dvm/d8/$f" ] && keep "core/tests/dvm/d8/$f" "$OUT/$f"; done
-# The interpreter's benchmark (core/tests/hk_dvm_bench.c), kept compiled like d8t.dex (tools/dvm-bench-fixture.sh).
+# The interpreter's benchmark (core/tests/mg_dvm_bench.c), kept compiled like d8t.dex (tools/dvm-bench-fixture.sh).
 [ -f core/tests/dvm/bench/bench.dex ] && keep core/tests/dvm/bench/bench.dex "$OUT/bench.dex"

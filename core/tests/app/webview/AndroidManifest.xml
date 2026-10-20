@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The test app of the WebView (tools/build-test-app.sh): an Activity whose content is an android.webkit.WebView, which is
      Android's System WebView, Chromium, from the WebView APK in the Android root, and an HTTP server of the app's own on
-     loopback that serves its pages. Each step is a line of the log, which the test (core/tests/hk_java_tests.c,
+     loopback that serves its pages. Each step is a line of the log, which the test (core/tests/mg_java_tests.c,
      run_webview) reads, with the picture; the test also taps the page's text field and types into it. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="meglet.test.webview" android:versionCode="1" android:versionName="1.0">
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />

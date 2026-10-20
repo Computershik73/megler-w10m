@@ -1,4 +1,4 @@
-# java.lang.Class. An object of it is made by the runtime for each class (hk_dvm_mirror), never by bytecode.
+# java.lang.Class. An object of it is made by the runtime for each class (mg_dvm_mirror), never by bytecode.
 .class public final Ljava/lang/Class;
 .super Ljava/lang/Object;
 .implements Ljava/io/Serializable;

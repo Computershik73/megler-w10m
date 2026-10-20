@@ -18,7 +18,7 @@ Back. No real app has been tried.
 | An undefined instruction reaching the fault handler and the thread resumed elsewhere | **works on the phone**, in Thumb and in ARM state; 5 µs a time |
 | A thread staying in ARM state | **it does on the phone**: 1.5 billion iterations (0.8 s) undisturbed |
 | APK reader, manifest and resources | **passes on the phone**; read CPU-Z's and a Java app's real APKs correctly on PC (label, version, ABIs, icon) |
-| Apps in several APKs: a bundle of split APKs (.apks, .xapk) unpacked into its base and the splits this phone can use (32-bit ARM, the densities nearest the screen's, English and the phone's languages, feature splits, asset packs), an .xapk's OBB put in the app's own `Android/obb`; the report of the app as one; the app run with its splits (docs/JAVA.md, "Split APKs and bundles") | **passes under qemu and on PC**: `hk_tests --bundles`, 125 checks -- the test app `splits` as an .apks and an .xapk, and three real bundles: BiP 4.2.42 and MangaDex 1.0.0.0 accepted (package, version, ABI), Magnit 8.107.1 refused for having native code for arm64-v8a only; and the test app from each bundle through `meglet_run` under qemu, 32 checks each (its library loaded from `config.armeabi_v7a`, a picture and strings found in its density and language splits, an asset pack, a feature split's code, `splitNames` and `splitSourceDirs` as Android gives them, the OBB). **Not tried on a phone**: the library's picker for .apks and .xapk and its unpacking are the shell's |
+| Apps in several APKs: a bundle of split APKs (.apks, .xapk) unpacked into its base and the splits this phone can use (32-bit ARM, the densities nearest the screen's, English and the phone's languages, feature splits, asset packs), an .xapk's OBB put in the app's own `Android/obb`; the report of the app as one; the app run with its splits (docs/JAVA.md, "Split APKs and bundles") | **passes under qemu and on PC**: `mg_tests --bundles`, 125 checks -- the test app `splits` as an .apks and an .xapk, and three real bundles: BiP 4.2.42 and MangaDex 1.0.0.0 accepted (package, version, ABI), Magnit 8.107.1 refused for having native code for arm64-v8a only; and the test app from each bundle through `meglet_run` under qemu, 32 checks each (its library loaded from `config.armeabi_v7a`, a picture and strings found in its density and language splits, an asset pack, a feature split's code, `splitNames` and `splitSourceDirs` as Android gives them, the OBB). **Not tried on a phone**: the library's picker for .apks and .xapk and its unpacking are the shell's |
 | Loader: REL, packed (APS2) and RELR relocations, GNU and SysV hash, constructors, scope | **passes on the phone** |
 | Thumb-2 guest library: data, calls both ways, floats, variadics, 64-bit division, heap, `qsort` callbacks, `setjmp`, threads, TLS, files, pipes | **passes on the phone** |
 | The same library built in ARM mode | **passes on the phone** |
@@ -28,12 +28,12 @@ Back. No real app has been tried.
 | Sound: an OpenSL ES buffer-queue player, resampled and mixed to 44.1 kHz stereo for the shell | **passes on the phone** as far as the mixer's output (sample counts and levels) |
 | Sound: AAudio output streams (`libaaudio.so`), fed by a data callback or written to, on the same mixer | **passes under qemu**; not yet heard on the phone |
 | Sound from Java: `AudioTrack`, `MediaPlayer` and `SoundPool` (`meglet.Audio`), with Ogg Vorbis (stb_vorbis), WAV, and the shell's decoder for MP3 and AAC | **passes under qemu** (Vorbis and WAV) and **on PC** (MP3 and M4A through the shell's reader, which on the phone refused files with no picture until 0.1.0.250); not yet heard on the phone |
-| Decoders for a Java app's `MediaCodec` (`meglet.MediaCodecNative`, H.264, H.265, AAC, MP3) over a call of the shell's that decodes samples (`meglet_codec_host`: Media Foundation's decoder transforms, `player/CodecHost.cpp`; docs/JAVA.md, "Decoders for MediaCodec") | **passes under qemu and on PC** with a stand-in for the shell's decoders (the core's tests; the data app's eight steps under qemu: pictures in display order on a `Surface`, a flush, the asynchronous mode, AAC raw and with ADTS, MP3, and a decoder that fills while its outputs wait, as Android's do and as ExoPlayer needs: the original framework's never filled), and **on PC with Windows' own decoders** through the shell's host (`hk_tests --codec-windows`: H.264 with B-pictures in display order in every form of parameter sets, a flush, a change of size, H.265, AAC, MP3, two decoders at once). **On the phone** (`--auto codec`, packages 245 to 248), all of that passes with Microsoft's decoders for H.264, H.265, AAC and MP3, except after a flush in H.265, where the first picture is black. HEVCVideoExtension, the phone's first H.265 decoder, never returned from a call; it is given up on after 8 s and remembered in `LocalState\codec-hung.txt`. Speed: H.264 720p 29 to 39 pictures a second, 1080p 15 to 17 (in software); H.265 1080p 31 to 40 (docs/JAVA.md, "On the phone") |
+| Decoders for a Java app's `MediaCodec` (`meglet.MediaCodecNative`, H.264, H.265, AAC, MP3) over a call of the shell's that decodes samples (`meglet_codec_host`: Media Foundation's decoder transforms, `player/CodecHost.cpp`; docs/JAVA.md, "Decoders for MediaCodec") | **passes under qemu and on PC** with a stand-in for the shell's decoders (the core's tests; the data app's eight steps under qemu: pictures in display order on a `Surface`, a flush, the asynchronous mode, AAC raw and with ADTS, MP3, and a decoder that fills while its outputs wait, as Android's do and as ExoPlayer needs: the original framework's never filled), and **on PC with Windows' own decoders** through the shell's host (`mg_tests --codec-windows`: H.264 with B-pictures in display order in every form of parameter sets, a flush, a change of size, H.265, AAC, MP3, two decoders at once). **On the phone** (`--auto codec`, packages 245 to 248), all of that passes with Microsoft's decoders for H.264, H.265, AAC and MP3, except after a flush in H.265, where the first picture is black. HEVCVideoExtension, the phone's first H.265 decoder, never returned from a call; it is given up on after 8 s and remembered in `LocalState\codec-hung.txt`. Speed: H.264 720p 29 to 39 pictures a second, 1080p 15 to 17 (in software); H.265 1080p 31 to 40 (docs/JAVA.md, "On the phone") |
 | Films: `libmediandk.so` (extractor, decoders, formats) over the shell's Media Foundation reader; pictures onto a `SurfaceTexture` | **works on the phone** with Hollow Knight's two opening films (H.264 360x202, AAC): every picture decoded and shown full screen, the sound in step with them; watched and heard by the phone's owner, played through and skipped |
-| Cameras for a Java app's `android.hardware.Camera` (the overlay's class over `meglet.CameraNative`, `drivers/hk_java_camera.c`, and the shell's `meglet_camera_host` over Windows.Media.Capture, `player/CameraHost.cpp`; docs/JAVA.md, "The cameras") | **passes under qemu** with a stand-in for the shell's cameras (the core's 44 checks, on the PC as well; the test app `camera`, 38 checks: the parameters as Android keeps them, a preview on a `SurfaceView` and one on a `TextureView` checked in the window, turned and mirrored as Android shows them, frames in the app's buffers byte for byte and in their order, autofocus, the torch, the threads the callbacks come on; and 13 more with every camera refused, as when the user says no). The shell's host is built for the phone and into the PC's test program, whose `--camera-windows` opens this PC's one camera (DroidCam's virtual one) through it and takes ten pictures (9 checks). **On the phone** (package 267, VK mp3 mod's QR sign-in): the back camera opens and streams 640 x 640 at 30 a second, and every picture is drawn and read by ZXing, but the scanner showed white -- its frame's inverse path, now drawn as Android draws it (the camera test app frames its `TextureView` the same way); not yet tried again |
-| The shared storage: one `/sdcard` for every app, the app's own `Android/data` and `obb` in it, and links to folders of the phone's own through handles the shell hands over | **passes under qemu and on PC** with a stand-in for the shell (`core/tests/hk_storage_tests.c`, 451 checks), and on PC with the shell's own host over Windows.Storage (`player/StorageHost.cpp`, the same checks; a test program is no app container). **On the phone** (HP Elite x3, 0.1.0.126, `tools/build-appx.sh arm --auto storage`): Music, Pictures, Movies and DCIM are found and answer, and the check's 102 steps pass -- 24 in each link, in a folder of its own: files made, written, read back, appended to, emptied, renamed, moved, removed, folders likewise, and a file moved from one link to another. One thing the PC did not show: an open straight after a close is at times refused with a sharing violation, something of Windows' own having the new file for a moment (2 steps of 102, different ones each run); the host asks again for up to a second. A folder is not moved into another folder by renaming (the app is told EXDEV, and copies). **Not tried**: the Settings section (the list, Add a Folder with the folder picker, the folders Windows remembers across starts), Documents, Downloads, a memory card |
-| The network: TCP and UDP sockets, servers included, blocking and not; the app's own AF_UNIX sockets; names (`getaddrinfo`, `getnameinfo`, `gethostbyname`); the interfaces; poll, select and epoll over sockets with pipes, eventfds and files (docs/ARCHITECTURE.md, "The network") | **passes under qemu and on PC** over loopback (`core/tests/hk_net_tests.c`: 234 checks under qemu, 225 on the PC, which cannot run the test of signal 34 ending a blocked call), and from Java under qemu (the test app `data`: `InetAddress`, `HttpURLConnection` against a `ServerSocket` of the app's own, `DatagramSocket`, a `ServerSocket` closed under the thread in `accept`, a `java.nio` selector, `NetworkInterface`). The check a phone is to run (`meglet_net_check`: a public name, `HEAD /generate_204` on its port 80, a server of its own on 127.0.0.1, UDP on 127.0.0.1) passes on both with the internet. **Passed on the HP Elite x3, 2026-10-16**: 16 native network checks, Java loopback TLS including rejection of an untrusted certificate, external HTTP/HTTPS, and HTTP/2 ALPN through the Android 10 public API. See [PHONE-NETWORK.md](PHONE-NETWORK.md) for the app failures and fixes. |
-| OpenGL ES from an app's Java: the 832 natives of `GLES10` to `GLES32` (793 generated, 39 by hand), EGL14 and EGL10 over `meglet.EGLNative`, a `GLSurfaceView`'s renderer on a GL thread of the layer's own, the window composed in the core of the views over the frames read back (docs/ARCHITECTURE.md, "OpenGL ES from an app's Java") | **passes under qemu and on PC** on a stand-in for OpenGL ES that draws (`core/tests/hk_gl_tests.c`: 86 checks on libcore, 67 on the built-in java.lang; the test app `gl`: 49 checks under qemu -- a renderer's calls in Android's order, sixty frames a second at most, `RENDERMODE_WHEN_DIRTY`, `queueEvent`, a fixed size, pause and resume, EGL14 on a pbuffer, EGL10 and GL10 on a `SurfaceView`, and the picture). AIDA64 and Device Info read the GPU's strings and show them under qemu. A swap of a 720 x 1182 surface costs 1.45 ms on the PC with the stand-in's read-back (a copy of memory); ANGLE's waits for the GPU and **has not been measured: nothing of it has run on a phone** (the log's `java: OpenGL frames` line will say it there) |
+| Cameras for a Java app's `android.hardware.Camera` (the overlay's class over `meglet.CameraNative`, `drivers/mg_java_camera.c`, and the shell's `meglet_camera_host` over Windows.Media.Capture, `player/CameraHost.cpp`; docs/JAVA.md, "The cameras") | **passes under qemu** with a stand-in for the shell's cameras (the core's 44 checks, on the PC as well; the test app `camera`, 38 checks: the parameters as Android keeps them, a preview on a `SurfaceView` and one on a `TextureView` checked in the window, turned and mirrored as Android shows them, frames in the app's buffers byte for byte and in their order, autofocus, the torch, the threads the callbacks come on; and 13 more with every camera refused, as when the user says no). The shell's host is built for the phone and into the PC's test program, whose `--camera-windows` opens this PC's one camera (DroidCam's virtual one) through it and takes ten pictures (9 checks). **On the phone** (package 267, VK mp3 mod's QR sign-in): the back camera opens and streams 640 x 640 at 30 a second, and every picture is drawn and read by ZXing, but the scanner showed white -- its frame's inverse path, now drawn as Android draws it (the camera test app frames its `TextureView` the same way); not yet tried again |
+| The shared storage: one `/sdcard` for every app, the app's own `Android/data` and `obb` in it, and links to folders of the phone's own through handles the shell hands over | **passes under qemu and on PC** with a stand-in for the shell (`core/tests/mg_storage_tests.c`, 451 checks), and on PC with the shell's own host over Windows.Storage (`player/StorageHost.cpp`, the same checks; a test program is no app container). **On the phone** (HP Elite x3, 0.1.0.126, `tools/build-appx.sh arm --auto storage`): Music, Pictures, Movies and DCIM are found and answer, and the check's 102 steps pass -- 24 in each link, in a folder of its own: files made, written, read back, appended to, emptied, renamed, moved, removed, folders likewise, and a file moved from one link to another. One thing the PC did not show: an open straight after a close is at times refused with a sharing violation, something of Windows' own having the new file for a moment (2 steps of 102, different ones each run); the host asks again for up to a second. A folder is not moved into another folder by renaming (the app is told EXDEV, and copies). **Not tried**: the Settings section (the list, Add a Folder with the folder picker, the folders Windows remembers across starts), Documents, Downloads, a memory card |
+| The network: TCP and UDP sockets, servers included, blocking and not; the app's own AF_UNIX sockets; names (`getaddrinfo`, `getnameinfo`, `gethostbyname`); the interfaces; poll, select and epoll over sockets with pipes, eventfds and files (docs/ARCHITECTURE.md, "The network") | **passes under qemu and on PC** over loopback (`core/tests/mg_net_tests.c`: 234 checks under qemu, 225 on the PC, which cannot run the test of signal 34 ending a blocked call), and from Java under qemu (the test app `data`: `InetAddress`, `HttpURLConnection` against a `ServerSocket` of the app's own, `DatagramSocket`, a `ServerSocket` closed under the thread in `accept`, a `java.nio` selector, `NetworkInterface`). The check a phone is to run (`meglet_net_check`: a public name, `HEAD /generate_204` on its port 80, a server of its own on 127.0.0.1, UDP on 127.0.0.1) passes on both with the internet. **Passed on the HP Elite x3, 2026-10-16**: 16 native network checks, Java loopback TLS including rejection of an untrusted certificate, external HTTP/HTTPS, and HTTP/2 ALPN through the Android 10 public API. See [PHONE-NETWORK.md](PHONE-NETWORK.md) for the app failures and fixes. |
+| OpenGL ES from an app's Java: the 832 natives of `GLES10` to `GLES32` (793 generated, 39 by hand), EGL14 and EGL10 over `meglet.EGLNative`, a `GLSurfaceView`'s renderer on a GL thread of the layer's own, the window composed in the core of the views over the frames read back (docs/ARCHITECTURE.md, "OpenGL ES from an app's Java") | **passes under qemu and on PC** on a stand-in for OpenGL ES that draws (`core/tests/mg_gl_tests.c`: 86 checks on libcore, 67 on the built-in java.lang; the test app `gl`: 49 checks under qemu -- a renderer's calls in Android's order, sixty frames a second at most, `RENDERMODE_WHEN_DIRTY`, `queueEvent`, a fixed size, pause and resume, EGL14 on a pbuffer, EGL10 and GL10 on a `SurfaceView`, and the picture). AIDA64 and Device Info read the GPU's strings and show them under qemu. A swap of a 720 x 1182 surface costs 1.45 ms on the PC with the stand-in's read-back (a copy of memory); ANGLE's waits for the GPU and **has not been measured: nothing of it has run on a phone** (the log's `java: OpenGL frames` line will say it there) |
 | A `SurfaceView` drawn by an app's native code: `ANativeWindow_fromSurface` on its `Surface`, EGL window surfaces on that window from the app's own threads, composed under the views as those of EGL from Java are, and `ANativeWindow_lock`; a `SurfaceTexture`'s `Surface` likewise, its frames handed to the texture (docs/JAVA.md, "A SurfaceView drawn by native code") | **passes under qemu** (the test app `natives`, 31 checks, with the shell composing the window and with the core: the window's size and format, an EGL surface on it from a thread never attached to Java, its frames in the view's place the right way up, the surface resized by `setFixedSize` and by the geometry at the next swap, the window no longer valid and the swap refused after `surfaceDestroyed`, a new window when the surface comes back, a software buffer in RGB 565 scaled into its view; a `TextureView`'s texture drawn in software and with EGL). **Not tried on a phone**; Asphalt 9 is the app it was made for (its log: `java: ANativeWindow_fromSurface: a window of`, `egl: window surface ... on a view's window`, `java: OpenGL frames`) |
 | Sound out of the phone (XAudio2) | **heard on the phone** with build 0.1.0.21, the Probe's tone and the demo's; XAudio2 played every frame it was given. With 0.1.0.19 nothing was heard and the log could not say why: the engine was built on the app's own thread then, and nothing was counted |
 | ANGLE: its DLLs, a display, a context | **works on the phone**: Direct3D 11 at feature level 11_1, EGL 1.5, OpenGL ES 3.0; 16384-pixel textures, DXT, depth textures, NPOT; no ETC1, no ASTC |
@@ -49,7 +49,7 @@ Back. No real app has been tried.
 - When a vectored exception handler changes `Pc`, the thread's state on resume is
   taken from **bit 0 of `Pc`**, not from the T bit in `Cpsr`. Resuming Thumb code at
   an even address runs it as ARM code. (Linux wants the opposite: an even `pc` and
-  the T bit.) `hk_fault_resume_at` is the one place that knows; both crashes of
+  the T bit.) `mg_fault_resume_at` is the one place that knows; both crashes of
   the first build on a phone were this.
 - The `Pc` an exception reports for Thumb code has bit 0 set as well
   (`0x05420091`, `Cpsr` `0x80000030`).
@@ -93,7 +93,7 @@ IL2CPP, with armeabi-v7a libraries). Under qemu, with the stand-in for OpenGL ES
 
 - `libmain.so`, `libunity.so` (17 MB) and `libil2cpp.so` (30 MB, a fifth of its
   functions in ARM mode) load with every import provided, and their constructors run;
-- the driver (`core/src/drivers/hk_unity.c`) does what `UnityPlayer` does: the
+- the driver (`core/src/drivers/mg_unity.c`) does what `UnityPlayer` does: the
   loader's `JNI_OnLoad`, `NativeLoader.load`, `initJni`, the surface, resume, focus,
   and `nativeRender` in a loop;
 - IL2CPP starts, and its garbage collector stops and restarts the world. That needed
@@ -133,7 +133,7 @@ under "Films" below). What it took, beyond what qemu had shown:
   (With one object refilled for each call and no `obtain`, the first build that
   drew the menu ignored every tap.)
 - Settings that are kept: `SharedPreferences` (Unity's PlayerPrefs) are files of
-  the app's now (`hk_jni_prefs.c`), read back through `getAll()` as Unity does
+  the app's now (`mg_jni_prefs.c`), read back through `getAll()` as Unity does
   when it starts. Without them the game could not be begun at all: a new game's
   first time goes by way of a page of picture settings (this port has its
   "Select Graphics Tier" there, whose Back leads to the options, not on) and then
@@ -153,13 +153,13 @@ under "Films" below). What it took, beyond what qemu had shown:
     which is how Unity's allocator frees every large block (it maps a little more
     than it wants and unmaps the end first). Half a minute in, 755 MB of addresses
     were reserved and unusable. A region now knows which of its pages the app
-    still has and goes when the last one does (`hk_libc_mem.c`; the test
+    still has and goes when the last one does (`mg_libc_mem.c`; the test
     `t_map_pieces` maps and unmaps 4 GB that way).
-  - The APK, 462 MB, was mapped whole. It is read where needed now (`hk_zip.c`).
+  - The APK, 462 MB, was mapped whole. It is read where needed now (`mg_zip.c`).
   - The game's textures reach OpenGL as plain RGBA8: Unity decodes them itself
     from a format this OpenGL does not offer (almost certainly ASTC; ANGLE over
     Direct3D 11 has none), a few bits a pixel in the APK and thirty-two here, 930 MB
-    of them by the time the game is up. `hk_gltex.c` counts what is asked for and,
+    of them by the time the game is up. `mg_gltex.c` counts what is asked for and,
     once an app has asked for 160 MB, keeps large RGBA8 textures that are only ever
     filled and sampled as DXT5, compressing the pixels as they are uploaded: 661 MB
     became 165. It costs some of the picture and nothing has judged how much.
@@ -169,7 +169,7 @@ under "Films" below). What it took, beyond what qemu had shown:
     of ETC2 came to 507 MB, and the addresses ran out in the first race (231 MB
     left, the largest piece 17 MB; Direct3D's driver threw, and the game wrote
     through the null it got). ETC textures now reach ANGLE in a format Direct3D
-    has, of the same size (`hk_gltex.c`): the RGB ones as ANGLE's own
+    has, of the same size (`mg_gltex.c`): the RGB ones as ANGLE's own
     `GL_ANGLE_lossy_etc_decode` formats, which ANGLE turns into BC1 as it loads
     them; RGBA8 ETC2 EAC, which that extension does not offer over Direct3D, as
     DXT5, each block decoded here and packed again (the decoder is checked
@@ -186,10 +186,10 @@ under "Films" below). What it took, beyond what qemu had shown:
     all in the same addresses. So an ETC texture of 1024 pixels a side or more
     at its base now goes at half its size, a quarter of the memory: each level
     decoded, each 2x2 averaged, packed as BC1 or DXT5, its level numbers kept
-    (`hk_gltex.c`; flag `full-textures` keeps them whole). The RGB decoders are
+    (`mg_gltex.c`; flag `full-textures` keeps them whole). The RGB decoders are
     checked against ANGLE's own as the RGBA one is.
 
-Unity's frame pacing is `core/src/jni/hk_jni_loop.c`: Android's `Looper`,
+Unity's frame pacing is `core/src/jni/mg_jni_loop.c`: Android's `Looper`,
 `Handler`, `HandlerThread`, `Message` and `Choreographer`, the boxed numbers, and
 the Java proxies native code implements interfaces with (`JNIBridge`: calling one
 is calling the library's own `JNIBridge.invoke` with a `java.lang.reflect.Method`
@@ -208,7 +208,7 @@ engine:
   memory not yet given, and the fault cannot be delivered, because the stack it
   would be delivered on is the one that is missing. Windows ends the process: no
   vectored handler, no unhandled-exception filter, nothing. Unity's texture decoder
-  did it on the graphics thread. `hk_thread_whole_stack` now commits the whole
+  did it on the graphics thread. `mg_thread_whole_stack` now commits the whole
   stack (down to a guard page of its own) the first time a thread is given a guest
   thread pointer, whoever made the thread; the test `t_big_frame` writes a 300 KB
   frame bottom first, on the calling thread and on a new one.
@@ -258,30 +258,30 @@ every finger that goes down or comes up, so a log tells a scripted tap (finger 1
 from the owner's own (finger 0) when both are at the phone.
 `python tools/phone-get.py PATH` prints one of the app's files.
 
-Tools made for this, all still there: the trace (`hk_trace`: a ring of the last
+Tools made for this, all still there: the trace (`mg_trace`: a ring of the last
 4096 calls of note, printed by the crash report), the crash report's module names,
-stack scan, thread and memory lines, the flags (`hk_flag`: a file's presence in
+stack scan, thread and memory lines, the flags (`mg_flag`: a file's presence in
 `LocalState\flags`, put there through the Device Portal: `no-interrupt`,
 `no-render`, `late-render`, `no-egl`, `no-panel`, `early-present`, `no-present`,
 `normal-priority`, `trace-gl`), `trace-gl` (every GL call through a generated
 thunk), the unattended `play` mode, and `tools/phone-etw.py`. And for what an app
 does that it says nothing of: `trace-net` (every TCP connection the app makes,
 where to, how it ended and how long it took, and every name it looks up with its
-addresses; `bionic/hk_net.c`, `hk_netdb.c`) and `trace-exceptions` (every Java
+addresses; `bionic/mg_net.c`, `mg_netdb.c`) and `trace-exceptions` (every Java
 exception thrown, once, with its message and the method it was thrown in, caught
-or not; `dvm/hk_dvm_interp.c`), at most 1000 and 2000 lines a run; and
+or not; `dvm/mg_dvm_interp.c`), at most 1000 and 2000 lines a run; and
 `trace-stacks` (five seconds in, every Java thread's stack, its 24 top frames;
 then every two seconds those whose stack changed, the others counted; threads as
 they end, and any that could not be stopped; each thread stopped only while its
-frames are copied; at most 6000 lines; `dvm/hk_dvm_object.c`); and
+frames are copied; at most 6000 lines; `dvm/mg_dvm_object.c`); and
 `trace-calls-<prefix>`, the prefix a class name with dots (every call of a method
 of a class whose name starts with it, with its thread and depth, and its return
 with the value or the exception it ends with; up to eight such flags; at most 8000
-lines; `dvm/hk_dvm_interp.c`, the flags read by `hk_flags_each`); and
+lines; `dvm/mg_dvm_interp.c`, the flags read by `mg_flags_each`); and
 `trace-cpu` (every five seconds, the processor the app had in the phone's cores,
 and its eight busiest threads that ran guest code, by id and name, each as a
 share of one core: whether a slow app is held by one thread; at most 2000 lines;
-`bionic/hk_bionic.c`); and `trace-profile` (every second the three busiest
+`bionic/mg_bionic.c`); and `trace-profile` (every second the three busiest
 threads that ran guest code are chosen and each is sampled about sixty times a
 second -- stopped while its pc and the top 2 KB of its stack are copied; a
 sample in the system's own code is a wait, put to the first return address on
@@ -291,7 +291,7 @@ the six addresses it ran at and waited for most, and `LocalState\profile.txt`
 has every address with its count, which `tools/profile-names.py` names by
 function with the build's maps and an app library's exported symbols: where a
 game that is slow with the graphics processor idle spends its time; Windows
-only; at most 1000 lines; `bionic/hk_bionic.c`); and `trace-views` (a Java app's
+only; at most 1000 lines; `bionic/mg_bionic.c`); and `trace-views` (a Java app's
 view tree as its window is laid out, at most every three seconds, and every four
 seconds by a timer: each view's class, place and size, padding, translation, id,
 text and layout parameters, indented by depth; what keeps content off a bar, or
@@ -305,7 +305,7 @@ holds which lock since when, the line that thread was writing or the function
 that took the threads' lock (and the thread `trace-profile` was stopping), and
 where every thread that runs guest code is, as `trace-native-stacks` says it:
 first as bare addresses in `LocalState\hang.txt`, then named there and in the
-log past its lock; at most five reports; `bionic/hk_bionic.c`. `trace-net` also says, when the app closes a connection,
+log past its lock; at most five reports; `bionic/mg_bionic.c`. `trace-net` also says, when the app closes a connection,
 what went over it: the bytes and calls each way, the first sixteen bytes each
 way, when the first came in, the other end's close, errors and timeouts. Of a
 connection made it says which call the app learnt it by (`getsockopt SO_ERROR`,
@@ -320,7 +320,7 @@ frame read back just before it is handed over -- its centre and a 4 x 4 grid of
 pixels, R, G, B, A, rows from the top -- with where its view last said it is,
 when, and who composes it; and the views' picture at the same grid over each
 placed view, its alpha, `00` where the view's hole lets the frame through:
-`java: trace-surfaces: ...` lines, `drivers/hk_java_gl.c`) and `gl-compose-here`
+`java: trace-surfaces: ...` lines, `drivers/mg_java_gl.c`) and `gl-compose-here`
 (the core composes the window from frames read back, as where EGL shares no
 textures, instead of the shell on the graphics processor). A black frame, a frame
 the views hide, and a frame the shell loses tell apart so: the first has a black
@@ -340,8 +340,8 @@ for the output's sample rate and frames per buffer, under the names the constant
 parses the answers with `Integer.parseInt`. The constants were static fields
 nobody had given a value, so the names were null, so were the answers. Three
 things follow from that one: a table of Android's constants
-(`android_constants` in `jni/hk_jni_android.c`: the ones engines read, by class),
-the parsers (`jni/hk_jni_loop.c`), and a warning, once for each field, when a
+(`android_constants` in `jni/mg_jni_android.c`: the ones engines read, by class),
+the parsers (`jni/mg_jni_loop.c`), and a warning, once for each field, when a
 static field is read that nothing has given a value -- a silent null is the kind
 of thing that costs a day. With them FMOD makes its OpenSL ES player (44100 Hz,
 stereo, 16 bits) and the game is heard: the flag `record-audio` writes half a
@@ -349,7 +349,7 @@ minute of the mixer's output to `meglet-audio.wav`, and what came back was music
 (tonal, at musical pitches, 0.01% of it clipped, no gaps).
 
 **Films.** Unity's VideoPlayer wants `libmediandk.so` (and falls back to the Java
-`MediaExtractor`, which is not there). `ndk/hk_media.c` is that library with no
+`MediaExtractor`, which is not there). `ndk/mg_media.c` is that library with no
 decoder in it: the extractor copies the film out of the APK to a file and has the
 shell open it (`meglet_media_host` in `meglet.h`), hands the engine a ticket for each
 sample, and the codec, given a ticket, asks the shell for the next picture or
@@ -469,7 +469,7 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   look-up of a resource by name walked all 161,000 entries of Android 9's
   resource table and the items of a style were searched one by one
   (`ResTable`, `Resources`: 710 million instructions down to 3 million, found
-  with the interpreter's profile, `hk_dvm_profile`); a pressed row's ripple
+  with the interpreter's profile, `mg_dvm_profile`); a pressed row's ripple
   drawn as a disc over its neighbours (`ResInflate`, `RippleDrawable`: the
   mask that bounds it was dropped); and `MimeTypeMap` using a class Android 9
   does not have. The platform's resources are now cut to two languages and
@@ -584,7 +584,7 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
   same, the WebView started in 0.8 s, Chromium's GPU thread on ANGLE; VK mp3
   mod and Kate show VK ID's "not a robot" sheet in their WebViews, but the
   check in it did not load ("something went wrong") while its canvases had
-  no hardware buffers; those are there since (`ndk/hk_ahb.c`, with fence
+  no hardware buffers; those are there since (`ndk/mg_ahb.c`, with fence
   syncs), as is the WebView on a `RenderNode`'s canvas. Since (packages 256
   to 261) VK mp3 mod's sign-in has asked for a confirmation code instead,
   with a platform `DialogFragment`, which was a stub that showed nothing: a

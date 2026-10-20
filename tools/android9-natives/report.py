@@ -14,12 +14,12 @@ libraries   size, DT_NEEDED, and the exported and imported names of each library
             std::__1.
 layer       every name the libraries import from libc, libm, libdl, liblog,
             libz and libstdc++, looked up in the layer's symbol tables
-            (core/src: the hk_sym tables hk_bionic_find() answers from, read
+            (core/src: the mg_sym tables mg_bionic_find() answers from, read
             from the source), and what is not there, by the header that
             declares it.
 elf         what each library asks of a dynamic linker, and whether
-            core/src/ld/hk_ld.c and core/src/arm/hk_patch.c do it. The parts of
-            hk_patch.c that look for instructions (PLT entries, thread-pointer
+            core/src/ld/mg_ld.c and core/src/arm/mg_patch.c do it. The parts of
+            mg_patch.c that look for instructions (PLT entries, thread-pointer
             reads, system calls) are repeated here on the file, so the numbers
             can be held against what the loader itself prints.
 jni         the JNINativeMethod tables in libjavacore.so and libopenjdk.so
@@ -68,7 +68,7 @@ SYSINC = os.path.join(TC, 'sysroot', 'usr', 'include')
 
 BUILT = ['libicuuc.so', 'libicui18n.so', 'libnativehelper.so', 'libexpat.so', 'libjavacore.so', 'libopenjdk.so']
 COPIED = ['libcrypto.so']
-# The libraries Meglet's layer is itself (hk_bionic_is_system_lib); the NDK has a stub of each of these six.
+# The libraries Meglet's layer is itself (mg_bionic_is_system_lib); the NDK has a stub of each of these six.
 SYSTEM = ['libc.so', 'libm.so', 'libdl.so', 'liblog.so', 'libz.so', 'libstdc++.so']
 LINKER_OWN = {'__bss_start', '_edata', '_end', '__bss_start__', '__bss_end__', '__end__', '_bss_end__'}
 
@@ -156,7 +156,7 @@ def pair_loosely(missing, extra):
 
 # ------------------------------------------------------------------ the layer's symbol tables
 
-_MACRO = re.compile(r'^\s*#\s*define\s+(\w+)\(([^)]*)\)\s+HK_(WRAP|DATA|DIRECT)\((.*)\)\s*$', re.M)
+_MACRO = re.compile(r'^\s*#\s*define\s+(\w+)\(([^)]*)\)\s+MG_(WRAP|DATA|DIRECT)\((.*)\)\s*$', re.M)
 _STR = r'"((?:[^"\\]|\\.)*)"'
 
 
@@ -212,7 +212,7 @@ def _name_of(expr, params, args):
 
 
 def layer_symbols():
-    """name -> the source file whose table has it, for every hk_sym the core registers (core/src, all of it)."""
+    """name -> the source file whose table has it, for every mg_sym the core registers (core/src, all of it)."""
     found = {}
     core = os.path.join(ROOT, 'core', 'src')
     for dirpath, _, files in os.walk(core):
@@ -223,7 +223,7 @@ def layer_symbols():
             text = open(path, encoding='utf-8', errors='replace').read()
             text = re.sub(r'/\*.*?\*/', ' ', text, flags=re.S)
             rel = os.path.relpath(path, ROOT).replace('\\', '/')
-            macros = {'HK_WRAP': (['name', 'impl'], 'name'), 'HK_DATA': (['name', 'ptr'], 'name'), 'HK_DIRECT': (['fn'], '#fn')}
+            macros = {'MG_WRAP': (['name', 'impl'], 'name'), 'MG_DATA': (['name', 'ptr'], 'name'), 'MG_DIRECT': (['fn'], '#fn')}
             for m in _MACRO.finditer(text):
                 params = [p.strip() for p in m.group(2).split(',')]
                 inner = _args('(' + m.group(4) + ')', 0)
@@ -263,7 +263,7 @@ class World:
         self.jvm = set(read_names(os.path.join(HERE, 'libopenjdkjvm.syms')))
 
     def scope(self, so):
-        """Breadth-first over DT_NEEDED, as hk_ld.c's build_scope walks it; system libraries are not libraries there."""
+        """Breadth-first over DT_NEEDED, as mg_ld.c's build_scope walks it; system libraries are not libraries there."""
         order, seen = [so], {so}
         i = 0
         while i < len(order):
@@ -355,7 +355,7 @@ def libraries():
                 rows.append('   %s%s%s' % (k, '' if k == mangled else '   [%s]' % mangled, where))
             detail += rows
         detail.append('')
-    # Where each library's imports come from: the library a linker with hk_ld.c's search order takes each name from.
+    # Where each library's imports come from: the library a linker with mg_ld.c's search order takes each name from.
     cols = BUILT + COPIED + SYSTEM + ['libopenjdkjvm.so', 'nowhere']
     used = [c for c in cols]
     table = []
@@ -495,11 +495,11 @@ def layer():
 
 # ------------------------------------------------------------------ elf
 
-# What core/src/ld/hk_ld.c does with each thing a library can ask for, as read from its source (apply_reloc,
-# parse_dynamic, map_library, seal, hk_ld_init). "ignored" means the tag falls through parse_dynamic's default.
-HK_RELOCS = {'R_ARM_NONE', 'R_ARM_RELATIVE', 'R_ARM_ABS32', 'R_ARM_REL32', 'R_ARM_GLOB_DAT', 'R_ARM_JUMP_SLOT', 'R_ARM_IRELATIVE',
+# What core/src/ld/mg_ld.c does with each thing a library can ask for, as read from its source (apply_reloc,
+# parse_dynamic, map_library, seal, mg_ld_init). "ignored" means the tag falls through parse_dynamic's default.
+MG_RELOCS = {'R_ARM_NONE', 'R_ARM_RELATIVE', 'R_ARM_ABS32', 'R_ARM_REL32', 'R_ARM_GLOB_DAT', 'R_ARM_JUMP_SLOT', 'R_ARM_IRELATIVE',
              'R_ARM_TLS_DTPMOD32', 'R_ARM_TLS_DTPOFF32', 'R_ARM_TLS_TPOFF32'}
-HK_TAGS = {
+MG_TAGS = {
     'NEEDED': 'loaded first, breadth-first scope; the system libraries\' names are skipped',
     'SONAME': 'kept (a library is found again by it)',
     'HASH': 'read; gives the number of symbols',
@@ -512,7 +512,7 @@ HK_TAGS = {
     'ANDROID_REL': 'applied (APS2 packed relocations)', 'ANDROID_RELSZ': 'read',
     'RELR': 'applied', 'RELRSZ': 'read', 'ANDROID_RELR': 'applied', 'ANDROID_RELRSZ': 'read',
     'RELRENT': 'ignored', 'ANDROID_RELRENT': 'ignored',
-    'INIT': 'called before the init array', 'INIT_ARRAY': 'called in order, after the dependencies\' (hk_ld_init)', 'INIT_ARRAYSZ': 'read',
+    'INIT': 'called before the init array', 'INIT_ARRAY': 'called in order, after the dependencies\' (mg_ld_init)', 'INIT_ARRAYSZ': 'read',
     'FINI': 'ignored: a library is never unloaded', 'FINI_ARRAY': 'ignored: a library is never unloaded', 'FINI_ARRAYSZ': 'ignored',
     'FLAGS': 'ignored (BIND_NOW is what the loader does anyway)', 'FLAGS_1': 'ignored (NOW: the same)',
     'VERSYM': 'ignored: names are looked up without versions', 'VERNEED': 'ignored', 'VERNEEDNUM': 'ignored',
@@ -537,7 +537,7 @@ def _arm_imm(w):
 
 
 def patch_scan(e, relocs):
-    """What arm/hk_patch.c would find in the library's executable segments: (PLT entries it rewrites, JUMP_SLOT slots
+    """What arm/mg_patch.c would find in the library's executable segments: (PLT entries it rewrites, JUMP_SLOT slots
     no recognised entry jumps through, thread-pointer reads, svc sites). The same byte tests as plt_entry_slot,
     is_t32_tp_read / is_a32_tp_read and count_svc, on the file."""
     slots = set(off for tab, off, t, sym in relocs if tab == 'DT_JMPREL' and t == 22)
@@ -651,19 +651,19 @@ def elf():
                                                                      for p in e.phdrs if p['type'] != PT_LOAD))))
         out.append('relocations:')
         for (tab, name), c in sorted(types.items()):
-            out.append('    %-16s %-20s %6d   %s' % (tab, name, c, 'applied by hk_ld.c' if name in HK_RELOCS else 'NOT HANDLED by hk_ld.c'))
+            out.append('    %-16s %-20s %6d   %s' % (tab, name, c, 'applied by mg_ld.c' if name in MG_RELOCS else 'NOT HANDLED by mg_ld.c'))
         out.append('dynamic tags:')
         for t, c in tags.items():
-            out.append('    %-16s %s%s' % (t, HK_TAGS.get(t, 'ignored (not a tag parse_dynamic knows)'), '' if c == 1 else '   (%d of them)' % c))
+            out.append('    %-16s %s%s' % (t, MG_TAGS.get(t, 'ignored (not a tag parse_dynamic knows)'), '' if c == 1 else '   (%d of them)' % c))
         init = sum(e.dyn('INIT_ARRAYSZ')) // 4
         fini = sum(e.dyn('FINI_ARRAYSZ')) // 4
         out.append('constructors: %d in DT_INIT_ARRAY%s; destructors: %d in DT_FINI_ARRAY (never run)' % (init, ', and a DT_INIT' if e.dyn('INIT') else '', fini))
         vn = e.verneed()
-        out.append('symbol versions asked for: ' + ('; '.join('%s: %s' % (k, ' '.join(v)) for k, v in vn.items()) if vn else 'none') + ' (ignored by hk_ld.c)')
+        out.append('symbol versions asked for: ' + ('; '.join('%s: %s' % (k, ' '.join(v)) for k, v in vn.items()) if vn else 'none') + ' (ignored by mg_ld.c)')
         out.append('weak undefined symbols (0 when nothing defines them): %s' % (' '.join(weak_undef) if weak_undef else 'none'))
         out.append('IFUNC symbols: %s; thread-local symbols: %s' % (len(ifunc) or 'none', len(tls_syms) or 'none'))
         out.append('exported functions: %d Thumb, %d ARM' % (thumb, arm))
-        out.append('hk_patch.c would rewrite %d PLT entries for %d JUMP_SLOT relocations%s; %d thread-pointer reads; %d direct system calls' % (
+        out.append('mg_patch.c would rewrite %d PLT entries for %d JUMP_SLOT relocations%s; %d thread-pointer reads; %d direct system calls' % (
             plt, sum(c for (tab, name), c in types.items() if name == 'R_ARM_JUMP_SLOT' and tab == 'DT_JMPREL'),
             '' if not plt_missed else ' (%d SLOTS HAVE NO ENTRY IT RECOGNISES)' % plt_missed, tp, svc))
         out.append('build attributes: CPU %s, FP %s, Advanced SIMD %s' % (attr.get('CPU_arch'), attr.get('FP_arch'), attr.get('Advanced_SIMD_arch', 'not used')))
@@ -679,13 +679,13 @@ def elf():
         if so in BUILT:
             out.append('ARM-mode (not Thumb) functions inside, by the full symbol table: %d: %s' % (len(arm_fns), ' '.join(arm_fns)))
         out.append('')
-        bad = [name for (tab, name), c in types.items() if name not in HK_RELOCS]
+        bad = [name for (tab, name), c in types.items() if name not in MG_RELOCS]
         summary.append('| %s | %s | %s | %d / %d | %d | %d | %s | %s | %s |' % (
             so, ', '.join('%s %d' % (name[6:], c) for (tab, name), c in sorted(types.items())),
             'APS2' if e.dyn('ANDROID_REL') else 'REL', plt,
             sum(c for (tab, name), c in types.items() if name == 'R_ARM_JUMP_SLOT'), tp, init, len(weak_undef) or 'none',
             'yes' if any(p['type'] == PT_TLS for p in e.phdrs) else 'no', 'NO: ' + ' '.join(bad) if bad else 'yes'))
-    head = ['| library | relocations (dynamic) | table | PLT entries hk_patch.c rewrites / JUMP_SLOTs | thread-pointer reads | constructors | weak undefined | PT_TLS | all handled by hk_ld.c |',
+    head = ['| library | relocations (dynamic) | table | PLT entries mg_patch.c rewrites / JUMP_SLOTs | thread-pointer reads | constructors | weak undefined | PT_TLS | all handled by mg_ld.c |',
             '|---|---|---|---|---|---|---|---|---|']
     write('elf.txt','\n'.join(head + summary) + '\n')
     write('elf-details.txt', '\n'.join(out) + '\n')
@@ -998,14 +998,14 @@ def loadtest():
         said[so].add(name)
     loaded = {so: tuple(int(x) for x in m) for so, *m in
               re.findall(r'ld: (\S+) at \S+ \(\d+ KB\), (\d+) Thumb / (\d+) ARM functions, (\d+) thread-pointer reads and (\d+) PLT entries rewritten', text)}
-    out = [line for line in text.split('\n') if line.startswith('hk_tests:') or line.startswith('--- ')]
+    out = [line for line in text.split('\n') if line.startswith('mg_tests:') or line.startswith('--- ')]
     # The program may be older than the layer's source is now: a name the source has gained since is not a disagreement.
     built = re.search(r'built at (\d{4})-(\d\d)-(\d\d) (\d\d):(\d\d)', text)
     newest = max(os.path.getmtime(os.path.join(d, f)) for d, _, fs in os.walk(os.path.join(ROOT, 'core', 'src')) for f in fs)
     import datetime
     stale = bool(built) and datetime.datetime(*[int(x) for x in built.groups()]) + datetime.timedelta(minutes=1) < datetime.datetime.fromtimestamp(newest)
     if stale:
-        out.append('the layer\'s source has changed since that hk_tests was built (newest file under core/src: %s)' %
+        out.append('the layer\'s source has changed since that mg_tests was built (newest file under core/src: %s)' %
                    datetime.datetime.fromtimestamp(newest).strftime('%Y-%m-%d %H:%M'))
     anywhere = set().union(*world.exports.values())
     ok = True
@@ -1015,7 +1015,7 @@ def loadtest():
             out.append('%s: NOT LOADED' % so)
             ok = False
             continue
-        # hk_ld.c's resolve(): the library's scope, then the layer's tables, then any loaded library.
+        # mg_ld.c's resolve(): the library's scope, then the layer's tables, then any loaded library.
         expect = set(s.name for s in e.dynsyms() if not s.defined and s.name and s.bind != 'WEAK' and s.name not in anywhere and s.name not in have)
         relocs = e.dynamic_relocs()
         plt, missed, tp, svc = patch_scan(e, relocs)
@@ -1050,7 +1050,7 @@ def loadtest():
         for n in sorted(runtime):
             by_file[have[n]].append(n)
         for f, names in sorted(by_file.items()):
-            out.append('unresolved in that run because `hk_tests --load` starts no Java runtime, but in the table of %s (%d): %s' % (f, len(names), ' '.join(names)))
+            out.append('unresolved in that run because `mg_tests --load` starts no Java runtime, but in the table of %s (%d): %s' % (f, len(names), ' '.join(names)))
     if since:
         out.append('unresolved in that run, in the layer\'s source now: %s' % ' '.join(sorted(since)))
     probe = re.findall(r'^I/probe: (.*) -- (ok|WRONG)$', text, re.M)
@@ -1065,7 +1065,7 @@ def loadtest():
     for what, right in known.items():
         m = re.search(r'^  %s: (\S+)$' % re.escape(what), text, re.M)
         if m:
-            out.append('libcrypto.so, hk_tests\' own %s: %s' % (what, 'right' if m.group(1) == right else 'WRONG (%s)' % m.group(1)))
+            out.append('libcrypto.so, mg_tests\' own %s: %s' % (what, 'right' if m.group(1) == right else 'WRONG (%s)' % m.group(1)))
             ok = ok and m.group(1) == right
     failed = re.findall(r'^.*(?:relocation failed|not supported|no room for|out of an island|did not load|cannot make).*$', text, re.M)
     out.append('other complaints of the loader: ' + ('; '.join(failed) if failed else 'none'))

@@ -1,4 +1,4 @@
-# meglet.runtime.PhoneTimeZone: where libcore learns the phone's time zone (hk_dvm_art.c, "the time zone").
+# meglet.runtime.PhoneTimeZone: where libcore learns the phone's time zone (mg_dvm_art.c, "the time zone").
 #
 # java.util.TimeZone's default is asked of org.apache.harmony.luni.internal.util.TimezoneGetter first; libcore itself has no
 # getter and says GMT without one. On Android the framework's start gives it one that reads the property

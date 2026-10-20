@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 
 /**
- * The interpreter's benchmark (core/tests/hk_dvm_bench.c runs it): each static method does `n` times one kind of work and
+ * The interpreter's benchmark (core/tests/mg_dvm_bench.c runs it): each static method does `n` times one kind of work and
  * returns something made of it, so that nothing it does is for nothing. The runner times each and counts the instructions it
  * executed. Compiled by javac and d8 (tools/dvm-bench-fixture.sh) into core/tests/dvm/bench/bench.dex.
  */

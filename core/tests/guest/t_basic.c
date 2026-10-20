@@ -839,7 +839,7 @@ int t_hardware_buffer(void)
 }
 
 /*
- * AAudio (libaaudio), as Chromium and Oboe start a stream: a builder first, AAUDIO_OK and a builder (ndk/hk_aaudio.c; its
+ * AAudio (libaaudio), as Chromium and Oboe start a stream: a builder first, AAUDIO_OK and a builder (ndk/mg_aaudio.c; its
  * streams are tested by t_aaudio.c), and the builder's setUsage, which Chromium binds weakly, is there. 2, or the negated
  * step that failed.
  */
@@ -1047,7 +1047,7 @@ int t_chrome_cmdline(void)
 /*
  * An IFUNC: a symbol the loader resolves at load time by running a resolver in the library's own code, which picks one of
  * several implementations (libc's string and memory routines are IFUNCs that pick a CPU-tuned version). The resolver is
- * the library's code, so the loader must have made the text executable before it runs it (hk_ld.c's two-pass relocate).
+ * the library's code, so the loader must have made the text executable before it runs it (mg_ld.c's two-pass relocate).
  * t_ifunc calls the resolved symbol; it must give the chosen implementation's answer (an argument plus 200).
  */
 static volatile int t_ifunc_which = 1;   /* volatile: the resolver is a real runtime choice, not folded at link time */

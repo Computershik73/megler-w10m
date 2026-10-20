@@ -1,4 +1,4 @@
-"""Where the package name sits in the data of a resources.pri's schema checksum (core/src/appx/hk_appx_pri.c).
+"""Where the package name sits in the data of a resources.pri's schema checksum (core/src/appx/mg_appx_pri.c).
 
     python tools/pri-tails.py <template.pri> <probe.pri> <placeholder> <index>
 

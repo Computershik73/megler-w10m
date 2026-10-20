@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# The interpreter as the phone's package compiles it: core/src/dvm/hk_dvm_interp.c through MSVC for 32-bit ARM with the
+# The interpreter as the phone's package compiles it: core/src/dvm/mg_dvm_interp.c through MSVC for 32-bit ARM with the
 # flags tools/build-appx.sh gives the core (/O2, an app container's headers), disassembled. For looking at what a
 # change does to the code the phone runs, which nothing on this PC can time.
 #
-#   tools/dvm-arm-disasm.sh [function, hk_dvm_interpret]
+#   tools/dvm-arm-disasm.sh [function, mg_dvm_interpret]
 #
 # Writes build/dvm-arm-disasm/<function>.asm and prints how long the function is and the instructions around the
 # switch's jump (the loop's head, which every instruction passes through).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-FUNC="${1:-hk_dvm_interpret}"
+FUNC="${1:-mg_dvm_interpret}"
 VC=""
 for cl in "/c/Program Files/Microsoft Visual Studio/2022/"*/VC/Tools/MSVC/*/bin/Hostx64/arm/cl.exe; do
   [ -f "$cl" ] && VC="${cl%/bin/Hostx64/arm/cl.exe}"
@@ -23,9 +23,9 @@ export MSYS2_ARG_CONV_EXCL="*" VSLANG=1033
 OUT="$ROOT/build/dvm-arm-disasm"
 mkdir -p "$OUT"
 "$VC/bin/Hostx64/arm/cl.exe" /nologo /c /O2 /MT /utf-8 /DWINAPI_FAMILY=WINAPI_FAMILY_APP /DWIN32 /D_WIN32 /DUNICODE /D_UNICODE /DNOMINMAX \
-  /DWIN32_LEAN_AND_MEAN /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DNDEBUG /D_ARM_ "/Fo$(w "$OUT/hk_dvm_interp.obj")" \
-  "$(w "$ROOT/core/src/dvm/hk_dvm_interp.c")" > /dev/null
-"$VC/bin/Hostx64/x64/dumpbin.exe" /nologo /disasm "$(w "$OUT/hk_dvm_interp.obj")" > "$OUT/all.asm"
+  /DWIN32_LEAN_AND_MEAN /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DNDEBUG /D_ARM_ "/Fo$(w "$OUT/mg_dvm_interp.obj")" \
+  "$(w "$ROOT/core/src/dvm/mg_dvm_interp.c")" > /dev/null
+"$VC/bin/Hostx64/x64/dumpbin.exe" /nologo /disasm "$(w "$OUT/mg_dvm_interp.obj")" > "$OUT/all.asm"
 python - "$(w "$OUT/all.asm")" "$FUNC" "$(w "$OUT/$FUNC.asm")" <<'EOF'
 import re, sys
 text = open(sys.argv[1], encoding="latin-1").read().splitlines()

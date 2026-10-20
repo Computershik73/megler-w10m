@@ -7,7 +7,7 @@
 .implements Ljava/lang/CharSequence;
 
 # The constructors are declared so that code naming them links. They are never called: the interpreter
-# makes the string itself where one is invoked (hk_dvm_string_init), as ART does through StringFactory.
+# makes the string itself where one is invoked (mg_dvm_string_init), as ART does through StringFactory.
 .method public constructor native <init>()V
 .end method
 

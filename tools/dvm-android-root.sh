@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Puts together the folder the Dalvik runtime starts Android's libcore from
-# (hk_dvm_start_android): laid out like Android's /system, out of what
+# (mg_dvm_start_android): laid out like Android's /system, out of what
 # tools/android9-*.sh left in build/android9.
 #
 #   tools/dvm-android-root.sh [--no-res | --full-res] [folder]        (build/android9/root when no folder is named)
@@ -12,7 +12,7 @@
 #                           Android's legacy Apache HTTP client, not on the
 #                           boot class path: an app that asks for it in its
 #                           manifest, or targets an Android before 9, has it
-#                           on its class path (drivers/hk_java.c)
+#                           on its class path (drivers/mg_java.c)
 #   framework/core-oj.jar, core-libart.jar
 #                           the jars as the device has them: no bytecode in
 #                           them, but what else libcore opens them for (ICU4J
@@ -22,7 +22,7 @@
 #                           the runtime still starts, and libcore is its
 #                           bytecode alone. With libjavacrypto.so among them
 #                           the security providers are conscrypt's, TLS
-#                           included (hk_dvm_art.c, "the security providers")
+#                           included (mg_dvm_art.c, "the security providers")
 #   etc/security/cacerts/*  the certificate authorities Android 9 trusts, which
 #                           conscrypt's trust manager reads; without them no
 #                           server's certificate is trusted
@@ -64,10 +64,10 @@
 #   lib/libwebviewchromium_plat_support.so
 #                           the name of the platform's WebView support, which
 #                           the WebView loads by name: a file that says so, as
-#                           its natives are the core's (hk_java_webview.c)
+#                           its natives are the core's (mg_java_webview.c)
 #   lib/libc.so, libz.so ...
 #                           the names of the system's libraries the core
-#                           answers itself (hk_bionic_is_system_lib), each a
+#                           answers itself (mg_bionic_is_system_lib), each a
 #                           file that says so: code that looks for them in
 #                           /system/lib before loading (Facebook's SoLoader)
 #                           finds them there
@@ -93,7 +93,7 @@ put() { # source, destination folder
   if [ -f "$1" ]; then cp -u "$1" "$2/"; else echo "  (not there: ${1#$ROOT/})"; fi
 }
 for name in core-oj core-libart conscrypt okhttp bouncycastle apache-xml; do put "$A9/boot/$name.dex" "$OUT/framework"; done
-# Android's legacy Apache HTTP client, for the apps that get it on their class path (drivers/hk_java.c, add_shared_libraries).
+# Android's legacy Apache HTTP client, for the apps that get it on their class path (drivers/mg_java.c, add_shared_libraries).
 put "$A9/boot/org.apache.http.legacy.dex" "$OUT/framework"
 bash "$ROOT/tools/build-libcore-overlay.sh"
 put "$ROOT/build/libcore-overlay/meglet-libcore.dex" "$OUT/framework"
@@ -167,7 +167,7 @@ WEBVIEW="no WebView"
 if [ -f "$ROOT/build/webview/webview.apk" ]; then
   mkdir -p "$OUT/app/webview"
   cmp -s "$ROOT/build/webview/webview.apk" "$OUT/app/webview/webview.apk" || cp "$ROOT/build/webview/webview.apk" "$OUT/app/webview/webview.apk"
-  echo "The platform support of the WebView: its natives are answered by the core (core/src/drivers/hk_java_webview.c)." > "$OUT/lib/libwebviewchromium_plat_support.so"
+  echo "The platform support of the WebView: its natives are answered by the core (core/src/drivers/mg_java_webview.c)." > "$OUT/lib/libwebviewchromium_plat_support.so"
   WEBVIEW="the WebView $(size "$OUT/app/webview") KB"
 else
   echo "  (not there: build/webview/webview.apk: tools/webview-fetch.sh fetches Android's System WebView)"
@@ -175,16 +175,16 @@ else
 fi
 # The system's libraries whose functions the core answers itself, each named in lib by a file that says so, as Android has
 # them as files in /system/lib: Facebook's SoLoader looks for an app library's system dependencies there before it loads
-# it, and Instagram stopped at "couldn't find DSO to load: libz.so". The names are the core's own list (hk_bionic.c,
-# hk_bionic_is_system_lib); a library of that name is loaded by its name, whatever its file holds. A file already there
+# it, and Instagram stopped at "couldn't find DSO to load: libz.so". The names are the core's own list (mg_bionic.c,
+# mg_bionic_is_system_lib); a library of that name is loaded by its name, whatever its file holds. A file already there
 # (libcore's, the WebView's support above) is left as it is.
 SYSLIBS=0
-for name in $(sed -n '/^bool hk_bionic_is_system_lib/,/^}/p' "$ROOT/core/src/bionic/hk_bionic.c" | grep -o '"lib[^"]*\.so"' | tr -d '"'); do
+for name in $(sed -n '/^bool mg_bionic_is_system_lib/,/^}/p' "$ROOT/core/src/bionic/mg_bionic.c" | grep -o '"lib[^"]*\.so"' | tr -d '"'); do
   [ "$name" = libwebviewchromium_plat_support.so ] && continue
-  [ -f "$OUT/lib/$name" ] || echo "A library of the system's whose functions the core answers itself (core/src/bionic/hk_bionic.c, hk_bionic_is_system_lib): it is loaded by its name." > "$OUT/lib/$name"
+  [ -f "$OUT/lib/$name" ] || echo "A library of the system's whose functions the core answers itself (core/src/bionic/mg_bionic.c, mg_bionic_is_system_lib): it is loaded by its name." > "$OUT/lib/$name"
   SYSLIBS=$((SYSLIBS + 1))
 done
-[ "$SYSLIBS" -gt 0 ] || { echo "no system libraries named in core/src/bionic/hk_bionic.c (hk_bionic_is_system_lib)" >&2; exit 1; }
+[ "$SYSLIBS" -gt 0 ] || { echo "no system libraries named in core/src/bionic/mg_bionic.c (mg_bionic_is_system_lib)" >&2; exit 1; }
 # The Java framework an app with an Activity runs on, where it has been built (tools/build-framework.sh).
 FW="no Java framework"
 if [ -f "$ROOT/build/framework/meglet-framework.dex" ]; then

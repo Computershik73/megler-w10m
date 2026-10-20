@@ -46,7 +46,7 @@
 // the keyboard alone, and the shell kept every app in full screen whatever it asked.
 //
 // Why. Where a frame's time goes -- in Java and in which part of the frame, in the shell's drawing, in handing the picture
-// over -- is measured from the core's side (core/src/drivers/hk_java.c, "the frame meter", a line in the log every five
+// over -- is measured from the core's side (core/src/drivers/mg_java.c, "the frame meter", a line in the log every five
 // seconds while the app draws), and only the frame itself knows where its phases begin. Nothing else changes: the calls
 // are native and take no time to speak of. Everything else is the original's, unchanged.
 package meglet;

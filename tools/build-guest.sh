@@ -55,7 +55,7 @@ SYS=("-L$(w "$STUBS")" -lc -lm -ldl -llog)
 "$CLANG" "${COMMON[@]}" -mthumb -Wl,--hash-style=both   -Wl,-soname,libt_svc.so -o "$(w "$OUT/libt_svc.so")" "$(w "$SRC/t_svc.c")" "${SYS[@]}"
 "$CLANG" "${COMMON[@]}" -mthumb -Wl,--hash-style=both   -Wl,-soname,libt_svc_diag.so -o "$(w "$OUT/libt_svc_diag.so")" "$(w "$SRC/t_svc.c")" "${SYS[@]}"
 "$CLANG" "${COMMON[@]}" -marm -Wl,--hash-style=both   -Wl,-soname,libt_svc_arm.so -o "$(w "$OUT/libt_svc_arm.so")" "$(w "$SRC/t_svc.c")" "${SYS[@]}"
-# AAudio looked up by name, as an app that decodes its own sound does (core/src/ndk/hk_aaudio.c).
+# AAudio looked up by name, as an app that decodes its own sound does (core/src/ndk/mg_aaudio.c).
 "$CLANG" "${COMMON[@]}" -mthumb -Wl,--hash-style=both   -Wl,-soname,libt_aaudio.so -o "$(w "$OUT/libt_aaudio.so")" "$(w "$SRC/t_aaudio.c")" "${SYS[@]}"
 
 # One file name twice: the app's, and the one that stands for a library of the Android root's.
