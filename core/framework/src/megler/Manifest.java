@@ -9,7 +9,7 @@ import org.xmlpull.v1.XmlPullParser;
 /** The app's AndroidManifest.xml, read once: the application and its components, as PackageManager would report them. */
 public final class Manifest {
     public static final class Component {
-        public String name, kind, authorities, process, permission, parentActivity;
+        public String name, kind, authorities, process, permission, readPermission, writePermission, parentActivity;
         public int theme, label, icon, screenOrientation = -1, configChanges, launchMode, windowSoftInputMode, uiOptions, initOrder;
         public boolean exported, enabled = true, grantUriPermissions;
         public Bundle metaData;
@@ -102,6 +102,8 @@ public final class Manifest {
                     cur.grantUriPermissions = p.getAttributeBooleanValue(NS, "grantUriPermissions", false);
                     cur.process = p.getAttributeValue(NS, "process");
                     cur.permission = p.getAttributeValue(NS, "permission");
+                    cur.readPermission = p.getAttributeValue(NS, "readPermission");
+                    cur.writePermission = p.getAttributeValue(NS, "writePermission");
                     if (cur.parentActivity == null) cur.parentActivity = full(p.getAttributeValue(NS, "parentActivityName"));
                     if ("service".equals(tag)) services.add(cur);
                     else if ("receiver".equals(tag)) receivers.add(cur);

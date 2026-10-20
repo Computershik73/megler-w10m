@@ -116,6 +116,10 @@ public final class AppRunner {
                 ProviderInfo info = new ProviderInfo();
                 info.name = p.name; info.authority = p.authorities; info.packageName = Native.packageName(); info.exported = p.exported; info.metaData = p.metaData; info.grantUriPermissions = p.grantUriPermissions;
                 info.applicationInfo = app.getApplicationInfo();
+                // As the manifest says them: android:readPermission and writePermission, else android:permission for both
+                // (Android's SearchIndexablesProvider refuses to start without READ_SEARCH_INDEXABLES there).
+                info.readPermission = p.readPermission != null ? p.readPermission : p.permission;
+                info.writePermission = p.writePermission != null ? p.writePermission : p.permission;
                 cp.attachInfo(app, info);
                 ContentResolver.register(p.authorities, cp);
             } catch (Throwable t) {
