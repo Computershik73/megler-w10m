@@ -5,12 +5,14 @@
 #include "auto/AutoRun.h"
 #include "library/Library.h"
 #include "player/Session.h"
+#include "player/StorageHost.h"
 #include "shell/AppPackage.h"
 #include "shell/Checks.h"
 #include "shell/Files.h"
 #include "shell/Platform.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
+#include "ui/SharedFolders.h"
 #include "ui/Theme.h"
 
 #include "megler.h"
@@ -362,17 +364,29 @@ void AppShell::poll() {
         platform::sampleMemory();
         autorun::tick(*this);
         // An app's own package opens its app as soon as the library has it read: straight into the player when it can
-        // run here, else its page, which says why not.
+        // run here, else its page, which says why not. Before the player, Megler's folders the app has not got are offered
+        // (ui/SharedFolders.h), once the phone's folders are known.
         if (appPackage::isSingleApp() && !singleAppOpened_) {
             const auto entry = Library::instance().find(appPackage::singleAppId());
-            if (entry && entry->analysed) {
+            if (entry && entry->analysed && (!entry->report.ready() || StorageHost::shared().searched())) {
                 singleAppOpened_ = true;
                 shellLog::write("app package: opening " + entry->report.package);
-                if (entry->report.ready())
-                    push(makePlayerScreen(*this, entry->id));
-                else
-                    push(makeAppDetailScreen(*this, entry->id));
+                const std::string id = entry->id;
+                if (entry->report.ready()) {
+                    std::weak_ptr<AppShell> weak = weak_from_this();
+                    sharedFolders::offer(false, [weak, id](int, int) {
+                        if (auto self = weak.lock()) self->push(makePlayerScreen(*self, id));
+                    });
+                } else {
+                    push(makeAppDetailScreen(*this, id));
+                }
             }
+        }
+        // Megler itself lists its added folders for the separate apps once the phone's folders are known (and Settings
+        // again whenever they change).
+        if (!appPackage::isSingleApp() && !foldersPublished_ && StorageHost::shared().searched()) {
+            foldersPublished_ = true;
+            sharedFolders::publish();
         }
     } catch (const hresult_error& e) {
         shellLog::write("ui: refresh failed: " + narrow(e.message()));

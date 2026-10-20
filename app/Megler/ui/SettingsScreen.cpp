@@ -11,6 +11,7 @@
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 #include "ui/AppShell.h"
+#include "ui/SharedFolders.h"
 #include "ui/Theme.h"
 
 #include "megler.h"
@@ -97,6 +98,7 @@ private:
                     shell_.confirm("Take /sdcard/" + name + " Out?",
                                    "The folder and what is in it stay on the phone. Android apps no longer see it.", "Take Out", true, [this, token] {
                                        StorageHost::shared().remove(token);
+                                       sharedFolders::publish();
                                        rebuild();
                                    });
                 }, ButtonKind::plain, "Take " + name + " out");
@@ -118,7 +120,8 @@ private:
         return listSection("Android Storage", rows,
                            "Folders of the phone that every Android app finds in its storage. The music, pictures and videos are there by themselves. "
                            "Add a Folder puts any other folder there under a name you give it: the phone's Documents or Downloads, a folder of a "
-                           "memory card. An app is given them when it starts. Check the Folders tries in each what an app does to files, in a "
+                           "memory card. An app is given them when it starts. A separate app asks for each of them once, as Windows "
+                           "lets a picked folder into one app only. Check the Folders tries in each what an app does to files, in a "
                            "folder of its own that it removes again (megler-storage-check); every step is in the Log.");
     }
 
@@ -207,6 +210,7 @@ private:
                     while (!name.empty() && name.back() == ' ') name.pop_back();
                     while (!name.empty() && name.front() == ' ') name.erase(name.begin());
                     error = StorageHost::shared().add(folder, name);
+                    if (error.empty()) sharedFolders::publish();
                 }
             }
         } catch (const hresult_error& e) {

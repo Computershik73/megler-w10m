@@ -29,6 +29,7 @@
 #include "shell/Strings.h"
 #include "ui/AppShell.h"
 #include "ui/Components.h"
+#include "ui/SharedFolders.h"
 
 #include <winrt/Windows.UI.Text.Core.h>
 
@@ -349,6 +350,12 @@ private:
         add(column, menuStatus_);
         auto resume = primaryButton("Resume", glyphs::play, [this] { showMenu(false); });
         add(column, resume);
+        // A separate app: Megler's folders it has not got, those said "Not Now" to as well (ui/SharedFolders.h).
+        if (appPackage::isSingleApp()) {
+            auto folders = primaryButton("Phone Folders", glyphs::folder, [this] { offerFolders(); }, p.fill);
+            folders.Margin(ThicknessHelper::FromLengths(0, 10, 0, 0));
+            add(column, folders);
+        }
         auto quitButton = primaryButton("Quit", glyphs::close, [this] { quit(); }, p.fill);
         quitButton.Margin(ThicknessHelper::FromLengths(0, 10, 0, 0));
         add(column, quitButton);
@@ -377,6 +384,19 @@ private:
         }
         setVisible(menuOverlay_, show);
         shellLog::write(show ? "player: menu opened" : "player: menu closed");
+    }
+
+    void offerFolders() {
+        AppShell& shell = shell_;
+        sharedFolders::offer(true, [&shell](int offered, int added) {
+            if (offered < 0)
+                shell.alert("No Folders in Megler", "Megler has no folders of the phone's added. Add them in Megler: Settings, Android Storage, Add a Folder; "
+                                                  "then they are offered here.");
+            else if (offered == 0)
+                shell.alert("Every Folder Is Here", "This app has every folder Megler has. More are added in Megler: Settings, Android Storage, Add a Folder.");
+            else if (added > 0)
+                shell.alert("Folders Added", "The app finds them from its next start.");
+        });
     }
 
     void quit() {
