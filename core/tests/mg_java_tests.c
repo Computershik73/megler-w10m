@@ -591,7 +591,7 @@ static void media_metadata(void *user, const char *title, const char *artist, co
     media_heard(t);
 }
 
-/* What the app asked of the phone (megler_system_host): "install=Viewed.apk;install=base.apk;". */
+/* What the app asked of the phone (megler_system_host): "launch=com.example.other/com.example.other.Main;install=Viewed.apk;". */
 static char g_system_heard[512];
 static mg_lock g_system_lock = MG_LOCK_INIT;
 
@@ -612,6 +612,47 @@ static bool system_install(void *user, const char *host_path, const char *name)
     snprintf(t, sizeof(t), "install=%s%s;", name, mg_path_stat(host_path, &st, NULL) ? "" : "(no file)");
     system_heard(t);
     return true;
+}
+
+static bool system_launch(void *user, const char *package, const char *activity)
+{
+    char t[200];
+    (void)user;
+    snprintf(t, sizeof(t), "launch=%s/%s;", package, activity ? activity : "-");
+    system_heard(t);
+    return true;
+}
+
+/* The apps folder the data app is given (megler_run_config.apps_dir): one other app, with an icon of 2 x 2. */
+static const char *phone_apps_fixture(void)
+{
+    static const unsigned char png[] = {
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00,
+        0x00, 0x02, 0x08, 0x06, 0x00, 0x00, 0x00, 0x72, 0xb6, 0x0d, 0x24, 0x00, 0x00, 0x00, 0x14, 0x49, 0x44, 0x41, 0x54, 0x78, 0xda, 0x63,
+        0x34, 0x4e, 0x9b, 0xf9, 0x9f, 0x81, 0x81, 0x81, 0x81, 0x89, 0x01, 0x0a, 0x00, 0x20, 0xe2, 0x02, 0x35, 0x31, 0xce, 0xf5, 0x2d, 0x00,
+        0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82
+    };
+    static char *dir;
+    char *path;
+    FILE *f;
+    if (dir) return dir;
+    dir = mg_sprintf("%s/phone-apps", megler_data_dir());
+    mg_path_mkdirs(dir);
+    path = mg_sprintf("%s/apps.txt", dir);
+    f = fopen(path, "wb");
+    if (f) {
+        fputs("com.example.other\tcom.example.other.Main\tOther\t1.0\t3\n", f);
+        fclose(f);
+    }
+    free(path);
+    path = mg_sprintf("%s/com.example.other.png", dir);
+    f = fopen(path, "wb");
+    if (f) {
+        fwrite(png, 1, sizeof(png), f);
+        fclose(f);
+    }
+    free(path);
+    return dir;
 }
 
 static bool start(const char *apk, const char *android_root)
@@ -641,7 +682,9 @@ static bool start(const char *apk, const char *android_root)
     cfg.media_session.metadata = media_metadata;
     g_media_heard[0] = 0;
     cfg.system.install_apk = system_install;
+    cfg.system.launch_app = system_launch;
     g_system_heard[0] = 0;
+    cfg.apps_dir = phone_apps_fixture();
     /* Decoders for MediaCodec that decode nothing but take samples only as a real one must have them (mg_codec_standin.c). */
     cfg.codec = *mg_codec_standin();
     if (g_camera_app) cfg.camera = *mg_camera_standin();
@@ -1782,12 +1825,13 @@ static void media_session_keys(void)
 }
 
 /*
- * What the data app asked of the phone (megler_system_host), in order: to install the APK it opened with ACTION_VIEW; to
- * install its PackageInstaller session's one file, whose status, STATUS_SUCCESS (0), then comes back to the app.
+ * What the data app asked of the phone (megler_system_host), in order: to start the other app the apps folder has, by its
+ * launch intent; to install the APK it opened with ACTION_VIEW; to install its PackageInstaller session's one file, whose
+ * status, STATUS_SUCCESS (0), then comes back to the app.
  */
 static void system_requests(void)
 {
-    static const char want[] = "install=Viewed.apk;install=base.apk;";
+    static const char want[] = "launch=com.example.other/com.example.other.Main;install=Viewed.apk;install=base.apk;";
     char heard[sizeof(g_system_heard)];
     int tries;
     for (tries = 0; tries < 150; tries++) {
@@ -1834,7 +1878,7 @@ static int run_data(void)
                                             custom action, as PlaybackStateCompat makes it. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "package-installer", "wifi", "media-metadata", "playback-state", "theme-accent", "install-intent", "install-session",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "package-installer", "wifi", "media-metadata", "playback-state", "theme-accent", "phone-apps", "install-intent", "install-session",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an

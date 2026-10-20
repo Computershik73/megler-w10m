@@ -14,7 +14,8 @@
 //
 // And an intent to install an APK (ACTION_INSTALL_PACKAGE, or ACTION_VIEW of an APK, naming no activity) goes to Megler's
 // installer first (megler.Installs), as Android hands it to its package installer, rather than to an activity of the app's
-// that takes the content or file scheme.
+// that takes the content or file scheme. And an intent for an activity of another app the phone has goes to the shell,
+// which starts that app (megler.PhoneApps).
 //
 // Everything else is the original's, unchanged.
 package megler;
@@ -163,6 +164,9 @@ public final class AppRunner {
             if (request >= 0 && caller != null) sHandler.post(() -> caller.meglerActivityResult(request, Activity.RESULT_OK, null));
             return;
         }
+        // An activity of another app the phone has (a launcher's tap, an app opening another): the shell starts that app
+        // (megler.PhoneApps), as Android starts another app's activity in its own process.
+        if (megler.PhoneApps.start(i)) return;
         Manifest.Component c = Manifest.resolve(i);
         android.util.Log.d("Megler", "startActivity " + i + (c != null ? " -> " + c.name : " (not an activity of this app)"));
         if (c != null) {

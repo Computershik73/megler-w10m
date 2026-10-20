@@ -340,6 +340,7 @@ public class Main extends Activity {
         mediaMetadata();
         playbackState();
         themeAccent();
+        phoneApps();
         installs();
         sound();
         mediaCodec();
@@ -1988,6 +1989,32 @@ public class Main extends Activity {
             codec.release();
             detail = out + " frames=" + s.samples.size();
             return out.ended && out.blocks == s.samples.size() && out.pcm == s.samples.size() * 1152L * 2 * 2;
+        });
+    }
+
+    /**
+     * The other apps the phone has, as a launcher sees them (the test's apps folder has one, com.example.other, "Other",
+     * launched by com.example.other.Main): the launcher's intent lists it with its label and icon, it has a launch intent and
+     * application info, and starting it asks the shell (megler_system_host.launch_app).
+     */
+    private void phoneApps() {
+        step("phone-apps", () -> {
+            android.content.pm.PackageManager pm = getPackageManager();
+            android.content.Intent launcher = new android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_LAUNCHER);
+            boolean listed = false;
+            for (android.content.pm.ResolveInfo r : pm.queryIntentActivities(launcher, 0))
+                if ("com.example.other".equals(r.activityInfo.packageName))
+                    listed = "Other".equals(String.valueOf(r.loadLabel(pm))) && r.loadIcon(pm) != null && "com.example.other.Main".equals(r.activityInfo.name);
+            android.content.Intent open = pm.getLaunchIntentForPackage("com.example.other");
+            boolean info;
+            try { info = pm.getApplicationInfo("com.example.other", 0).enabled; } catch (android.content.pm.PackageManager.NameNotFoundException e) { info = false; }
+            boolean launcherApps = false;
+            android.content.pm.LauncherApps la = (android.content.pm.LauncherApps) getSystemService(LAUNCHER_APPS_SERVICE);
+            for (Object o : la.getActivityList(null, android.os.Process.myUserHandle()))
+                if ("com.example.other".equals(((android.content.pm.LauncherActivityInfo) o).getComponentName().getPackageName())) launcherApps = true;
+            if (open != null) startActivity(open);
+            detail = "listed=" + listed + " open=" + open + " info=" + info + " launcherApps=" + launcherApps;
+            return listed && open != null && "com.example.other.Main".equals(open.getComponent().getClassName()) && info && launcherApps;
         });
     }
 
