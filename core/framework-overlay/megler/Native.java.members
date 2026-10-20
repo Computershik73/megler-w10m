@@ -40,6 +40,10 @@
      * is released or made inactive (megler.h, megler_media_session_host). android.media.session.MediaSession says it.
      */
     public static native void mediaSessionState(int state, long actions);
+    /** The phone's accent colour, ARGB, or 0 when the shell told none (megler_set_theme): the platform's accent, Material You's seed. */
+    public static native int accentColor();
+    /** A colour of Material You's palettes made from a seed (megler_palette_tone): palette 0 neutral 1 ... 5 error, tone 0 to 100. */
+    public static native int paletteTone(int seed, int palette, int tone);
     /** What that session plays: title, artist, album (or null), and a picture of at most 256x256 as ARGB pixels, or null. */
     public static native void mediaSessionMetadata(String title, String artist, String album, int[] art, int artWidth, int artHeight);
     /** A switch for trying something on the phone (core: mg_flag): on when a file of that name is in the data folder's flags. */

@@ -45,6 +45,14 @@
 // field where there is no ResourcesImpl, as here. Instagram swaps each for a LongSparseArray that answers its vector icons,
 // whose values ("I1801B8") are no file: without the field it said "Could not enable custom drawable support" and ended in
 // its main activity's layout with "File I1801B8 not found".
+//
+// And the accent colour: the platform's accent_device_default_light and _dark and accent_material_light and _dark, which
+// Android 9's DeviceDefault and Material themes give as colorAccent (and so colorControlActivated: switches, check boxes,
+// progress bars, a dialog's buttons, a field's line), are the phone's accent colour (megler_set_theme, Native.accentColor),
+// as an Android phone's maker puts its own accent in those resources; so are AppCompat's defaults of the same names in the
+// app's own table, which its themes give as colorAccent when the app names no colour of its own. An app's own colours are
+// left as they are. The colour is given wherever one of those resources is met while a reference is followed
+// (meglerValue): a theme's attribute, getColor, a colour state list's item.
 package android.content.res;
 
 import android.graphics.Typeface;
@@ -185,9 +193,34 @@ public class Resources {
             if (e.complex()) { out.type = TypedValue.TYPE_NULL; out.data = 0; out.string = null; out.density = e.density; return true; }
             t.value(e, out);
             out.resourceId = id;
+            if (isAccent(id)) { out.type = TypedValue.TYPE_INT_COLOR_ARGB8; out.data = sAccent; out.string = null; return true; }
             if (!resolveRefs || out.type != TypedValue.TYPE_REFERENCE || out.data == 0) return true;
             id = out.data;
         }
+        return false;
+    }
+    /** The accent resources' numbers (see the top), found by name once; none when the phone told no accent colour. */
+    private static int[] sAccentIds;
+    private static int sAccent;
+    private static boolean isAccent(int id) {
+        int[] ids = sAccentIds;
+        if (ids == null) {
+            int accent = megler.Native.accentColor();
+            sAccent = accent | 0xFF000000;
+            java.util.ArrayList<Integer> found = new java.util.ArrayList<>();
+            if (accent != 0) {
+                for (String n : new String[] { "accent_device_default_light", "accent_device_default_dark", "accent_material_light", "accent_material_dark" }) {
+                    int f = sFramework == null ? 0 : sFramework.identifier("android", "color", n);
+                    if (f != 0) found.add(f);
+                    int a = sApp == null ? 0 : sApp.identifier(null, "color", n);
+                    if (a != 0) found.add(a);
+                }
+            }
+            ids = new int[found.size()];
+            for (int i = 0; i < ids.length; i++) ids[i] = found.get(i);
+            sAccentIds = ids;
+        }
+        for (int x : ids) if (x == id) return true;
         return false;
     }
     public void getValue(int id, TypedValue out, boolean resolveRefs) throws NotFoundException {

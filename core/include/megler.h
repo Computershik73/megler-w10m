@@ -1513,6 +1513,31 @@ void megler_set_timezone(const char *id);
 void megler_set_locale(const char *tag);
 
 /*
+ * The phone's look, for a Java app. `accent_argb` is the phone's accent colour (Windows' UISettings Accent): Android's
+ * DeviceDefault and Material themes give it as their colorAccent -- switches, check boxes, progress bars, a dialog's
+ * buttons -- as do AppCompat's when the app names no accent of its own, and Material You's system colours
+ * (android.R.color.system_*, which Material 3's dynamic colours are) are made from it (megler_palette_tone). `night`
+ * is Configuration.uiMode's night bit, which an app's DayNight theme follows. Before megler_run: an app reads them as it
+ * starts. Until the first call there is no accent (Android's own teal; Google's blue for the system colours) and no night.
+ */
+void megler_set_theme(uint32_t accent_argb, bool night);
+
+/*
+ * A colour of Material You's tonal palettes made from a seed colour, roughly as Android 12 makes its system colours of a
+ * wallpaper's (core/src/run/mg_palette.c): `palette` one of these, `tone` the lightness from 0 (black) to 100 (white).
+ * The framework's android.R.color.system_* are made with it, and a shell may make its own look of the same colours.
+ */
+enum {
+    MEGLER_PALETTE_NEUTRAL1 = 0,
+    MEGLER_PALETTE_NEUTRAL2 = 1,
+    MEGLER_PALETTE_ACCENT1 = 2,
+    MEGLER_PALETTE_ACCENT2 = 3,
+    MEGLER_PALETTE_ACCENT3 = 4,
+    MEGLER_PALETTE_ERROR = 5,
+};
+uint32_t megler_palette_tone(uint32_t seed_argb, int palette, int tone);
+
+/*
  * The battery, in Android's own numbers. Any thread, any time, also while an
  * app runs. Until the first call an app has a full, healthy battery on mains
  * power (4.2 V, 25.0 degrees); NULL is that battery again.

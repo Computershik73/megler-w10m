@@ -1189,6 +1189,29 @@ static void put_utf16(u8 *out, const char *s, bool lower_case)
     }
 }
 
+/* Material You's palettes of a seed (megler_palette_tone, core/src/run/mg_palette.c): what Android's framework gives as its system colours. */
+static void check_tone(uint32_t seed, int palette, int tone, uint32_t want)
+{
+    const uint32_t got = megler_palette_tone(seed, palette, tone);
+    if (got != want) say("  palette %d at tone %d of #%08X is #%08X, not #%08X", palette, tone, (unsigned)seed, (unsigned)got, (unsigned)want);
+    CHECK(got == want);
+}
+
+static void test_palette(void)
+{
+    say("Material You's palettes made from a seed colour");
+    check_tone(0xFF1B6EF3u, MEGLER_PALETTE_ACCENT1, 40, 0xFF4359A8u);
+    check_tone(0xFF1B6EF3u, MEGLER_PALETTE_ACCENT1, 80, 0xFFBDC2FFu);
+    check_tone(0xFF1B6EF3u, MEGLER_PALETTE_NEUTRAL1, 98, 0xFFF9F9FFu);
+    check_tone(0xFF1B6EF3u, MEGLER_PALETTE_NEUTRAL2, 30, 0xFF454652u);
+    check_tone(0xFF1B6EF3u, MEGLER_PALETTE_ACCENT3, 90, 0xFFFFD8E8u);
+    check_tone(0xFF1B6EF3u, MEGLER_PALETTE_ERROR, 40, 0xFFB72220u);
+    check_tone(0xFF0063B1u, MEGLER_PALETTE_ACCENT1, 40, 0xFF0060ABu);
+    check_tone(0xFF0063B1u, MEGLER_PALETTE_ACCENT1, 0, 0xFF000000u);
+    check_tone(0xFF0063B1u, MEGLER_PALETTE_ACCENT1, 100, 0xFFFFFFFFu);
+    check_tone(0xFF0063B1u, 6, 50, 0u);
+}
+
 static void test_appx_pri(void)
 {
     static const char placeholder[] = "MeglerApp.00000000000000000000000000000000000000Xy";
@@ -2783,6 +2806,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_libc_odds();
     test_appx_manifest();
     test_appx_pri();
+    test_palette();
     test_mmap_commit();
     test_mmap_file(scratch);
     test_chromium_oom_report();

@@ -113,6 +113,9 @@ static const char *text_of(mg_jobj *s)
 
 #define N(name) static void name(mg_jcall *c)
 
+/* The phone's look (megler_set_theme): its accent colour, 0 for none, and whether it is dark. */
+static volatile i32 g_theme_accent, g_theme_night;
+
 /* log(int priority, String tag, String msg): Android's priorities, 2 verbose to 7 assert, as logcat letters them. */
 N(Native_log)
 {
@@ -590,6 +593,11 @@ N(Native_mediaSessionMetadata)
                 c->args[2].l ? text_of(c->args[2].l) : NULL, px, px ? w : 0, px ? h : 0);
 }
 
+/* nightMode(), accentColor(): the phone's look as the shell told it (megler_set_theme). paletteTone(seed, palette, tone). */
+N(Native_nightMode) { c->ret.z = g_theme_night != 0; }
+N(Native_accentColor) { c->ret.i = g_theme_accent; }
+N(Native_paletteTone) { c->ret.i = (i32)megler_palette_tone((uint32_t)c->args[0].i, (int)c->args[1].i, (int)c->args[2].i); }
+
 /* What the shell would have to do and cannot be asked yet: said once, and the app goes on. */
 N(Native_share) { mg_info("java: the app shares \"%s\" (nothing here to share it with)", text_of(c->args[0].l)); }
 N(Native_openUrl) { mg_info("java: the app opens %s (nothing here to open it)", text_of(c->args[0].l)); }
@@ -644,7 +652,9 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "share", NULL, Native_share },
     { "megler/Native", "setOrientation", NULL, Native_setOrientation },
     { "megler/Native", "insets", NULL, Native_insets },
-    { "megler/Native", "nightMode", NULL, Native_nothing },
+    { "megler/Native", "nightMode", NULL, Native_nightMode },
+    { "megler/Native", "accentColor", NULL, Native_accentColor },
+    { "megler/Native", "paletteTone", NULL, Native_paletteTone },
     { "megler/Native", "dnsServers", NULL, Native_dnsServers },
     { "megler/Native", "vibrate", NULL, Native_nothing },
     { "megler/Native", "openUrl", NULL, Native_openUrl },
@@ -1438,6 +1448,12 @@ void mg_java_keyboard_height(int pixels)
     if (!java_runs()) return;
     mg_atomic_xchg(&J.keyboard_height, pixels > 0 ? pixels : 0);
     push_event(EV_INSETS, 0, 0, 0);
+}
+
+void mg_java_set_theme(uint32_t accent_argb, bool night)
+{
+    mg_atomic_xchg(&g_theme_accent, (i32)accent_argb);
+    mg_atomic_xchg(&g_theme_night, night ? 1 : 0);
 }
 
 void mg_java_set_insets(int left, int top, int right, int bottom)

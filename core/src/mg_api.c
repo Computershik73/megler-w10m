@@ -143,6 +143,12 @@ void megler_set_locale(const char *tag)
     mg_info("phone: the language and region are %s", mg_locale_tag());
 }
 
+void megler_set_theme(uint32_t accent_argb, bool night)
+{
+    mg_java_set_theme(accent_argb, night);
+    mg_info("phone: the accent colour is #%06X, the theme %s", (unsigned)(accent_argb & 0xFFFFFF), night ? "dark" : "light");
+}
+
 /*
  * The battery is the core's mg_battery (run/mg_run.h), which has all that Android's intent says; the shell's has what a
  * phone with Windows can say, and the rest is made up here, plausibly: a lithium cell's voltage runs from about 3.4 V

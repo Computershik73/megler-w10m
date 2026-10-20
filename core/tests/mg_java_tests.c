@@ -1788,7 +1788,7 @@ static int run_data(void)
                                             custom action, as PlaybackStateCompat makes it. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "package-installer", "wifi", "media-metadata", "playback-state",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "package-installer", "wifi", "media-metadata", "playback-state", "theme-accent",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
@@ -2387,6 +2387,8 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     g_any_app = !strcmp(which, "app");
     g_crash_app = !strcmp(which, "crash");
     g_camera_app = !strcmp(which, "camera");
+    /* The data app runs with the phone's look told (megler_set_theme): a cobalt accent and a light theme; its step theme-accent checks what an app sees of it. */
+    if (!strcmp(which, "data")) megler_set_theme(0xFF0063B1u, false);
     /* The camera app's second run: every camera refused, as Windows refuses Megler the camera when the user has said no. */
     mg_camera_standin_refuse(g_camera_app && g_script_count && !strcmp(g_script[0], "denied"));
     /* The shell does not compose the window ("readback"): the core reads the GL frames back and composes it, as before. */

@@ -339,6 +339,7 @@ public class Main extends Activity {
         wifi();
         mediaMetadata();
         playbackState();
+        themeAccent();
         sound();
         mediaCodec();
         network();
@@ -1993,6 +1994,24 @@ public class Main extends Activity {
      * The platform's PlaybackState as PlaybackStateCompat makes it: through its Builder and, for an action of the app's own,
      * CustomAction.Builder; what was set is there, and through a Parcel it comes back by CREATOR.
      */
+    /**
+     * The phone's look as an app sees it (the test tells megler_set_theme a cobalt accent, #0063B1, and a light theme): the
+     * platform's DeviceDefault theme gives it as colorAccent, Material You's system_accent1_600 (number 0x0106003f, tone 40
+     * of the first accent palette) is made of it, and the configuration is not night.
+     */
+    private void themeAccent() {
+        step("theme-accent", () -> {
+            android.content.res.TypedArray a = new android.view.ContextThemeWrapper(this, android.R.style.Theme_DeviceDefault_Light)
+                    .obtainStyledAttributes(new int[] { android.R.attr.colorAccent });
+            int accent = a.getColor(0, 0);
+            a.recycle();
+            int material = getResources().getColor(0x0106003f, null);
+            int mode = getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK;
+            detail = String.format("accent=%08x material=%08x night=%d", accent, material, mode);
+            return accent == 0xFF0063B1 && material == 0xFF0060AB && mode == android.content.res.Configuration.UI_MODE_NIGHT_NO;
+        });
+    }
+
     private void playbackState() {
         step("playback-state", () -> {
             android.media.session.PlaybackState.CustomAction like = new android.media.session.PlaybackState.CustomAction.Builder("like", "Like",
