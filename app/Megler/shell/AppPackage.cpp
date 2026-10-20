@@ -41,15 +41,16 @@ std::string versionString() {
 
 bool sameName(const std::wstring& a, const wchar_t* b) { return _wcsicmp(a.c_str(), b) == 0; }
 
-/// A folder and everything in it; false at the first failure.
-bool copyTree(const std::wstring& from, const std::wstring& to, uint64_t& copied) {
+/// A folder and everything in it; false at the first failure. With `missingOnly`, a file already there as large is left.
+bool copyTree(const std::wstring& from, const std::wstring& to, uint64_t& copied, bool missingOnly = false) {
     if (!files::makeDirectory(to)) return false;
     for (const auto& name : files::list(from, L"*")) {
+        if (missingOnly && files::exists(to + L"\\" + name) && files::size(to + L"\\" + name) == files::size(from + L"\\" + name)) continue;
         if (!files::copy(from + L"\\" + name, to + L"\\" + name)) return false;
         copied += files::size(to + L"\\" + name);
     }
     for (const auto& name : files::listFolders(from, L"*"))
-        if (!copyTree(from + L"\\" + name, to + L"\\" + name, copied)) return false;
+        if (!copyTree(from + L"\\" + name, to + L"\\" + name, copied, missingOnly)) return false;
     return true;
 }
 
@@ -228,8 +229,16 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
         return made;
     };
     const ApkReport& r = entry.report;
-    if (!entry.splitsDir.empty()) return fail("An app of split APKs can't be made a package of its own yet.");
     if (!entry.analysed || !r.valid || r.package.empty()) return fail("The APK hasn't been read.");
+    // An app in several APKs (an .apks or .xapk unpacked) has its splits beside the base, in app\app.apk.splits, where the
+    // library looks for them (Library::splitsDirFor). Their names are the unpacking's (core/src/apk/hk_bundle.c).
+    std::vector<std::wstring> splits;
+    if (!entry.splitsDir.empty()) {
+        splits = files::list(entry.splitsDir, L"*");
+        for (const auto& name : splits)
+            if (!plainName(narrow(name))) return fail("A split APK's name can't go in a package as it is: " + narrow(name));
+        if (splits.empty()) return fail("The app's split APKs are missing (" + narrow(entry.splitsDir) + ").");
+    }
     const std::wstring shared = sharedFolder();
     if (shared.empty()) return fail("Windows gives this Megler no shared folder (its manifest lacks the publisher cache folder).");
     const std::wstring install = platform::installDirectory(), local = platform::localStateDirectory();
@@ -247,6 +256,17 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
             return fail(format("Android's files could not be copied to the shared folder (error %lu).", GetLastError()));
         files::write(root + L"\\complete", version);
         shellLog::write("app package: Android's files copied to " + narrow(root) + ", " + formattedByteCount(copied));
+    }
+
+    // The app's expansion files (an .xapk's OBB, or what it downloaded while it ran in Megler): in Megler's storage, which is
+    // not the separate apps' (theirs is the shared folder's). Copied there, those already there left.
+    const std::wstring obb = L"\\apps\\" + widen(r.package) + L"\\sdcard\\Android\\obb\\" + widen(r.package);
+    if (files::exists(local + obb)) {
+        progress("Copying the app's expansion files to the shared storage…");
+        uint64_t copied = 0;
+        if (!copyTree(local + obb, shared + obb, copied, true))
+            return fail(format("The app's expansion files could not be copied to the shared storage (error %lu).", GetLastError()));
+        shellLog::write("app package: the expansion files in " + narrow(shared + obb) + ", " + formattedByteCount(copied) + " copied");
     }
 
     progress("Signing key…");
@@ -321,6 +341,8 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     const std::string ini = "package=" + r.package + "\r\nlabel=" + label + "\r\napk=app\r\nroot=android\\" + version + "\r\n";
     megler_appx_add_data(a, "MeglerApp.ini", ini.data(), ini.size());
     megler_appx_add_file(a, "app/app.apk", narrow(entry.path).c_str());
+    for (const auto& name : splits)
+        megler_appx_add_file(a, ("app/app.apk.splits/" + narrow(name)).c_str(), narrow(entry.splitsDir + L"\\" + name).c_str());
     if (files::exists(entry.path + L".json")) megler_appx_add_file(a, "app/app.apk.json", narrow(entry.path + L".json").c_str());
     if (files::exists(entry.path + L".icon")) megler_appx_add_file(a, "app/app.apk.icon", narrow(entry.path + L".icon").c_str());
     const std::wstring stamp = Library::instance().directory() + L"\\reports.version";

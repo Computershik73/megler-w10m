@@ -206,7 +206,7 @@ private:
             b.IsEnabled(enabled && !s.busy);
             rows.push_back(b);
         };
-        const bool canMake = entry.splitsDir.empty() && entry.report.ready();
+        const bool canMake = entry.report.ready();
         row(s.made.appx.empty() ? "Make a Separate App" : "Make It Again", glyphs::box, [this] { makePackage(); }, canMake);
         if (!s.made.appx.empty()) {
             row("Install Through the Device Portal", glyphs::add, [this] { installPackage(); }, true);
@@ -218,10 +218,9 @@ private:
             t.Padding(ThicknessHelper::FromLengths(16, 11, 16, 11));
             rows.push_back(t);
         }
-        std::string footer = !entry.splitsDir.empty()
-                                 ? "An app of split APKs can't be made a separate app yet."
-                                 : "A package of Megler and this APK, with the app's name: it starts straight into the app, in a process "
-                                   "of its own with its own memory. Its /sdcard is shared with the other separate apps.";
+        std::string footer = std::string("A package of Megler and this ") + (entry.splitsDir.empty() ? "APK" : "app's APKs") +
+                             ", with the app's name and icon: it starts straight into the app, in a process of its own with its own "
+                             "memory. Its /sdcard is shared with the other separate apps.";
         if (!s.made.appx.empty())
             footer += " The package and the certificate it is signed with are in Megler's LocalState\\packages (" + s.made.identity +
                       ".appx, MeglerApps.cer); the phone has to trust the certificate, which the Device Portal is given with the package.";
