@@ -1,6 +1,6 @@
 package android.os;
 
-/** A vibration: how long it buzzes is what Meglet keeps (the iPhone's haptics have no amplitude or waveform control here). */
+/** A vibration: how long it buzzes is what Meglet keeps (the phone's vibration has no amplitude or waveform control here). */
 public abstract class VibrationEffect implements Parcelable {
     public static final int DEFAULT_AMPLITUDE = -1, EFFECT_CLICK = 0, EFFECT_DOUBLE_CLICK = 1, EFFECT_TICK = 2, EFFECT_HEAVY_CLICK = 5;
     private static final class Effect extends VibrationEffect { final long ms; Effect(long ms) { this.ms = ms; } long megletDuration() { return ms; } public long getDuration() { return ms; } }

@@ -2,7 +2,7 @@ package android.view.inputmethod;
 
 import android.view.View;
 
-/** The keyboard: the iPhone's, shown for the focused text view and typing into its input connection (meglet.InputMethods). */
+/** The keyboard: the phone's, shown for the focused text view and typing into its input connection (meglet.InputMethods). */
 public final class InputMethodManager {
     public static final int SHOW_IMPLICIT = 1, SHOW_FORCED = 2, HIDE_IMPLICIT_ONLY = 1, HIDE_NOT_ALWAYS = 2, RESULT_UNCHANGED_SHOWN = 0, RESULT_UNCHANGED_HIDDEN = 1,
         RESULT_SHOWN = 2, RESULT_HIDDEN = 3;

@@ -1,6 +1,6 @@
 package meglet;
 
-/** android.graphics' natives: CoreGraphics and CoreText on the Meglet side (meglet-tl-dvm-graphics.c). Handles are native pointers. */
+/** android.graphics' natives (core/src/drivers/mg_java_gfx.c). Handles are native pointers. */
 public final class Gfx {
     private Gfx() {}
     public static native long bmNew(int w, int h);

@@ -1,6 +1,6 @@
 package android.graphics;
 
-/** Drawing into a Bitmap with CoreGraphics (meglet.Gfx). The view system draws the window through one of these each frame. */
+/** Drawing into a Bitmap through meglet.Gfx. The view system draws the window through one of these each frame. */
 public class Canvas {
     public static final int ALL_SAVE_FLAG = 0x1F, MATRIX_SAVE_FLAG = 1, CLIP_SAVE_FLAG = 2, HAS_ALPHA_LAYER_SAVE_FLAG = 4, FULL_COLOR_LAYER_SAVE_FLAG = 8,
         CLIP_TO_LAYER_SAVE_FLAG = 16;

@@ -1,6 +1,6 @@
 package meglet;
 
-/** EGL for the app's own threads (meglet-tl-dvm-android.c): ANGLE contexts sharing the render thread's objects, window surfaces that
+/** EGL for the app's own threads (core/src/drivers/mg_java_gl.c): ANGLE contexts sharing the render thread's objects, window surfaces that
  *  are pbuffers the size of their SurfaceView, and a swap that puts the frame on screen where the view is. */
 public final class EGLNative {
     public static native long createContext(int version, long share);

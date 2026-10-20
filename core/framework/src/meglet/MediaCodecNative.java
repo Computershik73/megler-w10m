@@ -1,6 +1,6 @@
 package meglet;
 
-/** Decoders behind android.media.MediaCodec (meglet-tl-dvm-media.c): VideoToolbox for H.264/HEVC, AudioToolbox for AAC/MP3. */
+/** Decoders behind android.media.MediaCodec (core/src/drivers/mg_java_media.c): the phone's decoders, for H.264/HEVC and AAC/MP3. */
 public final class MediaCodecNative {
     private MediaCodecNative() {}
     public static native boolean supported(String mime);

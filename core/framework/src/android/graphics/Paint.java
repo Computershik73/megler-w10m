@@ -1,7 +1,7 @@
 package android.graphics;
 
 /**
- * Paint keeps its state in mP, the packet meglet.Gfx reads in one go (the P_* slots in meglet-tl-dvm-graphics.c); the objects it is handed
+ * Paint keeps its state in mP, the packet meglet.Gfx reads in one go (the P_* slots in core/src/drivers/mg_java_gfx.c); the objects it is handed
  * (typeface, shader, filters) are kept here and their native parts passed along with it.
  */
 public class Paint {

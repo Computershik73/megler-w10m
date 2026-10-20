@@ -1,5 +1,5 @@
 package android.net;
-/** The network as the app sees it: always connected, over Wi-Fi (Meglet does not watch the iPhone's network). */
+/** The network as the app sees it: always connected, over Wi-Fi (the phone's network is not watched). */
 public class ConnectivityManager {
     public static final int TYPE_NONE = -1, TYPE_MOBILE = 0, TYPE_WIFI = 1, TYPE_ETHERNET = 9, TYPE_VPN = 17, RESTRICT_BACKGROUND_STATUS_DISABLED = 1;
     public static final String CONNECTIVITY_ACTION = "android.net.conn.CONNECTIVITY_CHANGE", EXTRA_NO_CONNECTIVITY = "noConnectivity", EXTRA_NETWORK_INFO = "networkInfo";

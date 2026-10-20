@@ -5,8 +5,8 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * A codec the device has. Meglet decodes H.264 and HEVC video through VideoToolbox and AAC (and MP3) audio through AudioToolbox
- * (meglet-tl-dvm-media.c); MediaCodecList lists those, with capabilities like a phone's hardware decoders.
+ * A codec the device has. Meglet decodes H.264 and HEVC video and AAC (and MP3) audio through the phone's decoders
+ * (core/src/drivers/mg_java_media.c); MediaCodecList lists those, with capabilities like a phone's hardware decoders.
  */
 @SuppressWarnings({"unchecked", "rawtypes"})
 public final class MediaCodecInfo {

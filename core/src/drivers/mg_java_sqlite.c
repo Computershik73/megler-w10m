@@ -4,12 +4,11 @@
  * The framework's android.database.sqlite is Java over 29 native methods that
  * are SQLite's C API almost one for one: a database is its sqlite3 *, a
  * statement its sqlite3_stmt *, both held by Java as longs. This is those
- * methods, as the original Meglet has them on the system's SQLite of iOS; here
- * the SQLite is the one compiled into the core (sqlite/mg_sqlite.h), over the
+ * methods, on the SQLite compiled into the core (sqlite/mg_sqlite.h), over the
  * host layer's files. The two collations Android registers on every
  * connection, LOCALIZED and UNICODE, are registered here too, since apps name
  * them in their schemas: LOCALIZED compares without regard to ASCII case,
- * UNICODE byte by byte, as the original's do (Android's own use ICU).
+ * UNICODE byte by byte (Android's own use ICU).
  *
  * A path is the app's, as Android names it (/data/data/<package>/databases/x.db);
  * SQLite is given the host's path for it. ":memory:" and the empty name stay

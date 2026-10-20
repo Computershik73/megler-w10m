@@ -4,7 +4,7 @@
  * Unlike the other drivers this one plays no Java part in C. It starts the
  * Dalvik runtime (dvm/) on Android's libcore, puts the Java framework and the
  * app's own DEX files after it, and calls meglet.AppRunner.run on a thread that
- * stands for Android's main thread. The framework is the original Meglet's
+ * stands for Android's main thread. The framework is core/framework's
  * (tools/build-framework.sh): android.* in Java, which does in the app's own
  * process what Android does in system_server -- the Application, the
  * activity stack, the main Looper, views measured, laid out and drawn into a
@@ -1397,8 +1397,8 @@ void mg_java_text_key(int key)
     /*
      * Enter is a new line where the field said so when the keyboard was shown for it, and typed as one. (The framework's
      * own "e" would decide it again, and decides it the wrong way round: meglet.InputMethods makes a new line only where
-     * IME_FLAG_NO_ENTER_ACTION is not set, which is never in a field of several lines. The original's shell on iOS sends
-     * the line end as text too.) Anywhere else it is the editor's action.
+     * IME_FLAG_NO_ENTER_ACTION is not set, which is never in a field of several lines.) Anywhere else it is the editor's
+     * action.
      */
     else if (key == MEGLET_TEXT_ENTER) push_text(J.enter_newline ? "t\n" : "e", NULL);
     else if (key >= MEGLET_TEXT_DELETE && key <= MEGLET_TEXT_END && java_runs()) {

@@ -65,7 +65,7 @@ public class SurfaceTexture {
     }
     public boolean megletValid() { return !mReleased; }
     private Bitmap mStage;
-    /** A native producer's frame (meglet-tl-egl.c's TextureView windows, ANativeWindow_lock): w x h RGBA at addr, bottom row first when flip. */
+    /** A native producer's frame (core/src/drivers/mg_java_ndk.c's TextureView windows, ANativeWindow_lock): w x h RGBA at addr, bottom row first when flip. */
     public void megletPostRgba(long addr, int w, int h, boolean flip) {
         if (mStage == null || mStage.getWidth() != w || mStage.getHeight() != h) mStage = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
         mStage.megletSetRgba(addr);

@@ -12,7 +12,7 @@
 // phone, while the camera streamed and every picture was drawn under it. Everything else is the original's, unchanged.
 package android.graphics;
 
-/** A path, kept as the op stream meglet.Gfx draws (see meglet-tl-dvm-graphics.c: OP_*). */
+/** A path, kept as the op stream meglet.Gfx draws (see core/src/drivers/mg_java_gfx.c: OP_*). */
 public class Path {
     public enum FillType { WINDING, EVEN_ODD, INVERSE_WINDING, INVERSE_EVEN_ODD }
     public enum Direction { CW, CCW }

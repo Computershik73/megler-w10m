@@ -1,5 +1,5 @@
 package meglet;
-/** The system's sqlite3 (meglet-tl-dvm-sqlite.c): handles are its sqlite3 * and sqlite3_stmt * pointers. */
+/** SQLite, compiled into the core (core/src/drivers/mg_java_sqlite.c): handles are its sqlite3 * and sqlite3_stmt * pointers. */
 public final class Sqlite {
     private Sqlite() {}
     public static final int OK = 0, ROW = 100, DONE = 101;

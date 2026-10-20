@@ -1,10 +1,9 @@
 /*
  * meglet.Gfx: the native methods under the Java framework's android.graphics.
  *
- * The framework (the original Meglet's, src/java-framework) has Bitmap, Canvas,
- * Paint, Path, Typeface and the shaders in Java, on the 54 native methods of
- * meglet.Gfx. There they are CoreGraphics and CoreText
- * (meglet-tl-dvm-graphics.c). Here a bitmap's pixels and everything that is
+ * The framework (core/framework) has Bitmap, Canvas, Paint, Path, Typeface
+ * and the shaders in Java, on the 54 native methods of meglet.Gfx. A bitmap's
+ * pixels and everything that is
  * bookkeeping are this file's, and what has to be drawn, measured or decoded
  * goes to the shell through meglet_gfx_host (meglet.h, which is the contract for
  * that side and says what each call means). This comment is the other side:

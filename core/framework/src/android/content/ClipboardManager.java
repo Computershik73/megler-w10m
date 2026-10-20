@@ -1,6 +1,6 @@
 package android.content;
 
-/** The clipboard: the host's (the iPhone's), as plain text. */
+/** The clipboard: the phone's, as plain text. */
 public class ClipboardManager extends android.text.ClipboardManager {
     public interface OnPrimaryClipChangedListener { void onPrimaryClipChanged(); }
     private ClipData mLocal;

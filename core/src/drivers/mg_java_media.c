@@ -1,7 +1,6 @@
 /*
  * Decoders for Java apps' android.media.MediaCodec: meglet.MediaCodecNative's natives, which the framework's MediaCodec
- * decodes through, as Meglet's own meglet-tl-dvm-media.c does them on iOS over VideoToolbox and AudioToolbox. The
- * decoding proper is the shell's (meglet_codec_host in meglet.h: Media Foundation's decoder transforms on a phone). What
+ * decodes through. The decoding proper is the shell's (meglet_codec_host in meglet.h: Media Foundation's decoder transforms on a phone). What
  * is here is everything between what an app may hand MediaCodec and the one form the shell is given:
  *
  * - Pictures (H.264, H.265). MediaCodec is fed access units with start codes, and the parameter sets either in the

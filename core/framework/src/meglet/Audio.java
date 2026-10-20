@@ -1,7 +1,7 @@
 package meglet;
 
 /**
- * Meglet's mixer (meglet-tl-dvm-audio.c): streams the app writes PCM into (AudioTrack, MediaPlayer), decoded samples played by id
+ * Meglet's mixer (core/src/drivers/mg_java_audio.c): streams the app writes PCM into (AudioTrack, MediaPlayer), decoded samples played by id
  * (SoundPool), and decoders for compressed files (Ogg Vorbis, MP3, AAC, WAV...).
  */
 public final class Audio {

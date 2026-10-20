@@ -25,7 +25,7 @@ import javax.crypto.spec.SecretKeySpec;
 
 /**
  * "AndroidKeyStore": Android's hardware-backed key store, as a JCA provider apps find by that name. Keys here are ordinary keys made
- * by the other providers (conscrypt, BouncyCastle) and kept in the app's own data, which iOS's sandbox protects: what apps do with
+ * by the other providers (conscrypt, BouncyCastle) and kept in the app's own data, which the app's container protects: what apps do with
  * them (EncryptedSharedPreferences, Tink, signing) works the same. KeyGenerator (AES, HMAC) and KeyPairGenerator (RSA, EC) take
  * KeyGenParameterSpec and store the key under its alias.
  */

@@ -1,5 +1,5 @@
 package meglet;
-/** The phone's motion sensors (meglet-tl-dvm-sensors.m): Android sensor types, Android units. */
+/** The phone's motion sensors (core/src/drivers/mg_java.c): Android sensor types, Android units. */
 public final class Sensors {
     private Sensors() {}
     public static native boolean available(int type);

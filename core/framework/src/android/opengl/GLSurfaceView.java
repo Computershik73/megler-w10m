@@ -8,7 +8,7 @@ import javax.microedition.khronos.egl.EGLDisplay;
 import javax.microedition.khronos.egl.EGLSurface;
 import javax.microedition.khronos.opengles.GL10;
 
-/** The renderer runs on Meglet's GL thread (meglet-tl-dvm-android.c), which owns the EGL context on the app's screen. */
+/** The renderer runs on Meglet's GL thread (core/src/drivers/mg_java_gl.c), which owns the EGL context on the app's screen. */
 public class GLSurfaceView extends android.view.SurfaceView implements android.view.SurfaceHolder.Callback2 {
     public static final int RENDERMODE_WHEN_DIRTY = 0, RENDERMODE_CONTINUOUSLY = 1, DEBUG_CHECK_GL_ERROR = 1, DEBUG_LOG_GL_CALLS = 2;
     public interface Renderer { void onSurfaceCreated(GL10 gl, EGLConfig config); void onSurfaceChanged(GL10 gl, int w, int h); void onDrawFrame(GL10 gl); }
