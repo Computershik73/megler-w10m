@@ -117,12 +117,58 @@ package of makeappx's and signtool's and one of `appx-tool`'s pass it;
 the certificate's root not being trusted on the PC (as it should, and not at a
 digest). On the phone such a package installs and runs (above).
 
+## Megler as the place the apps are managed from
+
+Since 0.1.0.359 Megler does not run the library's apps itself (the player is left
+for an auto run, `auto/AutoRun.cpp`, which pushes it on its own): an app is
+installed as an app of the phone's own, and Megler is where that is done
+(`ui/SeparateApps.cpp`, `ui/LibraryScreen.cpp`, `ui/AppDetailScreen.cpp`):
+
+- which apps are installed, and by which Megler, is asked of the Device Portal
+  (`/api/app/packagemanager/packages`) when the library or an app's page is
+  shown and after every action: a package of Megler's publisher whose name begins
+  `MeglerApp.` is an app's, its version the version of the Megler that made it. Each
+  row of the library says Installed, Installed and made by another Megler (to
+  update), or Not installed; a portal that cannot be asked is said above the
+  list;
+- a package carries the Megler that made it, so an update of Megler updates none:
+  above the list, **Update All** makes and installs again every app made by
+  another Megler;
+- an app's page has the section **On This Phone**: its state, **Install** (or
+  **Update**, **Install Again**), which makes the package and installs it
+  through the portal in one go, **App Settings** (below), and **Uninstall**
+  (`DELETE /api/app/packagemanager/package`: the package goes with its
+  LocalState; its part of the shared storage stays). When the portal does not
+  install a package made, the page offers it to Windows's installer, and its
+  certificate;
+- the actions go one at a time on a worker thread, whichever page is shown.
+
+**Settings** (`shell/Settings.h`, `ui/SettingsScreen.cpp`). Render size,
+language and region, and location are kept in the shared folder, where every
+package reads them when it starts: Megler's in `<shared>\settings.ini`, which
+every app goes by, and an app's own in `<shared>\apps\<package>\settings.ini`,
+over them, a key not there being Megler's. Megler's Settings tab changes Megler's;
+**App Settings** on an app's page, and **Settings** in the player's menu of the
+app's own package, change the app's, with **As in Megler** at the top of each
+choice. They apply at the app's next start. Each file is written beside and
+moved into place, so that a package reading it meanwhile finds a whole one. The
+`settings.ini` of before, in LocalState, is copied to its new place the first
+time.
+
+**Megler's own storage** (`shareMeglersStorage` in `shell/AppPackage.cpp`). Megler's
+`/sdcard` is the shared folder's too: once, in the background, Megler copies its
+storage of before there (`LocalState\sdcard`, and each app's part
+`LocalState\apps\<package>\sdcard` but those an app's own package has had
+handed over), a file already there as large left, and writes
+`LocalState\storage-in-shared.txt`; from its next start it gives the core the
+shared folder as its storage, as an app's own package does. What it copied
+stays in LocalState. From then on the handover of an app's data (below) takes
+the private files alone: its part of the storage is the app's already.
+
 ## A separate app, made on the phone
 
-An app's page in Megler's library has a section "Separate App"
-(`ui/AppDetailScreen.cpp`, `shell/AppPackage.cpp`):
+`shell/AppPackage.cpp` makes an app's package, on a worker thread:
 
-- **Make a Separate App** makes the package, on a worker thread:
   1. Android's libcore and framework (the package's `android` folder, some
      150 MB) are copied once for each build of Megler to
      `<shared>\android\<Megler's version>`, a file `complete` written last; every
@@ -197,7 +243,7 @@ bytes as come after each place; the two tails are found at each build by
 and written to `appx-template\resources.txt`. The file so made is byte for
 byte the one makepri makes for that name (checked on the PC for Total
 Commander's and for names with capitals, digits, `.` and `-`).
-- **Install Through the Device Portal** sends the package and the certificate
+- Installing it through the Device Portal sends the package and the certificate
   to `https://127.0.0.1/api/app/packagemanager/package` with Windows's own HTTP
   client (`Windows.Web.Http`), after a GET of `/api/os/info` for the portal's
   CSRF cookie, and asks `/api/app/packagemanager/state` every two seconds
@@ -209,8 +255,8 @@ Commander's and for names with capitals, digits, `.` and `-`).
   the phone made for itself, is taken as it is (untrusted, wrong name, expired,
   incomplete chain), there only. A portal that asks for a user name and
   password is said to; none is sent yet.
-- **Open the Package (Windows Installer)** and **Open the Certificate** hand the
-  file to Windows (`Launcher.LaunchFileAsync`), as a file manager would. On the
+- **Open the Package (Windows Installer)** and **Open the Certificate**, when the
+  portal did not install it, hand the file to Windows (`Launcher.LaunchFileAsync`), as a file manager would. On the
   HP Elite x3 (353) Windows's installer installed a package so.
 
 A package with `MeglerApp.ini` in its install folder is one app's
@@ -229,9 +275,6 @@ A package with `MeglerApp.ini` in its install folder is one app's
 - the Java driver is given `<shared>\android\<version>` from `MeglerApp.ini` as
   the Android root, and the fonts from there.
 
-Megler itself keeps its own `LocalState\sdcard` as before: its apps and the
-separate apps do not share a `/sdcard` yet.
-
 **The phone's folders** (`ui/SharedFolders.cpp`). Music, Pictures, Movies and
 DCIM come from capabilities, which every package of Megler's declares alike. The
 Documents and Downloads folders and a memory card come in only through the
@@ -248,14 +291,17 @@ separate app has to be given each such folder by the user once:
   started in Downloads or Documents; the folder chosen is added under Megler's
   name for it (`StorageHost::add`). "Not Now" is remembered
   (`megler.folders.notNow` in its `settings.ini`) and not asked at start again;
-- the player's menu of a separate app has **Phone Folders**, which offers all
-  of those it has not got, the "Not Now" ones too; the app finds a folder added
-  so from its next start (the links are given to the core when an app starts).
+- the player's menu of a separate app has **Settings**, whose Android Storage
+  has **Folders Megler Has**, which offers all of those it has not got, the "Not
+  Now" ones too, and **Add a Folder** for any other; the app finds a folder
+  added so from its next start (the links are given to the core when an app
+  starts).
+
+Flags (`LocalState\flags`) are each package's own: `tools/phone-flags.py --app
+<Android package>` sets those of an app's own package.
 
 ## What follows (not done yet)
 
-- Megler's own `/sdcard` moved to the shared folder, so that its apps and the
-  separate ones share one.
 - Old builds' Android files in `<shared>\android`: each build of Megler that
   makes a package copies its own, and none is removed yet.
 - How apps reach one another (Android's intents to another app, "share", "open
