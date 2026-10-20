@@ -2058,7 +2058,9 @@ public class Main extends Activity {
     /**
      * What Launcher3 leans on while it loads its apps, which Nova Launcher stopped on. The main thread's idle handlers run
      * when nothing is due: one that answers false runs once, one that answers true again at each idle spell (Launcher3
-     * waits that way before each step); the harness waits for "idle-handler-done".
+     * waits that way before each step); the harness waits for "idle-handler-done". A widget's info names its user
+     * (getProfile, which Launcher3's ComponentKey refuses as null). And the launcher may host shortcuts, as the phone's
+     * home screen does.
      */
     private void launcherLoading() {
         step("idle-handler", () -> {
@@ -2073,7 +2075,10 @@ public class Main extends Activity {
                 Log.i("DataTest", "idle-handler-done " + (once[0] == 1 ? "ok" : "FAILED") + " once=" + once[0] + " kept=" + kept[0]);
                 return false;
             });
-            return true;
+            android.appwidget.AppWidgetProviderInfo widget = new android.appwidget.AppWidgetProviderInfo();
+            android.content.pm.LauncherApps la = (android.content.pm.LauncherApps) getSystemService(LAUNCHER_APPS_SERVICE);
+            detail = "profile=" + widget.getProfile() + " shortcutHost=" + la.hasShortcutHostPermission();
+            return android.os.Process.myUserHandle().equals(widget.getProfile()) && la.hasShortcutHostPermission();
         });
     }
 
