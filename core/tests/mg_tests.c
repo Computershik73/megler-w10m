@@ -1123,7 +1123,12 @@ static void test_appx_manifest(void)
         "          BackgroundColor=\"#000000\">\r\n"
         "        <uap:DefaultTile Wide310x150Logo=\"w.png\" ShortName=\"Megler\"/>\r\n"
         "        <uap:SplashScreen Image=\"s.png\" BackgroundColor=\"#000000\" />\r\n"
-        "      </uap:VisualElements></Application></Applications></Package>\r\n";
+        "      </uap:VisualElements>\r\n      <Extensions>\r\n"
+        "        <uap:Extension Category=\"windows.fileTypeAssociation\">\r\n"
+        "          <uap:FileTypeAssociation Name=\"apk\"><uap:SupportedFileTypes><uap:FileType>.apk</uap:FileType></uap:SupportedFileTypes>\r\n"
+        "          </uap:FileTypeAssociation>\r\n        </uap:Extension>\r\n"
+        "        <uap:Extension Category=\"windows.protocol\">\r\n          <uap:Protocol Name=\"megler\" />\r\n        </uap:Extension>\r\n"
+        "      </Extensions>\r\n    </Application></Applications></Package>\r\n";
     char err[200], name[64], name2[64];
     char *m, *m2;
     say("an app's own package: its manifest from Megler's");
@@ -1173,6 +1178,10 @@ static void test_appx_manifest(void)
     CHECK(m2 != NULL);
     free(m2);
     CHECK(mg_appx_app_manifest("<Package/>", "com.example", "x", NULL, NULL, err, sizeof(err)) == NULL && strstr(err, "Identity") != NULL);
+    /* Megler's association of APKs is not the app's; its megler: links are. */
+    CHECK(strstr(m, "windows.fileTypeAssociation") == NULL && strstr(m, "<uap:FileTypeAssociation") == NULL);
+    CHECK(strstr(m, "<uap:Extension Category=\"windows.protocol\">\r\n          <uap:Protocol Name=\"megler\" />") != NULL);
+    CHECK(strstr(m, "      </uap:VisualElements>\r\n      <Extensions>\r\n        <uap:Extension Category=\"windows.protocol\">") != NULL);
     free(m);
 }
 

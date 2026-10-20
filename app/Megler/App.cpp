@@ -85,6 +85,20 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
         Window::Current().Activate();
     }
 
+    /// An APK (or a bundle) opened in Megler from the phone's file manager or another app (Package.appxmanifest, the
+    /// file type association): installed once the user says yes, as one picked in the Library.
+    void OnFileActivated(FileActivatedEventArgs const& args) {
+        shellLog::write(format("app: opened with %u file(s)", unsigned(args.Files().Size())));
+        ensureContent();
+        Window::Current().Activate();
+        for (auto const& item : args.Files()) {
+            if (auto file = item.try_as<winrt::Windows::Storage::StorageFile>()) {
+                shell_->installApkFile(file);
+                break;
+            }
+        }
+    }
+
     // The flag copy-system-dlls: the phone's ntdll.dll and KERNELBASE.dll
     // copied into LocalState, to be read on the PC with a disassembler --
     // what an address of theirs in a crash report is, which no public

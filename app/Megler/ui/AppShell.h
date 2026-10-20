@@ -114,6 +114,11 @@ public:
     /// library's id it goes by, empty when nothing was picked, or an error.
     void importApk(std::function<void(std::string id, std::string error)> done);
     const ImportProgress& importProgress() const { return *import_; }
+    /// An APK (or a bundle) opened in Megler from the phone's file manager: installed as importApk installs a picked one,
+    /// once the user says yes in Material's dialog.
+    void installApkFile(winrt::Windows::Storage::StorageFile const& file);
+    /// An APK at a path of Megler's own that an Android app (`from`, its name) asked to install: likewise, after a yes.
+    void installApkPath(const std::wstring& path, const std::string& name, const std::string& from);
 
     // Lifecycle (from App)
     void suspending();

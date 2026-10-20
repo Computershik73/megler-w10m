@@ -654,10 +654,18 @@ std::string streamCopy(winrt::Windows::Storage::StorageFile const& file, const s
 /// The picker, then the app installed (ui/SeparateApps.h): an APK straight from where it is, read through the broker's
 /// handles (shell/PickedFile.h) with no copy unless Megler has to keep one; a bundle unpacked from where it is into its
 /// base and splits, then installed from them.
-winrt::fire_and_forget pickAndInstall(std::weak_ptr<AppShell> weakShell, std::shared_ptr<ImportProgress> progress,
-                                      std::function<void(std::string, std::string)> done) {
-    using namespace winrt::Windows::Storage;
-    using namespace winrt::Windows::Storage::Pickers;
+/// Where an APK (or a bundle of split APKs) comes from: a file the picker or the phone's file manager gave, or a file of
+/// Megler's own at `path` (an APK an Android app asked to install, handed over in its data or the shared folder).
+struct ApkSource {
+    winrt::Windows::Storage::StorageFile file{nullptr};
+    std::wstring path;
+    std::string name;
+};
+
+/// The APK into the library and installed as an app of the phone's own (ui/SeparateApps.h): read where it is when the
+/// broker gives its handle, else copied; a bundle unpacked into its base and the splits this phone can use.
+winrt::fire_and_forget installFrom(std::weak_ptr<AppShell> weakShell, std::shared_ptr<ImportProgress> progress, ApkSource source,
+                                   std::function<void(std::string, std::string)> done) {
     std::string id, error;
     // What a bundle is unpacked for, asked here on the UI thread: the density a Java app is told the screen has (160 for
     // each of Windows' view pixels: player/PlayerScreen), and the phone's languages.
@@ -670,77 +678,77 @@ winrt::fire_and_forget pickAndInstall(std::weak_ptr<AppShell> weakShell, std::sh
     const std::string languages = bundleLanguages();
     winrt::apartment_context ui;
     try {
-        FileOpenPicker picker;
-        picker.ViewMode(PickerViewMode::List);
-        picker.SuggestedStartLocation(PickerLocationId::Downloads);
-        picker.FileTypeFilter().Append(L".apk");
-        picker.FileTypeFilter().Append(L".apks");
-        picker.FileTypeFilter().Append(L".xapk");
-        StorageFile file = co_await picker.PickSingleFileAsync();
-        if (file) {
-            const std::string name = narrow(file.Name());
-            const std::string target = Library::idFor(name);
-            const bool bundle = Library::isBundle(name);
-            const std::wstring finalPath = Library::instance().directory() + L"\\" + widen(target);
-            progress->name = name;
-            co_await winrt::resume_background();
+        const std::string name = source.file ? narrow(source.file.Name()) : source.name;
+        const std::string target = Library::idFor(name);
+        const bool bundle = Library::isBundle(name);
+        const std::wstring finalPath = Library::instance().directory() + L"\\" + widen(target);
+        progress->name = name;
+        co_await winrt::resume_background();
+        std::shared_ptr<PickedFile> picked;
+        std::wstring bundlePath;
+        if (source.file) {
             // Read where it is, under a path of Megler's that is no file (the copy's, if one is made, is finalPath).
-            auto picked = std::make_shared<PickedFile>(file, finalPath + (bundle ? L".bundle.picked" : L".picked"));
+            picked = std::make_shared<PickedFile>(source.file, finalPath + (bundle ? L".bundle.picked" : L".picked"));
             progress->total = picked->size();
-            std::wstring bundlePath;
             if (picked->ok()) {
                 bundlePath = picked->path();
             } else if (bundle) {
                 bundlePath = finalPath + L".bundle";
                 shellLog::write(format("import: copying %s (%llu bytes) to unpack it", name.c_str(), (unsigned long long)picked->size()));
-                error = streamCopy(file, bundlePath, *progress);
+                error = streamCopy(source.file, bundlePath, *progress);
             } else {
                 shellLog::write(format("import: copying %s (%llu bytes) into the library as %s", name.c_str(),
                                        (unsigned long long)picked->size(), target.c_str()));
-                error = streamCopy(file, finalPath, *progress);
+                error = streamCopy(source.file, finalPath, *progress);
             }
-            if (error.empty() && bundle) {
-                progress->unpacking = true;
-                progress->copied = 0;
-                progress->total = 0;
-                const std::string apkPath = narrow(finalPath), splitsPath = narrow(Library::splitsDirFor(finalPath));
-                shellLog::write(format("import: unpacking %s for %d dpi, languages %s", name.c_str(), density, languages.c_str()));
-                std::string answer;
-                if (char* json = megler_bundle_unpack(narrow(bundlePath).c_str(), apkPath.c_str(), splitsPath.c_str(), density, languages.c_str(),
-                                                    &unpackProgress, progress.get())) {
-                    answer = json;
-                    megler_free(json);
-                }
-                if (!picked->ok()) files::remove(bundlePath);
-                winrt::Windows::Data::Json::JsonObject o{nullptr};
-                if (!winrt::Windows::Data::Json::JsonObject::TryParse(hs(answer), o) || !o || !o.HasKey(L"ok")) {
-                    error = "the bundle could not be unpacked";
-                } else if (!o.GetNamedBoolean(L"ok", false)) {
-                    error = narrow(o.GetNamedString(L"error", L"the bundle could not be unpacked"));
-                } else {
-                    const auto count = [&](const wchar_t* key) {
-                        return o.HasKey(key) && o.GetNamedValue(key).ValueType() == winrt::Windows::Data::Json::JsonValueType::Array
-                                   ? unsigned(o.GetNamedArray(key).Size())
-                                   : 0u;
-                    };
-                    shellLog::write(format("import: %s unpacked: its base and %u splits kept, %u left out, %u expansion files", name.c_str(),
-                                           count(L"splits"), count(L"leftOut"), count(L"expansions")));
-                }
-            } else if (error.empty() && !picked->ok()) {
-                // An app in one APK has no splits: a folder of them left by a bundle of the same name is another app's.
-                files::removeTree(Library::splitsDirFor(finalPath));
+        } else if (bundle) {
+            bundlePath = source.path;
+        } else {
+            shellLog::write(format("import: copying %s into the library as %s", narrow(source.path).c_str(), target.c_str()));
+            if (!files::copy(source.path, finalPath)) error = "the APK could not be copied into Megler's library";
+        }
+        const bool inPlace = picked && picked->ok();
+        if (error.empty() && bundle) {
+            progress->unpacking = true;
+            progress->copied = 0;
+            progress->total = 0;
+            const std::string apkPath = narrow(finalPath), splitsPath = narrow(Library::splitsDirFor(finalPath));
+            shellLog::write(format("import: unpacking %s for %d dpi, languages %s", name.c_str(), density, languages.c_str()));
+            std::string answer;
+            if (char* json = megler_bundle_unpack(narrow(bundlePath).c_str(), apkPath.c_str(), splitsPath.c_str(), density, languages.c_str(),
+                                                &unpackProgress, progress.get())) {
+                answer = json;
+                megler_free(json);
             }
-            co_await ui;
-            if (error.empty()) {
-                id = target;
-                auto shell = weakShell.lock();
-                if (!bundle && picked->ok()) {
-                    // Straight from where it is: the library has it once it is installed (or kept).
-                    if (shell) separateApps::installPicked(*shell, picked, id);
-                } else {
-                    Library::instance().added(id);
-                    if (shell) separateApps::install(*shell, id, true);
-                }
+            if (picked && !inPlace) files::remove(bundlePath);
+            winrt::Windows::Data::Json::JsonObject o{nullptr};
+            if (!winrt::Windows::Data::Json::JsonObject::TryParse(hs(answer), o) || !o || !o.HasKey(L"ok")) {
+                error = "the bundle could not be unpacked";
+            } else if (!o.GetNamedBoolean(L"ok", false)) {
+                error = narrow(o.GetNamedString(L"error", L"the bundle could not be unpacked"));
+            } else {
+                const auto count = [&](const wchar_t* key) {
+                    return o.HasKey(key) && o.GetNamedValue(key).ValueType() == winrt::Windows::Data::Json::JsonValueType::Array
+                               ? unsigned(o.GetNamedArray(key).Size())
+                               : 0u;
+                };
+                shellLog::write(format("import: %s unpacked: its base and %u splits kept, %u left out, %u expansion files", name.c_str(),
+                                       count(L"splits"), count(L"leftOut"), count(L"expansions")));
+            }
+        } else if (error.empty() && !inPlace) {
+            // An app in one APK has no splits: a folder of them left by a bundle of the same name is another app's.
+            files::removeTree(Library::splitsDirFor(finalPath));
+        }
+        co_await ui;
+        if (error.empty()) {
+            id = target;
+            auto shell = weakShell.lock();
+            if (!bundle && inPlace) {
+                // Straight from where it is: the library has it once it is installed (or kept).
+                if (shell) separateApps::installPicked(*shell, picked, id);
+            } else {
+                Library::instance().added(id);
+                if (shell) separateApps::install(*shell, id, true);
             }
         }
     } catch (const hresult_error& e) {
@@ -749,6 +757,33 @@ winrt::fire_and_forget pickAndInstall(std::weak_ptr<AppShell> weakShell, std::sh
     if (!error.empty()) shellLog::write("import: failed: " + error);
     *progress = ImportProgress();
     done(std::move(id), std::move(error));
+}
+
+winrt::fire_and_forget pickAndInstall(std::weak_ptr<AppShell> weakShell, std::shared_ptr<ImportProgress> progress,
+                                      std::function<void(std::string, std::string)> done) {
+    using namespace winrt::Windows::Storage;
+    using namespace winrt::Windows::Storage::Pickers;
+    StorageFile file{nullptr};
+    std::string error;
+    try {
+        FileOpenPicker picker;
+        picker.ViewMode(PickerViewMode::List);
+        picker.SuggestedStartLocation(PickerLocationId::Downloads);
+        picker.FileTypeFilter().Append(L".apk");
+        picker.FileTypeFilter().Append(L".apks");
+        picker.FileTypeFilter().Append(L".xapk");
+        file = co_await picker.PickSingleFileAsync();
+    } catch (const hresult_error& e) {
+        error = format("0x%08X %s", unsigned(e.code()), narrow(e.message()).c_str());
+    }
+    if (!file) {
+        *progress = ImportProgress();
+        done(std::string(), std::move(error));
+        co_return;
+    }
+    ApkSource source;
+    source.file = file;
+    installFrom(weakShell, progress, std::move(source), std::move(done));
 }
 
 } // namespace
@@ -762,6 +797,52 @@ void AppShell::importApk(std::function<void(std::string, std::string)> done) {
     pickAndInstall(weak, import_, [weak, done](std::string id, std::string error) {
         if (weak.lock() && done) done(std::move(id), std::move(error));
     });
+}
+
+void AppShell::installApkFile(winrt::Windows::Storage::StorageFile const& file) {
+    const std::string name = narrow(file.Name());
+    shellLog::write("import: " + name + " opened in Megler");
+    if (import_->active) {
+        alert("Another APK Is on Its Way", "Megler is installing an APK already. Open " + name + " again when it is done.");
+        return;
+    }
+    std::weak_ptr<AppShell> weak = weak_from_this();
+    confirm("Install " + name + "?",
+            "Megler reads it, tells you whether it can run here, and installs it as an app of the phone's own; the Library shows "
+            "how it goes.",
+            "Install", false, [this, weak, file] {
+                if (!weak.lock() || import_->active) return;
+                *import_ = ImportProgress();
+                import_->active = true;
+                ApkSource source;
+                source.file = file;
+                if (selectedTab_ != 0) selectTab(0);
+                installFrom(weak, import_, std::move(source), [weak](std::string, std::string error) {
+                    if (auto self = weak.lock(); self && !error.empty()) self->alert("Couldn't Install This APK", error);
+                });
+            });
+}
+
+void AppShell::installApkPath(const std::wstring& path, const std::string& name, const std::string& from) {
+    shellLog::write("import: " + from + " asks to install " + name + " (" + narrow(path) + ")");
+    if (import_->active) {
+        alert("Another APK Is on Its Way", "Megler is installing an APK already. Ask " + from + " again when it is done.");
+        return;
+    }
+    std::weak_ptr<AppShell> weak = weak_from_this();
+    confirm("Install " + name + "?", from + " wants to install this app. Megler reads it, tells you whether it can run here, and installs it "
+                                            "as an app of the phone's own.",
+            "Install", false, [this, weak, path, name] {
+                if (!weak.lock() || import_->active) return;
+                *import_ = ImportProgress();
+                import_->active = true;
+                ApkSource source;
+                source.path = path;
+                source.name = name;
+                installFrom(weak, import_, std::move(source), [weak](std::string, std::string error) {
+                    if (auto self = weak.lock(); self && !error.empty()) self->alert("Couldn't Install This APK", error);
+                });
+            });
 }
 
 // MARK: Lifecycle
