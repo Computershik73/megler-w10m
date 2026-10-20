@@ -1,13 +1,13 @@
 # A package for each Android app
 
-Meglet runs one Android app in its one process, and a process here has 2 GB: the
+Megler runs one Android app in its one process, and a process here has 2 GB: the
 app memory limit Windows sets on the phone tried (`MemoryManager.
 AppMemoryUsageLimit`, 2048 MB on the HP Elite x3, 4 GB of memory), which is
 also the 32-bit user address space. Two apps at once would share those 2 GB, and
 one's crash would end both.
 
 On Android each app is a process of its own. The way to have that here is a
-package of its own for each Android app: Meglet and the app's APK, with the app's
+package of its own for each Android app: Megler and the app's APK, with the app's
 name and icon, its own process, memory limit and data, and its own entry in the
 phone's task switcher. Windows 10 Mobile (15254) has no multi-instance apps
 (desktop 1803 and later), and a packaged app cannot start processes of its own
@@ -31,7 +31,7 @@ publisher that declares it in its manifest:
 ## The probe
 
 `app/PubCacheProbe`, built twice by `tools/build-pubcache-probe.sh` as
-MegletProbeA and MegletProbeB (Meglet's publisher, `CN=Computershik`) and run on the
+MeglerProbeA and MeglerProbeB (Megler's publisher, `CN=Computershik`) and run on the
 phone by `tools/pubcache-probe.py`: A started, B started a quarter of a minute
 later, which sends A to the background. On the HP Elite x3 (15254.603),
 2026-10-20:
@@ -39,7 +39,7 @@ later, which sends A to the background. On the HP Elite x3 (15254.603),
 - The phone takes the manifest, and both packages get the same folder,
   `C:\Data\Users\DefApps\AppData\Local\Publishers\7p434m16tbgc6\shared` (the
   publisher id's folder).
-- Win32 calls reach it, as Meglet's file layer makes them: `CreateFile2`,
+- Win32 calls reach it, as Megler's file layer makes them: `CreateFile2`,
   `FindFirstFileExW`, `CreateDirectoryW`, `LockFileEx`.
 - B reads what A wrote, lists it, and reads a file A made in
   `sdcard\Android\data\com.example.A`, a folder made level by level.
@@ -73,7 +73,7 @@ fail.
 - The ZIP is laid out as makeappx lays one out (ZIP64, version 45 local headers
   with 24-byte data descriptors; `[Content_Types].xml` and the signature last,
   version 20, sizes in their local headers; an end record of all ones after
-  the ZIP64 record and locator). Files are stored, not compressed: Meglet without
+  the ZIP64 record and locator). Files are stored, not compressed: Megler without
   the Android root is some 9.5 MB, and a stored file's blocks need no sizes in
   the block map.
 - `AppxBlockMap.xml`: each file's size, its local header's size and the SHA-256
@@ -100,10 +100,10 @@ fail.
   identifier, as signtool's certificates have, and is valid for twenty years.
   A package's publisher id is computed from the Publisher string, not the key,
   so packages signed with a key made on the phone are of the same publisher as
-  Meglet itself, and share its publisher cache folder. The phone has to trust the
+  Megler itself, and share its publisher cache folder. The phone has to trust the
   certificate: the Device Portal's install takes it with the package.
 - No code integrity catalog (`AppxMetadata/CodeIntegrity.cat`) is made, and
-  the phone does not want one: the probe packed and signed this way (MegletProbeC,
+  the phone does not want one: the probe packed and signed this way (MeglerProbeC,
   `tools/appx-phone-check.py` builds it) was installed on the HP Elite x3 by
   hand, through the Device Portal's page in the phone's own browser with its
   certificate, and started (2026-10-20).
@@ -117,23 +117,23 @@ package of makeappx's and signtool's and one of `appx-tool`'s pass it;
 the certificate's root not being trusted on the PC (as it should, and not at a
 digest). On the phone such a package installs and runs (above).
 
-## Meglet as the place the apps are managed from
+## Megler as the place the apps are managed from
 
-Since 0.1.0.359 Meglet does not run the library's apps itself (the player is left
+Since 0.1.0.359 Megler does not run the library's apps itself (the player is left
 for an auto run, `auto/AutoRun.cpp`, which pushes it on its own): an app is
-installed as an app of the phone's own, and Meglet is where that is done
+installed as an app of the phone's own, and Megler is where that is done
 (`ui/SeparateApps.cpp`, `ui/LibraryScreen.cpp`, `ui/AppDetailScreen.cpp`):
 
-- which apps are installed, and by which Meglet, is asked of the Device Portal
+- which apps are installed, and by which Megler, is asked of the Device Portal
   (`/api/app/packagemanager/packages`) when the library or an app's page is
-  shown and after every action: a package of Meglet's publisher whose name begins
-  `MegletApp.` is an app's, its version the version of the Meglet that made it. Each
-  row of the library says Installed, Installed and made by another Meglet (to
+  shown and after every action: a package of Megler's publisher whose name begins
+  `MeglerApp.` is an app's, its version the version of the Megler that made it. Each
+  row of the library says Installed, Installed and made by another Megler (to
   update), or Not installed; a portal that cannot be asked is said above the
   list;
-- a package carries the Meglet that made it, so an update of Meglet updates none:
+- a package carries the Megler that made it, so an update of Megler updates none:
   above the list, **Update All** makes and installs again every app made by
-  another Meglet;
+  another Megler;
 - an app's page has the section **On This Phone**: its state, **Install** (or
   **Update**, **Install Again**), which makes the package and installs it
   through the portal in one go, **App Settings** (below), and **Uninstall**
@@ -144,10 +144,10 @@ installed as an app of the phone's own, and Meglet is where that is done
 - the actions go one at a time on a worker thread, whichever page is shown.
 
 **The APK, kept once** (since 0.1.0.360). An app container may not open a file
-the user picked by its path, which is why Meglet used to copy every APK into
+the user picked by its path, which is why Megler used to copy every APK into
 `LocalState\apks` before anything else. Windows' broker hands out real handles
 to such a file (`IStorageItemHandleAccess`), and the core now takes a file by
-handle under a path of the shell's (`meglet_file_by_handle`; `mg_file_open` asks
+handle under a path of the shell's (`megler_file_by_handle`; `mg_file_open` asks
 the shell for a new handle at each open, so that each has a position of its
 own): the report, the icon, a bundle's unpacking and the package's making read
 the picked file where it is (`shell/PickedFile.cpp`). **Install APK** in the
@@ -158,15 +158,15 @@ from them.
 
 After an install, the package made (`LocalState\packages\<identity>.appx`) is
 removed; it stays only when the portal did not install it, for Windows's
-installer. And when Meglet can read the installed package's APK
-(`app\app.apk` in its install folder, beside Meglet's own: the folder above
+installer. And when Megler can read the installed package's APK
+(`app\app.apk` in its install folder, beside Megler's own: the folder above
 `Package::Current().InstalledLocation`) and it is as large as the one packed,
-Meglet keeps no copy: its own copy and splits go, if there were any, and
+Megler keeps no copy: its own copy and splits go, if there were any, and
 `LocalState\apks\<id>.installed` says the package's full name; the library's
 entry is that APK, its report and icon cached as before (`Library::adopt`). An
 update of the app (Update All) is made from it. Whether an app container may
 read another package's install folder is not known for Windows 10 Mobile: the
-check is made after each install, and where it fails Meglet keeps (or makes) a
+check is made after each install, and where it fails Megler keeps (or makes) a
 copy, as before, and the log says so. Before Uninstall, the APK and splits are
 copied back into `LocalState\apks` (`Library::restore`), so that the library
 keeps the app. A picked APK that cannot run here, or that was not installed,
@@ -174,18 +174,18 @@ is copied into the library, so that its page and Install stay.
 
 **Settings** (`shell/Settings.h`, `ui/SettingsScreen.cpp`). Render size,
 language and region, and location are kept in the shared folder, where every
-package reads them when it starts: Meglet's in `<shared>\settings.ini`, which
+package reads them when it starts: Megler's in `<shared>\settings.ini`, which
 every app goes by, and an app's own in `<shared>\apps\<package>\settings.ini`,
-over them, a key not there being Meglet's. Meglet's Settings tab changes Meglet's;
+over them, a key not there being Megler's. Megler's Settings tab changes Megler's;
 **App Settings** on an app's page, and **Settings** in the player's menu of the
-app's own package, change the app's, with **As in Meglet** at the top of each
+app's own package, change the app's, with **As in Megler** at the top of each
 choice. They apply at the app's next start. Each file is written beside and
 moved into place, so that a package reading it meanwhile finds a whole one. The
 `settings.ini` of before, in LocalState, is copied to its new place the first
 time.
 
-**Meglet's own storage** (`shareMegletsStorage` in `shell/AppPackage.cpp`). Meglet's
-`/sdcard` is the shared folder's too: once, in the background, Meglet copies its
+**Megler's own storage** (`shareMeglersStorage` in `shell/AppPackage.cpp`). Megler's
+`/sdcard` is the shared folder's too: once, in the background, Megler copies its
 storage of before there (`LocalState\sdcard`, and each app's part
 `LocalState\apps\<package>\sdcard` but those an app's own package has had
 handed over), a file already there as large left, and writes
@@ -199,65 +199,65 @@ the private files alone: its part of the storage is the app's already.
 `shell/AppPackage.cpp` makes an app's package, on a worker thread:
 
   1. Android's libcore and framework (the package's `android` folder, some
-     150 MB) are copied once for each build of Meglet to
-     `<shared>\android\<Meglet's version>`, a file `complete` written last; every
+     150 MB) are copied once for each build of Megler to
+     `<shared>\android\<Megler's version>`, a file `complete` written last; every
      app package of that build reads them there, so a package carries none.
   2. The signing key and certificate are made on the first use, in
-     `LocalState\signing` (`key.bin`, `MegletApps.cer`), the certificate's
-     subject Meglet's own Publisher.
-  3. The manifest is Meglet's installed one with the identity name
-     `MegletApp.<Android package>` (`_` made `-`), always 50 characters: a
+     `LocalState\signing` (`key.bin`, `MeglerApps.cer`), the certificate's
+     subject Megler's own Publisher.
+  3. The manifest is Megler's installed one with the identity name
+     `MeglerApp.<Android package>` (`_` made `-`), always 50 characters: a
      shorter one filled with a dot and a hash of the package, a longer one
      cut and given one; a phone product id made from the Android package (the
      same each time, so that a package made again is an update); and the
      app's label for the shown names (`core/src/appx/mg_appx_manifest.c`).
      Capabilities, dependencies, the entry point and the publisher cache
-     folder stay Meglet's. Where the app's icon is drawn on the logos (below),
+     folder stay Megler's. Where the app's icon is drawn on the logos (below),
      the tile's background is `transparent`, the phone's own colour; the
-     splash screen keeps Meglet's black.
+     splash screen keeps Megler's black.
   4. `resources.pri`, below.
-  5. The package, `LocalState\packages\<identity name>.appx`, holds Meglet's
+  5. The package, `LocalState\packages\<identity name>.appx`, holds Megler's
      installed files but `android`, `selftest`, `demo`, `codec`,
      `appx-template`, its `resources.pri` and what the packaging makes
-     itself; that manifest and `resources.pri`; `MegletApp.ini`; and
+     itself; that manifest and `resources.pri`; `MeglerApp.ini`; and
      `app\app.apk` with the library's report and icon of it (`app.apk.json`,
      `app.apk.icon`, `reports.version`), so that the app is not read again.
      An app of split APKs (an `.apks` or `.xapk` unpacked) has its splits in
      `app\app.apk.splits`, beside the base, where the library looks for them.
      The certificate is copied beside it.
-  6. The logos: the app's icon (`meglet_apk_icon`'s PNG, decoded by
+  6. The logos: the app's icon (`megler_apk_icon`'s PNG, decoded by
      `Windows.Graphics.Imaging`, or WebP, which the phone's WIC cannot read,
-     decoded by the core: `meglet_webp_decode`; for an app that gives only an
+     decoded by the core: `megler_webp_decode`; for an app that gives only an
      adaptive or a vector icon, a PNG the core draws from its drawables,
      `core/src/apk/mg_icon.c`) drawn in the middle of each of
-     Meglet's logos, with their names and sizes, which the `resources.pri`
+     Megler's logos, with their names and sizes, which the `resources.pri`
      template lists: `StoreLogo` 50x50, `Square44x44Logo`, `Square150x150Logo`,
      `Wide310x150Logo` and `SplashScreen` 620x300, the icon taking as much of
-     the shorter side as Meglet's own does in them (`Assets/make-assets.ps1`),
-     transparent round it. An APK with no icon that can be drawn keeps Meglet's.
-  7. The app's data in Meglet goes along, once for each app: the first package
-     made of it (the shared folder has no `apps\<package>\meglet-data.txt`, which
+     the shorter side as Megler's own does in them (`Assets/make-assets.ps1`),
+     transparent round it. An APK with no icon that can be drawn keeps Megler's.
+  7. The app's data in Megler goes along, once for each app: the first package
+     made of it (the shared folder has no `apps\<package>\megler-data.txt`, which
      is written when the package has been made) copies the app's part of
-     Meglet's storage, `LocalState\apps\<package>\sdcard` (`Android/data`,
+     Megler's storage, `LocalState\apps\<package>\sdcard` (`Android/data`,
      `Android/obb`, whatever else it has there), to the same place in the shared
      folder, the separate apps' storage, a file already there as large left
      (the OBB of an earlier make); what the separate app had in its own
-     `Android/data` is put aside first, as `apps\<package>\Android-data.before-meglet`.
+     `Android/data` is put aside first, as `apps\<package>\Android-data.before-megler`.
      The app's private files (`/data/data`, `LocalState\apps\<package>\data`),
      which no other package can write into, go to `<shared>\handover\<package>\data`
      with a file `complete` written last; the separate app, before its app
      starts (`takeHandover`), copies them into its own LocalState, its own put
-     aside as `data.before-meglet` (and put back if the copy fails), and removes the
-     handover, `complete` first. Meglet keeps its own copy of everything. An app
-     running in Meglet is not handed over (its files are being written). Later
+     aside as `data.before-megler` (and put back if the copy fails), and removes the
+     handover, `complete` first. Megler keeps its own copy of everything. An app
+     running in Megler is not handed over (its files are being written). Later
      packages of the app leave the separate app's data alone; only the
      expansion files (`Android/obb/<package>`, an `.xapk`'s OBB) are copied
      again where they are missing.
 
 **resources.pri.** A packaged XAML app reads its `resources.pri` at its start,
-and the resource map in it is named after the package's identity name. Meglet's
-names `Meglet`; the first app package (353), which carried Meglet's, ended at
-once when started (Total Commander). makepri is not on the phone, so Meglet
+and the resource map in it is named after the package's identity name. Megler's
+names `Megler`; the first app package (353), which carried Megler's, ended at
+once when started (Total Commander). makepri is not on the phone, so Megler
 carries one made for a placeholder name of 50 characters
 (`appx-template\resources.pri`, `tools/build-appx.sh`), and the app's name,
 as long, is put in its place (`core/src/appx/mg_appx_pri.c`). The name is in
@@ -290,7 +290,7 @@ Commander's and for names with capitals, digits, `.` and `-`).
   portal did not install it, hand the file to Windows (`Launcher.LaunchFileAsync`), as a file manager would. On the
   HP Elite x3 (353) Windows's installer installed a package so.
 
-A package with `MegletApp.ini` in its install folder is one app's
+A package with `MeglerApp.ini` in its install folder is one app's
 (`shell/AppPackage.cpp`, `single()`):
 
 - the library reads the package's `app` folder instead of `LocalState\apks`,
@@ -298,34 +298,34 @@ A package with `MegletApp.ini` in its install folder is one app's
 - the shell opens the app as soon as the library has it, into the player (or
   its page, when it cannot run here), and Back after the app has ended leaves;
   until then it shows the splash screen's picture on black, as Windows showed
-  it a moment before (`ui/StartScreen.cpp`), not Meglet's library;
-- the core is given the shared folder as `meglet_config.storage_dir`
-  (`core/include/meglet.h`): `/sdcard` is `<shared>\sdcard`, and each app's own
+  it a moment before (`ui/StartScreen.cpp`), not Megler's library;
+- the core is given the shared folder as `megler_config.storage_dir`
+  (`core/include/megler.h`): `/sdcard` is `<shared>\sdcard`, and each app's own
   part of it (`Android/data` and `obb`) `<shared>\apps\<package>\sdcard`,
   mounted for the others as on Android 9, so a file manager in its own package
   sees every app's; the app's private files (`/data/data/<package>`) stay in
-  its package's LocalState (taken from Meglet's once, step 7 above);
-- the Java driver is given `<shared>\android\<version>` from `MegletApp.ini` as
+  its package's LocalState (taken from Megler's once, step 7 above);
+- the Java driver is given `<shared>\android\<version>` from `MeglerApp.ini` as
   the Android root, and the fonts from there.
 
 **The phone's folders** (`ui/SharedFolders.cpp`). Music, Pictures, Movies and
-DCIM come from capabilities, which every package of Meglet's declares alike. The
+DCIM come from capabilities, which every package of Megler's declares alike. The
 Documents and Downloads folders and a memory card come in only through the
 folder picker (`player/StorageHost.h`), and Windows remembers a picked folder
 for the one package it was picked in (`FutureAccessList`): no other package of
 the publisher, not even with the publisher cache folder, gets it. So each
 separate app has to be given each such folder by the user once:
 
-- Meglet writes the folders added in its Settings (their names in `/sdcard` and
+- Megler writes the folders added in its Settings (their names in `/sdcard` and
   their paths) to `<shared>\folders.txt`, once its search of the phone's folders
   is over and whenever Settings adds or takes one out;
 - a separate app, before its app starts, offers each listed folder it has not
   got (by name or path): a dialog that says the folder, then the folder picker,
-  started in Downloads or Documents; the folder chosen is added under Meglet's
+  started in Downloads or Documents; the folder chosen is added under Megler's
   name for it (`StorageHost::add`). "Not Now" is remembered
-  (`meglet.folders.notNow` in its `settings.ini`) and not asked at start again;
+  (`megler.folders.notNow` in its `settings.ini`) and not asked at start again;
 - the player's menu of a separate app has **Settings**, whose Android Storage
-  has **Folders Meglet Has**, which offers all of those it has not got, the "Not
+  has **Folders Megler Has**, which offers all of those it has not got, the "Not
   Now" ones too, and **Add a Folder** for any other; the app finds a folder
   added so from its next start (the links are given to the core when an app
   starts).
@@ -335,8 +335,8 @@ Flags (`LocalState\flags`) are each package's own: `tools/phone-flags.py --app
 
 ## What follows (not done yet)
 
-- Old builds' Android files in `<shared>\android`: each build of Meglet that
+- Old builds' Android files in `<shared>\android`: each build of Megler that
   makes a package copies its own, and none is removed yet.
 - How apps reach one another (Android's intents to another app, "share", "open
-  with", content providers): within one process that is calls inside Meglet;
+  with", content providers): within one process that is calls inside Megler;
   between packages it needs a way of its own (protocol activation, app services).

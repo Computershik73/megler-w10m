@@ -1,14 +1,13 @@
-# Meglet
+# Megler
 
-Android games on **Windows 10 Mobile** (ARM32, 1703 and later): the translation layer
-of [Meglet](https://github.com/Leviidev/Meglet), which does the same on an iPhone, written
-for a Windows phone.
+Megler runs Android apps -- games, and apps written in Java -- on
+**Windows 10 Mobile** (ARM32, 1703 and later). It is a translation layer, not an
+emulator.
 
-An app's own Android code runs directly on the phone's processor. Meglet stands in for
+An app's own Android code runs directly on the phone's processor. Megler stands in for
 Android around it: the dynamic linker, the C library, the NDK, the Java calls the app
 makes, and OpenGL ES (through ANGLE, on Direct3D 11). No Android system boots and
-nothing is emulated. Meglet's second mode, a whole Android under QEMU, is not part of
-this port.
+nothing is emulated.
 
 **This is a first stage.** The core runs real Android libraries and a complete
 NativeActivity app under qemu-arm on a PC and on a phone (a Snapdragon 820 one, where
@@ -27,10 +26,10 @@ has to answer.
 - Apps built on **NativeActivity** (`android_native_app_glue`), and games made with
   **Unity** (IL2CPP): the second driver is new, and one game has run with it on a
   phone (see the status). SDL, cocos2d-x, Unreal and Godot each need a driver of
-  their own, as in Meglet; apps written only in Java or Kotlin need a Java runtime.
+  their own; apps written only in Java or Kotlin need a Java runtime.
   One is under way ([docs/JAVA.md](docs/JAVA.md)): a Dalvik interpreter joined to
   the JNI layer, Android 9's own class library under it (libcore, with its
-  native libraries built here for ARMv7), the original Meglet's Java framework
+  native libraries built here for ARMv7), the Java framework in `core/framework`
   on top, and drawing by the shell with Direct2D. Small test apps written in
   Java run on a phone with it -- views, lists, dialogs, a second Activity,
   preferences, background tasks, databases, a native library of their own --
@@ -68,7 +67,7 @@ The app's library page tells, for each APK, what it is and why it can or cannot 
 
 ```
 core/             the layer, portable C11
-  include/meglet.h  what the shell sees
+  include/megler.h  what the shell sees
   src/host/       the OS (Win32 app container; POSIX for the tests)
   src/ld/ arm/    the dynamic linker; what is rewritten in guest code
   src/bionic/     libc, libm, libdl, liblog, pthreads, files
@@ -77,7 +76,7 @@ core/             the layer, portable C11
   src/dvm/        a Dalvik interpreter for an app's own bytecode (docs/JAVA.md)
   src/apk/ zip/   APKs, manifests, resources
   tests/          the tests, and guest/: Android libraries and an app for them
-app/Meglet/     the C++/WinRT shell
+app/Megler/     the C++/WinRT shell
 tools/            build-appx.sh, build-tests.sh, build-guest.sh, phone.py;
                   android9-*.sh and vdex-dex.py: Android 9's class library, from
                   Google's image and AOSP's source, into build/android9
@@ -90,13 +89,13 @@ Requirements: Visual Studio 2022 17.14 (MSVC 14.44 with the ARM build tools),
 Windows SDK 10.0.22621 (headers, tools) and 10.0.15063 (ARM libraries), LLVM (clang
 and ld.lld, for the guest test libraries), Git Bash, Python 3. For the tests that
 execute Android code: WSL Ubuntu with `gcc-arm-linux-gnueabihf` and `qemu-user`.
-ANGLE comes from a gecko-w10m build (`C:\rw-obj\dist\bin`, or `MEGLET_ANGLE`).
+ANGLE comes from a gecko-w10m build (`C:\rw-obj\dist\bin`, or `MEGLER_ANGLE`).
 
 ```bash
 bash tools/build-guest.sh          # the Android test libraries and native-test.apk (clang, no NDK)
 bash tools/build-tests.sh arm      # the core's tests under qemu-arm: guest code really runs
 bash tools/build-tests.sh win      # the Win32 host layer and the APK reader, on this PC
-bash tools/build-appx.sh arm       # → app/Meglet/AppPackages/Meglet_<ver>_ARM.appx
+bash tools/build-appx.sh arm       # → app/Megler/AppPackages/Megler_<ver>_ARM.appx
 ```
 
 `build/tests-win/mg_tests.exe --apk some.apk` prints what the layer makes of an APK;
@@ -107,20 +106,20 @@ starts an APK there with a stand-in for OpenGL ES, touches it and presses Back.
 ## On the phone
 
 The phone must be interop-unlocked (for `codeGeneration`), in Developer mode, and
-trust the package's certificate (`AppPackages/Meglet.cer`; the package is signed with
-podium-w10m's certificate unless `MEGLET_PFX` names another).
+trust the package's certificate (`AppPackages/Megler.cer`; the package is signed with
+podium-w10m's certificate unless `MEGLER_PFX` names another).
 
 Install with the Device Portal, or `python tools/phone.py install` (it pins the
-target phone by name; `python tools/phone.py logs` pulls `meglet.log` and the check
+target phone by name; `python tools/phone.py logs` pulls `megler.log` and the check
 logs from LocalState). Then, in the app:
 
-1. **Device › Probe** first. Its lines are the answers this port is waiting
-   for (ARCHITECTURE.md lists them); `LocalState/meglet-probe.log` keeps them. It
+1. **Device › Probe** first. Its lines are the answers Megler is waiting
+   for (ARCHITECTURE.md lists them); `LocalState/megler-probe.log` keeps them. It
    ends with a second of a 440 Hz tone, played straight through XAudio2: if that is
    not heard, look at the phone's Media + Apps volume before anything else.
 2. **Device › Self-test**: the core's tests on the phone itself. It runs a small app
-   of its own, which uses up the one app a start of Meglet can run: close and reopen
-   Meglet before playing.
+   of its own, which uses up the one app a start of Megler can run: close and reopen
+   Megler before playing.
 3. **Add the Demo** (offered while the library is empty), then **Play**: the
    package's own small app, whose picture says what is right. An F in the top left
    corner (the picture is the right way up), red, green and blue squares left to
@@ -139,10 +138,21 @@ again; every step is in the Log. The four folders and the check have run on a
 phone (102 steps, all passed); the Settings section and adding a folder have
 not ([docs/STATUS.md](docs/STATUS.md)).
 
-One app runs per start of Meglet: Android libraries cannot be unloaded, so the app has
+One app runs per start of Megler: Android libraries cannot be unloaded, so the app has
 to be closed and opened again to play another.
+
+## Author
+
+Megler is made by Computershik. The Java framework in `core/framework` comes from
+another project (GPL-2.0-or-later) and is licensed here under the GPL-3.0, as
+[core/framework/NOTICE](core/framework/NOTICE) says.
+
+- [Profile on 4pda](https://4pda.to/forum/index.php?showuser=4458524)
+- [Telegram channel @cmplog](https://t.me/cmplog)
+- [Donate](https://pay.cloudtips.ru/p/83821e32) (within the CIS for now; from
+  outside the CIS, send a message to the Telegram channel)
 
 ## License
 
-Megler is licensed under the GNU General Public License version 3 (LICENSE). The vendored zlib is under the zlib
-license; ANGLE is BSD.
+Megler is licensed under the GNU General Public License version 3 (LICENSE). The vendored zlib is under the zlib license; ANGLE is
+BSD.

@@ -2,15 +2,15 @@
 
 ## Native abort hook (2026-10-18)
 
-WhatsApp 2.26.39.74 on Meglet 0.1.0.272 passed SoLoader's ABI selection, then
+WhatsApp 2.26.39.74 on Megler 0.1.0.272 passed SoLoader's ABI selection, then
 faulted during `libessential.so` initialization. The phone log is archived at
-`build/phone/whatsapp-latest-20261018/meglet.log`.
+`build/phone/whatsapp-latest-20261018/megler.log`.
 
 After opening `cache/abort_hook.health`, it requested RX and RWX permissions
 on page `00f84000`. Both calls returned success without changing protection:
 the page belongs to the host executable, not a guest mapping. It then faulted
 at `libessential.so+0x2d1cc`, `strh r0, [r4]`, with `r4=00f84878`. The map for
-package 272 identifies that target, `Meglet.exe+0x14878`, as `g_abort`.
+package 272 identifies that target, `Megler.exe+0x14878`, as `g_abort`.
 
 Executable protection requests on memory not owned by the guest now return
 `-1` with `EACCES`. This lets a hook installer handle the refusal rather than

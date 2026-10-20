@@ -8,7 +8,7 @@ summary identifies contention, but cannot identify the monitor or owner.
 ## Capturing ownership
 
 Builds 225/226 add an opt-in `trace-monitors` flag. Enable with
-`python tools/phone-flags.py set trace-monitors`, then restart Meglet and open
+`python tools/phone-flags.py set trace-monitors`, then restart Megler and open
 Spotify. The observer watches the Java main thread (not the XAML UI thread).
 Build 225's 200 ms threshold did not capture a single long entry wait despite
 seconds of accumulated contention in the reproduced stall. Build 226 samples
@@ -39,7 +39,7 @@ suspending the same thread twice.
 
 Remove just this flag after diagnosis (preserving other flags):
 `python tools/phone.py rm '\LocalState\flags\trace-monitors'`.
-It is read at Java-app startup; restart Meglet to disable the observer in an
+It is read at Java-app startup; restart Megler to disable the observer in an
 already-running process. Do not use `phone-flags.py clear` for this cleanup.
 
 The ARM regression suites after instrumentation pass 4531 and 4625 checks
@@ -51,7 +51,7 @@ normal monitor/GC behavior; the opt-in observer is checked on the phone.
 Build 226's trace named the monitor. Spotify's main thread waited on its own
 `android/os/MessageQueue` 3477 times in 7 s (2.6 s in all). The owner each
 time was the thread `broadcast-delivery`, in `MessageQueue.enqueue` from
-`meglet.Broadcasts.send` from
+`megler.Broadcasts.send` from
 `com.spotify.widgets.npvwidget.WidgetUpdateCoordinator.a`.
 
 `WidgetUpdateCoordinator` is a manifest receiver for Spotify's own
@@ -61,7 +61,7 @@ provider (`setComponent`). `Broadcasts.send` gave such an intent to every
 receiver whose filter lists the action as well, so the coordinator heard its
 own relay and relayed it again, without end. Android gives an intent that
 names a component to that component alone. The overlay's `Broadcasts.send`
-now does the same, chooses manifest receivers by `meglet.Manifest.match`, and
+now does the same, chooses manifest receivers by `megler.Manifest.match`, and
 skips disabled receivers. The data app's step "broadcast-explicit" covers it:
 before the fix it logged `relay=50 target=49 off=50 registered=50` (the
 step's bound), after it `relay=1 target=1 off=0 registered=1`.
