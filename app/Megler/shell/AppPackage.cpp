@@ -4,6 +4,7 @@
 
 #include "megler.h"
 #include "library/Library.h"
+#include "player/Session.h"
 #include "shell/Files.h"
 #include "shell/Platform.h"
 #include "shell/ShellLog.h"
@@ -221,6 +222,37 @@ const SingleApp& single() {
     return app;
 }
 
+void takeHandover() {
+    const SingleApp& app = single();
+    const std::wstring shared = sharedFolder();
+    if (app.package.empty() || shared.empty()) return;
+    const std::wstring package = widen(app.package), handover = shared + L"\\handover\\" + package;
+    if (!files::exists(handover + L"\\complete")) return;
+    // The app's private files where the core keeps them (core/src/run/hk_run.c: <data>\apps\<package>\data); its own
+    // until now put aside, and put back if the copy fails.
+    const std::wstring own = platform::localStateDirectory() + L"\\apps\\" + package + L"\\data", aside = own + L".before-megler";
+    const bool hadOwn = files::exists(own);
+    if (hadOwn) {
+        files::removeTree(aside);
+        if (!files::move(own, aside)) {
+            shellLog::write(format("app package: the app's own private files could not be put aside (error %lu): Megler's not taken", GetLastError()));
+            return;
+        }
+    }
+    uint64_t copied = 0;
+    if (!copyTree(handover + L"\\data", own, copied)) {
+        shellLog::write(format("app package: the private files Megler handed over could not be copied (error %lu): taken at the next start", GetLastError()));
+        files::removeTree(own);
+        if (hadOwn) files::move(aside, own);
+        return;
+    }
+    // "complete" first: once it is gone, nothing is taken again, whatever of the rest stays.
+    files::remove(handover + L"\\complete");
+    files::removeTree(handover);
+    shellLog::write("app package: the private files Megler handed over taken, " + formattedByteCount(copied) +
+                    (hadOwn ? "; the app's own are in " + narrow(aside) : std::string()));
+}
+
 Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& progress) {
     Made made;
     auto fail = [&made](std::string why) {
@@ -258,15 +290,47 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
         shellLog::write("app package: Android's files copied to " + narrow(root) + ", " + formattedByteCount(copied));
     }
 
-    // The app's expansion files (an .xapk's OBB, or what it downloaded while it ran in Megler): in Megler's storage, which is
-    // not the separate apps' (theirs is the shared folder's). Copied there, those already there left.
-    const std::wstring obb = L"\\apps\\" + widen(r.package) + L"\\sdcard\\Android\\obb\\" + widen(r.package);
-    if (files::exists(local + obb)) {
-        progress("Copying the app's expansion files to the shared storage…");
+    // The app's data in Megler, once for each app: the first package made of it takes it along, so that the app goes on
+    // where it was. Its part of Android's storage (Android/data, Android/obb, whatever else it has there) is copied to
+    // the shared folder's, which is the separate apps' storage; its private files (/data/data) to handover\<package> in
+    // the shared folder, which the separate app takes into its own LocalState at its next start (takeHandover). What the
+    // separate app had in Android/data is kept aside, not removed. Megler keeps its own. Later packages leave the separate
+    // app's data alone, but for the expansion files (an .xapk's OBB), copied each time where they are missing.
+    const std::wstring package = widen(r.package);
+    const std::wstring inMegler = local + L"\\apps\\" + package, inShared = shared + L"\\apps\\" + package;
+    const std::wstring handedOver = inShared + L"\\megler-data.txt", handover = shared + L"\\handover\\" + package;
+    const bool handOver = !files::exists(handedOver);
+    if (handOver) {
+        const session::Snapshot running = session::snapshot();
+        if (running.apkId == entry.id && (running.state == session::State::starting || running.state == session::State::running))
+            return fail("The app is running in Megler, and its data can't be copied while it writes it. Quit it first.");
         uint64_t copied = 0;
-        if (!copyTree(local + obb, shared + obb, copied, true))
-            return fail(format("The app's expansion files could not be copied to the shared storage (error %lu).", GetLastError()));
-        shellLog::write("app package: the expansion files in " + narrow(shared + obb) + ", " + formattedByteCount(copied) + " copied");
+        if (files::exists(inMegler + L"\\sdcard")) {
+            progress("Copying the app's files in Android's storage to the shared storage…");
+            const std::wstring data = inShared + L"\\sdcard\\Android\\data\\" + package, aside = inShared + L"\\Android-data.before-megler";
+            // (A make that failed after this has left a copy of Megler's there and the separate app's own aside: that stays.)
+            if (files::exists(data) && !files::exists(aside) && !files::move(data, aside))
+                return fail(format("The separate app's own Android/data could not be put aside (error %lu).", GetLastError()));
+            files::removeTree(data);
+            if (!copyTree(inMegler + L"\\sdcard", inShared + L"\\sdcard", copied, true))
+                return fail(format("The app's files could not be copied to the shared storage (error %lu).", GetLastError()));
+        }
+        if (files::exists(inMegler + L"\\data")) {
+            progress("Copying the app's private files for the separate app…");
+            files::removeTree(handover);
+            if (!copyTree(inMegler + L"\\data", handover + L"\\data", copied) || !files::write(handover + L"\\complete", version))
+                return fail(format("The app's private files could not be copied to the shared folder (error %lu).", GetLastError()));
+        }
+        shellLog::write("app package: the app's data in Megler copied for the separate app, " + formattedByteCount(copied));
+    } else {
+        const std::wstring obb = L"\\sdcard\\Android\\obb\\" + package;
+        if (files::exists(inMegler + obb)) {
+            progress("Copying the app's expansion files to the shared storage…");
+            uint64_t copied = 0;
+            if (!copyTree(inMegler + obb, inShared + obb, copied, true))
+                return fail(format("The app's expansion files could not be copied to the shared storage (error %lu).", GetLastError()));
+            shellLog::write("app package: the expansion files in " + narrow(inShared + obb) + ", " + formattedByteCount(copied) + " copied");
+        }
     }
 
     progress("Signing key…");
@@ -350,6 +414,9 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     progress("Signing the package…");
     if (!megler_appx_finish(a, key, err, sizeof(err))) return fail(std::string("The package could not be made: ") + err);
     shellLog::write("app package: " + narrow(made.appx) + " made, " + formattedByteCount(files::size(made.appx)) + ", for " + r.package);
+    // The data handed over once: said only now, so that a make that failed hands it over again.
+    if (handOver && (!files::makeDirectories(inShared) || !files::write(handedOver, "Megler " + version + " handed over " + r.package + "'s data in Megler\r\n")))
+        shellLog::write("app package: " + narrow(handedOver) + " could not be written: the next package of the app hands its data over again");
     return made;
 }
 

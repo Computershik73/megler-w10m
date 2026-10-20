@@ -33,6 +33,11 @@ inline const char* singleAppId() { return "app.apk"; }
 /// The publisher cache folder "shared", which every package of Megler's publisher has; empty when Windows gives none.
 std::wstring sharedFolder();
 
+/// An app's own package, before its app starts: the app's private files that Megler handed over when it made the package
+/// (the shared folder's handover\<package>, see make) copied into its LocalState in place of its own, which are kept
+/// aside (data.before-megler). Nothing when there is no handover. Off the UI thread.
+void takeHandover();
+
 struct Made {
     std::wstring appx;         // the package, in LocalState\packages
     std::wstring certificate;  // the certificate it is signed with (the phone has to trust it), beside it
@@ -40,7 +45,8 @@ struct Made {
     std::string error;         // set when it was not made
 };
 /// Makes the package of `entry`. Slow (copies Android's files once per build, reads the whole APK): off the UI thread.
-/// `progress` is told each step.
+/// The first package made of an app takes the app's data in Megler along: its part of Android's storage to the shared one,
+/// its private files to the shared folder's handover\<package>, for takeHandover. `progress` is told each step.
 Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& progress);
 
 /// Installs `made` through the phone's own Device Portal, https://127.0.0.1 (its certificate, which the phone made for

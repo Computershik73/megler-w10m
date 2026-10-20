@@ -220,7 +220,8 @@ private:
         }
         std::string footer = std::string("A package of Megler and this ") + (entry.splitsDir.empty() ? "APK" : "app's APKs") +
                              ", with the app's name and icon: it starts straight into the app, in a process of its own with its own "
-                             "memory. Its /sdcard is shared with the other separate apps.";
+                             "memory. Its /sdcard is shared with the other separate apps. The first time, the app's data in Megler "
+                             "goes along with it (Megler keeps its own), so it goes on where it was.";
         if (!s.made.appx.empty())
             footer += " The package and the certificate it is signed with are in Megler's LocalState\\packages (" + s.made.identity +
                       ".appx, MeglerApps.cer); the phone has to trust the certificate, which the Device Portal is given with the package.";

@@ -373,10 +373,14 @@ void AppShell::poll() {
                 shellLog::write("app package: opening " + entry->report.package);
                 const std::string id = entry->id;
                 if (entry->report.ready()) {
+                    // The app's private files Megler handed over when it made this package, taken first (shell/AppPackage.h).
                     std::weak_ptr<AppShell> weak = weak_from_this();
-                    sharedFolders::offer(false, [weak, id](int, int) {
-                        if (auto self = weak.lock()) self->push(makePlayerScreen(*self, id));
-                    });
+                    runInBackground([] { appPackage::takeHandover(); },
+                                    [weak, id] {
+                                        sharedFolders::offer(false, [weak, id](int, int) {
+                                            if (auto self = weak.lock()) self->push(makePlayerScreen(*self, id));
+                                        });
+                                    });
                 } else {
                     push(makeAppDetailScreen(*this, id));
                 }
