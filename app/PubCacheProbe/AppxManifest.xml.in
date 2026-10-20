@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The publisher cache folder probe (App.cpp), as package @NAME@: tools/build-pubcache-probe.sh fills in the name, the
+  phone product id and the display name. Both packages have Megler's publisher, and both declare the folder "shared".
+-->
+<Package
+    xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+    xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+    xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
+    IgnorableNamespaces="uap mp">
+
+  <Identity Name="@NAME@" Publisher="CN=Computershik" Version="1.0.0.@BUILD@" ProcessorArchitecture="arm" />
+
+  <mp:PhoneIdentity PhoneProductId="@PRODUCT@" PhonePublisherId="00000000-0000-0000-0000-000000000000" />
+
+  <Properties>
+    <DisplayName>@DISPLAY@</DisplayName>
+    <PublisherDisplayName>Computershik</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Mobile" MinVersion="10.0.15063.0" MaxVersionTested="10.0.15254.0" />
+    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.15063.0" MaxVersionTested="10.0.15254.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-US" />
+  </Resources>
+
+  <Applications>
+    <Application Id="App" Executable="Probe.exe" EntryPoint="Probe.App">
+      <uap:VisualElements DisplayName="@DISPLAY@" Description="Publisher cache folder probe" BackgroundColor="#000000"
+          Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:SplashScreen Image="Assets\SplashScreen.png" BackgroundColor="#000000" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Extensions>
+    <Extension Category="windows.publisherCacheFolders">
+      <PublisherCacheFolders>
+        <Folder Name="shared" />
+      </PublisherCacheFolders>
+    </Extension>
+  </Extensions>
+</Package>
