@@ -15,7 +15,9 @@
 // getActivityInfo, getLaunchIntentForPackage, getInstalledPackages,
 // getInstalledApplications and getPackageUid know them; the original knew no
 // other app. And canRequestPackageInstalls is true: an app store may hand an APK
-// to Megler's installer (megler.Installs), which asks the user.
+// to Megler's installer (megler.Installs), which asks the user. And
+// getDefaultActivityIcon is the platform's sym_def_app_icon, where it was a
+// transparent colour with no size.
 package android.content.pm;
 
 import android.content.ComponentName;
@@ -171,7 +173,14 @@ public class PackageManager {
     public android.graphics.drawable.Drawable getApplicationIcon(String pkg) throws NameNotFoundException { return getApplicationIcon(getApplicationInfo(pkg, 0)); }
     public android.graphics.drawable.Drawable getApplicationLogo(ApplicationInfo a) { return null; }
     public android.graphics.drawable.Drawable getActivityIcon(ComponentName c) throws NameNotFoundException { return getActivityInfo(c, 0).loadIcon(this); }
-    public android.graphics.drawable.Drawable getDefaultActivityIcon() { return new android.graphics.drawable.ColorDrawable(0); }
+    // The platform's icon of an app that has none (sym_def_app_icon), as Android's; a transparent one if it cannot be read.
+    public android.graphics.drawable.Drawable getDefaultActivityIcon() {
+        try {
+            android.graphics.drawable.Drawable d = android.content.res.Resources.getSystem().getDrawable(android.R.drawable.sym_def_app_icon);
+            if (d != null) return d;
+        } catch (RuntimeException e) {}
+        return new android.graphics.drawable.ColorDrawable(0);
+    }
     public android.graphics.drawable.Drawable getDrawable(String pkg, int res, ApplicationInfo a) { try { return megler.ContextImpl.app().getResources().getDrawable(res); } catch (Exception e) { return null; } }
     public CharSequence getText(String pkg, int res, ApplicationInfo a) { try { return megler.ContextImpl.app().getResources().getText(res); } catch (Exception e) { return null; } }
     public android.content.res.Resources getResourcesForApplication(String pkg) throws NameNotFoundException { if (!mine(pkg) && !"android".equals(pkg)) throw new NameNotFoundException(pkg); return megler.ContextImpl.app().getResources(); }

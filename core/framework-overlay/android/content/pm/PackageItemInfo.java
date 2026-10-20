@@ -1,7 +1,11 @@
 // Overlay of core/framework/src/android/content/pm/PackageItemInfo.java (tools/build-framework.sh).
-// It differs in loadIcon: the item of another app the phone has (megler.PhoneApps: a launcher lists them) gives that app's
+// It differs in loadIcon. The item of another app the phone has (megler.PhoneApps: a launcher lists them) gives that app's
 // icon, which the shell put beside the list of them; the original looked the icon's number up in the app's own resources,
-// which have no other app's. The rest is the original's, unchanged.
+// which have no other app's. And an item with no icon of its own is never without one, as on Android
+// (ApplicationPackageManager.loadItemIcon): an activity's is its application's, and the last is the platform's default
+// icon (PackageManager.getDefaultActivityIcon). The original answered null, and Nova Launcher 8.9.4 ended at its start: it
+// draws the icon of an activity of its own that has none (AdaptiveIconSettingsActivity) and read the size of null.
+// The rest is the original's, unchanged.
 package android.content.pm;
 public class PackageItemInfo {
     public String name, packageName;
@@ -21,7 +25,14 @@ public class PackageItemInfo {
             android.graphics.drawable.Drawable d = megler.PhoneApps.icon(packageName);
             if (d != null) return d;
         }
-        try { return icon != 0 ? megler.ContextImpl.app().getResources().getDrawable(icon) : null; } catch (Exception e) { return null; }
+        android.graphics.drawable.Drawable d = null;
+        try { if (icon != 0) d = megler.ContextImpl.app().getResources().getDrawable(icon); } catch (Exception e) {}
+        if (d == null && this instanceof ComponentInfo) {
+            ApplicationInfo a = ((ComponentInfo) this).applicationInfo;
+            if (a != null) d = a.loadIcon(pm);
+        }
+        if (d == null) d = pm != null ? pm.getDefaultActivityIcon() : megler.ContextImpl.app().getPackageManager().getDefaultActivityIcon();
+        return d;
     }
     public android.graphics.drawable.Drawable loadUnbadgedIcon(PackageManager pm) { return loadIcon(pm); }
     public android.graphics.drawable.Drawable loadLogo(PackageManager pm) { return null; }

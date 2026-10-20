@@ -1995,7 +1995,8 @@ public class Main extends Activity {
     /**
      * The other apps the phone has, as a launcher sees them (the test's apps folder has one, com.example.other, "Other",
      * launched by com.example.other.Main): the launcher's intent lists it with its label and icon, it has a launch intent and
-     * application info, and starting it asks the shell (megler_system_host.launch_app).
+     * application info, and starting it asks the shell (megler_system_host.launch_app). And an activity with no icon has
+     * the platform's default one, with a size, where it had null (Nova Launcher read the size of it).
      */
     private void phoneApps() {
         step("phone-apps", () -> {
@@ -2012,9 +2013,15 @@ public class Main extends Activity {
             android.content.pm.LauncherApps la = (android.content.pm.LauncherApps) getSystemService(LAUNCHER_APPS_SERVICE);
             for (Object o : la.getActivityList(null, android.os.Process.myUserHandle()))
                 if ("com.example.other".equals(((android.content.pm.LauncherActivityInfo) o).getComponentName().getPackageName())) launcherApps = true;
+            // An activity with no icon of its own has one all the same, as on Android: the platform's default one at the last.
+            android.content.pm.ActivityInfo iconless = new android.content.pm.ActivityInfo();
+            iconless.packageName = getPackageName();
+            android.graphics.drawable.Drawable fallback = iconless.loadIcon(pm);
+            boolean defaultIcon = fallback != null && fallback.getIntrinsicWidth() > 0;
             if (open != null) startActivity(open);
-            detail = "listed=" + listed + " open=" + open + " info=" + info + " launcherApps=" + launcherApps;
-            return listed && open != null && "com.example.other.Main".equals(open.getComponent().getClassName()) && info && launcherApps;
+            detail = "listed=" + listed + " open=" + open + " info=" + info + " launcherApps=" + launcherApps + " defaultIcon=" + fallback
+                    + (fallback != null ? " " + fallback.getIntrinsicWidth() : "");
+            return listed && open != null && "com.example.other.Main".equals(open.getComponent().getClassName()) && info && launcherApps && defaultIcon;
         });
     }
 
