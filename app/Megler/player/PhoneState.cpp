@@ -106,7 +106,41 @@ void tellLocale() {
     shellLog::write("phone: the language and region are " + tag + (chosen.empty() ? " (the phone's)" : " (set in Settings)"));
 }
 
+/// Every place Windows says its accent colour, in the log once: on the HP Elite x3, UISettings' Accent was #0000FF while
+/// the phone's accent was lilac (2026-10-20), and which of these has the phone's is to be seen.
+static void sayAccentSources() {
+    static bool said = false;
+    if (said) return;
+    said = true;
+    using winrt::Windows::UI::ViewManagement::UIColorType;
+    using winrt::Windows::UI::ViewManagement::UIElementType;
+    using winrt::Windows::UI::ViewManagement::UISettings;
+    auto hex = [](winrt::Windows::UI::Color c) { return format("#%02X%02X%02X%02X", c.A, c.R, c.G, c.B); };
+    std::string line = "phone: the accent as Windows says it:";
+    try {
+        UISettings ui;
+        const std::pair<const char*, UIColorType> kinds[] = {
+            {"Accent", UIColorType::Accent},         {"AccentLight1", UIColorType::AccentLight1}, {"AccentLight2", UIColorType::AccentLight2},
+            {"AccentDark1", UIColorType::AccentDark1}, {"AccentDark2", UIColorType::AccentDark2},   {"Background", UIColorType::Background}};
+        for (const auto& [name, kind] : kinds) line += std::string(" UISettings ") + name + " " + hex(ui.GetColorValue(kind)) + ",";
+        line += " UIElementColor Highlight " + hex(ui.UIElementColor(UIElementType::Highlight)) + ",";
+    } catch (const winrt::hresult_error& e) {
+        line += format(" UISettings failed (0x%08X),", unsigned(e.code().value));
+    }
+    for (const wchar_t* key : {L"SystemAccentColor", L"SystemColorHighlightColor", L"SystemAccentColorLight1"}) {
+        try {
+            const auto value = winrt::Windows::UI::Xaml::Application::Current().Resources().Lookup(winrt::box_value(key));
+            line += " XAML " + narrow(key) + " " + hex(winrt::unbox_value<winrt::Windows::UI::Color>(value)) + ",";
+        } catch (const winrt::hresult_error&) {
+            line += " XAML " + narrow(key) + " none,";
+        }
+    }
+    line.pop_back();
+    shellLog::write(line);
+}
+
 uint32_t accent() {
+    sayAccentSources();
     try {
         const auto c = winrt::Windows::UI::ViewManagement::UISettings().GetColorValue(winrt::Windows::UI::ViewManagement::UIColorType::Accent);
         return (uint32_t(c.A) << 24) | (uint32_t(c.R) << 16) | (uint32_t(c.G) << 8) | uint32_t(c.B);
