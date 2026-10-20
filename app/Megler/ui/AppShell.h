@@ -152,4 +152,22 @@ std::shared_ptr<Page> makeChecksScreen(AppShell& shell);
 std::shared_ptr<Page> makeLogScreen(AppShell& shell);
 std::shared_ptr<Page> makeSettingsScreen(AppShell& shell);
 
+/// Whose settings a settings view shows and changes (shell/Settings.h): Megler's, or one app's own.
+struct SettingsScope {
+    std::string package; // the app's Android package; empty: Megler's
+    std::string label;   // the app's name
+    bool own = false;    // this process is that app's own package: its folders and what it is are shown too
+};
+/// The body of a settings page, unscrolled: for a page, or for the player's menu in an app's own package.
+class SettingsView {
+public:
+    virtual ~SettingsView() = default;
+    virtual winrt::Windows::UI::Xaml::UIElement view() = 0;
+    /// Every poll while shown.
+    virtual void refresh() = 0;
+};
+std::shared_ptr<SettingsView> makeSettingsView(AppShell& shell, SettingsScope scope);
+/// One app's own settings, on its page in Megler.
+std::shared_ptr<Page> makeAppSettingsScreen(AppShell& shell, std::string package, std::string label);
+
 } // namespace megler::app::ui

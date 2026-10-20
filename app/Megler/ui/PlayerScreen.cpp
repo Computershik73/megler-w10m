@@ -29,7 +29,6 @@
 #include "shell/Strings.h"
 #include "ui/AppShell.h"
 #include "ui/Components.h"
-#include "ui/SharedFolders.h"
 
 #include <winrt/Windows.UI.Text.Core.h>
 
@@ -94,7 +93,9 @@ public:
     bool handleBack() override {
         const session::State state = session::snapshot().state;
         if (state == session::State::running) {
-            if (menuShown_)
+            if (settingsShown_)
+                showSettings(false);
+            else if (menuShown_)
                 showMenu(false);
             else if (keyboardUp_)
                 putKeyboardAway(true); // while the keyboard is up, Back is the keyboard's, as on Android
@@ -159,6 +160,7 @@ public:
         root.Children().Append(busyOverlay_);
 
         root.Children().Append(buildMenu());
+        if (appPackage::isSingleApp()) root.Children().Append(buildSettings());
         root.Children().Append(buildEndPanel());
 
         root.SizeChanged([this](auto&&, SizeChangedEventArgs const& e) {
@@ -222,7 +224,9 @@ public:
             // An app that does not answer the stop: the process can still be ended.
             setVisible(closeWhileBusy_, std::chrono::steady_clock::now() - stopAsked_ > std::chrono::seconds(4));
         }
+        if (ended && settingsShown_) showSettings(false);
         if (ended && menuShown_) showMenu(false);
+        if (settingsShown_ && settings_) settings_->refresh();
         if (ended && !endShown_) showEnd(snap);
         if (menuShown_ && window) {
             const auto audio = session::audio();
@@ -350,11 +354,11 @@ private:
         add(column, menuStatus_);
         auto resume = primaryButton("Resume", glyphs::play, [this] { showMenu(false); });
         add(column, resume);
-        // A separate app: Megler's folders it has not got, those said "Not Now" to as well (ui/SharedFolders.h).
+        // An app's own package: its own settings, and its folders (SettingsScreen.cpp).
         if (appPackage::isSingleApp()) {
-            auto folders = primaryButton("Phone Folders", glyphs::folder, [this] { offerFolders(); }, p.fill);
-            folders.Margin(ThicknessHelper::FromLengths(0, 10, 0, 0));
-            add(column, folders);
+            auto settings = primaryButton("Settings", glyphs::settings, [this] { showSettings(true); }, p.fill);
+            settings.Margin(ThicknessHelper::FromLengths(0, 10, 0, 0));
+            add(column, settings);
         }
         auto quitButton = primaryButton("Quit", glyphs::close, [this] { quit(); }, p.fill);
         quitButton.Margin(ThicknessHelper::FromLengths(0, 10, 0, 0));
@@ -386,17 +390,52 @@ private:
         shellLog::write(show ? "player: menu opened" : "player: menu closed");
     }
 
-    void offerFolders() {
-        AppShell& shell = shell_;
-        sharedFolders::offer(true, [&shell](int offered, int added) {
-            if (offered < 0)
-                shell.alert("No Folders in Megler", "Megler has no folders of the phone's added. Add them in Megler: Settings, Android Storage, Add a Folder; "
-                                                  "then they are offered here.");
-            else if (offered == 0)
-                shell.alert("Every Folder Is Here", "This app has every folder Megler has. More are added in Megler: Settings, Android Storage, Add a Folder.");
-            else if (added > 0)
-                shell.alert("Folders Added", "The app finds them from its next start.");
-        });
+    /// An app's own package: its settings over the app, from the menu, the app paused under them as under the menu.
+    UIElement buildSettings() {
+        const auto& p = palette();
+        Grid bar;
+        ColumnDefinition c0, c1;
+        c0.Width(GridLengthHelper::FromValueAndType(1, GridUnitType::Star));
+        c1.Width(GridLengthHelper::Auto());
+        bar.ColumnDefinitions().Append(c0);
+        bar.ColumnDefinitions().Append(c1);
+        auto heading = text("Settings", font::headline, weightSemibold(), p.label);
+        heading.VerticalAlignment(VerticalAlignment::Center);
+        bar.Children().Append(heading);
+        auto done = button(text("Done", font::body, weightSemibold(), p.accentText), [this] { showSettings(false); }, ButtonKind::plain, "Done");
+        Grid::SetColumn(done, 1);
+        bar.Children().Append(done);
+        bar.Padding(ThicknessHelper::FromLengths(16, 10, 12, 10));
+        settingsHost_ = ContentControl();
+        settingsHost_.HorizontalContentAlignment(HorizontalAlignment::Stretch);
+        auto scroll = scrollingPage(settingsHost_);
+        Grid panel;
+        RowDefinition r0, r1;
+        r0.Height(GridLengthHelper::Auto());
+        r1.Height(GridLengthHelper::FromValueAndType(1, GridUnitType::Star));
+        panel.RowDefinitions().Append(r0);
+        panel.RowDefinitions().Append(r1);
+        panel.Children().Append(bar);
+        Grid::SetRow(scroll, 1);
+        panel.Children().Append(scroll);
+        settingsOverlay_ = Grid();
+        // Opaque, and over the bars' part of the window as the app is: what is under the phone's bars stays readable.
+        settingsOverlay_.Background(brush(p.background));
+        settingsOverlay_.Children().Append(panel);
+        setVisible(settingsOverlay_, false);
+        return settingsOverlay_;
+    }
+
+    void showSettings(bool show) {
+        if (show == settingsShown_ || !settingsOverlay_) return;
+        settingsShown_ = show;
+        if (show && !settings_) {
+            const auto& app = appPackage::single();
+            settings_ = makeSettingsView(shell_, SettingsScope{app.package, app.label, true});
+            settingsHost_.Content(settings_->view());
+        }
+        setVisible(settingsOverlay_, show);
+        shellLog::write(show ? "player: settings opened" : "player: settings closed");
     }
 
     void quit() {
@@ -948,6 +987,9 @@ private:
     TextBlock busyText_{nullptr};
     Button closeWhileBusy_{nullptr};
     Grid menuOverlay_{nullptr};
+    Grid settingsOverlay_{nullptr};
+    ContentControl settingsHost_{nullptr};
+    std::shared_ptr<SettingsView> settings_;
     TextBlock menuStatus_{nullptr};
     Grid endOverlay_{nullptr};
     TextBlock endTitle_{nullptr};
@@ -961,6 +1003,7 @@ private:
     bool started_ = false;
     bool running_ = false;
     bool menuShown_ = false;
+    bool settingsShown_ = false; // an app's own package: its settings are over the menu
     bool endShown_ = false;
     int waited_ = 0;
     double lastWidth_ = 0, lastHeight_ = 0;
