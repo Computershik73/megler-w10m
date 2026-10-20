@@ -250,6 +250,18 @@ Memory an app asks for as writable and executable at once (a JIT's code heap) ca
 exist. Such a region is writable until something executes in it and executable until
 something writes to it: the fault handler flips the page.
 
+So is a page of one of the app's own libraries asked for so: an inline hook patching
+the app's code. Instagram's `libdistract.so` hooks a function of its
+`libc++_shared.so`; the page stayed executable only, and the app ended on the
+write. Up to 64 such ranges are kept (`g_wx_code` in `bionic/hk_libc_mem.c`), never
+given back, as a hook stays as long as its library. Executable access to Megler's
+own code is still refused (above).
+
+The guest test `t_own_code_hook` hooks a function of its library on a page of its
+own, runs it, restores it and runs it again. Code that writes to its own page
+needs a write fault told from an execute fault: Windows tells them apart, qemu
+does not, so the test keeps the writer off the patched page.
+
 ## Graphics
 
 ANGLE turns OpenGL ES into Direct3D 11, and most GLES calls are bound straight to

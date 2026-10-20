@@ -1248,3 +1248,48 @@ int t_libc_inline_hook(void)
     if (mprotect(abort_page, 4096, 5)) return -13;
     return result;
 }
+
+/* An inline hook on a function of the app's own library, as Instagram's
+ * libdistract puts one on its libc++_shared.so: the page, asked to be writable
+ * and executable at once, is written to and run, asked again, written to and
+ * run. The function has a page of its own, as the hooked code is in another
+ * library than the hook's: code that writes to its own page needs a write fault
+ * told from an execute fault, which qemu does not tell. */
+int own_hook(int a) { return a + 100; }
+__attribute__((noinline, aligned(4096))) int own_hooked(int a)
+{
+    __asm__ volatile("nop\n nop\n nop\n nop\n nop\n nop");
+    return a + 1;
+}
+__attribute__((aligned(4096))) int t_own_code_hook(void)
+{
+    int (*volatile fn)(int) = own_hooked;
+    size_t at = (size_t)fn;
+    unsigned char *code = (unsigned char *)(at & ~(size_t)1), saved[8], jump[8];
+    void *page = (void *)((size_t)code & ~(size_t)4095);
+    void *libc = dlopen("libc.so", 0);
+    int (*flush)(long, long, long) = dlsym(libc, "cacheflush");
+    unsigned to = (unsigned)(size_t)own_hook;
+    int result = 0;
+    if (!flush || ((size_t)code & 4095) || ((size_t)t_own_code_hook & ~(size_t)4095) == (size_t)page) return -1;
+    if (at & 1) {
+        unsigned short op[2] = { 0xf8df, 0xf000 }; /* ldr.w pc, [pc, #0] */
+        memcpy(jump, op, 4);
+    } else {
+        unsigned op = 0xe51ff004; /* ldr pc, [pc, #-4] */
+        memcpy(jump, &op, 4);
+    }
+    memcpy(jump + 4, &to, 4);
+    memcpy(saved, code, 8);
+    if (mprotect(page, 4096, 7)) return -2;
+    memcpy(code, jump, 8);
+    flush((long)code, (long)(code + 8), 0);
+    if (fn(1) != 101) result = -3;
+    if (mprotect(page, 4096, 7)) return -4;
+    memcpy(code, saved, 8);
+    flush((long)code, (long)(code + 8), 0);
+    if (fn(1) != 2) result = -5;
+    if (mprotect(page, 4096, 5)) return -6;
+    if (fn(2) != 3) result = -7;
+    return result;
+}

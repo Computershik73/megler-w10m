@@ -1970,6 +1970,7 @@ static void test_library(hk_lib *lib, const char *what, const char *scratch)
     CHECK_INT(FN(lib, int (*)(void), "t_dl")(), 4);
     CHECK_INT(FN(lib, int (*)(void), "t_loader_dl")(), 5);
     CHECK_INT(FN(lib, int (*)(void), "t_libc_inline_hook")(), 0);
+    CHECK_INT(FN(lib, int (*)(void), "t_own_code_hook")(), 0);
     CHECK_INT(FN(lib, int (*)(void), "t_libc_more")(), 6);
     CHECK_INT(FN(lib, int (*)(void), "t_shm")(), 9);
     CHECK_INT(FN(lib, int (*)(void), "t_ashmem")(), 10);

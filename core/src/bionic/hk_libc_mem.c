@@ -179,6 +179,9 @@ static void g_delete_sized(void *p, size_t n) { (void)n; hk_g_free(p); }
  * writable and executable at once -- a JIT's code heap -- cannot exist on the
  * host, so it is writable until something executes in it and executable until
  * something writes to it: the fault handler flips the page (hk_mmap_fix_fault).
+ * So are the pages of the app's own libraries it asks so of, to patch its code
+ * (an inline hook: Instagram's libdistract rewrites a function of its
+ * libc++_shared.so, and ended on the write while the page stayed executable).
  *
  * Anonymous memory mapped with no access (PROT_NONE) is address space and nothing more, as on Linux: reserved, not
  * committed, until mprotect gives some of it access (committed then, zeroed the first time); mapped again over itself
@@ -535,6 +538,33 @@ static void *g_mremap(void *old, size_t old_size, size_t new_size, int flags)
     return p;
 }
 
+/*
+ * Pages of the app's libraries (not mmap'd memory, so no region's) asked to be writable and executable at once: an inline
+ * hook patching the app's own code. Few, and never given back: a hook stays as long as the library. Under g_region_lock.
+ */
+static struct { u8 *lo, *hi; } g_wx_code[64];
+static u32 g_wx_code_count;
+
+static bool wx_code_has(const u8 *page)
+{
+    u32 i;
+    for (i = 0; i < g_wx_code_count; i++)
+        if (page >= g_wx_code[i].lo && page < g_wx_code[i].hi) return true;
+    return false;
+}
+
+static bool wx_code_add(u8 *p, size_t size)
+{
+    u32 i;
+    for (i = 0; i < g_wx_code_count; i++)
+        if (p >= g_wx_code[i].lo && p + size <= g_wx_code[i].hi) return true;
+    if (g_wx_code_count == HK_COUNT(g_wx_code)) return false;
+    g_wx_code[g_wx_code_count].lo = p;
+    g_wx_code[g_wx_code_count].hi = p + size;
+    g_wx_code_count++;
+    return true;
+}
+
 static int g_mprotect(void *addr, size_t len, int prot)
 {
     size_t size = HK_ALIGN_UP(len + ((hk_addr)addr & (HK_PAGE - 1)), HK_PAGE);
@@ -587,11 +617,13 @@ static int g_mprotect(void *addr, size_t len, int prot)
     }
     if ((prot & G_PROT_WRITE) && (prot & G_PROT_EXEC)) {
         region *r;
+        bool kept;
         hk_lock_acquire(&g_region_lock);
         r = region_of(p);
         if (r) r->wx = true;
+        kept = r || wx_code_add(p, size);
         hk_lock_release(&g_region_lock);
-        if (!r) hk_note_once("mprotect: writable and executable at once, outside mmap'd memory (%p); it stays as it is", addr);
+        if (!kept) hk_note_once("mprotect: writable and executable at once, more library pages than are kept (%p); it stays as it is", addr);
         else hk_mem_protect(p, size, HK_PROT_RW);
         return 0;
     }
@@ -603,7 +635,7 @@ static int g_mprotect(void *addr, size_t len, int prot)
     return 0;
 }
 
-/* A write-or-execute fault in a region that wants both: give the page what this access needs. */
+/* A write-or-execute fault in a region, or a library's page, that wants both: give the page what this access needs. */
 bool hk_mmap_fix_fault(hk_addr address, bool write, bool exec)
 {
     region *r;
@@ -612,7 +644,7 @@ bool hk_mmap_fix_fault(hk_addr address, bool write, bool exec)
     if (!write && !exec) return false;
     hk_lock_acquire(&g_region_lock);
     r = region_of((const void *)address);
-    wx = r && r->wx;
+    wx = r ? r->wx : wx_code_has(page);
     hk_lock_release(&g_region_lock);
     if (!wx) return false;
     if (exec) {
