@@ -108,6 +108,17 @@ bool megler_webp_size(const void *data, size_t size, int *width, int *height);
 bool megler_webp_decode(const void *data, size_t size, void *pixels, int width, int height, int stride);
 
 /*
+ * A file the shell reaches only through handles -- one the user picked, which an app container may not open by its
+ * path, but Windows' broker hands out handles to (IStorageItemHandleAccess) -- under a path of the shell's choosing:
+ * from now on the core opens `path` for reading by calling `open(user)` for a new HANDLE each time, so that
+ * megler_apk_report, megler_apk_icon, megler_bundle_unpack and megler_appx_add_file read the file where it is, with no copy.
+ * Writing to it is refused. The path is compared without regard to case or to '/' and '\'. NULL `open` takes the path
+ * back; the caller keeps `user` alive until then. A few at a time. Windows only: false elsewhere.
+ */
+typedef void *(*megler_handle_opener)(void *user);
+bool megler_file_by_handle(const char *path, megler_handle_opener open, void *user);
+
+/*
  * An app in several APKs: a base and its split APKs, as Google Play installs an app built as an Android App Bundle.
  * Config splits hold what is for one kind of phone -- config.armeabi_v7a.apk the native libraries for 32-bit ARM,
  * config.xxhdpi.apk the pictures for one screen density, config.ru.apk one language's strings -- and feature splits

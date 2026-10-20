@@ -654,6 +654,13 @@ static int foreign_fd(const char *path, int flags, int kind, int *err)
     return h ? (int)(intptr_t)h - 1 : -1;
 }
 
+/* (Files by handle are Windows' alone: an app container's picked files.) */
+bool hk_file_by_handle(const char *path, void *(*open)(void *user), void *user)
+{
+    (void)path; (void)open; (void)user;
+    return false;
+}
+
 hk_file *hk_file_open(const char *path, int flags, int *err)
 {
     int o = 0, fd;

@@ -286,6 +286,14 @@ typedef struct hk_stat {
 
 hk_file *hk_file_open(const char *path, int flags, int *err);
 void hk_file_close(hk_file *f);
+/*
+ * A file reached only through handles someone else hands out (on Windows, a file the user picked, which an app container
+ * may not open by its path: Windows' broker gives handles to it), under a path of the caller's: from now on hk_file_open
+ * opens `path` for reading by calling `open(user)` for a new handle of its own (a HANDLE), and refuses it for writing.
+ * The path is compared without regard to case or to '/' and '\'. NULL `open` takes the path back. A few at a time.
+ * Windows only: false elsewhere.
+ */
+bool hk_file_by_handle(const char *path, void *(*open)(void *user), void *user);
 /* Bytes moved, or -1 with *err set. Positioned variants leave the file's own position alone. */
 i64 hk_file_read(hk_file *f, void *buf, size_t n, int *err);
 i64 hk_file_write(hk_file *f, const void *buf, size_t n, int *err);

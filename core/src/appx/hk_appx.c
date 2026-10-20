@@ -33,6 +33,8 @@
 
 #include "zlib.h"
 
+#include "../host/hk_host.h"
+
 #define BLOCK 65536u
 
 static void set_err(char *err, size_t errlen, const char *fmt, ...)
@@ -712,7 +714,23 @@ static bool add(hk_appx *a, const char *name, reader read, void *src)
     return !a->bad;
 }
 
-static size_t read_file(void *src, u8 *to, size_t n) { return fread(to, 1, n, (FILE *)src); }
+/* A file read through the host's files (hk_host.h), so that one the core reaches by handle is read as any other. */
+typedef struct file_src {
+    hk_file *f;
+    bool failed;
+} file_src;
+
+static size_t read_file(void *src, u8 *to, size_t n)
+{
+    file_src *s = (file_src *)src;
+    int err = 0;
+    i64 got = hk_file_read(s->f, to, n, &err);
+    if (got < 0) {
+        s->failed = true;
+        return 0;
+    }
+    return (size_t)got;
+}
 
 typedef struct mem_src {
     const u8 *p;
@@ -731,17 +749,19 @@ static size_t read_mem(void *src, u8 *to, size_t n)
 
 bool hk_appx_add_file(hk_appx *a, const char *name, const char *src_path)
 {
-    FILE *f;
+    file_src s;
+    int err = 0;
     bool ok;
     if (a->bad) return false;
-    f = open_file(src_path, L"rb");
-    if (!f) {
+    s.f = hk_file_open(src_path, HK_O_READ, &err);
+    s.failed = false;
+    if (!s.f) {
         fail(a, "%s cannot be read", src_path);
         return false;
     }
-    ok = add(a, name, read_file, f);
-    if (ferror(f)) fail(a, "reading %s failed", src_path);
-    fclose(f);
+    ok = add(a, name, read_file, &s);
+    if (s.failed) fail(a, "reading %s failed", src_path);
+    hk_file_close(s.f);
     return ok && !a->bad;
 }
 

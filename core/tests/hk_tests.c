@@ -250,6 +250,15 @@ static void test_host(const char *scratch)
 /* -------------------------------------------------------------------- zip */
 
 /* A ZIP with one stored and one deflated entry, written by hand so the reader is tested against the format, not against itself. */
+#ifdef _WIN32
+/* (Declared by hand: this file has no windows.h.) */
+__declspec(dllimport) void *__stdcall CreateFileA(const char *name, unsigned long access, unsigned long share, void *security,
+                                                   unsigned long disposition, unsigned long attributes, void *templ);
+
+/* A file by handle's opener: the file of the path `user`, read, a handle of its own each time. */
+static void *open_by_path(void *user) { return CreateFileA((const char *)user, 0x80000000ul, 1ul | 4ul, NULL, 3ul, 0x80ul, NULL); }
+#endif
+
 static void test_zip(const char *scratch)
 {
     static const u8 stored[] = "stored entry";
@@ -310,6 +319,32 @@ static void test_zip(const char *scratch)
         }
         hk_zip_close(&z);
     }
+#ifdef _WIN32
+    /* The same archive as a file by handle (hk_host.h), as the shell gives the core one the user picked: under a path
+       where nothing is, each open a handle of its own. */
+    {
+        static const char alias[] = "C:/nowhere-at-all/Picked.APK";
+        hk_file *f1, *f2;
+        u8 a4[4], b4[4];
+        int ferr = 0;
+        say("zip: a file by handle");
+        CHECK(hk_file_by_handle("c:\\NOWHERE-at-all\\picked.apk", open_by_path, path));
+        CHECK(hk_zip_open(&z, alias, err, sizeof(err)) && z.count == 2 && hk_zip_find(&z, "assets/a.txt") != NULL);
+        if (z.count) hk_zip_close(&z);
+        f1 = hk_file_open(alias, HK_O_READ, &ferr);
+        f2 = hk_file_open(alias, HK_O_READ, &ferr);
+        CHECK(f1 && f2 && f1 != f2);
+        if (f1 && f2) {
+            CHECK(hk_file_read(f1, a4, 4, &ferr) == 4 && !memcmp(a4, "PK\3\4", 4));
+            CHECK(hk_file_read(f2, b4, 4, &ferr) == 4 && !memcmp(b4, "PK\3\4", 4));   /* a position of its own */
+        }
+        hk_file_close(f1);
+        hk_file_close(f2);
+        CHECK(!hk_file_open(alias, HK_O_READ | HK_O_WRITE, &ferr));   /* never written to */
+        CHECK(hk_file_by_handle(alias, NULL, NULL));
+        CHECK(!hk_file_open(alias, HK_O_READ, &ferr));
+    }
+#endif
     /* Damaged archives are refused, not followed. */
     hk_wr32(zip + n - 22 + 16, 0x7FFFFFF0u);
     CHECK(hk_file_write_all(path, zip, n));

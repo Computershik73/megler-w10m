@@ -109,6 +109,8 @@ bool megler_webp_decode(const void *data, size_t size, void *pixels, int width, 
     return hk_webp_decode(data, size, pixels, width, height, stride);
 }
 
+bool megler_file_by_handle(const char *path, megler_handle_opener open, void *user) { return hk_file_by_handle(path, open, user); }
+
 const char *megler_version(void) { return "0.1"; }
 void megler_free(void *p) { free(p); }
 

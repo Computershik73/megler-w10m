@@ -1302,12 +1302,91 @@ static HANDLE foreign_handle(const char *path, int flags, int kind, int *err)
     return h;
 }
 
+/* ------------------------------------------------ files by handle (hk_host.h) */
+
+#define HANDLE_FILES 8
+
+static SRWLOCK g_by_handle_lock = SRWLOCK_INIT;
+static struct {
+    char *path;
+    void *(*open)(void *user);
+    void *user;
+} g_by_handle[HANDLE_FILES];
+
+static bool same_path(const char *a, const char *b)
+{
+    for (; *a && *b; a++, b++) {
+        char x = *a == '/' ? '\\' : (*a >= 'A' && *a <= 'Z' ? (char)(*a + 32) : *a);
+        char y = *b == '/' ? '\\' : (*b >= 'A' && *b <= 'Z' ? (char)(*b + 32) : *b);
+        if (x != y) return false;
+    }
+    return !*a && !*b;
+}
+
+bool hk_file_by_handle(const char *path, void *(*open)(void *user), void *user)
+{
+    int i, free_at = -1;
+    bool done = false;
+    if (!path) return false;
+    AcquireSRWLockExclusive(&g_by_handle_lock);
+    for (i = 0; i < HANDLE_FILES; i++) {
+        if (g_by_handle[i].path && same_path(g_by_handle[i].path, path)) {
+            free(g_by_handle[i].path);
+            memset(&g_by_handle[i], 0, sizeof(g_by_handle[i]));
+        }
+        if (!g_by_handle[i].path && free_at < 0) free_at = i;
+    }
+    if (!open) {
+        done = true;
+    } else if (free_at >= 0) {
+        g_by_handle[free_at].path = hk_strdup(path);
+        g_by_handle[free_at].open = open;
+        g_by_handle[free_at].user = user;
+        done = true;
+    }
+    ReleaseSRWLockExclusive(&g_by_handle_lock);
+    return done;
+}
+
+/* A new handle of a file by handle, INVALID_HANDLE_VALUE when it is none, NULL when its owner gave none. */
+static HANDLE by_handle(const char *path)
+{
+    void *(*open)(void *) = NULL;
+    void *user = NULL;
+    int i;
+    AcquireSRWLockShared(&g_by_handle_lock);
+    for (i = 0; i < HANDLE_FILES; i++)
+        if (g_by_handle[i].path && same_path(g_by_handle[i].path, path)) {
+            open = g_by_handle[i].open;
+            user = g_by_handle[i].user;
+        }
+    ReleaseSRWLockShared(&g_by_handle_lock);
+    if (!open) return INVALID_HANDLE_VALUE;
+    {
+        HANDLE h = (HANDLE)open(user);
+        return h == INVALID_HANDLE_VALUE ? NULL : h;
+    }
+}
+
 hk_file *hk_file_open(const char *path, int flags, int *err)
 {
     wchar_t *w;
     DWORD access = 0, disp;
     HANDLE h;
     hk_file *f;
+    h = path ? by_handle(path) : INVALID_HANDLE_VALUE;
+    if (h != INVALID_HANDLE_VALUE) {
+        if (!h || (flags & (HK_O_WRITE | HK_O_CREATE | HK_O_TRUNC | HK_O_APPEND))) {
+            if (h) CloseHandle(h);
+            if (err) *err = h ? HK_E_ACCESS : HK_E_IO;
+            return NULL;
+        }
+        f = (hk_file *)hk_alloc(sizeof(*f));
+        f->h = h;
+        f->append = false;
+        if (err) *err = HK_E_OK;
+        return f;
+    }
     if (hk_path_is_foreign(path)) {
         h = foreign_handle(path, flags, HK_FOREIGN_FILE, err);
         if (!h) return NULL;
