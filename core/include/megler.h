@@ -1602,6 +1602,11 @@ bool megler_appx_app_identity(const char *android_package, char *out, size_t out
 /* That package's manifest, made from Megler's (the text of its AppxManifest.xml): the identity name, phone product id and
    shown names changed, all else Megler's. A string to free with megler_free, or NULL (err says why). */
 char *megler_appx_app_manifest(const char *megler_manifest, const char *android_package, const char *label, char *err, size_t errlen);
+/* That package's resources.pri, from the one Megler carries made for a placeholder name as long (appx-template\resources.pri,
+   whose resources.txt says the placeholder and the two tails; tools/build-appx.sh): into `out`, as large as `pri`. False
+   (err says why) when the template is not such a file. */
+bool megler_appx_pri_rename(const uint8_t *pri, size_t size, const char *placeholder, uint32_t tail1, uint32_t tail2, const char *name,
+                          uint8_t *out, char *err, size_t errlen);
 
 #ifdef __cplusplus
 }

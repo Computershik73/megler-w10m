@@ -40,6 +40,7 @@
 #include "../src/ndk/hk_ndk.h"
 #include "../src/run/hk_run.h"
 #include "../src/appx/hk_appx.h"
+#include "zlib.h"
 #include "../src/zip/hk_zip.h"
 
 static int g_checks, g_failed;
@@ -1089,15 +1090,22 @@ static void test_appx_manifest(void)
     char err[200], name[64], name2[64];
     char *m, *m2;
     say("an app's own package: its manifest from Megler's");
-    CHECK(hk_appx_app_identity("com.instagram.android", name, sizeof(name)) && !strcmp(name, "MeglerApp.com.instagram.android"));
-    CHECK(hk_appx_app_identity("com.example.my_app", name, sizeof(name)) && !strcmp(name, "MeglerApp.com.example.my-app"));
+    /* Every name 50 characters long: the package's, a dot and a hash to fill it. */
+    CHECK(hk_appx_app_identity("com.instagram.android", name, sizeof(name)) && !strncmp(name, "MeglerApp.com.instagram.android.", 30) &&
+          strlen(name) == 50);
+    CHECK(hk_appx_app_identity("com.instagram.android", name2, sizeof(name2)) && !strcmp(name, name2));
+    CHECK(hk_appx_app_identity("com.example.my_app", name, sizeof(name)) && !strncmp(name, "MeglerApp.com.example.my-app.", 27) &&
+          strlen(name) == 50);
+    /* One of 49 gets one hash digit, no dot (41 + 8 = 49). */
+    CHECK(hk_appx_app_identity("com.example.abcdefghijklmnopqrstuvwxyz.ab", name, sizeof(name)) && strlen(name) == 50 &&
+          !strncmp(name, "MeglerApp.com.example.abcdefghijklmnopqrstuvwxyz.ab", 49) && name[49] != '.');
     CHECK(hk_appx_app_identity("com.example.a.very.long.package.name.of.some.app.that.goes.on", name, sizeof(name)) && strlen(name) == 50);
     CHECK(hk_appx_app_identity("com.example.a.very.long.package.name.of.some.app.that.goes.on", name2, sizeof(name2)) && !strcmp(name, name2));
     CHECK(!hk_appx_app_identity("com.example/../x", name, sizeof(name)));
     m = hk_appx_app_manifest(megler, "com.instagram.android", "Insta & <gram> \"x\"", err, sizeof(err));
     CHECK(m != NULL);
     if (!m) return;
-    CHECK(strstr(m, "Name=\"MeglerApp.com.instagram.android\"") != NULL);
+    CHECK(strstr(m, "Name=\"MeglerApp.com.instagram.android.") != NULL);
     CHECK(strstr(m, "Publisher=\"CN=Computershik\"") != NULL && strstr(m, "Version=\"0.1.0.351\"") != NULL);
     CHECK(strstr(m, "1d79b5e9") == NULL && strstr(m, "PhoneProductId=\"") != NULL);
     CHECK(strstr(m, "<DisplayName>Insta &amp; &lt;gram&gt; &quot;x&quot;</DisplayName>") != NULL);
@@ -1126,6 +1134,65 @@ static void test_appx_manifest(void)
     free(m2);
     CHECK(hk_appx_app_manifest("<Package/>", "com.example", "x", err, sizeof(err)) == NULL && strstr(err, "Identity") != NULL);
     free(m);
+}
+
+/* resources.pri made for another name (core/src/appx/hk_appx_pri.c): a file of the same shape -- the name twice in UTF-16,
+   a schema whose checksum is the CRC-32 of the name twice, lower-cased, followed by the rest -- renamed, has the checksum a
+   CRC of the new data has. */
+static void put_utf16(u8 *out, const char *s, bool lower_case)
+{
+    for (; *s; s++, out += 2) {
+        char c = *s;
+        if (lower_case && c >= 'A' && c <= 'Z') c = (char)(c + 32);
+        out[0] = (u8)c;
+        out[1] = 0;
+    }
+}
+
+static void test_appx_pri(void)
+{
+    static const char placeholder[] = "MeglerApp.0000000000000000000000000000000000000000Xy";
+    static const char name[] = "MeglerApp.com.ghisler.android.TotalCommander.1a2b3c4";
+    static const char rest1[] = "between the two", rest2[] = "and all the schema's names after the second, a few hundred bytes of them";
+    u8 file[600], out[600], data[400];
+    size_t n = strlen(placeholder), dn;
+    u32 sum, want;
+    char err[160];
+    say("an app's own package: its resources.pri from one made for a placeholder");
+    CHECK_INT((int)strlen(name), (int)n);
+    memset(file, 0x5a, sizeof(file));
+    memcpy(file + 40, "[def_hnamesx]  ", 16);
+    put_utf16(file + 100, placeholder, false);
+    put_utf16(file + 300, placeholder, false);
+    /* The checksum data: the name, rest1, the name, rest2, as the schema's (lower-cased, UTF-16). */
+#define DATA(s)                                                                                                  \
+    do {                                                                                                         \
+        dn = 0;                                                                                                  \
+        put_utf16(data, s, true);                                                                                \
+        dn += 2 * n;                                                                                             \
+        memcpy(data + dn, rest1, sizeof(rest1));                                                                 \
+        dn += sizeof(rest1);                                                                                     \
+        put_utf16(data + dn, s, true);                                                                           \
+        dn += 2 * n;                                                                                             \
+        memcpy(data + dn, rest2, sizeof(rest2));                                                                 \
+        dn += sizeof(rest2);                                                                                     \
+    } while (0)
+    DATA(placeholder);
+    sum = (u32)crc32(0, data, (uInt)dn);
+    memcpy(file + 64, &sum, 4);
+    CHECK(hk_appx_pri_rename(file, sizeof(file), placeholder, (u32)sizeof(rest2), (u32)(sizeof(rest1) + 2 * n + sizeof(rest2)), name, out,
+                             err, sizeof(err)));
+    DATA(name);
+    want = (u32)crc32(0, data, (uInt)dn);
+#undef DATA
+    memcpy(&sum, out + 64, 4);
+    CHECK(sum == want);
+    {
+        u8 n16[128];
+        put_utf16(n16, name, false);
+        CHECK(!memcmp(out + 100, n16, 2 * n) && !memcmp(out + 300, n16, 2 * n));
+    }
+    CHECK(!hk_appx_pri_rename(file, sizeof(file), placeholder, 1, 2, "MeglerApp.short", out, err, sizeof(err)));
 }
 
 static void test_libc_odds(void)
@@ -2675,6 +2742,7 @@ int hk_tests_run(const char *libdir, const char *scratch, hk_test_sink sink, voi
     test_battery();
     test_libc_odds();
     test_appx_manifest();
+    test_appx_pri();
     test_mmap_commit();
     test_mmap_file(scratch);
     test_chromium_oom_report();

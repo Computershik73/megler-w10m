@@ -648,6 +648,29 @@ cp "$STAGE/AppxManifest.xml" "$PRITMP/" && cp "$STAGE/Assets/"* "$PRITMP/Assets/
 "$SDKBIN/makepri.exe" new /pr "$(w "$PRITMP")" /cf "$(w "$PRITMP/priconfig.xml")" \
   /mn "$(w "$PRITMP/AppxManifest.xml")" /of "$(w "$STAGE/resources.pri")" /o > /dev/null
 rm -rf "$PRITMP"
+
+# The template of resources.pri for the package of one Android app (core/src/appx/hk_appx_pri.c, shell/AppPackage.cpp):
+# the resource map is named after the package, which is not Megler's, and makepri is not on the phone. So one is made for
+# a placeholder name of 50 characters (every app package's name has that length), and another for a name one character
+# apart, which tells where in the schema checksum's data the name sits (tools/pri-tails.py); the phone puts the name in
+# and corrects the checksum. appx-template\resources.txt says the placeholder and the two tails.
+PRI_PLACEHOLDER="MeglerApp.0000000000000000000000000000000000000000Xy"
+PRI_PROBE="MeglerApp.1000000000000000000000000000000000000000Xy"
+make_pri() {  # <folder> <identity name> <out>
+  rm -rf "$1" && mkdir -p "$1/Assets"
+  tr -d '\r' < "$STAGE/AppxManifest.xml" | sed -e "0,/Name=\"Megler\"/s//Name=\"$2\"/" > "$1/AppxManifest.xml"
+  cp "$STAGE/Assets/"* "$1/Assets/"
+  "$SDKBIN/makepri.exe" createconfig /cf "$(w "$1/priconfig.xml")" /dq en-US /pv 10.0.0 /o > /dev/null
+  "$SDKBIN/makepri.exe" new /pr "$(w "$1")" /cf "$(w "$1/priconfig.xml")" /mn "$(w "$1/AppxManifest.xml")" /of "$(w "$3")" /o > /dev/null
+}
+mkdir -p "$STAGE/appx-template"
+make_pri "$BUILD/pri-template" "$PRI_PLACEHOLDER" "$STAGE/appx-template/resources.pri"
+make_pri "$BUILD/pri-probe" "$PRI_PROBE" "$BUILD/pri-probe.pri"
+PRI_TAILS="$(python "$(w "$ROOT/tools/pri-tails.py")" "$(w "$STAGE/appx-template/resources.pri")" "$(w "$BUILD/pri-probe.pri")" "$PRI_PLACEHOLDER" 8)" ||
+  { echo "the app packages' resources.pri template: the name's places in its checksum were not found" >&2; exit 1; }
+printf 'placeholder=%s\r\ntail1=%s\r\ntail2=%s\r\n' "$PRI_PLACEHOLDER" ${PRI_TAILS} > "$STAGE/appx-template/resources.txt"
+rm -rf "$BUILD/pri-template" "$BUILD/pri-probe" "$BUILD/pri-probe.pri"
+echo "    appx-template: resources.pri for app packages, the name's tails $PRI_TAILS"
 echo "    staged $(find "$STAGE" -type f | wc -l) files, $(du -sk "$STAGE" | cut -f1) KB"
 
 if [ "$PACK" = 1 ]; then

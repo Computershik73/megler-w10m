@@ -131,18 +131,43 @@ An app's page in Megler's library has a section "Separate App"
      `LocalState\signing` (`key.bin`, `MeglerApps.cer`), the certificate's
      subject Megler's own Publisher.
   3. The manifest is Megler's installed one with the identity name
-     `MeglerApp.<Android package>` (`_` made `-`), a phone product id made from
-     the Android package (the same each time, so that a package made again is
-     an update), and the app's label for the shown names
-     (`core/src/appx/hk_appx_manifest.c`); capabilities, dependencies, the entry
-     point and the publisher cache folder stay Megler's.
-  4. The package, `LocalState\packages\MeglerApp.<package>.appx`, holds Megler's
-     installed files but `android`, `selftest`, `demo`, `codec` and what the
-     packaging makes itself; that manifest; `MeglerApp.ini`; and `app\app.apk`
-     with the library's report and icon of it (`app.apk.json`,
+     `MeglerApp.<Android package>` (`_` made `-`), always 50 characters: a
+     shorter one filled with a dot and a hash of the package, a longer one
+     cut and given one; a phone product id made from the Android package (the
+     same each time, so that a package made again is an update); and the
+     app's label for the shown names (`core/src/appx/hk_appx_manifest.c`).
+     Capabilities, dependencies, the entry point and the publisher cache
+     folder stay Megler's.
+  4. `resources.pri`, below.
+  5. The package, `LocalState\packages\<identity name>.appx`, holds Megler's
+     installed files but `android`, `selftest`, `demo`, `codec`,
+     `appx-template`, its `resources.pri` and what the packaging makes
+     itself; that manifest and `resources.pri`; `MeglerApp.ini`; and
+     `app\app.apk` with the library's report and icon of it (`app.apk.json`,
      `app.apk.icon`, `reports.version`), so that the app is not read again. An
      app of split APKs is not made a package yet. The certificate is copied
      beside it.
+
+**resources.pri.** A packaged XAML app reads its `resources.pri` at its start,
+and the resource map in it is named after the package's identity name. Megler's
+names `Megler`; the first app package (353), which carried Megler's, ended at
+once when started (Total Commander). makepri is not on the phone, so Megler
+carries one made for a placeholder name of 50 characters
+(`appx-template\resources.pri`, `tools/build-appx.sh`), and the app's name,
+as long, is put in its place (`core/src/appx/hk_appx_pri.c`). The name is in
+the file twice, in UTF-16: the map's name and its unique name
+`ms-appx://<name>/`. The hierarchical schema's checksum (in `[def_hnamesx]`, 24
+bytes on) is a CRC-32 (zlib's) over data in which the name is twice too,
+lower-cased and in UTF-16, followed by 520 and 628 bytes of the rest; found on
+the PC from files makepri made for names a character apart (the checksums'
+differences are linear, as a CRC's are, and the same for capitals and small
+letters). A CRC being linear, the checksum of the new name is the old one
+changed by the CRC of the two names' difference followed by as many zero
+bytes as come after each place; the two tails are found at each build by
+`tools/pri-tails.py`, from a second file made for a name one character apart,
+and written to `appx-template\resources.txt`. The file so made is byte for
+byte the one makepri makes for that name (checked on the PC for Total
+Commander's and for names with capitals, digits, `.` and `-`).
 - **Install Through the Device Portal** sends the package and the certificate
   to `https://127.0.0.1/api/app/packagemanager/package` with Windows's own HTTP
   client (`Windows.Web.Http`), after a GET of `/api/os/info` for the portal's
@@ -152,9 +177,8 @@ An app's page in Megler's library has a section "Separate App"
   incomplete chain), there only. A portal that asks for a user name and
   password is said to; none is sent yet.
 - **Open the Package (Windows Installer)** and **Open the Certificate** hand the
-  file to Windows (`Launcher.LaunchFileAsync`), as a file manager would.
-  Whether Windows 10 Mobile installs a package or a certificate so is to be
-  seen.
+  file to Windows (`Launcher.LaunchFileAsync`), as a file manager would. On the
+  HP Elite x3 (353) Windows's installer installed a package so.
 
 A package with `MeglerApp.ini` in its install folder is one app's
 (`shell/AppPackage.cpp`, `single()`):

@@ -35,5 +35,10 @@ bool hk_appx_app_identity(const char *android_package, char *out, size_t outlen)
 /* The manifest of that package, made from Megler's own (`megler`, the text of its AppxManifest.xml): its identity name,
    phone product id and shown names changed, all else Megler's. A new string, or NULL (err says why). Any host. */
 char *hk_appx_app_manifest(const char *megler, const char *android_package, const char *label, char *err, size_t errlen);
+/* The resources.pri of a package named `name`, made from one made for `placeholder` (as long) whose schema checksum
+   covers the name, lower-cased, followed by `tail1` and `tail2` bytes (hk_appx_pri.c): into `out`, as large as `pri`.
+   False (err says why) unless the placeholder is there twice. Any host. */
+bool hk_appx_pri_rename(const u8 *pri, size_t size, const char *placeholder, u32 tail1, u32 tail2, const char *name, u8 *out,
+                        char *err, size_t errlen);
 
 #endif

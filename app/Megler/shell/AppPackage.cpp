@@ -60,15 +60,16 @@ bool plainName(const std::string& name) {
 }
 
 /// Megler's own files for an app's package: all of the install folder but what the package gets in its own form (the
-/// manifest, MeglerApp.ini, app\), what the packaging adds (block map, content types, signature, AppxMetadata), and what
-/// an app's package has no use for (Android's files, which are shared; the self-test's libraries; the demos; the codec
-/// samples of the auto runs).
+/// manifest, resources.pri, MeglerApp.ini, app\), what the packaging adds (block map, content types, signature,
+/// AppxMetadata), and what an app's package has no use for (Android's files, which are shared; the self-test's
+/// libraries; the demos; the codec samples of the auto runs; the template its resources.pri is made from).
 void collect(const std::wstring& root, const std::wstring& rel, std::vector<std::pair<std::string, std::wstring>>& out,
              std::vector<std::string>& skipped) {
     const std::wstring dir = rel.empty() ? root : root + L"\\" + rel;
     for (const auto& name : files::list(dir, L"*")) {
         if (rel.empty() && (sameName(name, L"AppxManifest.xml") || sameName(name, L"AppxBlockMap.xml") ||
-                            sameName(name, L"[Content_Types].xml") || sameName(name, L"AppxSignature.p7x") || sameName(name, L"MeglerApp.ini")))
+                            sameName(name, L"[Content_Types].xml") || sameName(name, L"AppxSignature.p7x") || sameName(name, L"MeglerApp.ini") ||
+                            sameName(name, L"resources.pri")))
             continue;
         std::string zip = narrow(rel.empty() ? name : rel + L"\\" + name);
         for (char& c : zip)
@@ -81,7 +82,8 @@ void collect(const std::wstring& root, const std::wstring& rel, std::vector<std:
     }
     for (const auto& name : files::listFolders(dir, L"*")) {
         if (rel.empty() && (sameName(name, L"android") || sameName(name, L"selftest") || sameName(name, L"demo") ||
-                            sameName(name, L"codec") || sameName(name, L"app") || sameName(name, L"AppxMetadata")))
+                            sameName(name, L"codec") || sameName(name, L"app") || sameName(name, L"AppxMetadata") ||
+                            sameName(name, L"appx-template")))
             continue;
         collect(root, rel.empty() ? name : rel + L"\\" + name, out, skipped);
     }
@@ -176,6 +178,18 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     megler_appx_app_identity(r.package.c_str(), identity, sizeof(identity));
     made.identity = identity;
 
+    // resources.pri: XAML wants one whose resource map has the package's name. Megler carries one made for a placeholder
+    // as long as every app package's name, and the name goes in its place (core/src/appx/hk_appx_pri.c).
+    std::string priTemplate, priFacts;
+    if (!files::read(install + L"\\appx-template\\resources.pri", priTemplate) || !files::read(install + L"\\appx-template\\resources.txt", priFacts))
+        return fail("This Megler carries no template of an app package's resources.pri (appx-template).");
+    std::string pri(priTemplate.size(), '\0');
+    if (!megler_appx_pri_rename(reinterpret_cast<const uint8_t*>(priTemplate.data()), priTemplate.size(), iniValue(priFacts, "placeholder").c_str(),
+                              uint32_t(strtoul(iniValue(priFacts, "tail1").c_str(), nullptr, 10)),
+                              uint32_t(strtoul(iniValue(priFacts, "tail2").c_str(), nullptr, 10)), identity,
+                              reinterpret_cast<uint8_t*>(pri.data()), err, sizeof(err)))
+        return fail(std::string("The package's resources.pri could not be made: ") + err);
+
     const std::wstring outDir = local + L"\\packages";
     files::makeDirectory(outDir);
     made.appx = outDir + L"\\" + widen(identity) + L".appx";
@@ -193,6 +207,7 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     // (A failure on the way makes the rest fail at once; finish says what it was.)
     for (const auto& [name, path] : parts) megler_appx_add_file(a, name.c_str(), narrow(path).c_str());
     megler_appx_add_data(a, "AppxManifest.xml", manifestText.data(), manifestText.size());
+    megler_appx_add_data(a, "resources.pri", pri.data(), pri.size());
     const std::string ini = "package=" + r.package + "\r\nlabel=" + label + "\r\napk=app\r\nroot=android\\" + version + "\r\n";
     megler_appx_add_data(a, "MeglerApp.ini", ini.data(), ini.size());
     megler_appx_add_file(a, "app/app.apk", narrow(entry.path).c_str());

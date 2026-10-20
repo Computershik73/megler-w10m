@@ -4,8 +4,9 @@
  * Everything Megler's manifest says stays, its capabilities, dependencies, entry point and the publisher cache folder
  * among them, so that an app's package runs Megler as Megler runs; what makes it a package of its own is changed:
  *   - Identity's Name: "MeglerApp." and the Android package, which has only letters, digits, '.' and '_' (Android's rule),
- *     '_' made '-' (an identity name has no '_'); one longer than the 50 characters a name may have is cut and given a
- *     hash of the whole at its end;
+ *     '_' made '-' (an identity name has no '_'), always 50 characters long, the most a name may have: one longer is cut
+ *     and given a hash of the whole at its end, one shorter is filled with a dot and a hash of the package (its
+ *     resources.pri is made from one for a placeholder as long, hk_appx_pri.c);
  *   - PhoneIdentity's PhoneProductId: a GUID made from the Android package, the same for the same package each time, so
  *     that a package made again for the same app is an update of it;
  *   - Properties' DisplayName, and VisualElements' DisplayName and the tile's ShortName: the app's label (the short name
@@ -44,6 +45,16 @@ bool hk_appx_app_identity(const char *android_package, char *out, size_t outlen)
         /* Cut to 41 and a hash of the whole: "MeglerApp.com.example.a-very-long-nam.1a2b3c4d" */
         if (name[40] == '.') name[40] = '-';
         snprintf(name + 41, sizeof(name) - 41, ".%08x", (unsigned)(fnv64(android_package, 0xcbf29ce484222325ull) >> 32));
+    } else if (n < 50) {
+        /* Filled to 50 with a dot and a hash of the package: every app package's name is as long as the placeholder its
+           resources.pri was made for (hk_appx_pri.c). One of 49 gets a hash digit alone, a name not ending in a dot. */
+        char hash[48];
+        u64 h1 = fnv64(android_package, 0xcbf29ce484222325ull), h2 = fnv64(android_package, 0x84222325cbf29ce4ull),
+            h3 = fnv64(android_package, 0x9e3779b97f4a7c15ull);
+        snprintf(hash, sizeof(hash), "%016llx%016llx%016llx", (unsigned long long)h1, (unsigned long long)h2, (unsigned long long)h3);
+        if (n < 49) name[n++] = '.';
+        memcpy(name + n, hash, 50 - n);
+        name[50] = 0;
     }
     snprintf(out, outlen, "%s", name);
     return true;

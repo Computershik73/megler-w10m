@@ -16,3 +16,8 @@ char *megler_appx_app_manifest(const char *megler_manifest, const char *android_
 {
     return hk_appx_app_manifest(megler_manifest, android_package, label, err, errlen);
 }
+bool megler_appx_pri_rename(const uint8_t *pri, size_t size, const char *placeholder, uint32_t tail1, uint32_t tail2, const char *name,
+                          uint8_t *out, char *err, size_t errlen)
+{
+    return hk_appx_pri_rename(pri, size, placeholder, tail1, tail2, name, out, err, errlen);
+}
