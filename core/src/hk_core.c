@@ -12,6 +12,7 @@ void hk_time_init(void);
 void hk_misc_init(void);
 void hk_env_init(void);
 bool hk_mmap_fix_fault(hk_addr address, bool write, bool exec);
+bool hk_mmap_app_trap(hk_addr pc);
 #if HK_HOST_ARM32
 bool hk_probe_fix_fault(hk_fault *f);
 #endif
@@ -83,6 +84,8 @@ static bool on_fault(hk_fault *f)
             hk_atomic_add(&g_plt_rescues, 1);
             return true;
         }
+        /* A trap the app wrote into its code for its SIGILL handler: an inline hook's. */
+        if (hk_mmap_app_trap(pc) && hk_signal_fault(4, f)) return true;
     }
 #if HK_HOST_ARM32
     /* A device probe that went wrong on purpose (hk_diag.c). */

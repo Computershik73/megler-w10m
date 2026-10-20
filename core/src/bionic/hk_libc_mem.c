@@ -615,7 +615,100 @@ static void wx_code_say(const u8 *lo, const u8 *before, size_t size)
     }
 }
 
-/* Pages of g_wx_code made not writable: what the app changed in them is said, and what they held is let go. */
+/*
+ * Traps the app wrote into its code, for its SIGILL handler to be called there: an inline hook's (Facebook's libdistract
+ * makes a hooked function's first instruction `udf #0xfa`, and its handler moves the pc to the hook). Told by what the app
+ * changed when it makes the page not writable again: an undefined instruction, Thumb's (0xdeXX) or ARM's (0xe7fXXXfX),
+ * written by itself, with what is on either side left as it was -- a hook's trap, not a part of other code.
+ *
+ * The phone's system takes Thumb's `udf #0xf8` to `#0xff` for its own: met in an app's code, `udf #0xfa` reached no fault
+ * handler, and the thread went on at the next instruction with r0 to r2 changed (Instagram's hook on __cxa_throw: the
+ * function got garbage for its arguments and wrote through it). Those are made `udf #0`, which is reported as any other
+ * undefined instruction; the others are left as they are. A fault at a trap so recorded is the app's SIGILL
+ * (hk_signal_fault). Kept for as long as the app runs: at most 256, under g_region_lock.
+ */
+#define APP_TRAP_THUMB 0xde00u
+static struct { hk_addr at; u32 value; } g_app_traps[256];
+static u32 g_app_trap_count;
+
+static bool app_trap_add(hk_addr at, u32 value)
+{
+    u32 i;
+    bool ok = true;
+    hk_lock_acquire(&g_region_lock);
+    for (i = 0; i < g_app_trap_count && g_app_traps[i].at != at; i++) {}
+    if (i == g_app_trap_count) {
+        if (i == HK_COUNT(g_app_traps)) ok = false;
+        else g_app_trap_count++;
+    }
+    if (ok) {
+        g_app_traps[i].at = at;
+        g_app_traps[i].value = value;
+    }
+    hk_lock_release(&g_region_lock);
+    return ok;
+}
+
+/* For the fault handler: pc is a trap the app wrote, and still there. */
+bool hk_mmap_app_trap(hk_addr pc)
+{
+    u32 i;
+    bool found = false;
+    hk_lock_acquire(&g_region_lock);
+    for (i = 0; i < g_app_trap_count && !found; i++) {
+        if (g_app_traps[i].at != pc) continue;
+        if (g_app_traps[i].value >> 16) found = *(const u32 *)pc == g_app_traps[i].value;
+        else found = *(const u16 *)pc == g_app_traps[i].value;
+    }
+    hk_lock_release(&g_region_lock);
+    return found;
+}
+
+static bool same16(const u8 *lo, const u8 *before, size_t i, size_t n) { return i >= n || (lo[i] == before[i] && lo[i + 1] == before[i + 1]); }
+
+/* The traps among what changed in [lo, lo + n): recorded, and the system's own made udf #0 (pages outside [p, p + size) put back executable). */
+static void wx_code_traps(u8 *lo, const u8 *before, size_t n, const u8 *p, size_t size)
+{
+    size_t i;
+    for (i = 0; i + 2 <= n; i += 2) {
+        u16 now = (u16)(lo[i] | lo[i + 1] << 8);
+        u32 word;
+        u8 *page = (u8 *)HK_ALIGN_DOWN((hk_addr)(lo + i), (hk_addr)HK_PAGE);
+        const char *lib = NULL;
+        const void *base = NULL;
+        if (same16(lo, before, i, n)) continue;
+        hk_ld_symbol_at(lo + i, &lib, NULL, &base);
+        if ((now & 0xff00u) == 0xde00u && (i < 2 || same16(lo, before, i - 2, n)) && same16(lo, before, i + 2, n)) {
+            u16 put = (now & 0xfff8u) == 0xdef8u ? (u16)APP_TRAP_THUMB : now;
+            if (!app_trap_add((hk_addr)(lo + i), put)) {
+                hk_note_once("mprotect: more traps in the app's code than are kept; %p is left as it is", (void *)(lo + i));
+                continue;
+            }
+            if (put != now) {
+                hk_mem_protect(page, HK_PAGE, HK_PROT_RW);
+                *(volatile u16 *)(lo + i) = put;
+                if (page < p || page >= p + size) {
+                    hk_mem_protect(page, HK_PAGE, HK_PROT_RX);
+                    hk_icache_flush(page, HK_PAGE);
+                }
+            }
+            hk_info("mprotect: a trap the app wrote at %p (%s+0x%x), udf #0x%x, is its SIGILL%s", (void *)(lo + i), lib ? lib : "?",
+                    (unsigned)(lo + i - (const u8 *)base), now & 0xffu, put != now ? "; made udf #0, as the system keeps that one" : "");
+            continue;
+        }
+        if (!(i & 2) && i + 4 <= n) {
+            word = (u32)now | (u32)(lo[i + 2] | lo[i + 3] << 8) << 16;
+            if ((word & 0xfff000f0u) == 0xe7f000f0u && (i < 4 || (same16(lo, before, i - 4, n) && same16(lo, before, i - 2, n))) &&
+                same16(lo, before, i + 4, n) && same16(lo, before, i + 6, n) && app_trap_add((hk_addr)(lo + i), word)) {
+                hk_info("mprotect: a trap the app wrote at %p (%s+0x%x), an ARM udf, is its SIGILL", (void *)(lo + i), lib ? lib : "?",
+                        (unsigned)(lo + i - (const u8 *)base));
+                i += 2;
+            }
+        }
+    }
+}
+
+/* Pages of g_wx_code made not writable: what the app changed in them is said, its traps found, and what they held let go. */
 static void wx_code_written(u8 *p, size_t size)
 {
     u32 i;
@@ -635,6 +728,7 @@ static void wx_code_written(u8 *p, size_t size)
         hk_lock_release(&g_region_lock);
         if (before) {
             wx_code_say(lo, before, n);
+            wx_code_traps(lo, before, n, p, size);
             free(before);
         }
     }

@@ -272,6 +272,34 @@ The flag `trace-hooks` also says the first 128 bytes of memory the app mapped
 writable and executable at once as it makes them executable only: a hook's
 trampoline (and a JIT's code, which is why it is a flag).
 
+**Traps for the app's SIGILL.** Facebook's `libdistract.so` (Instagram's) does not
+put a jump at the start of the function it hooks: it puts `udf #0xfa` there, and
+its SIGILL handler, called through `libsigmux.so`, finds the hook by the
+ucontext's pc and moves the pc to it (registers otherwise untouched). The
+trampoline it builds holds the overwritten instruction and a jump back. On the
+phone, Windows keeps Thumb's `udf #0xf8` to `#0xff` for its own uses: `udf #0xfa`
+in an app's code reached no fault handler, and the thread went on at the next
+instruction with r0 to r2 changed. Instagram's own test of its `__cxa_throw` hook
+(`liblyramanager.so`, right after hooking) then went into the function with
+garbage for its arguments and ended writing through it.
+
+So when the app makes a library page not writable again, an undefined
+instruction it wrote there, alone (the halfwords on either side as they were; for
+ARM's `udf`, the words), is taken for its trap and recorded (`g_app_traps` in
+`bionic/hk_libc_mem.c`, up to 256), and one of the system's `#0xf8` to `#0xff` is
+made `udf #0`, which reaches the fault handler as any other. A fault at a recorded
+trap, still there, is the app's SIGILL (`hk_signal_fault` in
+`bionic/hk_libc_misc.c`): its handler, one that takes a siginfo, is called on the
+faulting thread, inside the fault handler, with a siginfo (`ILL_ILLOPC`, the pc) and
+a ucontext laid out as bionic's for ARM (registers from 0x20, pc at 0x5c, cpsr at
+0x60), and the thread goes on with the registers the ucontext then holds. This is
+the one fault delivered to a guest handler; the others stay this layer's to repair
+or report (`hk_core.c`). A trap the app writes and later reads back reads `udf #0`.
+
+The guest test `t_trap_hook` hooks a function so, Thumb's `udf #0xfa` in the Thumb
+library and an ARM `udf` in the ARM one, with a handler that moves the pc as
+libdistract's does, calls it twice and restores it.
+
 ## Graphics
 
 ANGLE turns OpenGL ES into Direct3D 11, and most GLES calls are bound straight to

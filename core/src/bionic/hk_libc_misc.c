@@ -577,7 +577,8 @@ static i32 g_getrandom(void *buf, size_t n, unsigned flags) { (void)flags; hk_ra
  * Handlers are recorded here. raise() calls one at once; pthread_kill leaves
  * the signal waiting for the thread it names, and the handler runs on that
  * thread (hk_bionic.h says where and when). Nothing comes from the system: a
- * fault in guest code is this layer's to repair or to report, not the guest's.
+ * fault in guest code is this layer's to repair or to report, not the guest's,
+ * but for a trap the app wrote into its code for its SIGILL (hk_signal_fault).
  *
  * 32-bit bionic's sigset_t is one word: signals 1 to 32. The real-time ones,
  * 33 to 64, are sent all the same (libcore's AsynchronousCloseMonitor sends
@@ -628,6 +629,45 @@ static void call_handler(const g_sigaction *a, int sig)
     } else {
         HK_GFN(void (*)(int), a->handler)(sig);
     }
+}
+
+/*
+ * A fault's signal for the app's own handler, which nothing else gets (see above): SIGILL at a trap the app wrote into its
+ * code to have its handler called there, an inline hook's (hk_mmap_app_trap). Facebook's libdistract hooks a function so:
+ * its first instruction becomes a trap, and its handler, called through libsigmux, moves the ucontext's pc to the hook.
+ *
+ * The handler, one taking a siginfo (SA_SIGINFO), runs on the faulting thread, inside the fault handler. It gets a siginfo
+ * (si_code ILL_ILLOPC, si_addr the pc) and a ucontext laid out as bionic's for ARM: the registers in uc_mcontext from 0x20,
+ * pc at 0x5c, cpsr at 0x60. The thread goes on with the registers the ucontext holds when the handler returns. False when
+ * the app has no such handler: the fault is then reported as any other.
+ */
+bool hk_signal_fault(int sig, hk_fault *f)
+{
+    g_sigaction a;
+    u32 info[32], uc[192];
+    u32 pc, cpsr, i;
+    if (sig < 1 || sig > 64 || !f->regs || !f->cpsr) return false;
+    a = g_sigs[sig];
+    if (a.handler <= 1 || !(a.flags & G_SA_SIGINFO)) return false;
+    pc = f->regs[15];
+    cpsr = *f->cpsr | ((pc & 1) ? 0x20u : 0);
+    pc &= ~1u;
+    memset(info, 0, sizeof(info));
+    memset(uc, 0, sizeof(uc));
+    info[0] = (u32)sig;
+    info[2] = 1;                        /* ILL_ILLOPC */
+    info[3] = pc;
+    uc[5] = 6;                          /* trap_no: undefined instruction */
+    for (i = 0; i < 15; i++) uc[8 + i] = f->regs[i];
+    uc[23] = pc;
+    uc[24] = cpsr;
+    uc[25] = pc;                        /* fault_address */
+    HK_GFN(void (*)(int, void *, void *), a.handler)(sig, info, uc);
+    for (i = 0; i < 15; i++) f->regs[i] = uc[8 + i];
+    /* The flags as the handler left them; the thread's state from the T bit, as the kernel takes it. */
+    *f->cpsr = (*f->cpsr & ~0xF80F0000u) | (uc[24] & 0xF80F0000u);
+    hk_fault_resume_at(f, (uc[23] & ~1u) | ((uc[24] & 0x20u) ? 1u : 0));
+    return true;
 }
 
 static int g_raise(int sig)

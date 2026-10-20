@@ -157,6 +157,8 @@ int hk_signal_send(hk_gthread *t, int sig);            /* pthread_kill: 0 or an 
 int hk_signal_mask(int how, const u32 *set, u32 *old); /* pthread_sigmask */
 /* Runs the handlers of the signals waiting for the calling thread. Only where no lock of this layer is held. */
 void hk_signals_check(void);
+/* A fault's signal for the app's own handler (an inline hook's trap, hk_mmap_app_trap): true if one ran and f says where to go on. */
+bool hk_signal_fault(int sig, hk_fault *f);
 static inline bool hk_signals_ready(const hk_gthread *t)
 {
     return ((u32)t->sig_pending & ~t->sig_blocked) != 0 || ((u32)t->sig_pending_rt & ~t->sig_blocked_rt) != 0;

@@ -1293,3 +1293,43 @@ __attribute__((aligned(4096))) int t_own_code_hook(void)
     if (fn(2) != 3) result = -7;
     return result;
 }
+
+/* The way libdistract hooks a function: its first instruction made a trap
+ * (Thumb's udf #0xfa, which the phone's system keeps for itself; an ARM udf in
+ * ARM state), and a SIGILL handler that moves the ucontext's pc to the hook. */
+static int trap_calls;
+static void trap_handler(int sig, void *info, void *context)
+{
+    unsigned *uc = context, to = (unsigned)(size_t)own_hook;
+    (void)sig;
+    if (((unsigned *)info)[0] != 4 || uc[23] != ((unsigned)(size_t)own_hooked & ~1u)) return;
+    uc[23] = to & ~1u;                              /* arm_pc */
+    uc[24] = (uc[24] & ~0x20u) | ((to & 1) << 5);   /* arm_cpsr's T bit */
+    trap_calls++;
+}
+int t_trap_hook(void)
+{
+    int (*volatile fn)(int) = own_hooked;
+    size_t at = (size_t)fn;
+    unsigned char *code = (unsigned char *)(at & ~(size_t)1), saved[4];
+    void *page = (void *)((size_t)code & ~(size_t)4095);
+    t_sigaction act = { trap_handler, 0, 4, 0 }, old; /* SA_SIGINFO */
+    unsigned short thumb_trap = 0xdefa;
+    unsigned arm_trap = 0xe7ff4cfb;
+    int result = 0;
+    if (sigaction(4, &act, &old)) return -1;
+    memcpy(saved, code, 4);
+    if (mprotect(page, 4096, 7)) return -2;
+    if (at & 1) memcpy(code, &thumb_trap, 2);
+    else memcpy(code, &arm_trap, 4);
+    if (mprotect(page, 4096, 5)) return -3;
+    trap_calls = 0;
+    if (fn(1) != 101 || trap_calls != 1) result = -4;
+    if (fn(2) != 102 || trap_calls != 2) result = -5;
+    if (mprotect(page, 4096, 7)) return -6;
+    memcpy(code, saved, 4);
+    if (mprotect(page, 4096, 5)) return -7;
+    if (fn(1) != 2 || trap_calls != 2) result = -8;
+    sigaction(4, &old, 0);
+    return result;
+}
