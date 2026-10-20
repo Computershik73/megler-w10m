@@ -774,6 +774,19 @@ of ASCII letters, as Android's storage does not tell `Music` from `music`.
 `statfs` and `statvfs` answer for every path with the real size and free room
 of the volume the data folder is on, in 4 KB blocks.
 
+The `/proc` and `/sys` files code reads to learn about the device are made up
+(`synthetic` in `bionic/hk_libc_io.c`):
+- `/proc/cpuinfo`, `/proc/meminfo`, `/proc/stat` and `/proc/version`;
+- `/proc/self/cmdline` and `/proc/self/status`;
+- `/proc/self/maps`, with a region for each loaded library's segment;
+- `/proc/self/smaps`, the same regions, each followed by Linux's fields with
+  `KernelPageSize: 4 kB`. Instagram reads the page size there at its start;
+  without the file it ended with "Could not get page size". Resident sizes
+  are not known here and are 0;
+- the CPU folders of `/sys/devices/system/cpu`.
+
+The guest test `t_smaps` reads the page size as Instagram does.
+
 **Links.** The user's music, pictures and videos are not the app's to open: on
 the phone tried, `CreateFile2` and `FindFirstFileExW` are refused there (error
 5) with every library capability declared. What Windows gives an app is

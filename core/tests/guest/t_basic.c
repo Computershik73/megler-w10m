@@ -437,6 +437,26 @@ int t_proc(void)
     return found;
 }
 
+/* /proc/self/smaps, as Instagram reads it for the page size: the first "KernelPageSize:" line's number of kB (4), or -1. */
+int t_smaps(void)
+{
+    char line[256];
+    void *f = fopen("/proc/self/smaps", "r");
+    int size = -1;
+    if (!f) return -1;
+    while (size < 0 && fgets(line, sizeof(line), f)) {
+        const char *key = "KernelPageSize:";
+        int i = 0, n = 0;
+        while (key[i] && line[i] == key[i]) i++;
+        if (key[i]) continue;
+        while (line[i] == ' ') i++;
+        while (line[i] >= '0' && line[i] <= '9') n = n * 10 + (line[i++] - '0');
+        if (line[i] == ' ' && line[i + 1] == 'k' && line[i + 2] == 'B') size = n;
+    }
+    fclose(f);
+    return size;
+}
+
 int t_props(void)
 {
     char value[92];

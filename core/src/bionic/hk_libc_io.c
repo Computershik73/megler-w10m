@@ -363,9 +363,30 @@ static void tb_add(textbuf *t, const char *fmt, ...)
     if (n > 0) t->n += (size_t)n < t->cap - t->n ? (size_t)n : t->cap - t->n - 1;
 }
 
+/* /proc/self/maps, and smaps (`details`): each region followed by its sizes, as Linux gives them. */
+typedef struct maps_out {
+    textbuf *t;
+    bool details;
+} maps_out;
+
+/*
+ * What smaps says of a region after its maps line: its size, the kernel's page size (Instagram reads KernelPageSize there to
+ * learn the page size, and ended at its start with "Could not get page size" when the file was not there), and nothing
+ * resident, which is not known here.
+ */
+static void smaps_details(textbuf *t, u32 size, int prot)
+{
+    tb_add(t, "Size:           %8u kB\nKernelPageSize:        4 kB\nMMUPageSize:           4 kB\nRss:                   0 kB\nPss:                   0 kB\n"
+              "Shared_Clean:          0 kB\nShared_Dirty:          0 kB\nPrivate_Clean:         0 kB\nPrivate_Dirty:         0 kB\n"
+              "Referenced:            0 kB\nAnonymous:             0 kB\nAnonHugePages:         0 kB\nSwap:                  0 kB\nSwapPss:               0 kB\n"
+              "Locked:                0 kB\nVmFlags:%s%s%s mr mw me\n",
+           (unsigned)(size >> 10), (prot & PF_R) ? " rd" : "", (prot & PF_W) ? " wr" : "", (prot & PF_X) ? " ex" : "");
+}
+
 static int maps_one(hk_addr bias, const char *name, const void *phdr, unsigned phnum, void *user)
 {
-    textbuf *t = (textbuf *)user;
+    maps_out *o = (maps_out *)user;
+    textbuf *t = o->t;
     const Elf32_Phdr *ph = (const Elf32_Phdr *)phdr;
     unsigned i;
     for (i = 0; i < phnum; i++) {
@@ -376,6 +397,7 @@ static int maps_one(hk_addr bias, const char *name, const void *phdr, unsigned p
         tb_add(t, "%08x-%08x %c%c%cp %08x 103:01 %u /data/app/%s-1/lib/arm/%s\n", (unsigned)(bias + lo), (unsigned)(bias + hi),
                (ph[i].p_flags & PF_R) ? 'r' : '-', (ph[i].p_flags & PF_W) ? 'w' : '-', (ph[i].p_flags & PF_X) ? 'x' : '-',
                (unsigned)HK_ALIGN_DOWN(ph[i].p_offset, HK_PAGE), 1000 + i, g_package, name);
+        if (o->details) smaps_details(t, hi - lo, (int)ph[i].p_flags);
     }
     return 0;
 }
@@ -414,8 +436,16 @@ static char *synthetic(const char *g, size_t *size)
         tb_add(&t, "MemTotal:       %u kB\nMemFree:        %u kB\nMemAvailable:   %u kB\nBuffers:        0 kB\nCached:         0 kB\n"
                    "SwapTotal:      0 kB\nSwapFree:       0 kB\n",
                (unsigned)(limit >> 10), (unsigned)((limit > used ? limit - used : 0) >> 10), (unsigned)((limit > used ? limit - used : 0) >> 10));
-    } else if (!strcmp(g, "/proc/self/maps")) {
-        hk_ld_iterate(maps_one, &t);
+    } else if (!strcmp(g, "/proc/self/maps") || !strcmp(g, "/proc/self/smaps")) {
+        maps_out o;
+        o.t = &t;
+        o.details = g[11] == 's';
+        hk_ld_iterate(maps_one, &o);
+        /* (With no library loaded yet, smaps still says the page size, of a region of the app's heap.) */
+        if (o.details && !t.n) {
+            tb_add(&t, "10000000-10001000 rw-p 00000000 00:00 0 [anon:libc_malloc]\n");
+            smaps_details(&t, HK_PAGE, PF_R | PF_W);
+        }
         if (!t.s) tb_add(&t, "%s", "");
     } else if (!strcmp(g, "/proc/self/cmdline")) {
         tb_add(&t, "%s", g_package);
