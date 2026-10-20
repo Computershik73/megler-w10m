@@ -6,7 +6,12 @@
 // Why. setWillNotDraw is public and not final, and a subclass may override it; called from the constructor it runs the
 // subclass's override before the subclass's own constructor has set anything up. Chromium's CompositorView (Brave 1.97)
 // overrides it to pass the call on to its surfaces, which it makes in its constructor afterwards, and the browser's main
-// activity ended at its layout's inflation with a NullPointerException there. Everything else is the original's, unchanged.
+// activity ended at its layout's inflation with a NullPointerException there.
+//
+// And in makeOptionalFitsSystemWindows, which marks this group and its children, as Android's does (see the overlay's
+// View); the original's did nothing.
+//
+// Everything else is the original's, unchanged.
 package android.view;
 
 import android.content.Context;
@@ -663,7 +668,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     protected boolean isChildrenDrawnWithCacheEnabled() { return (meglerFill.get("ChildrenDrawnWithCacheEnabled") instanceof Boolean ? (Boolean) meglerFill.get("ChildrenDrawnWithCacheEnabled") : false); }
     public boolean isShowingContextMenuWithCoords() { return false; }
     public void makeFrameworkOptionalFitsSystemWindows() {}
-    public void makeOptionalFitsSystemWindows() {}
+    @Override public void makeOptionalFitsSystemWindows() { super.makeOptionalFitsSystemWindows(); for (int i = 0; i < mChildrenCount; i++) mChildren[i].makeOptionalFitsSystemWindows(); }
     public void notifySubtreeAccessibilityStateChangedIfNeeded() {}
     protected void onDebugDraw(android.graphics.Canvas p0) {}
     protected void onDebugDrawMargins(android.graphics.Canvas p0, android.graphics.Paint p1) {}

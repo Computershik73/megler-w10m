@@ -22,6 +22,12 @@
 //  - setRenderEffect is kept, and drawFromParent draws a view whose effect blurs into a layer that is put onto what is under
 //    it blurred (Canvas.meglerSaveLayerBlur, the shell's save_layer_blur), at the view's alpha. The original did nothing with
 //    it, and Instagram's sign-up screen, pastel patches blurred into one another, was hard-edged bands.
+//  - makeOptionalFitsSystemWindows is kept (ViewGroup's passes it to the children), and a view so marked that fits system
+//    windows applies no insets while its window is laid out under the bars: SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+//    _LAYOUT_HIDE_NAVIGATION, or the decor not fitting (Window.meglerDecorFits), as Android's default content insets applier
+//    decides (ViewRootImpl's sDefaultContentInsetsApplier). AppCompat marks its own content root so (FitWindowsLinearLayout,
+//    fitsSystemWindows in its layout). The original did nothing with it, and that root kept Instagram's content off both
+//    bars while Instagram, laid out under them, kept off them too: an empty band at the top and at the bottom of its feed.
 //
 // Why. The original's invalidate asked the window to be drawn again whole, and the window cleared the screen and drew every
 // view, so a blinking cursor cost a whole screen. ViewRoot (overlaid) now keeps each window's dirty rectangle and draws only
@@ -968,7 +974,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 
     // ---- insets
     public WindowInsets onApplyWindowInsets(WindowInsets i) {
-        if (mFitsSystemWindows) {
+        if (mFitsSystemWindows && !meglerOptionalFitsNot()) {
             setPadding(i.getSystemWindowInsetLeft(), i.getSystemWindowInsetTop(), i.getSystemWindowInsetRight(), i.getSystemWindowInsetBottom());
             return i.consumeSystemWindowInsets();
         }
@@ -1811,7 +1817,16 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public boolean isVisibleToUserForAutofill(int p0) { return false; }
     public android.view.View keyboardNavigationClusterSearch(android.view.View p0, int p1) { return this; }
     public void makeFrameworkOptionalFitsSystemWindows() {}
-    public void makeOptionalFitsSystemWindows() {}
+    /* makeOptionalFitsSystemWindows (see the top of the file): fits system windows only while the window is not laid out under the bars. */
+    private boolean mOptionalFits;
+    public void makeOptionalFitsSystemWindows() { mOptionalFits = true; }
+    boolean meglerOptionalFitsNot() {
+        if (!mOptionalFits) return false;
+        View r = getRootView();
+        int sys = getWindowSystemUiVisibility() | r.getSystemUiVisibility();
+        if ((sys & (SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION)) != 0) return true;
+        return r instanceof megler.DecorView && !((megler.DecorView) r).getWindowMegler().meglerDecorFits();
+    }
     public void mapRectFromViewToScreenCoords(android.graphics.RectF p0, boolean p1) {}
     public void mapRectFromViewToWindowCoords(android.graphics.RectF p0, boolean p1) {}
     public void notifyEnterOrExitForAutoFillIfNeeded(boolean p0) {}

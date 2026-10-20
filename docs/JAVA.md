@@ -2787,6 +2787,15 @@ screen, and the bars lie over it. The contract is in `megler.h`
   app that keeps off a cutout itself, as Instagram does, then kept off the
   status bar twice.
 
+  A view marked by `makeOptionalFitsSystemWindows` (ViewGroup's marks its
+  children too) that fits system windows applies no insets while its window
+  is laid out under the bars (`SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN`,
+  `_LAYOUT_HIDE_NAVIGATION`, or the decor not fitting), as Android's default
+  content insets applier decides. AppCompat marks its own content root so
+  (`FitWindowsLinearLayout`); it was padded by both bars inside Instagram's
+  window, which keeps off them itself, and the feed had an empty band at the
+  top and the bottom. The flag `trace-views` shows such padding.
+
 Tested in the data app (both runs). Told that the bars cover 60 pixels at the
 top and 90 at the bottom, its content moves down by 60 and shrinks by 150.
 Then it hides the status bar by its window's `WindowInsetsController` (by
