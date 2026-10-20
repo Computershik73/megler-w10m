@@ -75,8 +75,9 @@ UIElement AppShell::root() {
     } catch (...) {
     }
 
-    const std::shared_ptr<Page> roots[] = {makeLibraryScreen(*this), makeChecksScreen(*this), makeLogScreen(*this),
-                                           makeSettingsScreen(*this)};
+    // An app's own package shows its splash screen's picture until its app is open, not the library (poll).
+    const std::shared_ptr<Page> roots[] = {appPackage::isSingleApp() ? makeStartScreen(*this) : makeLibraryScreen(*this), makeChecksScreen(*this),
+                                           makeLogScreen(*this), makeSettingsScreen(*this)};
     for (const auto& page : roots) {
         auto stack = std::make_unique<Stack>();
         stack->pages.push_back(page);

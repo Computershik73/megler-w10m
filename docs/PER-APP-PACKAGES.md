@@ -295,6 +295,8 @@ A package with `MeglerApp.ini` in its install folder is one app's
   and leaves it as it is;
 - the shell opens the app as soon as the library has it, into the player (or
   its page, when it cannot run here), and Back after the app has ended leaves;
+  until then it shows the splash screen's picture on black, as Windows showed
+  it a moment before (`ui/StartScreen.cpp`), not Megler's library;
 - the core is given the shared folder as `megler_config.storage_dir`
   (`core/include/megler.h`): `/sdcard` is `<shared>\sdcard`, and each app's own
   part of it (`Android/data` and `obb`) `<shared>\apps\<package>\sdcard`,

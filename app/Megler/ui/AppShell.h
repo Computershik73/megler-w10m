@@ -154,6 +154,8 @@ std::shared_ptr<Page> makePlayerScreen(AppShell& shell, std::string apkId);
 std::shared_ptr<Page> makeChecksScreen(AppShell& shell);
 std::shared_ptr<Page> makeLogScreen(AppShell& shell);
 std::shared_ptr<Page> makeSettingsScreen(AppShell& shell);
+/// An app's own package: the splash screen's picture until its app is open, in place of the library.
+std::shared_ptr<Page> makeStartScreen(AppShell& shell);
 
 /// Whose settings a settings view shows and changes (shell/Settings.h): Megler's, or one app's own.
 struct SettingsScope {
