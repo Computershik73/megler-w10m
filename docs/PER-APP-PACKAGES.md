@@ -171,8 +171,12 @@ Commander's and for names with capitals, digits, `.` and `-`).
 - **Install Through the Device Portal** sends the package and the certificate
   to `https://127.0.0.1/api/app/packagemanager/package` with Windows's own HTTP
   client (`Windows.Web.Http`), after a GET of `/api/os/info` for the portal's
-  CSRF cookie, echoed in `X-CSRF-Token`, and asks `/api/app/packagemanager/state`
-  every two seconds until it says how it went. The portal's certificate, which
+  CSRF cookie, and asks `/api/app/packagemanager/state` every two seconds
+  until it says how it went. The cookies are handled by hand, as
+  `tools/phone.py` sends them: those of the GET's `Set-Cookie` go back in the
+  `Cookie` header, and the `CSRF-Token` one in `X-CSRF-Token` too (left to the
+  HTTP client's own cookies, 353's install was refused 403); what the portal
+  answered, cookies and refusals, is in the log. The portal's certificate, which
   the phone made for itself, is taken as it is (untrusted, wrong name, expired,
   incomplete chain), there only. A portal that asks for a user name and
   password is said to; none is sent yet.

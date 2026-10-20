@@ -237,17 +237,38 @@ std::string installThroughPortal(const Made& made, const std::function<void(cons
                        ChainValidationResult::IncompleteChain})
             filter.IgnorableServerCertificateErrors().Append(e);
         filter.CacheControl().ReadBehavior(HttpCacheReadBehavior::MostRecent);
+        // Cookies by hand, as tools/phone.py sends them, which the portal takes: the token it hands out as a cookie goes
+        // back in the Cookie header and in X-CSRF-Token. (Left to the filter's own cookies, the install was refused 403 on
+        // the phone with package 353.)
+        filter.CookieUsageBehavior(HttpCookieUsageBehavior::NoCookies);
         HttpClient client(filter);
 
         progress("Asking the Device Portal…");
-        // The portal hands out its CSRF token as a cookie; whatever changes something has to echo it in a header.
         auto info = client.GetAsync(Uri(base + L"/api/os/info")).get();
+        shellLog::write(format("app package: the Device Portal's /api/os/info: %d", int(info.StatusCode())));
         if (info.StatusCode() == HttpStatusCode::Unauthorized)
             return "The Device Portal asks for a user name and password, which Megler doesn't send yet.";
         if (!info.IsSuccessStatusCode()) return format("The Device Portal answered %d.", int(info.StatusCode()));
-        std::wstring token;
-        for (auto const& cookie : filter.CookieManager().GetCookies(Uri(base)))
-            if (cookie.Name() == L"CSRF-Token") token = cookie.Value().c_str();
+        std::wstring cookies, token;
+        for (auto const& header : info.Headers()) {
+            if (_wcsicmp(header.Key().c_str(), L"Set-Cookie")) continue;
+            // One or more cookies, "name=value; attributes", several joined by ", ".
+            std::wstring all(header.Value());
+            size_t at = 0;
+            while (at < all.size()) {
+                size_t end = all.find(L',', at);
+                std::wstring one = all.substr(at, end == std::wstring::npos ? std::wstring::npos : end - at);
+                at = end == std::wstring::npos ? all.size() : end + 1;
+                while (!one.empty() && one[0] == L' ') one.erase(0, 1);
+                const std::wstring pair = one.substr(0, one.find(L';'));
+                const size_t eq = pair.find(L'=');
+                if (eq == std::wstring::npos || pair.find(L' ') != std::wstring::npos) continue;  // (an attribute's date, cut at its comma)
+                cookies += (cookies.empty() ? L"" : L"; ") + pair;
+                if (pair.compare(0, eq, L"CSRF-Token") == 0) token = pair.substr(eq + 1);
+            }
+        }
+        shellLog::write("app package: the Device Portal's cookies: " + (cookies.empty() ? std::string("none") : narrow(cookies)) +
+                        (token.empty() ? ", no CSRF token" : ", a CSRF token"));
 
         HttpMultipartFormDataContent form;
         for (const std::wstring& path : {made.appx, made.certificate}) {
@@ -259,12 +280,16 @@ std::string installThroughPortal(const Made& made, const std::function<void(cons
         const std::wstring appxName = made.appx.substr(made.appx.find_last_of(L'\\') + 1);
         HttpRequestMessage request(HttpMethod::Post(),
                                    Uri(base + L"/api/app/packagemanager/package?package=" + std::wstring(Uri::EscapeComponent(appxName))));
-        if (!token.empty()) request.Headers().Insert(L"X-CSRF-Token", token);
+        if (!cookies.empty()) request.Headers().TryAppendWithoutValidation(L"Cookie", cookies);
+        if (!token.empty()) request.Headers().TryAppendWithoutValidation(L"X-CSRF-Token", token);
         request.Content(form);
         progress("Sending the package (" + formattedByteCount(files::size(made.appx)) + ") to the Device Portal…");
         auto sent = client.SendRequestAsync(request).get();
-        if (!sent.IsSuccessStatusCode())
-            return format("The Device Portal refused the package (%d): ", int(sent.StatusCode())) + narrow(sent.Content().ReadAsStringAsync().get());
+        if (!sent.IsSuccessStatusCode()) {
+            const std::string body = narrow(sent.Content().ReadAsStringAsync().get());
+            shellLog::write(format("app package: the Device Portal refused the package: %d ", int(sent.StatusCode())) + body);
+            return format("The Device Portal refused the package (%d): ", int(sent.StatusCode())) + body;
+        }
 
         // It answers the state 204 while it is still installing.
         progress("Installing…");
