@@ -43,6 +43,7 @@ struct Made {
     std::wstring appx;         // the package, in LocalState\packages
     std::wstring certificate;  // the certificate it is signed with (the phone has to trust it), beside it
     std::string identity;      // its identity name
+    std::string fullName;      // its full name once installed: the name of its install folder
     std::string error;         // set when it was not made
 };
 /// Makes the package of `entry`. Slow (copies Android's files once per build, reads the whole APK): off the UI thread.
@@ -75,6 +76,12 @@ PortalResult uninstallThroughPortal(const InstalledApp& app);
 
 /// This Megler's version, "0.1.0.358": the version of every package it makes.
 std::string meglerVersion();
+
+/// An installed app's own package's APK, app\app.apk in its install folder, beside Megler's (the folder of the packages
+/// installed on the phone's storage), and whether Megler can read it there. When it can, Megler keeps no copy of the APK: an
+/// update is made from the installed one (Library, ui/SeparateApps.cpp).
+std::wstring installedApk(const std::string& fullName);
+bool canRead(const std::wstring& apk);
 
 /// Megler's own storage (/sdcard, and each app's part of it) is the shared folder's, as the apps' own packages' is: true
 /// once shareMeglersStorage has copied Megler's of before there (LocalState\storage-in-shared.txt). From the start after.

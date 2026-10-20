@@ -95,12 +95,14 @@ public:
                  std::function<void()> onConfirm);
 
     /// The file picker for an .apk, or a bundle of split APKs (.apks, .xapk),
-    /// and the copy of what was picked into the library (LocalState\apks): a
-    /// container can't open a picked file by path, and the core reads APKs by
-    /// path. A bundle's copy is unpacked there by the core (megler_bundle_unpack)
-    /// into the base and the splits this phone can use, and then removed.
-    /// `done` gets the library's id of the copy, empty when nothing was picked,
-    /// or an error.
+    /// and the app installed (ui/SeparateApps.h). An APK is read where it is: a
+    /// container can't open a picked file by its path, but the core is given it
+    /// through the broker's handles (shell/PickedFile.h), and Megler copies it into
+    /// the library (LocalState\apks) only when it has to keep it. A bundle is
+    /// unpacked from where it is by the core (megler_bundle_unpack) into the base
+    /// and the splits this phone can use, there. Where the broker gives no
+    /// handle, what was picked is copied first, as before. `done` gets the
+    /// library's id it goes by, empty when nothing was picked, or an error.
     void importApk(std::function<void(std::string id, std::string error)> done);
     const ImportProgress& importProgress() const { return *import_; }
 

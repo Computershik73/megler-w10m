@@ -368,6 +368,12 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     char identity[64] = {};
     megler_appx_app_identity(r.package.c_str(), identity, sizeof(identity));
     made.identity = identity;
+    {
+        // Its full name as Megler's is made: "<name>_<version>_<processor>__<publisher id>", the version Megler's.
+        const auto id = Package::Current().Id();
+        const std::string meglerFull = narrow(std::wstring(id.FullName())), meglerName = narrow(std::wstring(id.Name()));
+        made.fullName = identity + std::string("_") + version + meglerFull.substr(std::min(meglerFull.size(), meglerName.size() + 1 + version.size()));
+    }
 
     // resources.pri: XAML wants one whose resource map has the package's name. Megler carries one made for a placeholder
     // as long as every app package's name, and the name goes in its place (core/src/appx/hk_appx_pri.c).
@@ -599,6 +605,19 @@ PortalResult uninstallThroughPortal(const InstalledApp& app) {
 }
 
 std::string meglerVersion() { return versionString(); }
+
+std::wstring installedApk(const std::string& fullName) {
+    const std::wstring install = platform::installDirectory();
+    const size_t slash = install.find_last_of(L'\\');
+    return (slash == std::wstring::npos ? install : install.substr(0, slash)) + L"\\" + widen(fullName) + L"\\app\\app.apk";
+}
+
+bool canRead(const std::wstring& apk) {
+    winrt::file_handle h{CreateFile2(apk.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, OPEN_EXISTING, nullptr)};
+    char head[4] = {};
+    DWORD got = 0;
+    return h && ReadFile(h.get(), head, sizeof(head), &got, nullptr) && got == 4 && !memcmp(head, "PK\3\4", 4);
+}
 
 bool meglersStorageShared() {
     static const bool shared = !sharedFolder().empty() && files::exists(platform::localStateDirectory() + L"\\storage-in-shared.txt");

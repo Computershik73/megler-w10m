@@ -8,6 +8,7 @@
 #include "library/Library.h"
 #include "player/Session.h"
 #include "shell/AppPackage.h"
+#include "shell/Files.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 #include "ui/AppShell.h"
@@ -160,7 +161,9 @@ private:
         // The copy of a running app is open in the core.
         remove.IsEnabled(session::snapshot().apkId != id_ || !session::spent());
         add(column, remove);
-        auto note = text(std::string(entry.splitsDir.empty() ? "Removes Megler's copy of the APK." : "Removes Megler's copy of the app's APKs.") +
+        auto note = text(std::string(!entry.installedPackage.empty() ? "Takes the app out of Megler's list."
+                                     : entry.splitsDir.empty()          ? "Removes Megler's copy of the APK."
+                                                                        : "Removes Megler's copy of the app's APKs.") +
                              " The app installed on the phone stays, but Megler can no longer update it; its files and saves stay too.",
                          font::footnote, weightNormal(), p.secondaryLabel);
         note.Margin(ThicknessHelper::FromLengths(16, 7, 16, 0));
@@ -200,8 +203,10 @@ private:
 
         const std::string id = id_, package = r.package, title = entry.title();
         const bool installed = s.installed == separateApps::Installed::yes;
+        // An APK that was the installed app's, which went (uninstalled elsewhere than here), is nowhere now.
+        const bool apkThere = files::exists(entry.path);
         row(installed ? (s.outdated ? "Update" : "Install Again") : "Install", installed ? glyphs::refresh : glyphs::add,
-            [this, id] { separateApps::install(shell_, id); }, r.ready());
+            [this, id] { separateApps::install(shell_, id); }, r.ready() && apkThere);
         row("App Settings", glyphs::settings, [this, package, title] { shell_.push(makeAppSettingsScreen(shell_, package, title)); }, true);
         if (installed)
             row("Uninstall", glyphs::trash, [this, package, title] {
@@ -229,6 +234,9 @@ private:
                                              "shared with the other apps. The first time, the app's data in Megler goes along with it."
                                        : "This app can't run here: " + r.status();
         footer += " App Settings are this app's own: render size, language and region, location.";
+        if (!entry.installedPackage.empty())
+            footer += apkThere ? " Megler keeps no copy of its APK: it reads the installed app's, and updates from it."
+                               : " Its APK was the installed app's, which is gone: to install it again, install the APK again.";
         return listSection("On This Phone", rows, footer);
     }
 

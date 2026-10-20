@@ -112,8 +112,8 @@ public:
         listHost_.HorizontalContentAlignment(HorizontalAlignment::Stretch);
         add(column_, listHost_);
 
-        addButton_ = button(label("Add APK", glyphs::add, font::body, weightNormal(), p.accentText), [this] { addApk(); },
-                            ButtonKind::plain, "Add APK");
+        addButton_ = button(label("Install APK", glyphs::add, font::body, weightNormal(), p.accentText), [this] { addApk(); },
+                            ButtonKind::plain, "Install APK");
         addButton_.Padding(ThicknessHelper::FromLengths(8, 6, 4, 6));
 
         view_ = scrollingPage(column_);
@@ -147,11 +147,11 @@ private:
         const auto entries = Library::instance().entries();
         if (entries.empty()) {
             auto empty = contentUnavailable(glyphs::game, "No Apps Yet",
-                                            "Add an Android app's APK from this phone's storage, or a bundle of split APKs "
-                                            "(.apks, .xapk). Megler keeps its own copy, tells you whether it can run here, and installs "
-                                            "it as an app of the phone's own.");
+                                            "Pick an Android app's APK on this phone, or a bundle of split APKs (.apks, .xapk): "
+                                            "Megler reads it where it is, tells you whether it can run here, and installs it as an "
+                                            "app of the phone's own.");
             empty.Margin(ThicknessHelper::FromLengths(8, 48, 8, 0));
-            auto first = primaryButton("Add APK", glyphs::add, [this] { addApk(); });
+            auto first = primaryButton("Install APK", glyphs::add, [this] { addApk(); });
             first.HorizontalAlignment(HorizontalAlignment::Center);
             first.Margin(ThicknessHelper::FromLengths(0, 22, 0, 0));
             empty.Children().Append(first);
@@ -238,7 +238,7 @@ private:
         std::weak_ptr<Page> weak = weak_from_this();
         shell_.importApk([this, weak](std::string id, std::string error) {
             if (!weak.lock()) return;
-            if (!error.empty()) shell_.alert("Couldn't Add This APK", error);
+            if (!error.empty()) shell_.alert("Couldn't Install This APK", error);
             refresh();
         });
         refresh();

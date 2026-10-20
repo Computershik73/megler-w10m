@@ -5,12 +5,21 @@
 //
 // A package carries the Megler that made it: an update of Megler updates none of them, so those made by another Megler are
 // "outdated", and Update All makes and installs each of them again.
+//
+// After an install Megler keeps no copy of the APK when it can read the installed package's (Library::adopt): the update
+// is made from that one. An APK picked to be installed is read where it is (shell/PickedFile.h) and copied only when
+// Megler has to keep it (it can't run here, it was not installed, or the installed one can't be read).
 #pragma once
 
 #include "shell/AppPackage.h"
 
+#include <memory>
 #include <string>
 #include <vector>
+
+namespace megler::app {
+class PickedFile;
+}
 
 namespace megler::app::ui {
 class AppShell;
@@ -38,8 +47,10 @@ std::string portalProblem();
 Status status(const std::string& androidPackage);
 
 /// Makes the app's package and installs it through the portal. When the portal cannot install it, the package stays
-/// made, for Windows's installer. UI thread.
-void install(AppShell& shell, const std::string& apkId);
+/// made, for Windows's installer. With `whenRead`, once the library has read the APK (just added). UI thread.
+void install(AppShell& shell, const std::string& apkId, bool whenRead = false);
+/// An APK the user picked, installed straight from where it is, as the library's `apkId`. UI thread.
+void installPicked(AppShell& shell, std::shared_ptr<PickedFile> picked, const std::string& apkId);
 void uninstall(AppShell& shell, const std::string& androidPackage);
 /// The library's apps installed from another Megler's packages: each installed again.
 std::vector<std::string> outdatedIds();

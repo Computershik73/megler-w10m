@@ -9,9 +9,11 @@
 #include "shell/AppPackage.h"
 #include "shell/Checks.h"
 #include "shell/Files.h"
+#include "shell/PickedFile.h"
 #include "shell/Platform.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
+#include "ui/SeparateApps.h"
 #include "ui/SharedFolders.h"
 #include "ui/Theme.h"
 
@@ -544,8 +546,44 @@ void unpackProgress(void* user, uint64_t done, uint64_t total) {
     progress->copied = done;
 }
 
-winrt::fire_and_forget pickAndCopy(std::shared_ptr<ImportProgress> progress,
-                                   std::function<void(std::string, std::string)> done) {
+/// The old way, where the picked file can't be read where it is: a copy into the library by streaming rather than
+/// StorageFile::CopyAsync (on the phone CopyAsync of a large file failed at once with E_FAIL; podium-w10m met it with an
+/// 850 MB IPSW), under a .part name until it is whole. Empty, or why not. Off the UI thread.
+std::string streamCopy(winrt::Windows::Storage::StorageFile const& file, const std::wstring& target, ImportProgress& progress) {
+    CREATEFILE2_EXTENDED_PARAMETERS params = {};
+    params.dwSize = sizeof(params);
+    params.dwFileAttributes = FILE_ATTRIBUTE_NORMAL;
+    std::string error;
+    {
+        winrt::file_handle out{CreateFile2((target + L".part").c_str(), GENERIC_WRITE, 0, CREATE_ALWAYS, &params)};
+        if (!out) return format("the copy could not be created (error %lu)", GetLastError());
+        auto input = file.OpenReadAsync().get();
+        winrt::Windows::Storage::Streams::Buffer buffer(1 << 20);
+        uint64_t copied = 0;
+        for (;;) {
+            auto chunk = input.ReadAsync(buffer, buffer.Capacity(), winrt::Windows::Storage::Streams::InputStreamOptions::None).get();
+            if (chunk.Length() == 0) break;
+            DWORD written = 0;
+            if (!WriteFile(out.get(), chunk.data(), chunk.Length(), &written, nullptr) || written != chunk.Length()) {
+                error = format("writing the copy failed (error %lu) -- is the phone's storage full?", GetLastError());
+                break;
+            }
+            copied += written;
+            progress.copied = copied;
+        }
+        if (error.empty() && progress.total && copied != progress.total)
+            error = format("the copy ended after %llu of %llu bytes", (unsigned long long)copied, (unsigned long long)progress.total);
+    }
+    if (error.empty() && !files::move(target + L".part", target)) error = format("the copy could not be put in place (error %lu)", GetLastError());
+    if (!error.empty()) files::remove(target + L".part");
+    return error;
+}
+
+/// The picker, then the app installed (ui/SeparateApps.h): an APK straight from where it is, read through the broker's
+/// handles (shell/PickedFile.h) with no copy unless Megler has to keep one; a bundle unpacked from where it is into its
+/// base and splits, then installed from them.
+winrt::fire_and_forget pickAndInstall(std::weak_ptr<AppShell> weakShell, std::shared_ptr<ImportProgress> progress,
+                                      std::function<void(std::string, std::string)> done) {
     using namespace winrt::Windows::Storage;
     using namespace winrt::Windows::Storage::Pickers;
     std::string id, error;
@@ -571,88 +609,65 @@ winrt::fire_and_forget pickAndCopy(std::shared_ptr<ImportProgress> progress,
             const std::string name = narrow(file.Name());
             const std::string target = Library::idFor(name);
             const bool bundle = Library::isBundle(name);
-            auto properties = co_await file.GetBasicPropertiesAsync();
-            const uint64_t size = properties.Size();
-            progress->copied = 0;
-            progress->total = size;
-            progress->name = name;
-            shellLog::write(format("import: copying %s (%llu bytes) into the library as %s", name.c_str(),
-                                   (unsigned long long)size, target.c_str()));
-            // Copied by streaming rather than StorageFile::CopyAsync: on the
-            // phone CopyAsync of a large file failed at once with E_FAIL
-            // (podium-w10m met it with an 850 MB IPSW), whatever folder the
-            // file came from. A read stream from the picked file is what the
-            // picker's grant covers; the copy is written with Win32 into
-            // LocalState, under a .part name until it is whole.
             const std::wstring finalPath = Library::instance().directory() + L"\\" + widen(target);
-            // A bundle's copy is unpacked into finalPath and its splits' folder, and then goes.
-            const std::wstring partPath = finalPath + (bundle ? L".bundle.part" : L".part");
-            CREATEFILE2_EXTENDED_PARAMETERS params = {};
-            params.dwSize = sizeof(params);
-            params.dwFileAttributes = FILE_ATTRIBUTE_NORMAL;
-            winrt::file_handle out{CreateFile2(partPath.c_str(), GENERIC_WRITE, 0, CREATE_ALWAYS, &params)};
-            if (!out) {
-                error = format("the copy could not be created (error %lu)", GetLastError());
+            progress->name = name;
+            co_await winrt::resume_background();
+            // Read where it is, under a path of Megler's that is no file (the copy's, if one is made, is finalPath).
+            auto picked = std::make_shared<PickedFile>(file, finalPath + (bundle ? L".bundle.picked" : L".picked"));
+            progress->total = picked->size();
+            std::wstring bundlePath;
+            if (picked->ok()) {
+                bundlePath = picked->path();
+            } else if (bundle) {
+                bundlePath = finalPath + L".bundle";
+                shellLog::write(format("import: copying %s (%llu bytes) to unpack it", name.c_str(), (unsigned long long)picked->size()));
+                error = streamCopy(file, bundlePath, *progress);
             } else {
-                auto input = co_await file.OpenReadAsync();
-                winrt::Windows::Storage::Streams::Buffer buffer(1 << 20);
-                uint64_t copied = 0;
-                for (;;) {
-                    auto chunk = co_await input.ReadAsync(buffer, buffer.Capacity(),
-                                                          winrt::Windows::Storage::Streams::InputStreamOptions::None);
-                    if (chunk.Length() == 0) break;
-                    DWORD written = 0;
-                    if (!WriteFile(out.get(), chunk.data(), chunk.Length(), &written, nullptr) || written != chunk.Length()) {
-                        error = format("writing the copy failed (error %lu) -- is the phone's storage full?", GetLastError());
-                        break;
-                    }
-                    copied += written;
-                    progress->copied = copied;
+                shellLog::write(format("import: copying %s (%llu bytes) into the library as %s", name.c_str(),
+                                       (unsigned long long)picked->size(), target.c_str()));
+                error = streamCopy(file, finalPath, *progress);
+            }
+            if (error.empty() && bundle) {
+                progress->unpacking = true;
+                progress->copied = 0;
+                progress->total = 0;
+                const std::string apkPath = narrow(finalPath), splitsPath = narrow(Library::splitsDirFor(finalPath));
+                shellLog::write(format("import: unpacking %s for %d dpi, languages %s", name.c_str(), density, languages.c_str()));
+                std::string answer;
+                if (char* json = megler_bundle_unpack(narrow(bundlePath).c_str(), apkPath.c_str(), splitsPath.c_str(), density, languages.c_str(),
+                                                    &unpackProgress, progress.get())) {
+                    answer = json;
+                    megler_free(json);
                 }
-                out.close();
-                if (error.empty() && size && copied != size)
-                    error = format("the copy ended after %llu of %llu bytes", (unsigned long long)copied, (unsigned long long)size);
-                if (error.empty() && bundle) {
-                    // Unpacked on a worker thread: hundreds of megabytes take seconds on a phone.
-                    progress->unpacking = true;
-                    progress->copied = 0;
-                    progress->total = 0;
-                    const std::string bundlePath = narrow(partPath), apkPath = narrow(finalPath),
-                                      splitsPath = narrow(Library::splitsDirFor(finalPath));
-                    shellLog::write(format("import: unpacking %s for %d dpi, languages %s", name.c_str(), density, languages.c_str()));
-                    co_await winrt::resume_background();
-                    std::string answer;
-                    if (char* json = megler_bundle_unpack(bundlePath.c_str(), apkPath.c_str(), splitsPath.c_str(), density, languages.c_str(),
-                                                        &unpackProgress, progress.get())) {
-                        answer = json;
-                        megler_free(json);
-                    }
-                    files::remove(partPath);
-                    co_await ui;
-                    winrt::Windows::Data::Json::JsonObject o{nullptr};
-                    if (!winrt::Windows::Data::Json::JsonObject::TryParse(hs(answer), o) || !o || !o.HasKey(L"ok")) {
-                        error = "the bundle could not be unpacked";
-                    } else if (!o.GetNamedBoolean(L"ok", false)) {
-                        error = narrow(o.GetNamedString(L"error", L"the bundle could not be unpacked"));
-                    } else {
-                        const auto count = [&](const wchar_t* key) {
-                            return o.HasKey(key) && o.GetNamedValue(key).ValueType() == winrt::Windows::Data::Json::JsonValueType::Array
-                                       ? unsigned(o.GetNamedArray(key).Size())
-                                       : 0u;
-                        };
-                        shellLog::write(format("import: %s unpacked: its base and %u splits kept, %u left out, %u expansion files", name.c_str(),
-                                               count(L"splits"), count(L"leftOut"), count(L"expansions")));
-                    }
-                } else if (error.empty()) {
-                    if (!files::move(partPath, finalPath)) error = format("the copy could not be put in place (error %lu)", GetLastError());
-                    // An app in one APK has no splits: a folder of them left by a bundle of the same name is another app's.
-                    else files::removeTree(Library::splitsDirFor(finalPath));
-                }
-                if (error.empty()) {
-                    id = target;
-                    Library::instance().added(id);
+                if (!picked->ok()) files::remove(bundlePath);
+                winrt::Windows::Data::Json::JsonObject o{nullptr};
+                if (!winrt::Windows::Data::Json::JsonObject::TryParse(hs(answer), o) || !o || !o.HasKey(L"ok")) {
+                    error = "the bundle could not be unpacked";
+                } else if (!o.GetNamedBoolean(L"ok", false)) {
+                    error = narrow(o.GetNamedString(L"error", L"the bundle could not be unpacked"));
                 } else {
-                    files::remove(partPath);
+                    const auto count = [&](const wchar_t* key) {
+                        return o.HasKey(key) && o.GetNamedValue(key).ValueType() == winrt::Windows::Data::Json::JsonValueType::Array
+                                   ? unsigned(o.GetNamedArray(key).Size())
+                                   : 0u;
+                    };
+                    shellLog::write(format("import: %s unpacked: its base and %u splits kept, %u left out, %u expansion files", name.c_str(),
+                                           count(L"splits"), count(L"leftOut"), count(L"expansions")));
+                }
+            } else if (error.empty() && !picked->ok()) {
+                // An app in one APK has no splits: a folder of them left by a bundle of the same name is another app's.
+                files::removeTree(Library::splitsDirFor(finalPath));
+            }
+            co_await ui;
+            if (error.empty()) {
+                id = target;
+                auto shell = weakShell.lock();
+                if (!bundle && picked->ok()) {
+                    // Straight from where it is: the library has it once it is installed (or kept).
+                    if (shell) separateApps::installPicked(*shell, picked, id);
+                } else {
+                    Library::instance().added(id);
+                    if (shell) separateApps::install(*shell, id, true);
                 }
             }
         }
@@ -672,7 +687,7 @@ void AppShell::importApk(std::function<void(std::string, std::string)> done) {
     *import_ = ImportProgress();
     import_->active = true;
     std::weak_ptr<AppShell> weak = weak_from_this();
-    pickAndCopy(import_, [weak, done](std::string id, std::string error) {
+    pickAndInstall(weak, import_, [weak, done](std::string id, std::string error) {
         if (weak.lock() && done) done(std::move(id), std::move(error));
     });
 }
