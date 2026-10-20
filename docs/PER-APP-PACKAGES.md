@@ -64,6 +64,57 @@ later, which sends A to the background. On the HP Elite x3 (15254.603),
   under `/api/app/packagemanager/` answer 404, as an endpoint that does not
   exist. A package installed from the phone has to be a signed `.appx`.
 
+## Making and signing a package on the phone
+
+`core/src/appx/hk_appx.c` makes a package and signs it, with CNG (`bcrypt.dll`,
+which a packaged app may use) for SHA-256 and RSA; on other hosts its calls
+fail.
+
+- The ZIP is laid out as makeappx lays one out (ZIP64, version 45 local headers
+  with 24-byte data descriptors; `[Content_Types].xml` and the signature last,
+  version 20, sizes in their local headers; an end record of all ones after
+  the ZIP64 record and locator). Files are stored, not compressed: Megler without
+  the Android root is some 9.5 MB, and a stored file's blocks need no sizes in
+  the block map.
+- `AppxBlockMap.xml`: each file's size, its local header's size and the SHA-256
+  of each 64 KB block, in base 64. File names are kept to letters, digits,
+  `.`, `-`, `_` and `/`, which need no percent-encoding as part names.
+- The signature is Authenticode's for a package, as signtool makes it: a
+  PKCS #7 SignedData (after the four bytes `PKCX`) over an
+  SpcIndirectDataContent whose SpcSipInfo is the APPX subject interface
+  package's (version 0x01010000 and its GUID) and whose digest is `APPX`
+  followed by the tagged SHA-256 digests AXPC (every byte before the
+  signature's local header), AXCD (the central directory without the
+  signature's entry, then the ZIP64 end record, locator and end record
+  written as if the signature were not there), AXCT (the content types) and
+  AXBM (the block map). The signer's attributes are an empty SpcSpOpusInfo,
+  the content type, the statement type (individual code signing) and the
+  message digest, which is of the SpcIndirectDataContent's content without its
+  own header. These were taken from osslsigncode's description of the format
+  and checked against a package makeappx made and signtool signed: the five
+  digests (that one has a code integrity catalog, AXCI) recomputed match.
+- The key is an RSA key of 2048 bits made once and kept as CNG's full private
+  blob; its certificate, self-signed and made with it, has the subject
+  `CN=Computershik` (UTF8String), key usage digital signature, extended key
+  usage code signing, basic constraints end entity and a subject key
+  identifier, as signtool's certificates have, and is valid for twenty years.
+  A package's publisher id is computed from the Publisher string, not the key,
+  so packages signed with a key made on the phone are of the same publisher as
+  Megler itself, and share its publisher cache folder. The phone has to trust the
+  certificate: the Device Portal's install takes it with the package.
+- No code integrity catalog (`AppxMetadata/CodeIntegrity.cat`) is made yet;
+  whether the phone wants one for the executables is for the first install to
+  say.
+
+On a PC, `tools/build-appx-tool.sh` builds `appx-tool` (the same code, x64),
+which packs a folder; `tools/appx-verify.py` checks a package independently:
+each file's blocks against the block map, the package digests against the
+signed ones, the message digest, and the RSA signature with openssl. Both a
+package of makeappx's and signtool's and one of `appx-tool`'s pass it;
+`makeappx unpack /v` unpacks `appx-tool`'s, and `signtool verify /pa` stops at
+the certificate's root not being trusted on the PC (as it should, and not at a
+digest). Installing one on the phone is still to be tried.
+
 ## What follows (not done yet)
 
 - A tool that makes the package for an APK: Megler with the APK, the app's name
