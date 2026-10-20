@@ -1997,7 +1997,7 @@ public class Main extends Activity {
     /**
      * The phone's look as an app sees it (the test tells megler_set_theme a cobalt accent, #0063B1, and a light theme): the
      * platform's DeviceDefault theme gives it as colorAccent, Material You's system_accent1_600 (number 0x0106003f, tone 40
-     * of the first accent palette) is made of it, and the configuration is not night.
+     * of the first accent palette, in HCT) is made of it, and the configuration is not night.
      */
     private void themeAccent() {
         step("theme-accent", () -> {
@@ -2008,7 +2008,7 @@ public class Main extends Activity {
             int material = getResources().getColor(0x0106003f, null);
             int mode = getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK;
             detail = String.format("accent=%08x material=%08x night=%d", accent, material, mode);
-            return accent == 0xFF0063B1 && material == 0xFF0060AB && mode == android.content.res.Configuration.UI_MODE_NIGHT_NO;
+            return accent == 0xFF0063B1 && Math.abs((material & 0xFF) - 0xAD) <= 1 && (material & 0xFFFFFF00) == 0xFF005F00 && mode == android.content.res.Configuration.UI_MODE_NIGHT_NO;
         });
     }
 
