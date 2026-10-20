@@ -8,6 +8,7 @@
 #include "host/hk_host.h"
 #include "drivers/hk_java.h"
 #include "run/hk_run.h"
+#include "webp/hk_webp.h"
 
 static megler_log_fn g_log;
 static void *g_log_user;
@@ -100,6 +101,12 @@ bool megler_init(const megler_config *config)
     hk_mem_set_probe(config->memory_limit, config->memory_usage);
     hk_path_mkdirs(g_data_dir);
     return hk_core_init();
+}
+
+bool megler_webp_size(const void *data, size_t size, int *width, int *height) { return hk_webp_size(data, size, width, height); }
+bool megler_webp_decode(const void *data, size_t size, void *pixels, int width, int height, int stride)
+{
+    return hk_webp_decode(data, size, pixels, width, height, stride);
 }
 
 const char *megler_version(void) { return "0.1"; }

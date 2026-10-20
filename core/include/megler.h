@@ -99,6 +99,15 @@ char *megler_apk_report(const char *apk_path);
 bool megler_apk_icon(const char *apk_path, uint8_t **data, size_t *size);
 
 /*
+ * A WebP picture, which the phone's own decoder (WIC) cannot read, decoded by the core (libwebp's decoder, where the build
+ * has it: core/src/webp): its size, and its pixels into width x height of `stride` bytes a row, B, G, R, A premultiplied,
+ * scaled to that size when it is another. False when it is no WebP file this build decodes. For an icon the shell draws
+ * itself (an app package's tiles, shell/AppPackage.cpp).
+ */
+bool megler_webp_size(const void *data, size_t size, int *width, int *height);
+bool megler_webp_decode(const void *data, size_t size, void *pixels, int width, int height, int stride);
+
+/*
  * An app in several APKs: a base and its split APKs, as Google Play installs an app built as an Android App Bundle.
  * Config splits hold what is for one kind of phone -- config.armeabi_v7a.apk the native libraries for 32-bit ARM,
  * config.xxhdpi.apk the pictures for one screen density, config.ru.apk one language's strings -- and feature splits
