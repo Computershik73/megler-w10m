@@ -143,6 +143,35 @@ installed as an app of the phone's own, and Megler is where that is done
   certificate;
 - the actions go one at a time on a worker thread, whichever page is shown.
 
+**The APK, kept once** (since 0.1.0.360). An app container may not open a file
+the user picked by its path, which is why Megler used to copy every APK into
+`LocalState\apks` before anything else. Windows' broker hands out real handles
+to such a file (`IStorageItemHandleAccess`), and the core now takes a file by
+handle under a path of the shell's (`megler_file_by_handle`; `hk_file_open` asks
+the shell for a new handle at each open, so that each has a position of its
+own): the report, the icon, a bundle's unpacking and the package's making read
+the picked file where it is (`shell/PickedFile.cpp`). **Install APK** in the
+library picks an APK and installs it at once: read where it is, made into a
+package, installed through the portal. A bundle (`.apks`, `.xapk`) is unpacked
+from where it is into its base and splits in `LocalState\apks`, then installed
+from them.
+
+After an install, the package made (`LocalState\packages\<identity>.appx`) is
+removed; it stays only when the portal did not install it, for Windows's
+installer. And when Megler can read the installed package's APK
+(`app\app.apk` in its install folder, beside Megler's own: the folder above
+`Package::Current().InstalledLocation`) and it is as large as the one packed,
+Megler keeps no copy: its own copy and splits go, if there were any, and
+`LocalState\apks\<id>.installed` says the package's full name; the library's
+entry is that APK, its report and icon cached as before (`Library::adopt`). An
+update of the app (Update All) is made from it. Whether an app container may
+read another package's install folder is not known for Windows 10 Mobile: the
+check is made after each install, and where it fails Megler keeps (or makes) a
+copy, as before, and the log says so. Before Uninstall, the APK and splits are
+copied back into `LocalState\apks` (`Library::restore`), so that the library
+keeps the app. A picked APK that cannot run here, or that was not installed,
+is copied into the library, so that its page and Install stay.
+
 **Settings** (`shell/Settings.h`, `ui/SettingsScreen.cpp`). Render size,
 language and region, and location are kept in the shared folder, where every
 package reads them when it starts: Megler's in `<shared>\settings.ini`, which
