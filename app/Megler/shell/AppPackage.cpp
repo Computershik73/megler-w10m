@@ -9,6 +9,8 @@
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 
+#include <winrt/Windows.Graphics.Imaging.h>
+
 namespace megler::app::appPackage {
 
 using namespace winrt;
@@ -95,6 +97,99 @@ std::string oneLine(std::string s) {
     return s;
 }
 
+/// The logos of a package (Megler's are Assets\*.png, drawn by Assets\make-assets.ps1): each file, its size, and how much of
+/// its shorter side the icon takes. The same names and sizes as Megler's, which resources.pri's template lists.
+struct Logo {
+    const char* name;
+    int width, height;
+    double iconFraction;
+};
+constexpr Logo kLogos[] = {
+    {"Assets/StoreLogo.png", 50, 50, 0.92},
+    {"Assets/Square44x44Logo.png", 44, 44, 0.92},
+    {"Assets/Square150x150Logo.png", 150, 150, 0.66},
+    {"Assets/Wide310x150Logo.png", 310, 150, 0.66},
+    {"Assets/SplashScreen.png", 620, 300, 0.6},
+};
+
+/// An icon of `width` x `height` fitted in a square of `side`, its proportions kept.
+void fit(uint32_t width, uint32_t height, int side, int& w, int& h) {
+    const double scale = double(side) / double(std::max(width, height));
+    w = std::max(1, int(width * scale + 0.5));
+    h = std::max(1, int(height * scale + 0.5));
+}
+
+/// The app's icon (megler_apk_icon's bytes: PNG, or WebP, which WIC on the phone has no codec for and the core decodes)
+/// drawn in the middle of each of a package's logos, on nothing: the tile's colour shows round it. Each as a PNG, named as
+/// in the package; none when the icon is no picture this reads.
+std::vector<std::pair<std::string, std::string>> drawLogos(const std::string& icon) {
+    using namespace winrt::Windows::Graphics::Imaging;
+    using namespace winrt::Windows::Storage::Streams;
+    std::vector<std::pair<std::string, std::string>> out;
+    const auto* bytes = reinterpret_cast<const uint8_t*>(icon.data());
+    try {
+        int webpWidth = 0, webpHeight = 0;
+        const bool webp = megler_webp_size(bytes, icon.size(), &webpWidth, &webpHeight) && webpWidth > 0 && webpHeight > 0;
+        BitmapDecoder decoder{nullptr};
+        if (!webp) {
+            InMemoryRandomAccessStream stream;
+            DataWriter writer(stream);
+            writer.WriteBytes(array_view<const uint8_t>(bytes, bytes + icon.size()));
+            writer.StoreAsync().get();
+            writer.DetachStream();
+            stream.Seek(0);
+            decoder = BitmapDecoder::CreateAsync(stream).get();
+        }
+        const uint32_t iconWidth = webp ? uint32_t(webpWidth) : decoder.PixelWidth(), iconHeight = webp ? uint32_t(webpHeight) : decoder.PixelHeight();
+        for (const Logo& logo : kLogos) {
+            // The icon at its size, B, G, R, A premultiplied.
+            int w = 0, h = 0;
+            fit(iconWidth, iconHeight, int(std::min(logo.width, logo.height) * logo.iconFraction + 0.5), w, h);
+            std::vector<uint8_t> pixels(size_t(w) * h * 4);
+            if (webp) {
+                if (!megler_webp_decode(bytes, icon.size(), pixels.data(), w, h, w * 4)) return {};
+            } else {
+                BitmapTransform transform;
+                transform.ScaledWidth(uint32_t(w));
+                transform.ScaledHeight(uint32_t(h));
+                transform.InterpolationMode(BitmapInterpolationMode::Fant);
+                const auto data = decoder.GetPixelDataAsync(BitmapPixelFormat::Bgra8, BitmapAlphaMode::Premultiplied, transform,
+                                                            ExifOrientationMode::IgnoreExifOrientation, ColorManagementMode::DoNotColorManage)
+                                      .get()
+                                      .DetachPixelData();
+                if (data.size() < pixels.size()) return {};
+                memcpy(pixels.data(), data.data(), pixels.size());
+            }
+            // In the middle of the logo, the rest transparent; and its alpha made straight again, as a PNG has it.
+            std::vector<uint8_t> canvas(size_t(logo.width) * logo.height * 4, 0);
+            const int x0 = (logo.width - w) / 2, y0 = (logo.height - h) / 2;
+            for (int y = 0; y < h; y++) {
+                const uint8_t* from = &pixels[size_t(y) * w * 4];
+                uint8_t* to = &canvas[(size_t(y0 + y) * logo.width + x0) * 4];
+                for (int x = 0; x < w; x++, from += 4, to += 4) {
+                    const unsigned a = from[3];
+                    for (int c = 0; c < 3; c++) to[c] = a ? uint8_t(std::min(255u, (from[c] * 255u + a / 2) / a)) : 0;
+                    to[3] = uint8_t(a);
+                }
+            }
+            InMemoryRandomAccessStream png;
+            auto encoder = BitmapEncoder::CreateAsync(BitmapEncoder::PngEncoderId(), png).get();
+            encoder.SetPixelData(BitmapPixelFormat::Bgra8, BitmapAlphaMode::Straight, uint32_t(logo.width), uint32_t(logo.height), 96.0,
+                                 96.0, array_view<const uint8_t>(canvas.data(), canvas.data() + canvas.size()));
+            encoder.FlushAsync().get();
+            std::string file(size_t(png.Size()), '\0');
+            DataReader reader(png.GetInputStreamAt(0));
+            reader.LoadAsync(uint32_t(file.size())).get();
+            reader.ReadBytes(array_view<uint8_t>(reinterpret_cast<uint8_t*>(file.data()), reinterpret_cast<uint8_t*>(file.data()) + file.size()));
+            out.emplace_back(logo.name, std::move(file));
+        }
+    } catch (hresult_error const& e) {
+        shellLog::write(format("app package: the app's icon could not be drawn on its tiles: 0x%08x ", unsigned(e.code())) + narrow(e.message()));
+        return {};
+    }
+    return out;
+}
+
 }  // namespace
 
 std::wstring sharedFolder() {
@@ -167,10 +262,20 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
         ~KeyCloser() { megler_appx_key_close(key); }
     } closer{key};
 
+    // The app's icon on its tiles and splash screen, the tiles in the phone's own colour round it; or, where the APK has no
+    // icon that can be drawn, Megler's logos as they are.
+    progress("Drawing the app's icon on its tiles…");
+    std::string icon;
+    std::vector<std::pair<std::string, std::string>> logos;
+    if (!entry.iconPath.empty() && files::read(entry.iconPath, icon)) logos = drawLogos(icon);
+    shellLog::write(logos.empty() ? std::string("app package: Megler's own logos, the app's icon is not drawn")
+                                  : "app package: the app's icon drawn on " + std::to_string(logos.size()) + " logos");
+
     std::string meglerManifest;
     if (!files::read(install + L"\\AppxManifest.xml", meglerManifest)) return fail("Megler's own manifest could not be read.");
     const std::string label = oneLine(entry.title());
-    char* manifest = megler_appx_app_manifest(meglerManifest.c_str(), r.package.c_str(), label.c_str(), err, sizeof(err));
+    char* manifest = megler_appx_app_manifest(meglerManifest.c_str(), r.package.c_str(), label.c_str(), logos.empty() ? nullptr : "transparent",
+                                            nullptr, err, sizeof(err));
     if (!manifest) return fail(std::string("The manifest could not be made: ") + err);
     const std::string manifestText(manifest);
     megler_free(manifest);
@@ -205,7 +310,12 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     megler_appx* a = megler_appx_begin(narrow(made.appx).c_str(), err, sizeof(err));
     if (!a) return fail(std::string("The package could not be begun: ") + err);
     // (A failure on the way makes the rest fail at once; finish says what it was.)
-    for (const auto& [name, path] : parts) megler_appx_add_file(a, name.c_str(), narrow(path).c_str());
+    for (const auto& [name, path] : parts) {
+        bool drawn = false;
+        for (const auto& logo : logos) drawn = drawn || _stricmp(logo.first.c_str(), name.c_str()) == 0;
+        if (!drawn) megler_appx_add_file(a, name.c_str(), narrow(path).c_str());
+    }
+    for (const auto& [name, png] : logos) megler_appx_add_data(a, name.c_str(), png.data(), png.size());
     megler_appx_add_data(a, "AppxManifest.xml", manifestText.data(), manifestText.size());
     megler_appx_add_data(a, "resources.pri", pri.data(), pri.size());
     const std::string ini = "package=" + r.package + "\r\nlabel=" + label + "\r\napk=app\r\nroot=android\\" + version + "\r\n";
