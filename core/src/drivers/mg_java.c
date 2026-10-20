@@ -57,6 +57,7 @@ static struct {
     char activity[200], application[200], package[128];
     char guest_apk[400];               /* the APK's path as the app sees it */
     bool apache_http;                  /* the app gets Android's legacy Apache HTTP client (org.apache.http.legacy): see apache_http_wanted */
+    bool platform_app;                 /* an app of the platform's own (sharedUserId android.uid.system): see add_platform_framework */
     /*
      * The app's splits (megler_run_config.split_apks, as many as there is room for): their names from their manifests
      * ("config.armeabi_v7a"), their paths as the app sees them (Native.splitPaths), and whether they have code.
@@ -1260,6 +1261,28 @@ static void add_shared_libraries(void)
     free(path);
 }
 
+/*
+ * An app of the platform's own -- its manifest's sharedUserId is android.uid.system, as Android's Settings' is -- uses the
+ * platform's hidden classes as freely as its public ones: Settings 9 names 225 classes of Android 9's framework that
+ * Megler's does not have (android.provider.SearchIndexablesProvider, android.util.KeyValueListParser,
+ * com.android.internal.*), and ended at its start on the first of them. Such an app has Android 9's own framework on its
+ * class path after Megler's (framework/platform-framework*.dex, tools/dvm-android-root.sh): a class Megler's framework has
+ * is Megler's, and one it lacks is the platform's own. Any other app has Megler's alone, as before.
+ */
+static void add_platform_framework(void)
+{
+    static const char *const parts[] = { "platform-framework.dex", "platform-framework-classes2.dex", "platform-framework-classes3.dex" };
+    int i, added = 0;
+    if (!J.platform_app) return;
+    for (i = 0; i < (int)MG_COUNT(parts); i++) {
+        char *path = mg_sprintf("%s/framework/%s", J.root, parts[i]);
+        added += mg_dvm_add_dex_file(path) ? 1 : 0;
+        free(path);
+    }
+    if (added) mg_info("java: an app of the platform's own: Android 9's framework is on its class path after Megler's (%d files)", added);
+    else mg_warn("java: an app of the platform's own, and Android 9's framework is not in the Android root (framework/platform-framework.dex)");
+}
+
 static void main_thread(void *arg)
 {
     char *framework = mg_sprintf("%s/framework/megler-framework.dex", J.root), *res = mg_sprintf("%s/framework/framework-res.apk", J.root);
@@ -1272,7 +1295,7 @@ static void main_thread(void *arg)
     why[0] = 0;
     if (!mg_dvm_start_android(J.root)) snprintf(why, sizeof(why), "the Java runtime did not start on the Android root %s", J.root);
     else if (!mg_dvm_add_dex_file(framework)) snprintf(why, sizeof(why), "the Java framework is not in the Android root (%s)", framework);
-    else if (mg_dvm_app_follows(), add_shared_libraries(), mg_dvm_add_apk(J.config->apk_path) < 1) snprintf(why, sizeof(why), "the APK has no classes.dex that can be read");
+    else if (add_platform_framework(), mg_dvm_app_follows(), add_shared_libraries(), mg_dvm_add_apk(J.config->apk_path) < 1) snprintf(why, sizeof(why), "the APK has no classes.dex that can be read");
     if (!why[0]) {
         mg_jvalue sdk;
         if (mg_flag("trace-monitors")) mg_dvm_monitor_trace_start();
@@ -1395,6 +1418,7 @@ static bool java_start(const megler_run_config *config, const mg_apk_info *info)
     mg_strlcpy(J.application, info->application, sizeof(J.application));
     mg_strlcpy(J.package, info->package, sizeof(J.package));
     J.apache_http = apache_http_wanted(info);
+    J.platform_app = !strcmp(info->shared_user_id, "android.uid.system");
     /* The splits, in megler_run's order, which is info->splits' (run/mg_run.c): as many as the framework reads. */
     J.nsplits = config->split_count < info->nsplits ? config->split_count : info->nsplits;
     if (J.nsplits > MAX_SPLITS) {

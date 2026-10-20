@@ -308,6 +308,7 @@ static bool arsc_raw(const arsc *a, u32 id, u8 *type, u32 *data, char *text, siz
 #define ATTR_LABEL 0x01010001u
 #define ATTR_ICON 0x01010002u
 #define ATTR_NAME 0x01010003u
+#define ATTR_SHARED_USER_ID 0x0101000bu
 #define ATTR_HAS_CODE 0x0101000cu
 #define ATTR_SCREEN_ORIENTATION 0x0101001eu
 #define ATTR_VALUE 0x01010024u
@@ -404,6 +405,7 @@ static void start_element(manifest_ctx *c, const char *tag, const attr *attrs, i
             if (!attrs[i].id && !strcmp(attrs[i].name, "package")) mg_strlcpy(info->package, attrs[i].text, sizeof(info->package));
             if (attrs[i].id == ATTR_VERSION_CODE) info->version_code = (int)attrs[i].data;
             if (attrs[i].id == ATTR_VERSION_NAME) mg_strlcpy(info->version_name, attrs[i].text, sizeof(info->version_name));
+            if (attrs[i].id == ATTR_SHARED_USER_ID) mg_strlcpy(info->shared_user_id, attrs[i].text, sizeof(info->shared_user_id));
             /* A split's own name and the feature it is of, which have no resource ids; and what a base says of its splits. */
             if (!attrs[i].id && !strcmp(attrs[i].name, "split")) mg_strlcpy(info->split, attrs[i].text, sizeof(info->split));
             if (!attrs[i].id && !strcmp(attrs[i].name, "configForSplit")) mg_strlcpy(info->config_for_split, attrs[i].text, sizeof(info->config_for_split));

@@ -36,6 +36,8 @@ typedef struct mg_apk_info {
     /* The platform's libraries the application asks for (<uses-library android:name>, required or not), in the manifest's order. */
     char uses_libraries[8][96];
     int nuses_libraries;
+    /* The manifest's sharedUserId, empty when none: "android.uid.system" for an app of the platform's own (Settings). */
+    char shared_user_id[96];
     char engine[32];
     bool supported, runnable;
     char reason[240];
