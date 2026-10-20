@@ -13,6 +13,8 @@ namespace megler::app::files {
 bool exists(const std::wstring& path);
 uint64_t size(const std::wstring& path);
 bool makeDirectory(const std::wstring& path);
+/// The folder and those it is in that are not there yet.
+bool makeDirectories(const std::wstring& path);
 
 /// The whole file; false when it cannot be opened.
 bool read(const std::wstring& path, std::string& out);

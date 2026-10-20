@@ -41,6 +41,16 @@ bool makeDirectory(const std::wstring& path) {
     return CreateDirectoryW(path.c_str(), nullptr) != 0 || GetLastError() == ERROR_ALREADY_EXISTS;
 }
 
+bool makeDirectories(const std::wstring& path) {
+    // From the folder up, only as far as folders are missing: the ones above an app's own folders (C:\Data, ...) are
+    // not the app's to make, and asking for them may be refused rather than answered "already there".
+    if (makeDirectory(path)) return true;
+    if (GetLastError() != ERROR_PATH_NOT_FOUND) return false;
+    const size_t slash = path.find_last_of(L'\\');
+    if (slash == std::wstring::npos || slash == 0) return false;
+    return makeDirectories(path.substr(0, slash)) && makeDirectory(path);
+}
+
 bool read(const std::wstring& path, std::string& out) {
     out.clear();
     HANDLE h = open(path, GENERIC_READ, OPEN_EXISTING);

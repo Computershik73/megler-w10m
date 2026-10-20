@@ -43,7 +43,7 @@ bool sameName(const std::wstring& a, const wchar_t* b) { return _wcsicmp(a.c_str
 
 /// A folder and everything in it; false at the first failure. With `missingOnly`, a file already there as large is left.
 bool copyTree(const std::wstring& from, const std::wstring& to, uint64_t& copied, bool missingOnly = false) {
-    if (!files::makeDirectory(to)) return false;
+    if (!files::makeDirectories(to)) return false;
     for (const auto& name : files::list(from, L"*")) {
         if (missingOnly && files::exists(to + L"\\" + name) && files::size(to + L"\\" + name) == files::size(from + L"\\" + name)) continue;
         if (!files::copy(from + L"\\" + name, to + L"\\" + name)) return false;
