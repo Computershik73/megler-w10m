@@ -29,4 +29,11 @@ bool hk_appx_add_data(hk_appx *a, const char *name, const void *data, size_t siz
 /* Finishes and closes the package (and frees `a`, whatever the outcome). */
 bool hk_appx_finish(hk_appx *a, const hk_appx_key *k, char *err, size_t errlen);
 
+/* The identity name of the package of the Android app `android_package` ("MeglerApp." and the package; hk_appx_manifest.c),
+   into out (at least 51 bytes); false for a name that is not an Android package's. */
+bool hk_appx_app_identity(const char *android_package, char *out, size_t outlen);
+/* The manifest of that package, made from Megler's own (`megler`, the text of its AppxManifest.xml): its identity name,
+   phone product id and shown names changed, all else Megler's. A new string, or NULL (err says why). Any host. */
+char *hk_appx_app_manifest(const char *megler, const char *android_package, const char *label, char *err, size_t errlen);
+
 #endif

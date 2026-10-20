@@ -39,6 +39,7 @@
 #endif
 #include "../src/ndk/hk_ndk.h"
 #include "../src/run/hk_run.h"
+#include "../src/appx/hk_appx.h"
 #include "../src/zip/hk_zip.h"
 
 static int g_checks, g_failed;
@@ -1071,6 +1072,60 @@ static void test_chromium_oom_report(void)
     CHECK(hk_chromium_oom_global(f + 14) == 0 && hk_chromium_oom_global(f + 12) == 0 && hk_chromium_oom_global(f + 17) == 0);
     fn.b[8] = 0x09;                    /* str r1, [r1] -- not the function */
     CHECK(hk_chromium_oom_global(f + 18) == 0);
+}
+
+/* The manifest of an Android app's own package, made from one shaped as Megler's (core/src/appx/hk_appx_manifest.c). */
+static void test_appx_manifest(void)
+{
+    static const char megler[] =
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n<!-- Megler -->\r\n<Package xmlns=\"x\">\r\n"
+        "  <Identity\r\n      Name=\"Megler\"\r\n      Publisher=\"CN=Computershik\"\r\n      Version=\"0.1.0.351\" />\r\n"
+        "  <mp:PhoneIdentity\r\n      PhoneProductId=\"1d79b5e9-690c-44e3-af58-196f400348e2\"\r\n      PhonePublisherId=\"0\" />\r\n"
+        "  <Properties>\r\n    <DisplayName>Megler</DisplayName>\r\n  </Properties>\r\n"
+        "  <Applications><Application Id=\"App\" Executable=\"Megler.exe\" EntryPoint=\"Megler.App\">\r\n"
+        "      <uap:VisualElements\r\n          DisplayName=\"Megler\"\r\n          Description=\"Android games\">\r\n"
+        "        <uap:DefaultTile Wide310x150Logo=\"w.png\" ShortName=\"Megler\"/>\r\n"
+        "      </uap:VisualElements></Application></Applications></Package>\r\n";
+    char err[200], name[64], name2[64];
+    char *m, *m2;
+    say("an app's own package: its manifest from Megler's");
+    CHECK(hk_appx_app_identity("com.instagram.android", name, sizeof(name)) && !strcmp(name, "MeglerApp.com.instagram.android"));
+    CHECK(hk_appx_app_identity("com.example.my_app", name, sizeof(name)) && !strcmp(name, "MeglerApp.com.example.my-app"));
+    CHECK(hk_appx_app_identity("com.example.a.very.long.package.name.of.some.app.that.goes.on", name, sizeof(name)) && strlen(name) == 50);
+    CHECK(hk_appx_app_identity("com.example.a.very.long.package.name.of.some.app.that.goes.on", name2, sizeof(name2)) && !strcmp(name, name2));
+    CHECK(!hk_appx_app_identity("com.example/../x", name, sizeof(name)));
+    m = hk_appx_app_manifest(megler, "com.instagram.android", "Insta & <gram> \"x\"", err, sizeof(err));
+    CHECK(m != NULL);
+    if (!m) return;
+    CHECK(strstr(m, "Name=\"MeglerApp.com.instagram.android\"") != NULL);
+    CHECK(strstr(m, "Publisher=\"CN=Computershik\"") != NULL && strstr(m, "Version=\"0.1.0.351\"") != NULL);
+    CHECK(strstr(m, "1d79b5e9") == NULL && strstr(m, "PhoneProductId=\"") != NULL);
+    CHECK(strstr(m, "<DisplayName>Insta &amp; &lt;gram&gt; &quot;x&quot;</DisplayName>") != NULL);
+    CHECK(strstr(m, "DisplayName=\"Insta &amp; &lt;gram&gt; &quot;x&quot;\"") != NULL);
+    CHECK(strstr(m, "ShortName=\"Insta &amp; &lt;gram&gt; &quot;x&quot;\"") != NULL);
+    CHECK(strstr(m, "EntryPoint=\"Megler.App\"") != NULL && strstr(m, "Description=\"Android games\"") != NULL);
+    /* The same package again: the same product id; another: another. */
+    m2 = hk_appx_app_manifest(megler, "com.instagram.android", "Instagram", err, sizeof(err));
+    CHECK(m2 && !strncmp(strstr(m, "PhoneProductId=\""), strstr(m2, "PhoneProductId=\""), 54));
+    free(m2);
+    m2 = hk_appx_app_manifest(megler, "com.whatsapp", "WhatsApp", err, sizeof(err));
+    CHECK(m2 && strncmp(strstr(m, "PhoneProductId=\""), strstr(m2, "PhoneProductId=\""), 54));
+    free(m2);
+    /* A short name of forty characters at most, a sequence of UTF-8 never cut. */
+    m2 = hk_appx_app_manifest(megler, "ru.example", "\xD0\x9E\xD1\x87\xD0\xB5\xD0\xBD\xD1\x8C \xD0\xB4\xD0\xBB\xD0\xB8\xD0\xBD\xD0\xBD\xD0\xBE\xD0\xB5 "
+                                                  "\xD0\xBD\xD0\xB0\xD0\xB7\xD0\xB2\xD0\xB0\xD0\xBD\xD0\xB8\xD0\xB5 \xD0\xBF\xD1\x80\xD0\xB8\xD0\xBB\xD0\xBE\xD0\xB6\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F "
+                                                  "\xD0\xB4\xD0\xBB\xD1\x8F \xD0\xBF\xD1\x80\xD0\xBE\xD0\xB2\xD0\xB5\xD1\x80\xD0\xBA\xD0\xB8 \xF0\x9F\x98\x80\xF0\x9F\x98\x80",
+                              err, sizeof(err));
+    if (m2) {
+        const char *s = strstr(m2, "ShortName=\"") + 11, *e = strchr(s, '"');
+        size_t chars = 0;
+        for (; s < e; s++) chars += ((unsigned char)*s & 0xC0) != 0x80;
+        CHECK_INT((int)chars, 40);
+    }
+    CHECK(m2 != NULL);
+    free(m2);
+    CHECK(hk_appx_app_manifest("<Package/>", "com.example", "x", err, sizeof(err)) == NULL && strstr(err, "Identity") != NULL);
+    free(m);
 }
 
 static void test_libc_odds(void)
@@ -2619,6 +2674,7 @@ int hk_tests_run(const char *libdir, const char *scratch, hk_test_sink sink, voi
     test_camera();
     test_battery();
     test_libc_odds();
+    test_appx_manifest();
     test_mmap_commit();
     test_mmap_file(scratch);
     test_chromium_oom_report();

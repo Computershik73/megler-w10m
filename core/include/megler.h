@@ -1574,6 +1574,35 @@ int megler_storage_check(const megler_storage_host *storage, megler_line_fn out,
  */
 int megler_net_check(megler_line_fn out, void *user, int *checks, int *refused);
 
+/* ------------------------------------------------------- an app's own package */
+
+/*
+ * The package of one Android app, made and signed here (core/src/appx, docs/PER-APP-PACKAGES.md): Megler's own files, the
+ * app's APK and a manifest of its own, so that the app runs as an app of the phone's, in its own process. Windows only;
+ * elsewhere the calls fail. Paths are UTF-8.
+ *
+ * The key: an RSA key and a self-signed code signing certificate whose subject is `publisher` (Megler's Publisher), made on
+ * the first use and kept in two files (the certificate as DER: what the phone has to trust).
+ */
+typedef struct hk_appx_key megler_appx_key;
+megler_appx_key *megler_appx_key_open(const char *key_path, const char *cert_path, const char *publisher, char *err, size_t errlen);
+void megler_appx_key_close(megler_appx_key *key);
+
+/* A package being written: files added in order (names of letters, digits, '.', '-', '_' and '/'), then finished with its
+   block map, content types and signature; finish frees `a` whatever the outcome, and removes the file on a failure. */
+typedef struct hk_appx megler_appx;
+megler_appx *megler_appx_begin(const char *path, char *err, size_t errlen);
+bool megler_appx_add_file(megler_appx *a, const char *name, const char *src_path);
+bool megler_appx_add_data(megler_appx *a, const char *name, const void *data, size_t size);
+bool megler_appx_finish(megler_appx *a, const megler_appx_key *key, char *err, size_t errlen);
+
+/* The identity name of the package of the Android app `android_package` ("MeglerApp." and the package), into out (at least
+   51 bytes); false for a name that is not an Android package's. */
+bool megler_appx_app_identity(const char *android_package, char *out, size_t outlen);
+/* That package's manifest, made from Megler's (the text of its AppxManifest.xml): the identity name, phone product id and
+   shown names changed, all else Megler's. A string to free with megler_free, or NULL (err says why). */
+char *megler_appx_app_manifest(const char *megler_manifest, const char *android_package, const char *label, char *err, size_t errlen);
+
 #ifdef __cplusplus
 }
 #endif
