@@ -19,6 +19,7 @@
 #include "library/Library.h"
 #include "player/BarsHost.h"
 #include "player/KeyboardHost.h"
+#include "player/MediaControls.h"
 #include "player/Session.h"
 #include "player/WindowHost.h"
 #include "shell/AppPackage.h"
@@ -198,6 +199,7 @@ public:
     }
 
     void disappeared() override {
+        if (mediaControls_) mediaControls::stop(), mediaControls_ = false;
         releaseAllTouches();
         detachKeyboard();
         // A start that failed left nothing running: the next Play may try again.
@@ -216,6 +218,13 @@ public:
         measureFrameRate(frames);
 
         const bool ended = snap.state == session::State::exited || snap.state == session::State::failed;
+        // A Java app's sound goes on in the background only while the system media controls stand for it.
+        if (java_ && running_ && !mediaControls_) mediaControls::start(), mediaControls_ = true;
+        if (mediaControls_ && ended) mediaControls::stop(), mediaControls_ = false;
+        if (mediaControls_) {
+            const auto heardFrom = session::audio();
+            mediaControls::heard(heardFrom && heardFrom->audibleWithin(600));
+        }
         const bool waitingForFrame = (snap.state == session::State::starting || snap.state == session::State::running) && frames == 0;
         const bool stopping = running_ && snap.stopRequested;
         setVisible(busyOverlay_, !ended && (!started_ || waitingForFrame || stopping));
@@ -1002,6 +1011,7 @@ private:
 
     bool started_ = false;
     bool running_ = false;
+    bool mediaControls_ = false; // the system media controls stand for the app (a Java app's, while it runs)
     bool menuShown_ = false;
     bool settingsShown_ = false; // an app's own package: its settings are over the menu
     bool endShown_ = false;

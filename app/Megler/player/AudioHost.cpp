@@ -74,7 +74,7 @@ struct AudioHost::Engine final : public IXAudio2VoiceCallback, public IXAudio2En
     /// Null, and why, when XAudio2 would not start. The calling thread is in
     /// the multithreaded apartment (without it CreateMasteringVoice is
     /// CO_E_NOTINITIALIZED).
-    static std::unique_ptr<Engine> make(AudioHost* owner, int rate, std::string& why) {
+    static std::unique_ptr<Engine> make(AudioHost* owner, int rate, std::string& why, bool media = false) {
         auto fail = [&why](const char* what, HRESULT hr) {
             why = format("%s (0x%08X)", what, unsigned(hr));
             return std::unique_ptr<Engine>();
@@ -86,7 +86,10 @@ struct AudioHost::Engine final : public IXAudio2VoiceCallback, public IXAudio2En
         HRESULT hr = createXAudio2(&engine->xaudio);
         if (FAILED(hr)) return fail("XAudio2Create failed", hr);
         engine->registered = SUCCEEDED(engine->xaudio->RegisterForCallbacks(engine.get()));
-        hr = engine->xaudio->CreateMasteringVoice(&engine->master);
+        // A media app's sound is of the Media category: with the backgroundMediaPlayback capability and the system media
+        // controls (player/MediaControls.cpp) it goes on while the app is in the background. A game's stays a game's.
+        hr = engine->xaudio->CreateMasteringVoice(&engine->master, XAUDIO2_DEFAULT_CHANNELS, XAUDIO2_DEFAULT_SAMPLERATE, 0, nullptr,
+                                                  nullptr, media ? AudioCategory_Media : AudioCategory_GameEffects);
         if (FAILED(hr)) return fail("there is no output device", hr);
         WAVEFORMATEX wave = {};
         wave.wFormatTag = WAVE_FORMAT_PCM;
@@ -244,7 +247,7 @@ void AudioHost::ownerLoop() {
         if (!have && GetTickCount64() >= retryAt) {
             std::string why;
             const unsigned long long began = GetTickCount64();
-            std::shared_ptr<Engine> made = Engine::make(this, rate, why);
+            std::shared_ptr<Engine> made = Engine::make(this, rate, why, media_.load());
             if (made) {
                 shellLog::write(format("audio: XAudio2 playing 16-bit stereo at %d Hz into %s; built in %llu ms", rate,
                                        made->device.c_str(), GetTickCount64() - began));
@@ -324,6 +327,7 @@ void AudioHost::write(const int16_t* samples, int frames) {
     for (int i = 0; i < frames * 2; ++i) peak = std::max(peak, std::abs(int(samples[i])));
     ++blocksIn_;
     if (peak == 0) ++blocksSilent_;
+    else lastAudible_.store(GetTickCount64());
     for (int seen = peak_.load(); peak > seen && !peak_.compare_exchange_weak(seen, peak);) {}
 
     std::shared_ptr<Engine> held;

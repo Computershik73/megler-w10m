@@ -62,6 +62,15 @@ public:
     /// are dropped at their own pace) or back.
     void setPaused(bool paused) { paused_.store(paused); }
 
+    /// Before prepare: the output is a media app's (AudioCategory_Media, heard in the background) rather than a game's.
+    void setMedia(bool media) { media_.store(media); }
+
+    /// Whether a block with sound in it came from the app in the last `ms` milliseconds.
+    bool audibleWithin(unsigned ms) const {
+        const unsigned long long at = lastAudible_.load();
+        return at != 0 && GetTickCount64() - at <= ms;
+    }
+
     /// "44100 Hz", "silent so far", or why there is no sound.
     std::string status();
 
@@ -101,6 +110,8 @@ private:
     /// ticks; 0: they are being played). write()'s alone.
     long long paceDeadline_ = 0;
     std::atomic<bool> paused_{false};
+    std::atomic<bool> media_{false};
+    std::atomic<unsigned long long> lastAudible_{0};
     /// IXAudio2EngineCallback::OnCriticalError, on XAudio2's thread.
     std::atomic<bool> lost_{false};
     std::atomic<long> lostCode_{0};

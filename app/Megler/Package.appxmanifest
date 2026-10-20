@@ -19,8 +19,9 @@
     xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
     xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
     xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
+    xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
     xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-    IgnorableNamespaces="uap mp rescap">
+    IgnorableNamespaces="uap uap3 mp rescap">
 
   <Identity
       Name="Megler"
@@ -92,6 +93,11 @@
     <uap:Capability Name="musicLibrary" />
     <uap:Capability Name="documentsLibrary" />
     <uap:Capability Name="removableStorage" />
+    <!-- Sound in the background: an Android app's music or video goes on
+         while Megler is minimised, as an app's foreground service keeps it
+         going on Android (player/MediaControls.cpp: Windows wants the system
+         media controls taken up as well). -->
+    <uap3:Capability Name="backgroundMediaPlayback" />
     <!-- Making an Android library's code executable. -->
     <rescap:Capability Name="codeGeneration" />
     <!-- The phone's cameras for an Android app's android.hardware.Camera
