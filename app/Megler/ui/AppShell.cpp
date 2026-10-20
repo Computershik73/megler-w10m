@@ -17,6 +17,7 @@
 #include "ui/SharedFolders.h"
 #include "ui/Theme.h"
 #include "ui/UiShots.h"
+#include "library/PhoneAppsList.h"
 #include "player/SystemHost.h"
 
 #include "megler.h"
@@ -398,6 +399,7 @@ void AppShell::poll() {
         platform::sampleMemory();
         autorun::tick(*this);
         uiShots::poll(*this);
+        phoneAppsList::publish();
         // An app's own package opens its app as soon as the library has it read: straight into the player when it can
         // run here, else its page, which says why not. Before the player, Megler's folders the app has not got are offered
         // (ui/SharedFolders.h), once the phone's folders are known.

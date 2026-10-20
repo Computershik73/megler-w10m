@@ -5,6 +5,7 @@
 #include "player/BarsHost.h"
 #include "player/MediaControls.h"
 #include "player/SystemHost.h"
+#include "library/PhoneAppsList.h"
 #include "player/CameraHost.h"
 #include "player/CodecHost.h"
 #include "player/GfxHost.h"
@@ -40,7 +41,7 @@ std::shared_ptr<AudioHost> gAudio;
 std::vector<std::shared_ptr<WindowHost>> gOldWindows;
 std::vector<std::shared_ptr<AudioHost>> gOldAudio;
 // What megler_run_config points at, alive for the rest of the process.
-std::string gApkPath, gSplitsDir;
+std::string gApkPath, gSplitsDir, gAppsDir;
 bool gSuspended = false, gVisible = true, gFocused = true;
 // A Java app is heard in the background, as on Android (its own music and video players keep playing there, and the
 // system media controls stand for it: player/MediaControls.cpp); an engine's game is not, whether or not it stops its
@@ -182,6 +183,9 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         window = gWindow = std::make_shared<WindowHost>(panel, width, height);
         audio = gAudio = std::make_shared<AudioHost>();
         gBackgroundAudio = apk.report.engine == "java";
+        // The other apps the phone has, for a launcher (library/PhoneAppsList.h), where the folder is there.
+        const std::wstring apps = phoneAppsList::folder();
+        gAppsDir = !apps.empty() && files::exists(apps + L"\\apps.txt") ? narrow(apps) : std::string();
     }
     systemHost::setRunningApp(apk.title(), apk.report.package);
     audio->setMedia(gBackgroundAudio);
@@ -237,6 +241,7 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         config.bars = BarsHost::shared().callbacks();
         config.media_session = mediaControls::callbacks();
         config.system = systemHost::callbacks();
+        config.apps_dir = gAppsDir.empty() ? nullptr : gAppsDir.c_str();
         config.on_exit = &onExit;
         config.user = nullptr;
         const bool started = megler_run(&config);
