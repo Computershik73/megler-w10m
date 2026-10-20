@@ -108,6 +108,21 @@ public:
         setVisible(importCard_, false);
         add(column_, importCard_);
 
+        // What is being done to the apps on the phone (ui/SeparateApps.h), from the moment an APK is picked: refreshed at
+        // every poll, whatever the list.
+        workText_ = text("", font::subheadline, weightNormal(), p.label);
+        workText_.TextWrapping(TextWrapping::Wrap);
+        ProgressBar workBar;
+        workBar.IsIndeterminate(true);
+        workBar.Margin(ThicknessHelper::FromLengths(0, 10, 0, 0));
+        auto workColumn = vstack(0);
+        add(workColumn, workText_);
+        add(workColumn, workBar);
+        workCard_ = card(workColumn, 12, 14);
+        workCard_.Margin(ThicknessHelper::FromLengths(0, 0, 0, 14));
+        setVisible(workCard_, false);
+        add(column_, workCard_);
+
         listHost_ = ContentControl();
         listHost_.HorizontalContentAlignment(HorizontalAlignment::Stretch);
         add(column_, listHost_);
@@ -129,11 +144,14 @@ public:
         const bool copying = import.active && !import.name.empty();
         setVisible(importCard_, copying);
         if (copying) {
-            importTitle_.Text(hs((import.unpacking ? "Unpacking " : "Copying ") + import.name));
+            importTitle_.Text(hs((import.unpacking ? "Unpacking " : import.copied ? "Copying " : "Opening ") + import.name));
             importBar_.Value(import.total ? double(import.copied) / double(import.total) : 0);
             importDetail_.Text(hs(formattedByteCount(import.copied) + " of " + formattedByteCount(import.total)));
         }
         addButton_.IsEnabled(!import.active);
+        const std::string working = separateApps::working();
+        setVisible(workCard_, !working.empty());
+        if (!working.empty() && narrow(std::wstring(workText_.Text())) != working) workText_.Text(hs(working));
 
         const unsigned generation = Library::instance().generation(), phone = separateApps::generation();
         if (generation == generation_ && phone == phoneGeneration_) return;
@@ -175,18 +193,10 @@ private:
             listHost_.Content(empty);
             return;
         }
-        // What is being done to the apps on the phone; else those made by another Megler, to update; and whether the portal
-        // could be asked at all.
+        // The apps made by another Megler, to update, while nothing is being done; and whether the portal could be asked.
         auto top = vstack(0);
-        const std::string working = separateApps::working();
         const auto outdated = separateApps::outdatedIds();
-        if (!working.empty()) {
-            auto line = text(working, font::subheadline, weightNormal(), palette().label);
-            line.TextWrapping(TextWrapping::Wrap);
-            auto box = card(line, 12, 14);
-            box.Margin(ThicknessHelper::FromLengths(0, 0, 0, 14));
-            add(top, box);
-        } else if (!outdated.empty()) {
+        if (separateApps::working().empty() && !outdated.empty()) {
             auto column = vstack(10);
             auto line = text(format("%u of the apps on the phone were made by another Megler. A package carries the Megler that made it: "
                                     "Update All makes and installs each again with this one.",
@@ -251,6 +261,8 @@ private:
     ProgressBar importBar_{nullptr};
     TextBlock importDetail_{nullptr};
     ContentControl listHost_{nullptr};
+    Border workCard_{nullptr};
+    TextBlock workText_{nullptr};
     Button addButton_{nullptr};
     unsigned generation_ = 0, phoneGeneration_ = 0;
 };

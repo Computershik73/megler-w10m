@@ -10,6 +10,7 @@
 #include "shell/Strings.h"
 #include "ui/AppShell.h"
 
+#include <algorithm>
 #include <deque>
 #include <map>
 
@@ -195,11 +196,17 @@ void run(Job& job, int number, int total) {
                                  (kept.empty() ? std::string() : " (" + kept + ")"));
             return;
         }
-        // Installed: the package made is the installed one now, and goes (Windows's installer is not wanted for it).
+        // Installed: the package made is the installed one now, and goes (Windows's installer is not wanted for it). The
+        // app is listed as installed at once; the portal's list is asked again once the queue is done.
         files::remove(made.appx);
         {
             std::lock_guard<std::mutex> lock(gMutex);
             gStatus[package].made = appPackage::Made();
+            gInstalled.erase(std::remove_if(gInstalled.begin(), gInstalled.end(),
+                                            [&](const appPackage::InstalledApp& a) { return a.identity == made.identity; }),
+                             gInstalled.end());
+            gInstalled.push_back({made.identity, appPackage::meglerVersion(), made.fullName});
+            gGeneration++;
         }
         // Megler keeps no copy of the APK when it can read the installed one in its place; else it keeps (or makes) one.
         const std::wstring installed = appPackage::installedApk(made.fullName);
@@ -235,6 +242,12 @@ void run(Job& job, int number, int total) {
         }
         setStep(job.package, stepOf("Uninstalling…"));
         const appPackage::PortalResult result = appPackage::uninstallThroughPortal(app);
+        if (result.ok) {
+            std::lock_guard<std::mutex> lock(gMutex);
+            gInstalled.erase(std::remove_if(gInstalled.begin(), gInstalled.end(),
+                                            [&](const appPackage::InstalledApp& a) { return a.identity == app.identity; }),
+                             gInstalled.end());
+        }
         setStep(job.package, result.ok ? std::string("Uninstalled. What it kept in the shared folder, its part of Android's storage, stays.")
                                        : result.said);
     }
@@ -297,6 +310,7 @@ void enqueue(AppShell& shell, Job job) {
             s.step = job.install ? "Waiting…" : "Waiting to uninstall…";
         }
         gTotal++;
+        if (!gWorking) gWorkingLine = job.picked ? "Reading " + job.picked->name() + "…" : "Starting…";
         gJobs.push_back(std::move(job));
         gGeneration++;
     }
@@ -382,7 +396,7 @@ void updateAll(AppShell& shell) {
 
 std::string working() {
     std::lock_guard<std::mutex> lock(gMutex);
-    return gWorking ? gWorkingLine : std::string();
+    return gWorking || !gJobs.empty() ? gWorkingLine : std::string();
 }
 
 } // namespace megler::app::ui::separateApps
