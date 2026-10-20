@@ -1342,6 +1342,26 @@ typedef struct megler_system_bars_host {
 } megler_system_bars_host;
 
 /*
+ * A Java app's media session (android.media.session.MediaSession, which androidx's MediaSessionCompat stands on): what
+ * the app says it plays and how, for the phone's own media controls (Windows' system media transport controls: the lock
+ * screen's, the volume flyout's). Only the session that was made active last is told. Both calls come on the thread the
+ * app calls from and must return at once. Left NULL, the app runs and nobody is told.
+ *   state     Android's PlaybackState: its state (STATE_*: 0 none, 1 stopped, 2 paused, 3 playing, 6 buffering...) and
+ *             the ACTION_* bits it allows (4 play, 2 pause, 32 next, 16 previous...). State 0 also when the session is
+ *             released or made inactive.
+ *   metadata  What plays: its title, artist and album (UTF-8, or NULL), and its picture as 0xAARRGGBB pixels, art_w x
+ *             art_h of them row by row (at most 256 on a side), or NULL.
+ * The other way, the controls' buttons, come as Android's media keys through megler_key (KEYCODE_MEDIA_PLAY 126,
+ * KEYCODE_MEDIA_PAUSE 127, KEYCODE_MEDIA_NEXT 87...), which the framework hands to that session as Android does.
+ */
+typedef struct megler_media_session_host {
+    void *user;
+    void (*state)(void *user, int state, long long actions);
+    void (*metadata)(void *user, const char *title, const char *artist, const char *album, const uint32_t *art, int art_w,
+                     int art_h);
+} megler_media_session_host;
+
+/*
  * The phone's location, for a Java app's android.location.LocationManager.
  *
  * A fix is where the phone was and when: degrees on WGS 84, metres, metres a second, degrees clockwise from north, and the time
@@ -1422,6 +1442,8 @@ typedef struct megler_run_config {
     megler_keyboard_host keyboard;
     /* The bars a Java app wants hidden (see megler_system_bars_host). May be left NULL. */
     megler_system_bars_host bars;
+    /* What a Java app's media session says it plays (see megler_media_session_host). May be left NULL. */
+    megler_media_session_host media_session;
     /* The app has ended: by its own exit (status), by a crash (reason names it), or by megler_stop. Called once, from any thread. */
     void (*on_exit)(void *user, int status, const char *reason);
     void *user;

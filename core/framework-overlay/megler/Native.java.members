@@ -35,5 +35,12 @@
      * first frame and whenever it changes; the shell hides and shows the bars, and the insets that follow come through insets().
      */
     public static native void systemBars(int bars);
+    /**
+     * The app's active media session's PlaybackState: its state (STATE_*) and the ACTION_* bits it allows; state 0 when it
+     * is released or made inactive (megler.h, megler_media_session_host). android.media.session.MediaSession says it.
+     */
+    public static native void mediaSessionState(int state, long actions);
+    /** What that session plays: title, artist, album (or null), and a picture of at most 256x256 as ARGB pixels, or null. */
+    public static native void mediaSessionMetadata(String title, String artist, String album, int[] art, int artWidth, int artHeight);
     /** A switch for trying something on the phone (core: mg_flag): on when a file of that name is in the data folder's flags. */
     public static native boolean flag(String name);

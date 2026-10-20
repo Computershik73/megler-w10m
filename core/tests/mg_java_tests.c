@@ -562,6 +562,35 @@ static void bars_wanted(void *user, int bars)
     mg_lock_release(&g_bars_lock);
 }
 
+/* What the app's media session told (megler_media_session_host), in order: "state=3 actions=6;meta=Song/Band/Record 256x128 ff336699;". */
+static char g_media_heard[512];
+static mg_lock g_media_lock = MG_LOCK_INIT;
+
+static void media_heard(const char *what)
+{
+    size_t n;
+    mg_lock_acquire(&g_media_lock);
+    n = strlen(g_media_heard);
+    if (n + strlen(what) + 1 < sizeof(g_media_heard)) mg_strlcpy(g_media_heard + n, what, sizeof(g_media_heard) - n);
+    mg_lock_release(&g_media_lock);
+}
+
+static void media_state(void *user, int state, long long actions)
+{
+    char t[64];
+    (void)user;
+    snprintf(t, sizeof(t), "state=%d actions=%lld;", state, actions);
+    media_heard(t);
+}
+
+static void media_metadata(void *user, const char *title, const char *artist, const char *album, const uint32_t *art, int w, int h)
+{
+    char t[200];
+    (void)user;
+    snprintf(t, sizeof(t), "meta=%s/%s/%s %dx%d %08x;", title ? title : "-", artist ? artist : "-", album ? album : "-", w, h, art ? (unsigned)art[0] : 0u);
+    media_heard(t);
+}
+
 static bool start(const char *apk, const char *android_root)
 {
     static megler_run_config cfg;
@@ -585,6 +614,9 @@ static bool start(const char *apk, const char *android_root)
     cfg.keyboard.hide = keyboard_hide;
     cfg.bars.wanted = bars_wanted;
     g_bars_heard[0] = 0;
+    cfg.media_session.state = media_state;
+    cfg.media_session.metadata = media_metadata;
+    g_media_heard[0] = 0;
     /* Decoders for MediaCodec that decode nothing but take samples only as a real one must have them (mg_codec_standin.c). */
     cfg.codec = *mg_codec_standin();
     if (g_camera_app) cfg.camera = *mg_camera_standin();
@@ -1695,6 +1727,35 @@ static void bars_and_insets(void)
     megler_set_insets(0, 0, 0, 0);
 }
 
+/*
+ * The app's media session, as the phone's media controls have it: its state (playing; play and pause allowed) and what it
+ * plays (title, artist, album, and its picture made at most 256 on a side) come to the shell (megler_media_session_host);
+ * then the controls' next key, which that state does not allow, does nothing, and their pause key reaches the session's
+ * onPause on the main thread (megler_key, android.media.session.MediaSession).
+ */
+static void media_session_keys(void)
+{
+    static const char want[] = "state=3 actions=6;meta=Song/Band/Record 256x128 ff336699;";
+    char heard[sizeof(g_media_heard)];
+    int tries;
+    CHECK(wait_line("I/DataTest: media-session waiting", 0, 30) >= 0);
+    for (tries = 0; tries < 100; tries++) {
+        mg_lock_acquire(&g_media_lock);
+        mg_strlcpy(heard, g_media_heard, sizeof(heard));
+        mg_lock_release(&g_media_lock);
+        if (!strcmp(heard, want)) break;
+        mg_sleep_ns(20000000ull);
+    }
+    say("  the media session told: %s", heard);
+    CHECK(!strcmp(heard, want));
+    megler_key(87, true);
+    megler_key(87, false);
+    megler_key(127, true);
+    megler_key(127, false);
+    CHECK(wait_line("I/DataTest: media-session paused", 0, 30) >= 0);
+    CHECK(find_line("I/DataTest: media-session next", 0) < 0 && count_lines("media-session paused OFF THE MAIN THREAD") == 0);
+}
+
 static int run_data(void)
 {
     static const char *const steps[] = { "open", "kept", "insert", "query", "types", "update", "delete", "rollback", "commit", "constraint", "statement", "text",
@@ -1821,6 +1882,7 @@ static int run_data(void)
                     0) >= 0);
     battery_changes(run == 2 && want == 2);
     bars_and_insets();
+    media_session_keys();
     /*
      * The second run has the flags trace-net, trace-exceptions and trace-stacks on (tools/build-tests.sh puts them in its
      * data folder): the network steps' connections are said with where to and how they ended, the names looked up with their

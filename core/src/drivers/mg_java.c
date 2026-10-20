@@ -568,6 +568,28 @@ N(Native_pollText)
     c->ret.l = a;
 }
 
+/* mediaSessionState(state, actions): the app's active media session's PlaybackState (megler.h, megler_media_session_host). */
+N(Native_mediaSessionState)
+{
+    const megler_media_session_host *m = &J.config->media_session;
+    if (m->state) m->state(m->user, (int)c->args[0].i, (long long)c->args[1].j);
+}
+
+/* mediaSessionMetadata(title, artist, album, art, artWidth, artHeight): what that session says it plays; art is ARGB, or null. */
+N(Native_mediaSessionMetadata)
+{
+    const megler_media_session_host *m = &J.config->media_session;
+    mg_jobj *art = c->args[3].l;
+    i32 w = c->args[4].i, h = c->args[5].i;
+    const uint32_t *px = NULL;
+    if (!m->metadata) return;
+    if (art && art->kind == MG_J_PRIM_ARRAY && art->u.arr.etype == 'I' && w > 0 && h > 0 && w <= 256 && h <= 256 &&
+        art->u.arr.len >= (u32)(w * h))
+        px = (const uint32_t *)art->u.arr.data;
+    m->metadata(m->user, c->args[0].l ? text_of(c->args[0].l) : NULL, c->args[1].l ? text_of(c->args[1].l) : NULL,
+                c->args[2].l ? text_of(c->args[2].l) : NULL, px, px ? w : 0, px ? h : 0);
+}
+
 /* What the shell would have to do and cannot be asked yet: said once, and the app goes on. */
 N(Native_share) { mg_info("java: the app shares \"%s\" (nothing here to share it with)", text_of(c->args[0].l)); }
 N(Native_openUrl) { mg_info("java: the app opens %s (nothing here to open it)", text_of(c->args[0].l)); }
@@ -615,6 +637,8 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "pollText", NULL, Native_pollText },
     { "megler/Native", "showKeyboard", NULL, Native_showKeyboard },
     { "megler/Native", "systemBars", NULL, Native_systemBars },
+    { "megler/Native", "mediaSessionState", NULL, Native_mediaSessionState },
+    { "megler/Native", "mediaSessionMetadata", NULL, Native_mediaSessionMetadata },
     { "megler/Native", "setClipboard", NULL, Native_setClipboard },
     { "megler/Native", "getClipboard", NULL, Native_getClipboard },
     { "megler/Native", "share", NULL, Native_share },

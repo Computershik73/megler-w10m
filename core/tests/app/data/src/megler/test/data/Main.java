@@ -345,6 +345,7 @@ public class Main extends Activity {
         renderNodes();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
+        mediaSession();
         new android.os.Handler().postDelayed(this::popup, 700);
     }
 
@@ -468,6 +469,35 @@ public class Main extends Activity {
                 dialog.dismiss();
             }, 400);
         }, 300);
+    }
+
+    private android.media.session.MediaSession session;
+
+    /**
+     * A media session that plays and may be paused, with a title, an artist, an album and a picture of 512 x 256: the test
+     * hears its state and what it plays (megler_media_session_host), then sends the phone's next key, which the session does
+     * not allow, and its pause key, which must reach onPause on the main thread.
+     */
+    private void mediaSession() {
+        session = new android.media.session.MediaSession(this, "DataTest");
+        session.setCallback(new android.media.session.MediaSession.Callback() {
+            @Override public void onPause() {
+                Log.i("DataTest", "media-session paused" + (android.os.Looper.myLooper() == android.os.Looper.getMainLooper() ? "" : " OFF THE MAIN THREAD"));
+            }
+            @Override public void onSkipToNext() { Log.i("DataTest", "media-session next FAILED: the state does not allow it"); }
+        });
+        session.setPlaybackState(new android.media.session.PlaybackState.Builder()
+                .setState(android.media.session.PlaybackState.STATE_PLAYING, 1000, 1f)
+                .setActions(android.media.session.PlaybackState.ACTION_PAUSE | android.media.session.PlaybackState.ACTION_PLAY).build());
+        android.graphics.Bitmap art = android.graphics.Bitmap.createBitmap(512, 256, android.graphics.Bitmap.Config.ARGB_8888);
+        art.eraseColor(0xFF336699);
+        session.setMetadata(new android.media.MediaMetadata.Builder()
+                .putString(android.media.MediaMetadata.METADATA_KEY_TITLE, "Song")
+                .putString(android.media.MediaMetadata.METADATA_KEY_ARTIST, "Band")
+                .putString(android.media.MediaMetadata.METADATA_KEY_ALBUM, "Record")
+                .putBitmap(android.media.MediaMetadata.METADATA_KEY_ART, art).build());
+        session.setActive(true);
+        Log.i("DataTest", "media-session waiting");
     }
 
     /**

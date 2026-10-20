@@ -8,6 +8,10 @@
 // realActivity: one started through an <activity-alias> is found by an intent that names the activity itself, where the
 // original compared the names they were started as.
 //
+// And in one more: a media key from the phone (its media controls: the lock screen's and the volume flyout's play and
+// pause) goes to the app's active media session first, as Android hands it to the session rather than to the window
+// (android.media.session.MediaSession.meglerMediaKey); an app with none gets it as any other key.
+//
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -276,6 +280,9 @@ public final class AppRunner {
                 if (phase == 4) {
                     long t = SystemClock.uptimeMillis();
                     KeyEvent ke = new KeyEvent(t, t, ev[3 + 4 * k] != 0 ? KeyEvent.ACTION_DOWN : KeyEvent.ACTION_UP, id, 0);
+                    // A media key (the phone's media controls send them) is the active media session's, as on Android;
+                    // with none, it is the window's like any other key.
+                    if (android.media.session.MediaSession.meglerMediaKey(ke)) continue;
                     if (!InputMethods.key(ke)) ViewRootDispatch.key(ke);
                     continue;
                 }
