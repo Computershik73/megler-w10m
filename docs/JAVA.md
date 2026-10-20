@@ -1127,7 +1127,8 @@ that loads the home screen ended), and three things of libc's that the crash
 SDK imports (`__page_size`, which it read as a null pointer, `setpgrp`,
 `ptrace`). What it lists is what the framework's `PackageManager` knows: the
 app itself, and since build 0.1.0.373 the apps of Megler's library ("Installing,
-and the phone's other apps").
+and the phone's other apps"). Its umeng library asks for one HTTPS address
+over and over, about 150 times a second, when the name does not resolve.
 
 **Nova Launcher 8.9.4** (armeabi-v7a; Kotlin, Jetpack Compose for its first
 run, Firebase, Facebook's and Google's ad SDKs). On the phone (package 373, as
@@ -1141,8 +1142,7 @@ application's icon, then the platform's default), a bitmap's bytes were four a
 pixel in every config (Nova copies an `ALPHA_8` icon into an array of one byte
 a pixel), and `AdaptiveIconDrawable` was an empty stub whose mask was null.
 With those fixed it starts under qemu to its welcome screen (Welcome to Nova
-Launcher, Get started). Not yet tried on the phone again. Its umeng library asks for one HTTPS address over and over,
-about 150 times a second, when the name does not resolve.
+Launcher, Get started). Not yet tried on the phone again.
 
 **AIDA64 2.22** (minSdk 19; a `GLSurfaceView` to ask the GPU, a night mode
 of its own). On the phone it ran and its detail pages opened from taps on
