@@ -71,7 +71,6 @@ public class Resources {
     private static Resources sSystem;
 
     private final AssetManager mAssets;
-    private ResTable mPackageTable;
     private final DisplayMetrics mMetrics = new DisplayMetrics();
     private final Configuration mConfig = Configuration.meglerDevice();
     private ResTable.Config mCfg;
@@ -96,10 +95,6 @@ public class Resources {
         if (c != null) mConfig.updateFrom(c);
         updateCfg();
         loadTables();
-        if (a.meglerPackageApk() != 0) {
-            byte[] data = megler.Native.readApkFile(a.meglerPackageApk(), "resources.arsc");
-            mPackageTable = new ResTable(data == null ? emptyTable() : data);
-        }
     }
     private void updateCfg() {
         String lang = mConfig.locale != null ? mConfig.locale.getLanguage() : "en", country = mConfig.locale != null ? mConfig.locale.getCountry() : "US";
@@ -127,8 +122,7 @@ public class Resources {
         }
     }
     private static byte[] emptyTable() { return new byte[] { 2, 0, 12, 0, 12, 0, 0, 0, 0, 0, 0, 0 }; }
-    private ResTable appTable() { return mPackageTable != null ? mPackageTable : sApp; }
-    ResTable table(int id) { int p = id >>> 24; if (p == 0x7f && mPackageTable != null) return mPackageTable; if (p == 1) return sFramework; ResTable lib = sLibs[p]; return lib != null ? lib : sApp; }
+    static ResTable table(int id) { int p = id >>> 24; if (p == 1) return sFramework; ResTable lib = sLibs[p]; return lib != null ? lib : sApp; }
 
     // ---- megler-w10m: shared libraries (see the top of the file)
     /** The tables of shared libraries by the package id each was given, and the core's number of each one's APK. */
@@ -154,7 +148,7 @@ public class Resources {
         }
     }
     /** The core's number of the APK that holds the files of a resource id: the platform's (1), a library's, or the app's (0). */
-    private int apkOf(int id) { int p = id >>> 24; if (p == 0x7f && mPackageTable != null) return mAssets.meglerPackageApk(); return p == 1 ? 1 : sLibs[p] != null ? sLibApks[p] : 0; }
+    private static int apkOf(int id) { int p = id >>> 24; return p == 1 ? 1 : sLibs[p] != null ? sLibApks[p] : 0; }
     /** The table of the shared library of that package name, or null. */
     private static ResTable library(String packageName) {
         if (packageName == null) return null;
@@ -294,12 +288,12 @@ public class Resources {
         if ("android".equals(pkg)) return sFramework.identifier("android", type, n);
         ResTable lib = library(pkg);
         if (lib != null) return lib.identifier(pkg, type, n);
-        int id = appTable().identifier(null, type, n);
+        int id = sApp.identifier(null, type, n);
         if (id == 0 && (pkg == null || "android".equals(pkg))) id = sFramework.identifier("android", type, n);
         return id;
     }
     public String getResourceName(int id) { String t = getResourceTypeName(id), e = getResourceEntryName(id); return getResourcePackageName(id) + ":" + t + "/" + e; }
-    public String getResourcePackageName(int id) { ResTable.Package p = table(id).pkg(id); if (p == null) throw new NotFoundException("Unable to find resource ID #0x" + Integer.toHexString(id)); return (id >>> 24) == 0x7f ? mAssets.meglerPackageName() : p.name; }
+    public String getResourcePackageName(int id) { ResTable.Package p = table(id).pkg(id); if (p == null) throw new NotFoundException("Unable to find resource ID #0x" + Integer.toHexString(id)); return (id >>> 24) == 0x7f ? megler.Native.packageName() : p.name; }
     public String getResourceTypeName(int id) { String s = table(id).typeName(id); if (s == null) throw new NotFoundException("Unable to find resource ID #0x" + Integer.toHexString(id)); return s; }
     public String getResourceEntryName(int id) { String s = table(id).keyName(id, mCfg); if (s == null) throw new NotFoundException("Unable to find resource ID #0x" + Integer.toHexString(id)); return s; }
 

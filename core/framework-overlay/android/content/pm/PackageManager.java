@@ -110,7 +110,7 @@ public class PackageManager {
     }
     public ActivityInfo getActivityInfo(ComponentName c, ComponentInfoFlags flags) throws NameNotFoundException { return getActivityInfo(c, 0); }
     public ActivityInfo getReceiverInfo(ComponentName c, int flags) throws NameNotFoundException { for (megler.Manifest.Component r : megler.Manifest.receivers) if (r.name.equals(c.getClassName())) return activity(r); throw new NameNotFoundException(c.toString()); }
-    public ServiceInfo getServiceInfo(ComponentName c, int flags) throws NameNotFoundException { ServiceInfo external = megler.MicroG.resolve(new Intent().setComponent(c)); if (external != null) return external; for (megler.Manifest.Component s : megler.Manifest.services) if (s.name.equals(c.getClassName())) return service(s); throw new NameNotFoundException(c.toString()); }
+    public ServiceInfo getServiceInfo(ComponentName c, int flags) throws NameNotFoundException { for (megler.Manifest.Component s : megler.Manifest.services) if (s.name.equals(c.getClassName())) return service(s); throw new NameNotFoundException(c.toString()); }
     public ServiceInfo getServiceInfo(ComponentName c, ComponentInfoFlags flags) throws NameNotFoundException { return getServiceInfo(c, 0); }
     public ProviderInfo getProviderInfo(ComponentName c, int flags) throws NameNotFoundException { for (megler.Manifest.Component p : megler.Manifest.providers) if (p.name.equals(c.getClassName())) return provider(p); throw new NameNotFoundException(c.toString()); }
     public ProviderInfo resolveContentProvider(String authority, int flags) { for (megler.Manifest.Component p : megler.Manifest.providers) if (p.authorities != null && java.util.Arrays.asList(p.authorities.split(";")).contains(authority)) return provider(p); return null; }
@@ -153,7 +153,7 @@ public class PackageManager {
     public android.graphics.drawable.Drawable getDefaultActivityIcon() { return new android.graphics.drawable.ColorDrawable(0); }
     public android.graphics.drawable.Drawable getDrawable(String pkg, int res, ApplicationInfo a) { try { return megler.ContextImpl.app().getResources().getDrawable(res); } catch (Exception e) { return null; } }
     public CharSequence getText(String pkg, int res, ApplicationInfo a) { try { return megler.ContextImpl.app().getResources().getText(res); } catch (Exception e) { return null; } }
-    public android.content.res.Resources getResourcesForApplication(String pkg) throws NameNotFoundException { android.content.Context external = megler.MicroG.context(pkg); if (external != null) return external.getResources(); if (!mine(pkg) && !"android".equals(pkg)) throw new NameNotFoundException(pkg); return megler.ContextImpl.app().getResources(); }
+    public android.content.res.Resources getResourcesForApplication(String pkg) throws NameNotFoundException { if (!mine(pkg) && !"android".equals(pkg)) throw new NameNotFoundException(pkg); return megler.ContextImpl.app().getResources(); }
     public android.content.res.Resources getResourcesForApplication(ApplicationInfo a) throws NameNotFoundException { return getResourcesForApplication(a.packageName); }
     public android.content.res.Resources getResourcesForActivity(ComponentName c) { return megler.ContextImpl.app().getResources(); }
     public String getInstallerPackageName(String pkg) { return "com.android.vending"; }
@@ -176,9 +176,7 @@ public class PackageManager {
     public List<ResolveInfo> queryIntentServices(Intent i, int flags) {
         ArrayList<ResolveInfo> l = new ArrayList<>();
         for (megler.Manifest.Component c : megler.Manifest.match(megler.Manifest.services, i)) { ResolveInfo r = new ResolveInfo(); r.serviceInfo = service(c); l.add(r); }
-        ServiceInfo external = megler.MicroG.resolve(i);
-        if (external != null) { ResolveInfo r = new ResolveInfo(); r.serviceInfo = external; l.add(r); }
-        if (l.isEmpty() && !megler.MicroG.installed() && googleService(i)) {
+        if (l.isEmpty() && googleService(i)) {
             ResolveInfo r = new ResolveInfo(); ServiceInfo s = new ServiceInfo();
             s.packageName = "com.google.android.gms"; s.name = "com.google.android.gms.chimera.GmsIntentOperationService"; s.exported = true; s.enabled = true;
             try { s.applicationInfo = megler.GooglePackages.applicationInfo(s.packageName); } catch (Exception e) {}

@@ -49,8 +49,6 @@ public final class GooglePackages {
     public static int versionCode(String pkg) { return VENDING.equals(pkg) ? 84651730 : WEBVIEW.equals(pkg) ? 733920700 : 270000000; }
     public static String versionName(String pkg) { return VENDING.equals(pkg) ? "46.5.17-31 [0] [PR] 750000000" : WEBVIEW.equals(pkg) ? "140.0.7339.207" : "27.00.00 (190400-750000000)"; }
     public static android.content.pm.ApplicationInfo applicationInfo(String pkg) {
-        android.content.pm.PackageInfo microg = MicroG.packageInfo(pkg);
-        if (microg != null) return microg.applicationInfo;
         android.content.pm.PackageInfo webview = systemWebView(pkg);
         if (webview != null) return webview.applicationInfo;
         android.content.pm.ApplicationInfo a = new android.content.pm.ApplicationInfo();
@@ -62,8 +60,6 @@ public final class GooglePackages {
         return a;
     }
     public static android.content.pm.PackageInfo packageInfo(String pkg) {
-        android.content.pm.PackageInfo microg = MicroG.packageInfo(pkg);
-        if (microg != null) return microg;
         android.content.pm.PackageInfo webview = systemWebView(pkg);
         if (webview != null) return webview;
         android.content.pm.PackageInfo p = new android.content.pm.PackageInfo();

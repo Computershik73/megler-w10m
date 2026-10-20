@@ -22,29 +22,11 @@ import java.io.*;
 /** The APK's assets/ folder, read through Megler (the APK is a zip Megler already has open); and shared libraries' APKs beside it. */
 public final class AssetManager implements AutoCloseable {
     public static final int ACCESS_UNKNOWN = 0, ACCESS_RANDOM = 1, ACCESS_STREAMING = 2, ACCESS_BUFFER = 3;
-    private Library mPackage;
     public AssetManager() {}
-    /** A package with its own 0x7f resources, not a shared resource library. */
-    public static AssetManager meglerForPackage(String path, String name) {
-        int apk = megler.Native.addApk(path);
-        if (apk < 0) throw new IllegalArgumentException("Cannot open package " + path);
-        AssetManager a = new AssetManager();
-        a.mPackage = new Library(path, apk);
-        a.mPackage.packageName = name;
-        return a;
-    }
-    int meglerPackageApk() { return mPackage == null ? 0 : mPackage.apk; }
-    String meglerPackageName() { return mPackage == null ? megler.Native.packageName() : mPackage.packageName; }
-    private InputStream packageFile(String name) throws IOException {
-        byte[] b = megler.Native.readApkFile(mPackage.apk, name);
-        if (b == null) throw new FileNotFoundException(name);
-        return new ByteArrayInputStream(b);
-    }
     private static String norm(String p) { while (p.startsWith("/")) p = p.substring(1); while (p.startsWith("./")) p = p.substring(2); return p; }
     public InputStream open(String name) throws IOException { return open(name, ACCESS_STREAMING); }
     public InputStream open(String name, int mode) throws IOException {
         String n = norm(name);
-        if (mPackage != null) return packageFile("assets/" + n);
         long len = megler.Native.assetLength(n);
         // a large asset stored uncompressed is read from the APK as it is consumed, not copied whole into memory (a game's
         // repacked data, hundreds of MB, unpacked through this stream on first launch)
@@ -58,11 +40,6 @@ public final class AssetManager implements AutoCloseable {
         return new ByteArrayInputStream(b);
     }
     public String[] list(String path) throws IOException {
-        if (mPackage != null) {
-            String prefix = "assets/" + norm(path);
-            if (!prefix.endsWith("/")) prefix += "/";
-            return mPackage.list(prefix).toArray(new String[0]);
-        }
         String[] l = megler.Native.listAssets(norm(path));
         if (l == null) l = new String[0];
         synchronized (sLibs) {
@@ -79,7 +56,7 @@ public final class AssetManager implements AutoCloseable {
     /** A file from the APK's root rather than assets/ (SoLoader reads lib/<abi>/*.so this way) */
     public AssetFileDescriptor openNonAssetFd(String name) throws IOException { return fd("/" + norm(name), name); }
     public AssetFileDescriptor openNonAssetFd(int cookie, String name) throws IOException {
-        Library lib = mPackage != null ? mPackage : library(cookie);
+        Library lib = library(cookie);
         if (lib != null) {
             AssetFileDescriptor afd = lib.fd(norm(name));
             if (afd == null) throw new FileNotFoundException("This file can not be opened as a file descriptor; it is probably compressed: " + name);
@@ -88,14 +65,13 @@ public final class AssetManager implements AutoCloseable {
         return openNonAssetFd(name);
     }
     public InputStream openNonAsset(String name) throws IOException {
-        if (mPackage != null) return packageFile(norm(name));
         byte[] b = megler.Native.readAsset("/" + norm(name));
         if (b == null) b = libraryFile(norm(name));
         if (b == null) throw new FileNotFoundException(name);
         return new ByteArrayInputStream(b);
     }
     public InputStream openNonAsset(int cookie, String name) throws IOException {
-        Library lib = mPackage != null ? mPackage : library(cookie);
+        Library lib = library(cookie);
         if (lib != null) {
             byte[] b = megler.Native.readApkFile(lib.apk, norm(name));
             if (b == null) throw new FileNotFoundException(name);
@@ -106,11 +82,6 @@ public final class AssetManager implements AutoCloseable {
     public InputStream openNonAsset(String name, int mode) throws IOException { return openNonAsset(name); }
     public InputStream openNonAsset(int cookie, String name, int mode) throws IOException { return openNonAsset(cookie, name); }
     private AssetFileDescriptor fd(String n, String name) throws IOException {
-        if (mPackage != null) {
-            AssetFileDescriptor afd = mPackage.fd(n.startsWith("/") ? n.substring(1) : "assets/" + n);
-            if (afd == null) throw new FileNotFoundException(name);
-            return afd;
-        }
         long fdoff = megler.Native.assetFd(n);
         if (fdoff == -1) {
             // not the app's: a library's (n is "x" for assets/x, "/x" for x from the APK's root)
@@ -200,13 +171,11 @@ public final class AssetManager implements AutoCloseable {
     public android.util.SparseArray<String> getAssignedPackageIdentifiers(boolean includeOverlays, boolean includeLoaders) {
         android.util.SparseArray<String> ids = new android.util.SparseArray<>();
         ids.put(0x01, "android");
-        ids.put(0x7f, meglerPackageName());
-        if (mPackage != null) return ids;
+        ids.put(0x7f, megler.Native.packageName());
         for (Library lib : libraries()) if (lib.packageId != 0) ids.put(lib.packageId, lib.packageName);
         return ids;
     }
     public String[] getApkPaths() {
-        if (mPackage != null) return new String[] {mPackage.path};
         java.util.List<Library> libs = libraries();
         String[] paths = new String[1 + libs.size()];
         paths[0] = megler.Native.apkPath();
@@ -214,7 +183,6 @@ public final class AssetManager implements AutoCloseable {
         return paths;
     }
     public int findCookieForPath(String path) {
-        if (mPackage != null) return mPackage.path.equals(path) ? 1 : 0;
         if (path == null) return 0;
         if (path.equals(megler.Native.apkPath())) return 1;
         synchronized (sLibs) { for (int i = 0; i < sLibs.size(); i++) if (sLibs.get(i).path.equals(path)) return i + 2; }
