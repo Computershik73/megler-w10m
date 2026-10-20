@@ -1,7 +1,6 @@
-// The app's frame: four tabs (Library, Device, Log, Settings), each with its
-// own navigation stack, a navigation bar with the title, and the plumbing
-// every screen shares -- the 250 ms poll, worker threads, dialogs and the APK
-// picker. podium-w10m's ui/AppShell, for Megler.
+// The app's frame, as Material 3 has it: four destinations (Library, Device, Log, Settings) in a navigation bar at the
+// bottom, each with its own navigation stack, a top app bar with the title, Back and the page's actions, and the plumbing
+// every screen shares -- the 250 ms poll, worker threads, Material's dialogs and the APK picker.
 //
 // Each screen is a Page: it builds its XAML once and refreshes it from the
 // state behind it on every poll. Nothing the core or a worker thread does
@@ -89,7 +88,17 @@ public:
     void runInBackground(std::function<void()> work, std::function<void()> then = nullptr);
     void runOnUiThread(std::function<void()> work);
 
-    // Dialogs (one at a time; a second request while one is up is dropped)
+    // Dialogs, Material's: one at a time; a second request while one is up is dropped.
+    struct DialogSpec {
+        std::string title, message;
+        bool field = false;                  // a text field under the text
+        std::string fieldText, fieldPlaceholder;
+        std::vector<std::string> fieldSuggestions; // chips under the field, each putting itself in it
+        std::vector<std::string> buttons;    // at the dialog's end, the confirming one last
+        bool destructive = false;            // the confirming one in the error colour
+    };
+    /// `done` gets the index of the button pressed (-1: dismissed, by Back or a tap beside it) and the field's text.
+    void dialog(DialogSpec spec, std::function<void(int button, std::string text)> done);
     void alert(std::string title, std::string message);
     void confirm(std::string title, std::string message, std::string confirmTitle, bool destructive,
                  std::function<void()> onConfirm);
@@ -114,6 +123,7 @@ private:
     struct Stack;
     void buildChrome();
     void buildTabBar();
+    void closeDialog(int button);
     void showTop();
     void applyFullScreen(bool fullScreen, bool upright, bool hideStatus, bool hideNavigation, bool lightStatus);
     void applyVisibleBounds();
@@ -136,12 +146,16 @@ private:
     winrt::Windows::UI::Xaml::Controls::Grid root_{nullptr};
     winrt::Windows::UI::Xaml::Controls::Grid navigationBar_{nullptr};
     winrt::Windows::UI::Xaml::Controls::Button backButton_{nullptr};
-    winrt::Windows::UI::Xaml::Controls::TextBlock backLabel_{nullptr};
     winrt::Windows::UI::Xaml::Controls::TextBlock titleText_{nullptr};
     winrt::Windows::UI::Xaml::Controls::ContentControl toolbarHost_{nullptr};
     winrt::Windows::UI::Xaml::Controls::Border contentHost_{nullptr};
     winrt::Windows::UI::Xaml::Controls::Grid tabBar_{nullptr};
     std::vector<winrt::Windows::UI::Xaml::Controls::Button> tabButtons_;
+    std::vector<winrt::Windows::UI::Xaml::Controls::Border> tabIndicators_; // the pill behind the chosen one's icon
+    std::vector<winrt::Windows::UI::Xaml::Controls::TextBlock> tabLabels_;
+    winrt::Windows::UI::Xaml::Controls::Grid dialogLayer_{nullptr};
+    winrt::Windows::UI::Xaml::Controls::TextBox dialogField_{nullptr};
+    std::function<void(int, std::string)> dialogDone_;
     winrt::Windows::UI::Xaml::DispatcherTimer timer_{nullptr};
     winrt::Windows::UI::Core::CoreDispatcher dispatcher_{nullptr};
     winrt::Windows::System::Display::DisplayRequest displayRequest_{nullptr};

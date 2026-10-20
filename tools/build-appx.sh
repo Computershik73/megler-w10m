@@ -437,6 +437,13 @@ echo "    map: build/maps/Megler_$VERSION.map"
 
 cp "$BUILD/link/Megler.exe" "$STAGE/"
 cp "$APP/Assets/"*.png "$STAGE/Assets/"
+# Megler's own text is Roboto, Android's face, and its monospace Droid Sans Mono (ui/Theme.h): the Android root's fonts
+# (tools/android9-unpack.sh fonts), where they are. Without them the shell's text is Segoe UI.
+mkdir -p "$STAGE/fonts"
+for f in Roboto-Regular.ttf Roboto-Medium.ttf Roboto-Bold.ttf DroidSansMono.ttf; do
+  if [ -f "$ROOT/build/android9/root/fonts/$f" ]; then cp "$ROOT/build/android9/root/fonts/$f" "$STAGE/fonts/"; fi
+done
+echo "    fonts: $(ls "$STAGE/fonts" | tr '\n' ' ')"
 
 # The self-test's guest libraries: megler_selftest loads them from
 # <package>/selftest (core/src/mg_diag.c).

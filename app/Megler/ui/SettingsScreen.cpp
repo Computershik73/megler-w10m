@@ -99,27 +99,43 @@ private:
                         : " It applies to every app that has no setting of its own, at its next start.";
     }
 
-    /// A row of a list of choices: its title, a line under it, and a checkmark when it is the one chosen.
+    /// A row of a list of choices, as Material's: a radio button at its start (filled in the primary colour when it is the
+    /// one chosen), its title, and a line under it.
     Grid choiceRow(const std::string& title, const std::string& detail, bool chosen) {
         const auto& p = palette();
         Grid row;
         ColumnDefinition c0, c1;
-        c0.Width(GridLengthHelper::FromValueAndType(1, GridUnitType::Star));
-        c1.Width(GridLengthHelper::Auto());
+        c0.Width(GridLengthHelper::Auto());
+        c1.Width(GridLengthHelper::FromValueAndType(1, GridUnitType::Star));
         row.ColumnDefinitions().Append(c0);
         row.ColumnDefinitions().Append(c1);
-        auto titles = vstack(2);
-        add(titles, text(title, font::body, weightNormal(), p.label));
-        auto second = text(detail, font::caption, weightNormal(), p.secondaryLabel);
+        Grid radio;
+        radio.Width(20);
+        radio.Height(20);
+        radio.VerticalAlignment(VerticalAlignment::Center);
+        radio.Margin(ThicknessHelper::FromLengths(2, 0, 18, 0));
+        winrt::Windows::UI::Xaml::Shapes::Ellipse ring;
+        ring.Stroke(brush(chosen ? p.primary : p.onSurfaceVariant));
+        ring.StrokeThickness(2);
+        radio.Children().Append(ring);
+        if (chosen) {
+            winrt::Windows::UI::Xaml::Shapes::Ellipse dot;
+            dot.Width(10);
+            dot.Height(10);
+            dot.Fill(brush(p.primary));
+            radio.Children().Append(dot);
+        }
+        row.Children().Append(radio);
+        auto titles = vstack(0);
+        titles.VerticalAlignment(VerticalAlignment::Center);
+        add(titles, text(title, font::bodyLarge, weightNormal(), p.onSurface));
+        auto second = text(detail, font::bodyMedium, weightNormal(), p.onSurfaceVariant);
         second.TextWrapping(TextWrapping::Wrap);
         add(titles, second);
+        Grid::SetColumn(titles, 1);
         row.Children().Append(titles);
-        if (chosen) {
-            auto mark = glyph(glyphs::checkmark, font::body, p.accentText);
-            Grid::SetColumn(mark, 1);
-            row.Children().Append(mark);
-        }
-        row.Padding(ThicknessHelper::FromLengths(16, 10, 16, 10));
+        row.MinHeight(56);
+        row.Padding(ThicknessHelper::FromLengths(16, 8, 24, 8));
         return row;
     }
 
@@ -171,55 +187,35 @@ private:
     }
 
     /// Another language and region: a BCP 47 tag typed in, checked as the core checks it, kept, and chosen.
-    winrt::fire_and_forget setLocale() {
-        if (adding_) co_return;
-        adding_ = true;
-        const auto keep = shared_from_this();
-        std::string error;
-        try {
-            ContentDialog dialog;
-            dialog.Title(box_value(hs("Language and Region")));
-            auto content = vstack(10);
-            auto about = text("A language and a region as BCP 47 writes them: de-DE, uk-UA, pt-BR, zh-Hant-TW.", font::subheadline, weightNormal(),
-                              palette().secondaryLabel);
-            about.TextWrapping(TextWrapping::Wrap);
-            add(content, about);
-            TextBox box;
-            const std::string chosen = own(settings::localeTag).value_or(meglerOr(settings::localeTag, ""));
-            box.Text(hs(chosen.empty() ? phoneState::locale() : chosen));
-            box.MaxLength(35);
-            box.IsSpellCheckEnabled(false);
-            add(content, box);
-            dialog.Content(content);
-            dialog.PrimaryButtonText(L"Use This");
-            dialog.SecondaryButtonText(L"Cancel");
-            dialog.RequestedTheme(ElementTheme::Dark);
-            dialog.Background(brush(palette().card));
-            dialog.Foreground(brush(palette().label));
-            if (co_await dialog.ShowAsync() == ContentDialogResult::Primary) {
-                std::string tag = narrow(std::wstring(box.Text()));
-                while (!tag.empty() && tag.back() == ' ') tag.pop_back();
-                while (!tag.empty() && tag.front() == ' ') tag.erase(tag.begin());
-                for (char& ch : tag)
-                    if (ch == '_') ch = '-';
-                // As the core takes one (mg_locale_set): letters, digits and hyphens, beginning with a language of two or three letters.
-                bool ok = !tag.empty() && tag.size() < 36;
-                size_t first = tag.find('-');
-                if (first == std::string::npos) first = tag.size();
-                for (char ch : tag) ok = ok && (isalnum((unsigned char)ch) || ch == '-');
-                ok = ok && first >= 2 && first <= 3;
-                for (size_t i = 0; ok && i < first; i++) ok = isalpha((unsigned char)tag[i]) != 0;
-                if (ok)
-                    put(settings::localeTag, tag);
-                else
-                    error = "\"" + tag + "\" is not a language and region as BCP 47 writes them, such as de-DE.";
-            }
-        } catch (const hresult_error& e) {
-            error = format("0x%08X %s", unsigned(e.code()), narrow(e.message()).c_str());
-        }
-        adding_ = false;
-        if (!error.empty()) shell_.alert("Not Changed", error);
-        rebuild();
+    void setLocale() {
+        const std::string chosen = own(settings::localeTag).value_or(meglerOr(settings::localeTag, ""));
+        AppShell::DialogSpec spec;
+        spec.title = "Language and Region";
+        spec.message = "A language and a region as BCP 47 writes them: de-DE, uk-UA, pt-BR, zh-Hant-TW.";
+        spec.field = true;
+        spec.fieldText = chosen.empty() ? phoneState::locale() : chosen;
+        spec.fieldPlaceholder = "de-DE";
+        spec.buttons = {"Cancel", "Use This"};
+        const std::weak_ptr<SettingsBody> weak = weak_from_this();
+        shell_.dialog(std::move(spec), [this, weak](int button, std::string tag) {
+            if (!weak.lock() || button != 1) return;
+            while (!tag.empty() && tag.back() == ' ') tag.pop_back();
+            while (!tag.empty() && tag.front() == ' ') tag.erase(tag.begin());
+            for (char& ch : tag)
+                if (ch == '_') ch = '-';
+            // As the core takes one (mg_locale_set): letters, digits and hyphens, beginning with a language of two or three letters.
+            bool ok = !tag.empty() && tag.size() < 36;
+            size_t first = tag.find('-');
+            if (first == std::string::npos) first = tag.size();
+            for (char ch : tag) ok = ok && (isalnum((unsigned char)ch) || ch == '-');
+            ok = ok && first >= 2 && first <= 3;
+            for (size_t i = 0; ok && i < first; i++) ok = isalpha((unsigned char)tag[i]) != 0;
+            if (ok) put(settings::localeTag, tag);
+            rebuild();
+            if (!ok) shell_.runOnUiThread([this, weak, tag] {
+                if (weak.lock()) shell_.alert("Not Changed", "\"" + tag + "\" is not a language and region as BCP 47 writes them, such as de-DE.");
+            });
+        });
     }
 
     /// Where apps are told the phone is (player/LocationHost.h): the phone's location, or a place set here.
@@ -253,74 +249,64 @@ private:
     }
 
     /// The place set here: latitude and longitude typed in, checked, kept, and chosen.
-    winrt::fire_and_forget setPlace() {
-        // (A second dialog while one is up throws.)
-        if (adding_) co_return;
-        adding_ = true;
-        const auto keep = shared_from_this();
-        std::string error;
-        try {
-            ContentDialog dialog;
-            dialog.Title(box_value(hs("A Place for Apps")));
-            auto content = vstack(10);
-            auto about = text("Latitude and longitude in degrees, north and east positive, as 55.751244, 37.618423.", font::subheadline,
-                              weightNormal(), palette().secondaryLabel);
-            about.TextWrapping(TextWrapping::Wrap);
-            add(content, about);
-            TextBox box;
-            box.Text(hs(own(settings::locationPlace).value_or(meglerOr(settings::locationPlace, settings::locationPlaceDefault))));
-            box.MaxLength(60);
-            box.IsSpellCheckEnabled(false);
-            add(content, box);
-            dialog.Content(content);
-            dialog.PrimaryButtonText(L"Use This Place");
-            dialog.SecondaryButtonText(L"Cancel");
-            dialog.RequestedTheme(ElementTheme::Dark);
-            dialog.Background(brush(palette().card));
-            dialog.Foreground(brush(palette().label));
-            if (co_await dialog.ShowAsync() == ContentDialogResult::Primary) {
-                const std::string typed = narrow(std::wstring(box.Text()));
-                double latitude = 0, longitude = 0;
-                if (settings::location::parsePlace(typed, latitude, longitude)) {
-                    put(settings::locationPlace, format("%.6f,%.6f", latitude, longitude));
-                    put(settings::locationSource, std::string("set"));
-                } else {
-                    error = "\"" + typed + "\" is not a latitude (-90 to 90) and a longitude (-180 to 180) with a comma between them.";
-                }
+    void setPlace() {
+        AppShell::DialogSpec spec;
+        spec.title = "A Place for Apps";
+        spec.message = "Latitude and longitude in degrees, north and east positive, as 55.751244, 37.618423.";
+        spec.field = true;
+        spec.fieldText = own(settings::locationPlace).value_or(meglerOr(settings::locationPlace, settings::locationPlaceDefault));
+        spec.fieldPlaceholder = "55.751244, 37.618423";
+        spec.buttons = {"Cancel", "Use This Place"};
+        const std::weak_ptr<SettingsBody> weak = weak_from_this();
+        shell_.dialog(std::move(spec), [this, weak](int button, std::string typed) {
+            if (!weak.lock() || button != 1) return;
+            double latitude = 0, longitude = 0;
+            const bool ok = settings::location::parsePlace(typed, latitude, longitude);
+            if (ok) {
+                put(settings::locationPlace, format("%.6f,%.6f", latitude, longitude));
+                put(settings::locationSource, std::string("set"));
             }
-        } catch (const hresult_error& e) {
-            error = format("0x%08X %s", unsigned(e.code()), narrow(e.message()).c_str());
-        }
-        adding_ = false;
-        if (!error.empty()) shell_.alert("The Place Was Not Set", error);
-        rebuild();
+            rebuild();
+            if (!ok) shell_.runOnUiThread([this, weak, typed] {
+                if (weak.lock())
+                    shell_.alert("The Place Was Not Set", "\"" + typed + "\" is not a latitude (-90 to 90) and a longitude (-180 to 180) with a comma between them.");
+            });
+        });
+    }
+
+    /// Whether apps and Megler are dark (player/PhoneState.h): as Windows' theme is, light, or dark. Megler's own look takes
+    /// it at its next start, an app at its next start.
+    UIElement themeSection() {
+        const std::string chosen = settings::get(settings::appTheme, "");
+        std::vector<UIElement> rows;
+        rows.push_back(choice("As Windows", std::string("Now ") + (phoneState::dark() == true && chosen.empty() ? "dark" : chosen.empty() ? "light" : chosen == "dark" ? "dark" : "light") +
+                                                ", as the phone's theme in Windows' settings",
+                              chosen.empty(), [this] { settings::set(settings::appTheme, ""); }));
+        rows.push_back(choice("Light", "Light surfaces, dark text", chosen == "light", [this] { settings::set(settings::appTheme, "light"); }));
+        rows.push_back(choice("Dark", "Dark surfaces, light text", chosen == "dark", [this] { settings::set(settings::appTheme, "dark"); }));
+        return listSection("Theme", rows,
+                           "Megler's own look and the apps' night mode, which an app's DayNight theme follows; the accent colour is "
+                           "Windows' own in both. Megler's look changes at its next start, an app's at its next start.");
     }
 
     /// The section "Developer": who makes Megler, the profile, the channel and the donation link (as in gecko-w10m's Settings).
     StackPanel developerSection() {
         const auto& p = palette();
         std::vector<UIElement> rows;
-        auto lines = [&](std::string_view title, std::string_view description) {
-            auto both = vstack(2);
-            both.Padding(ThicknessHelper::FromLengths(16, 11, 16, 11));
-            add(both, text(title, font::body, weightNormal(), p.label));
-            auto under = text(description, font::caption, weightNormal(), p.secondaryLabel);
-            under.TextWrapping(TextWrapping::Wrap);
-            add(both, under);
-            rows.push_back(both);
+        auto lines = [&](std::string_view title, std::string_view description, wchar_t icon) {
+            rows.push_back(listItem(std::string(title), std::string(description), icon));
         };
         auto link = [&](std::string_view title, wchar_t icon, const wchar_t* uri) {
-            auto l = label(title, icon, font::body, weightNormal(), p.accentText);
-            l.Margin(ThicknessHelper::FromLengths(16, 11, 16, 11));
             const std::wstring to = uri;
-            rows.push_back(button(l, [to] { winrt::Windows::System::Launcher::LaunchUriAsync(winrt::Windows::Foundation::Uri(to)); },
+            rows.push_back(button(listItem(std::string(title), narrow(to), icon),
+                                  [to] { winrt::Windows::System::Launcher::LaunchUriAsync(winrt::Windows::Foundation::Uri(to)); },
                                   ButtonKind::plain, title));
         };
-        lines("Developed by Computershik", "Development, building and debugging on the device.");
+        lines("Developed by Computershik", "Development, building and debugging on the device.", glyphs::contact);
         link("Profile on 4pda", glyphs::contact, L"https://4pda.to/forum/index.php?showuser=4458524");
         link("Telegram channel @cmplog", glyphs::send, L"https://t.me/cmplog");
         link("Donate (within the CIS for now)", glyphs::heart, L"https://pay.cloudtips.ru/p/83821e32");
-        lines("Outside the CIS and would like to help?", "Send a message to the Telegram channel.");
+        lines("Outside the CIS and would like to help?", "Send a message to the Telegram channel.", glyphs::language);
         return listSection("Developer", rows);
     }
 
@@ -357,14 +343,14 @@ private:
             row.Children().Append(titles);
             if (!link.token.empty()) {
                 const std::string token = link.token, name = link.name;
-                auto forget = button(glyph(glyphs::trash, font::body, p.red), [this, token, name] {
+                auto forget = iconButton(glyphs::trash, [this, token, name] {
                     shell_.confirm("Take /sdcard/" + name + " Out?",
                                    "The folder and what is in it stay on the phone. Android apps no longer see it.", "Take Out", true, [this, token] {
                                        StorageHost::shared().remove(token);
                                        sharedFolders::publish();
                                        rebuild();
                                    });
-                }, ButtonKind::plain, "Take " + name + " out");
+                }, "Take " + name + " out", p.error);
                 forget.HorizontalAlignment(HorizontalAlignment::Right);
                 forget.VerticalAlignment(VerticalAlignment::Center);
                 Grid::SetColumn(forget, 1);
@@ -373,23 +359,20 @@ private:
             row.Padding(ThicknessHelper::FromLengths(16, 10, 8, 10));
             rows.push_back(row);
         }
-        auto addLabel = label("Add a Folder", glyphs::add, font::body, weightNormal(), p.accentText);
-        addLabel.Margin(ThicknessHelper::FromLengths(16, 11, 16, 11));
-        rows.push_back(button(addLabel, [this] { addFolder(); }, ButtonKind::plain, "Add a Folder"));
+        rows.push_back(button(listItem("Add a Folder", "", glyphs::add), [this] { addFolder(); }, ButtonKind::plain, "Add a Folder"));
         if (scope_.own) {
-            auto meglerLabel = label("Folders Megler Has", glyphs::folder, font::body, weightNormal(), p.accentText);
-            meglerLabel.Margin(ThicknessHelper::FromLengths(16, 11, 16, 11));
-            rows.push_back(button(meglerLabel, [this] { offerMeglersFolders(); }, ButtonKind::plain, "Folders Megler Has"));
+            rows.push_back(button(listItem("Folders Megler Has", "", glyphs::folder), [this] { offerMeglersFolders(); }, ButtonKind::plain,
+                                  "Folders Megler Has"));
             return listSection("Android Storage", rows,
                                "Folders of the phone this app finds in its storage. The music, pictures and videos are there by themselves. "
                                "Windows lets a folder picked in the folder picker into one app only: Folders Megler Has asks for each of those "
                                "added in Megler's Settings that this app has not got, and Add a Folder adds any other. The app is given them "
                                "when it starts.");
         }
-        auto checkLabel = label(checking_ ? "Checking the Folders..." : "Check the Folders", glyphs::wrench, font::body, weightNormal(),
-                                checking_ ? p.secondaryLabel : p.accentText);
-        checkLabel.Margin(ThicknessHelper::FromLengths(16, 11, 16, 11));
-        rows.push_back(button(checkLabel, [this] { checkFolders(); }, ButtonKind::plain, "Check the Folders"));
+        auto check = button(listItem(checking_ ? "Checking the Folders…" : "Check the Folders", "", glyphs::wrench), [this] { checkFolders(); },
+                            ButtonKind::plain, "Check the Folders");
+        check.IsEnabled(!checking_);
+        rows.push_back(check);
         return listSection("Android Storage", rows,
                            "Folders of the phone that every Android app finds in its storage. The music, pictures and videos are there by themselves. "
                            "Add a Folder puts any other folder there under a name you give it: the phone's Documents or Downloads, a folder of a "
@@ -468,40 +451,32 @@ private:
                     const bool downloads = name == "Download" && (_stricmp(own.c_str(), "Downloads") == 0 || _stricmp(own.c_str(), "Download") == 0);
                     if (documents || downloads) first = name;
                 }
-                ContentDialog dialog;
-                dialog.Title(box_value(hs("Name in Android's Storage")));
-                auto content = vstack(10);
-                auto about = text("Apps will find " + (folder.Path().empty() ? own : narrow(std::wstring(folder.Path()))) + " as /sdcard/ and this name.", font::subheadline,
-                                  weightNormal(), palette().secondaryLabel);
-                about.TextWrapping(TextWrapping::Wrap);
-                add(content, about);
-                TextBox box;
-                box.Text(hs(first));
-                box.MaxLength(60);
-                box.IsSpellCheckEnabled(false);
-                add(content, box);
-                if (names.size() > 1) {
-                    auto offers = hstack(8);
-                    for (const std::string& name : names) {
-                        auto offer = button(text(name, font::subheadline, weightNormal(), palette().accentText), [box, name] { box.Text(hs(name)); }, ButtonKind::pill, name);
-                        offer.HorizontalAlignment(HorizontalAlignment::Left);
-                        add(offers, offer);
+                AppShell::DialogSpec spec;
+                spec.title = "Name in Android's Storage";
+                spec.message = "Apps will find " + (folder.Path().empty() ? own : narrow(std::wstring(folder.Path()))) + " as /sdcard/ and this name.";
+                spec.field = true;
+                spec.fieldText = first;
+                spec.fieldPlaceholder = "Documents";
+                if (names.size() > 1) spec.fieldSuggestions = names;
+                spec.buttons = {"Cancel", "Add"};
+                const std::weak_ptr<SettingsBody> weak = weak_from_this();
+                shell_.dialog(std::move(spec), [this, weak, folder](int button, std::string name) {
+                    if (!weak.lock()) return;
+                    std::string error;
+                    if (button == 1) {
+                        while (!name.empty() && name.back() == ' ') name.pop_back();
+                        while (!name.empty() && name.front() == ' ') name.erase(name.begin());
+                        error = StorageHost::shared().add(folder, name);
+                        if (error.empty()) sharedFolders::publish();
                     }
-                    add(content, offers);
-                }
-                dialog.Content(content);
-                dialog.PrimaryButtonText(L"Add");
-                dialog.SecondaryButtonText(L"Cancel");
-                dialog.RequestedTheme(ElementTheme::Dark);
-                dialog.Background(brush(palette().card));
-                dialog.Foreground(brush(palette().label));
-                if (co_await dialog.ShowAsync() == ContentDialogResult::Primary) {
-                    std::string name = narrow(std::wstring(box.Text()));
-                    while (!name.empty() && name.back() == ' ') name.pop_back();
-                    while (!name.empty() && name.front() == ' ') name.erase(name.begin());
-                    error = StorageHost::shared().add(folder, name);
-                    if (error.empty()) sharedFolders::publish();
-                }
+                    if (!error.empty()) {
+                        shellLog::write("settings: a folder was not added: " + error);
+                        shell_.runOnUiThread([this, weak, error] {
+                            if (weak.lock()) shell_.alert("The Folder Was Not Added", error);
+                        });
+                    }
+                    rebuild();
+                });
             }
         } catch (const hresult_error& e) {
             error = format("0x%08X %s", unsigned(e.code()), narrow(e.message()).c_str());
@@ -518,20 +493,21 @@ private:
         if (!host_) return;
         const auto& p = palette();
         auto column = vstack(0);
-        column.Padding(ThicknessHelper::FromLengths(16, 16, 16, 28));
+        column.Padding(ThicknessHelper::FromLengths(16, 0, 16, 24));
 
         if (forApp()) {
             auto about = text("The settings of " + (scope_.label.empty() ? scope_.package : scope_.label) +
                                   " alone. As in Megler: what Megler's Settings say, now and when they change.",
-                              font::subheadline, weightNormal(), p.secondaryLabel);
+                              font::bodyMedium, weightNormal(), p.onSurfaceVariant);
             about.TextWrapping(TextWrapping::Wrap);
-            about.Margin(ThicknessHelper::FromLengths(4, 0, 4, 14));
+            about.Margin(ThicknessHelper::FromLengths(0, 8, 0, 0));
             add(column, about);
         }
 
         add(column, renderSection());
         add(column, localeSection());
         add(column, locationSection());
+        if (!forApp()) add(column, themeSection());
 
         if (showsPhone()) {
             add(column, storageSection());
@@ -552,12 +528,12 @@ private:
             add(column, developerSection());
 
             auto paths = vstack(4);
-            paths.Padding(ThicknessHelper::FromLengths(16, 11, 16, 11));
-            add(paths, monospace(narrow(platform::localStateDirectory()), font::caption, p.secondaryLabel));
+            paths.Padding(ThicknessHelper::FromLengths(16, 8, 24, 8));
+            add(paths, monospace(narrow(platform::localStateDirectory()), font::bodySmall, p.onSurface));
             add(paths, text(scope_.own ? "apps: the app's private files · megler.log: the log"
                                        : "apks: the library · apps: each app's files and saves · megler.log, megler-probe.log, "
                                          "megler-selftest.log: the logs",
-                            font::caption, weightNormal(), p.tertiaryLabel));
+                            font::bodySmall, weightNormal(), p.onSurfaceVariant));
             add(column, listSection("Files", {paths}));
         }
 

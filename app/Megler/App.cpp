@@ -100,6 +100,8 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
 
     void ensureContent() {
         if (shell_) return;
+        // The folder of the flag files (core: mg_flag; ui/UiShots.h): the Device Portal puts files into a folder, but makes none.
+        files::makeDirectories(platform::localStateDirectory() + L"\\flags");
         settings::load(platform::localStateDirectory(), appPackage::sharedFolder(), appPackage::single().package);
         // The core, before any screen asks it anything. Its answer -- can
         // Android code run here -- is in the log and on the screens.
