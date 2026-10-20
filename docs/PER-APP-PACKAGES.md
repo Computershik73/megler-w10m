@@ -158,10 +158,24 @@ An app's page in Megler's library has a section "Separate App"
      `Wide310x150Logo` and `SplashScreen` 620x300, the icon taking as much of
      the shorter side as Megler's own does in them (`Assets/make-assets.ps1`),
      transparent round it. An APK with no icon that can be drawn keeps Megler's.
-  7. The app's expansion files, which the unpacking of an `.xapk` puts in
-     Megler's storage (`LocalState\apps\<package>\sdcard\Android\obb\<package>`),
-     and an app may download there, are copied to the same place in the shared
-     folder, the separate apps' storage; a file already there as large is left.
+  7. The app's data in Megler goes along, once for each app: the first package
+     made of it (the shared folder has no `apps\<package>\megler-data.txt`, which
+     is written when the package has been made) copies the app's part of
+     Megler's storage, `LocalState\apps\<package>\sdcard` (`Android/data`,
+     `Android/obb`, whatever else it has there), to the same place in the shared
+     folder, the separate apps' storage, a file already there as large left
+     (the OBB of an earlier make); what the separate app had in its own
+     `Android/data` is put aside first, as `apps\<package>\Android-data.before-megler`.
+     The app's private files (`/data/data`, `LocalState\apps\<package>\data`),
+     which no other package can write into, go to `<shared>\handover\<package>\data`
+     with a file `complete` written last; the separate app, before its app
+     starts (`takeHandover`), copies them into its own LocalState, its own put
+     aside as `data.before-megler` (and put back if the copy fails), and removes the
+     handover, `complete` first. Megler keeps its own copy of everything. An app
+     running in Megler is not handed over (its files are being written). Later
+     packages of the app leave the separate app's data alone; only the
+     expansion files (`Android/obb/<package>`, an `.xapk`'s OBB) are copied
+     again where they are missing.
 
 **resources.pri.** A packaged XAML app reads its `resources.pri` at its start,
 and the resource map in it is named after the package's identity name. Megler's
@@ -211,7 +225,7 @@ A package with `MeglerApp.ini` in its install folder is one app's
   part of it (`Android/data` and `obb`) `<shared>\apps\<package>\sdcard`,
   mounted for the others as on Android 9, so a file manager in its own package
   sees every app's; the app's private files (`/data/data/<package>`) stay in
-  its package's LocalState;
+  its package's LocalState (taken from Megler's once, step 7 above);
 - the Java driver is given `<shared>\android\<version>` from `MeglerApp.ini` as
   the Android root, and the fonts from there.
 
