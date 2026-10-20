@@ -164,6 +164,15 @@ fi
 size() { du -sk "$1" | cut -f1; }
 # Android's System WebView, where tools/webview-fetch.sh has put it, and the name of its platform support library.
 WEBVIEW="no WebView"
+# Optional microG service package, obtained by tools/microg-fetch.sh.
+# Remove a previously staged APK when it has been removed from build/microg.
+if [ -f "$ROOT/build/microg/GmsCore.apk" ]; then
+  mkdir -p "$OUT/priv-app/GmsCore"
+  cmp -s "$ROOT/build/microg/GmsCore.apk" "$OUT/priv-app/GmsCore/GmsCore.apk" || cp "$ROOT/build/microg/GmsCore.apk" "$OUT/priv-app/GmsCore/GmsCore.apk"
+else
+  rm -f "$OUT/priv-app/GmsCore/GmsCore.apk"
+fi
+
 if [ -f "$ROOT/build/webview/webview.apk" ]; then
   mkdir -p "$OUT/app/webview"
   cmp -s "$ROOT/build/webview/webview.apk" "$OUT/app/webview/webview.apk" || cp "$ROOT/build/webview/webview.apk" "$OUT/app/webview/webview.apk"
