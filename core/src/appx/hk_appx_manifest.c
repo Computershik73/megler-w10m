@@ -10,7 +10,8 @@
  *   - PhoneIdentity's PhoneProductId: a GUID made from the Android package, the same for the same package each time, so
  *     that a package made again for the same app is an update of it;
  *   - Properties' DisplayName, and VisualElements' DisplayName and the tile's ShortName: the app's label (the short name
- *     cut to 40 characters, as the schema has it).
+ *     cut to 40 characters, as the schema has it);
+ *   - the tile's and the splash screen's BackgroundColor, when the caller gives them (the app's icon is drawn on them).
  * The version is Megler's: a package made by a newer Megler updates one made by an older.
  */
 #include "hk_appx.h"
@@ -145,7 +146,8 @@ static void escaped(char *out, size_t outlen, const char *s, size_t max)
     out[n] = 0;
 }
 
-char *hk_appx_app_manifest(const char *megler, const char *android_package, const char *label, char *err, size_t errlen)
+char *hk_appx_app_manifest(const char *megler, const char *android_package, const char *label, const char *tile_color,
+                           const char *splash_color, char *err, size_t errlen)
 {
     char name[64], guid[40], shown[1600], shortname[260];
     u64 h1, h2;
@@ -179,6 +181,8 @@ char *hk_appx_app_manifest(const char *megler, const char *android_package, cons
     STEP(set_text(xml, "DisplayName", shown), "DisplayName");
     STEP(set_attr(xml, "<uap:VisualElements", "DisplayName", shown), "VisualElements DisplayName");
     STEP(set_attr(xml, "<uap:DefaultTile", "ShortName", shortname), "the tile's ShortName");
+    if (tile_color) STEP(set_attr(xml, "<uap:VisualElements", "BackgroundColor", tile_color), "VisualElements BackgroundColor");
+    if (splash_color) STEP(set_attr(xml, "<uap:SplashScreen", "BackgroundColor", splash_color), "the splash screen's BackgroundColor");
 #undef STEP
     return xml;
 }

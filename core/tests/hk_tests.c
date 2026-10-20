@@ -1084,8 +1084,10 @@ static void test_appx_manifest(void)
         "  <mp:PhoneIdentity\r\n      PhoneProductId=\"1d79b5e9-690c-44e3-af58-196f400348e2\"\r\n      PhonePublisherId=\"0\" />\r\n"
         "  <Properties>\r\n    <DisplayName>Megler</DisplayName>\r\n  </Properties>\r\n"
         "  <Applications><Application Id=\"App\" Executable=\"Megler.exe\" EntryPoint=\"Megler.App\">\r\n"
-        "      <uap:VisualElements\r\n          DisplayName=\"Megler\"\r\n          Description=\"Android games\">\r\n"
+        "      <uap:VisualElements\r\n          DisplayName=\"Megler\"\r\n          Description=\"Android games\"\r\n"
+        "          BackgroundColor=\"#000000\">\r\n"
         "        <uap:DefaultTile Wide310x150Logo=\"w.png\" ShortName=\"Megler\"/>\r\n"
+        "        <uap:SplashScreen Image=\"s.png\" BackgroundColor=\"#000000\" />\r\n"
         "      </uap:VisualElements></Application></Applications></Package>\r\n";
     char err[200], name[64], name2[64];
     char *m, *m2;
@@ -1102,7 +1104,7 @@ static void test_appx_manifest(void)
     CHECK(hk_appx_app_identity("com.example.a.very.long.package.name.of.some.app.that.goes.on", name, sizeof(name)) && strlen(name) == 50);
     CHECK(hk_appx_app_identity("com.example.a.very.long.package.name.of.some.app.that.goes.on", name2, sizeof(name2)) && !strcmp(name, name2));
     CHECK(!hk_appx_app_identity("com.example/../x", name, sizeof(name)));
-    m = hk_appx_app_manifest(megler, "com.instagram.android", "Insta & <gram> \"x\"", err, sizeof(err));
+    m = hk_appx_app_manifest(megler, "com.instagram.android", "Insta & <gram> \"x\"", NULL, NULL, err, sizeof(err));
     CHECK(m != NULL);
     if (!m) return;
     CHECK(strstr(m, "Name=\"MeglerApp.com.instagram.android.") != NULL);
@@ -1113,17 +1115,20 @@ static void test_appx_manifest(void)
     CHECK(strstr(m, "ShortName=\"Insta &amp; &lt;gram&gt; &quot;x&quot;\"") != NULL);
     CHECK(strstr(m, "EntryPoint=\"Megler.App\"") != NULL && strstr(m, "Description=\"Android games\"") != NULL);
     /* The same package again: the same product id; another: another. */
-    m2 = hk_appx_app_manifest(megler, "com.instagram.android", "Instagram", err, sizeof(err));
+    m2 = hk_appx_app_manifest(megler, "com.instagram.android", "Instagram", "transparent", "#102030", err, sizeof(err));
     CHECK(m2 && !strncmp(strstr(m, "PhoneProductId=\""), strstr(m2, "PhoneProductId=\""), 54));
+    /* The colours given, the tile's and the splash screen's; none given, Megler's. */
+    CHECK(m2 && strstr(m2, "BackgroundColor=\"transparent\">") != NULL && strstr(m2, "Image=\"s.png\" BackgroundColor=\"#102030\"") != NULL);
+    CHECK(strstr(m, "BackgroundColor=\"#000000\">") != NULL && strstr(m, "Image=\"s.png\" BackgroundColor=\"#000000\"") != NULL);
     free(m2);
-    m2 = hk_appx_app_manifest(megler, "com.whatsapp", "WhatsApp", err, sizeof(err));
+    m2 = hk_appx_app_manifest(megler, "com.whatsapp", "WhatsApp", NULL, NULL, err, sizeof(err));
     CHECK(m2 && strncmp(strstr(m, "PhoneProductId=\""), strstr(m2, "PhoneProductId=\""), 54));
     free(m2);
     /* A short name of forty characters at most, a sequence of UTF-8 never cut. */
     m2 = hk_appx_app_manifest(megler, "ru.example", "\xD0\x9E\xD1\x87\xD0\xB5\xD0\xBD\xD1\x8C \xD0\xB4\xD0\xBB\xD0\xB8\xD0\xBD\xD0\xBD\xD0\xBE\xD0\xB5 "
                                                   "\xD0\xBD\xD0\xB0\xD0\xB7\xD0\xB2\xD0\xB0\xD0\xBD\xD0\xB8\xD0\xB5 \xD0\xBF\xD1\x80\xD0\xB8\xD0\xBB\xD0\xBE\xD0\xB6\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F "
                                                   "\xD0\xB4\xD0\xBB\xD1\x8F \xD0\xBF\xD1\x80\xD0\xBE\xD0\xB2\xD0\xB5\xD1\x80\xD0\xBA\xD0\xB8 \xF0\x9F\x98\x80\xF0\x9F\x98\x80",
-                              err, sizeof(err));
+                              NULL, NULL, err, sizeof(err));
     if (m2) {
         const char *s = strstr(m2, "ShortName=\"") + 11, *e = strchr(s, '"');
         size_t chars = 0;
@@ -1132,7 +1137,7 @@ static void test_appx_manifest(void)
     }
     CHECK(m2 != NULL);
     free(m2);
-    CHECK(hk_appx_app_manifest("<Package/>", "com.example", "x", err, sizeof(err)) == NULL && strstr(err, "Identity") != NULL);
+    CHECK(hk_appx_app_manifest("<Package/>", "com.example", "x", NULL, NULL, err, sizeof(err)) == NULL && strstr(err, "Identity") != NULL);
     free(m);
 }
 

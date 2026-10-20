@@ -1609,8 +1609,10 @@ bool megler_appx_finish(megler_appx *a, const megler_appx_key *key, char *err, s
    51 bytes); false for a name that is not an Android package's. */
 bool megler_appx_app_identity(const char *android_package, char *out, size_t outlen);
 /* That package's manifest, made from Megler's (the text of its AppxManifest.xml): the identity name, phone product id and
-   shown names changed, all else Megler's. A string to free with megler_free, or NULL (err says why). */
-char *megler_appx_app_manifest(const char *megler_manifest, const char *android_package, const char *label, char *err, size_t errlen);
+   shown names changed, and the tile's and the splash screen's background colours when given ("#rrggbb" or "transparent";
+   NULL keeps Megler's), all else Megler's. A string to free with megler_free, or NULL (err says why). */
+char *megler_appx_app_manifest(const char *megler_manifest, const char *android_package, const char *label, const char *tile_color,
+                             const char *splash_color, char *err, size_t errlen);
 /* That package's resources.pri, from the one Megler carries made for a placeholder name as long (appx-template\resources.pri,
    whose resources.txt says the placeholder and the two tails; tools/build-appx.sh): into `out`, as large as `pri`. False
    (err says why) when the template is not such a file. */
