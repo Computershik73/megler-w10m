@@ -459,7 +459,9 @@ private:
     UIElement buildEndPanel() {
         const auto& p = palette();
         auto column = vstack(0);
-        column.Width(420);
+        // As wide as a dialog, and no wider than the screen less its margins: the phone is 411 wide upright, and a fixed
+        // 420 in a card of 20 a side cut its right end off, the Close button's with it.
+        column.MaxWidth(420);
         endTitle_ = text("", font::title3, weightBold(), p.label);
         endTitle_.TextAlignment(TextAlignment::Center);
         endTitle_.HorizontalAlignment(HorizontalAlignment::Center);
@@ -492,6 +494,7 @@ private:
         auto box = card(column, 18, 20);
         box.HorizontalAlignment(HorizontalAlignment::Center);
         box.VerticalAlignment(VerticalAlignment::Center);
+        box.Margin(ThicknessHelper::FromLengths(16, 16, 16, 16));
         endOverlay_ = Grid();
         endOverlay_.Background(brush(withAlpha(rgb(0x000000), 0.72)));
         endOverlay_.Children().Append(box);
