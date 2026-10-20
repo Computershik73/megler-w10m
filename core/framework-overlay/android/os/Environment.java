@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/os/Environment.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/os/Environment.java (tools/build-framework.sh).
 // It differs in getDataDirectory and getDownloadCacheDirectory, and in four generated signatures that now answer:
 // getExternalStorageState's older name getStorageState, isExternalStorageEmulated(File), isExternalStorageManager(File)
 // and isStandardDirectory.

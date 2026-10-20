@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/megler/Web.java (tools/build-framework.sh).
+// Overlay of core/framework/src/megler/Web.java (tools/build-framework.sh).
 // Nothing is left of it but deliver(), which megler.AppRunner calls for input of phase 9, and which has nothing to do.
 //
 // Why. The original's megler.Web is a WKWebView under the app's screen, for the original's own android.webkit.WebView on

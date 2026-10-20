@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/util/Xml.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/util/Xml.java (tools/build-framework.sh).
 // It differs in the class names newPullParser and newSerializer make their parser and serializer of: kXML's, as Android 9's
 // boot class path names them (org.kxml2.io.KXmlParser and KXmlSerializer, in core-libart), and then as Android 10 and later
 // name them (com.android.org.kxml2.io.*, where the original looked only).

@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/megler/Broadcasts.java (tools/build-framework.sh).
+// Overlay of core/framework/src/megler/Broadcasts.java (tools/build-framework.sh).
 // It differs in the battery's broadcasts: what the sticky one says, that a receiver registered for it receives it, and that
 // a change of the battery is broadcast at all.
 //

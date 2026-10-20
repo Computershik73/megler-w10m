@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/megler/PlayStore.java (tools/build-framework.sh).
+// Overlay of core/framework/src/megler/PlayStore.java (tools/build-framework.sh).
 // It differs in two more services it answers: Play Integrity's, the classic one (BIND_INTEGRITY_SERVICE,
 // IIntegrityService.requestIntegrityToken) and the standard one (BIND_EXPRESS_INTEGRITY_SERVICE, IExpressIntegrityService:
 // warm up, request), each answering every request with the error API_NOT_AVAILABLE (-1), as Play does on a phone where the

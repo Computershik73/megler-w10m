@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/widget/Switch.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/widget/Switch.java (tools/build-framework.sh).
 // It differs in how wide a switch with a thumb and a track drawable is, and where the two are then drawn: onMeasure and the
 // first branch of onDraw, which are Android's sums now.
 //

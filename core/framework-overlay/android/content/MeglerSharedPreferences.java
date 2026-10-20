@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/content/MeglerSharedPreferences.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/content/MeglerSharedPreferences.java (tools/build-framework.sh).
 // It differs in how the file is written: into a file beside it (the name with ".new" after it), synced, then renamed
 // over it, as Android's SharedPreferencesImpl keeps a backup so that a write cut short leaves the old file. The original
 // wrote the file itself: opening it emptied it and the lines went in only when it was closed, so an app that ended in

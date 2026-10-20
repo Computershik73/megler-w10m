@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/view/ViewGroup.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/view/ViewGroup.java (tools/build-framework.sh).
 // It differs in one statement of the constructors' init(): the WILL_NOT_DRAW flag is set directly (View.meglerWillNotDraw,
 // added by the overlay's View), as Android's ViewGroup sets it (setFlags(WILL_NOT_DRAW, DRAW_MASK)), where the original
 // called setWillNotDraw(true).

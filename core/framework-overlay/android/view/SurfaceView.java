@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/view/SurfaceView.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/view/SurfaceView.java (tools/build-framework.sh).
 // It differs in when the view clears its area of the window -- "punches the hole" through which a surface under the window
 // shows: only once there is something under it to see, as Android's does. Two statements of onDraw. And in that the
 // surface has its size when surfaceCreated is called, so that a canvas can be had in it (sizeChanged).

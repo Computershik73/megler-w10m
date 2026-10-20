@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/gen-src/android/hardware/camera2/CaptureRequest.java, written by
+// Overlay of core/framework/gen-src/android/hardware/camera2/CaptureRequest.java, written by
 // tools/compat/camera2-overlays.py from that generated stub (run it again rather than editing this file).
 // It differs in having keys, values and targets: a request built by its Builder keeps what was set and the surfaces its
 // pictures go to, which the camera (camera2/impl/MeglerCameraDevice) reads.

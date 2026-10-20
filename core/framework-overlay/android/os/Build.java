@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/os/Build.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/os/Build.java (tools/build-framework.sh).
 // It differs in the processor it names: CPU_ABI, CPU_ABI2 and the SUPPORTED_*_ABIS are 32-bit ARM's, armeabi-v7a and
 // armeabi, as the phone's are and as the layer runs an app's native code.
 //

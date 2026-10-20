@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/widget/AbsListView.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/widget/AbsListView.java (tools/build-framework.sh).
 // It differs in one statement: onAttachedToWindow asks for a layout after it has marked the list's data as changed.
 //
 // Why. A list that is attached to a window again registers a new observer with its adapter and sets mDataChanged ("data may

@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/media/MediaCodecList.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/media/MediaCodecList.java (tools/build-framework.sh).
 // It differs in infos(): every decoder is listed only when megler.MediaCodecNative.supported says its type can be decoded;
 // the original listed H.264, AAC and MP3 always and asked only for HEVC.
 //

@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/os/SystemProperties.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/os/SystemProperties.java (tools/build-framework.sh).
 // It differs in the processor's properties, ro.product.cpu.abi and the abilists, which are 32-bit ARM's, as Build's (the
 // overlay of Build.java says why) and as the C library's properties are. Everything else is the original's, unchanged.
 package android.os;

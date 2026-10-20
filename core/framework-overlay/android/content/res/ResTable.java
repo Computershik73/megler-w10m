@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/content/res/ResTable.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/content/res/ResTable.java (tools/build-framework.sh).
 // It differs in how a resource is found by its name (identifier and indexNames, and the map they keep); the rest is the
 // original's, unchanged.
 //

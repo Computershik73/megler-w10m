@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/content/pm/ApplicationInfo.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/content/pm/ApplicationInfo.java (tools/build-framework.sh).
 // It differs in the app's own ApplicationInfo having primaryCpuAbi: "armeabi-v7a" when the app has native libraries in
 // its nativeLibraryDir (the layer puts them there before the app starts), null when it has none, as Android's package
 // manager records the ABI it installed the libraries for. The original left it null. The field is hidden API that

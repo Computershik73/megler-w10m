@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/javax/microedition/khronos/egl/MeglerEGL.java (tools/build-framework.sh).
+// Overlay of core/framework/src/javax/microedition/khronos/egl/MeglerEGL.java (tools/build-framework.sh).
 // The same EGL10/EGL11 over megler.EGLNative (core/src/drivers/hk_java_gl.c). What differs:
 //  - On a GLSurfaceView's GL thread the context and the surface are the thread's real ones (the GL thread tells this class,
 //    meglerRenderThread), not stand-ins with no handle: a context made on another thread can share with it

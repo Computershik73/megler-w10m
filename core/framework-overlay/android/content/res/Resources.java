@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/content/res/Resources.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/content/res/Resources.java (tools/build-framework.sh).
 // It differs in these things. The class Bag (a style's items): put and indexOf find a key by hashing. And updateCfg: resources
 // are chosen for the API level of the platform's own resources (PLATFORM_RESOURCES_SDK), not for Build.VERSION.SDK_INT.
 // And a theme attribute whose value names an attribute that names another, with no end -- a style's item that names

@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/widget/LinearLayout.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/widget/LinearLayout.java (tools/build-framework.sh).
 // It differs in what a child with a weight and a size of 0 is given when the layout's own size is not exact. Android has two
 // rules for it, one for an app written for Android 7 or later and one kept for older apps (mAllowInconsistentMeasurement:
 // targetSdkVersion 23 or less); the original had a mixture that is neither. Four statements, two in measureVertical and two

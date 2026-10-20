@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/gen-src/android/hardware/camera2/params/OutputConfiguration.java, written by
+// Overlay of core/framework/gen-src/android/hardware/camera2/params/OutputConfiguration.java, written by
 // tools/compat/camera2-overlays.py from that generated stub (run it again rather than editing this file).
 // It differs in keeping its surfaces (or a deferred one's size) and its group, which the stub's constructors
 // dropped: a session's outputs are read from them.

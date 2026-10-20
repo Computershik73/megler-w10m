@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/os/storage/StorageManager.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/os/storage/StorageManager.java (tools/build-framework.sh).
 // It differs in the methods that list the storage volumes the old way -- getVolumeList, getVolumePaths, getVolumeState, the
 // static getVolumeList(userId, flags) -- which were generated signatures that answered null, and in UUID_DEFAULT and
 // getUuidForPath, which now are Android's.

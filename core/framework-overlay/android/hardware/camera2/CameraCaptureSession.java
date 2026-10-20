@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/gen-src/android/hardware/camera2/CameraCaptureSession.java, written by
+// Overlay of core/framework/gen-src/android/hardware/camera2/CameraCaptureSession.java, written by
 // tools/compat/camera2-overlays.py from that generated stub (run it again rather than editing this file).
 // It differs in its StateCallback, which the stub left without methods: a session's onConfigured, onReady,
 // onClosed and the rest, which the camera calls and an app overrides.

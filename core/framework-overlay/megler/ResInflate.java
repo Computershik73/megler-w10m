@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/megler/ResInflate.java (tools/build-framework.sh).
+// Overlay of core/framework/src/megler/ResInflate.java (tools/build-framework.sh).
 // It differs in one statement: the mask layer of a <ripple> is handed to the RippleDrawable before it is left out of the
 // layers that are drawn. Everything else is the original's, unchanged.
 //

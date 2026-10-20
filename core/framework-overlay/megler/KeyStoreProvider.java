@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/megler/KeyStoreProvider.java (tools/build-framework.sh).
+// Overlay of core/framework/src/megler/KeyStoreProvider.java (tools/build-framework.sh).
 // It differs in PairGen.generateKeyPair, which takes the generator of another provider from that provider's service
 // instead of KeyPairGenerator.getInstance(algorithm, provider), and initialises it with a SecureRandom of its own.
 //

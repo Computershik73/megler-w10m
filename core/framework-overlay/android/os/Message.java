@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/os/Message.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/os/Message.java (tools/build-framework.sh).
 // It differs in seven members that were generated signatures answering null or nothing: obtain(Message), copyFrom, getWhen,
 // peekData, setCallback, setTarget and setWhat now do what Android's do.
 //

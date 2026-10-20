@@ -1,4 +1,4 @@
-// megler-w10m overlay: android.app.DialogFragment, in place of the generated stub (Megler/src/java-framework/gen-src).
+// Overlay: android.app.DialogFragment, in place of the generated stub (core/framework/gen-src).
 //
 // Why. The stub had the class's signatures and nothing behind them: show() did nothing, onCreateDialog was never called,
 // getDialog() was always null. An app whose dialog is a platform DialogFragment showed nothing where the dialog should be.

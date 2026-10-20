@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/os/Process.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/os/Process.java (tools/build-framework.sh).
 // It differs in is64Bit: false. The process is a 32-bit ARM one on Windows 10 Mobile, as Build (overlaid) says with
 // SUPPORTED_ABIS = { armeabi-v7a, armeabi }; the original, written for 64-bit iOS, said true. SoLoader (Facebook's, in
 // WhatsApp and React Native apps) keeps of Build.SUPPORTED_ABIS those of the process's width, which it asks

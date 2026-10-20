@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/os/BatteryManager.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/os/BatteryManager.java (tools/build-framework.sh).
 // It differs in getIntProperty, isCharging and isPlugWired, which answer from what the core says the battery is
 // (megler.Native.battery: hk_battery_read in the core) where the original had a full battery written in, not charging.
 //

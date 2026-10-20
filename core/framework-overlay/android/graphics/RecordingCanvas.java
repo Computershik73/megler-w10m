@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/graphics/RecordingCanvas.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/graphics/RecordingCanvas.java (tools/build-framework.sh).
 // It differs in its constructor: a RenderNode's canvas is over the core's recording canvas (megler.Gfx.cvRecord), which writes
 // down what it is given, and not over a bitmap of the node's size (android/graphics/RenderNode.java says why). Everything
 // else is the original's.

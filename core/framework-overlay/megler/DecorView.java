@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/megler/DecorView.java (tools/build-framework.sh).
+// Overlay of core/framework/src/megler/DecorView.java (tools/build-framework.sh).
 // It differs in dispatchApplyWindowInsets: the content stack's margins are set only while the stack is still the decor's
 // own child with the decor's (FrameLayout) layout parameters. An app may take the decor's content out and put it in a view
 // of its own, and that view in the decor -- the old way to put a navigation drawer over the whole window, the action bar

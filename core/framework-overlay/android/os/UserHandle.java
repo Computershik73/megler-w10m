@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/os/UserHandle.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/os/UserHandle.java (tools/build-framework.sh).
 // It differs in the arithmetic of a uid, which is Android's: a uid is a user's id times PER_USER_RANGE plus an app's id, so
 // getAppId(uid) is uid % PER_USER_RANGE, getUid(user, appId) the sum, isSameApp and isSameUser compare those, getCallingAppId
 // and getCallingUserId are the process's own (there is no Binder caller but the app), and the handle of user 0 isSystem and

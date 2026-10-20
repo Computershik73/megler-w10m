@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/megler/TextRuns.java (tools/build-framework.sh).
+// Overlay of core/framework/src/megler/TextRuns.java (tools/build-framework.sh).
 // It differs in one statement of draw(): a span that changes the text's measure is applied to the paint once, not twice.
 //
 // Why. A MetricAffectingSpan has two methods that do the same thing to a paint, updateMeasureState for measuring and

@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/media/MediaCodec.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/media/MediaCodec.java (tools/build-framework.sh).
 // It differs in when an input buffer is handed back: not while as many outputs as a decoder has buffers for wait to be
 // released (PENDING_VIDEO pictures, PENDING_AUDIO blocks of sound); it is held, and handed back (to dequeueInputBuffer,
 // or to Callback.onInputBufferAvailable) when releaseOutputBuffer brings the outputs waiting below that again.

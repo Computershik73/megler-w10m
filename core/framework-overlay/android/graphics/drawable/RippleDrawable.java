@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/graphics/drawable/RippleDrawable.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/graphics/drawable/RippleDrawable.java (tools/build-framework.sh).
 // It differs by one method, meglerSetMask, through which the inflater says that the ripple has a mask (megler/ResInflate.java,
 // also in the overlay). Everything else is the original's, unchanged.
 //

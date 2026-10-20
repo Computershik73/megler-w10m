@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/content/res/AssetFileDescriptor.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/content/res/AssetFileDescriptor.java (tools/build-framework.sh).
 // It differs in getParcelFileDescriptor(): for a descriptor that AssetManager.openFd or openNonAssetFd opened (made with the
 // package-private constructor from a plain FileDescriptor) it now returns a ParcelFileDescriptor of that descriptor, made on
 // the first call, where the original returned null. That ParcelFileDescriptor owns nothing: closing it, or this, leaves the

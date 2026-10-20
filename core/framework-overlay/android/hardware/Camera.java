@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/gen-src/android/hardware/Camera.java (tools/build-framework.sh), in place of
+// Overlay of core/framework/gen-src/android/hardware/Camera.java (tools/build-framework.sh), in place of
 // the generated stub, which had signatures only: getNumberOfCameras() answered 0, open() a camera that did nothing,
 // getParameters() null.
 //

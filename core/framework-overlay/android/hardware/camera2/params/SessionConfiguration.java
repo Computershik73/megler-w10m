@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/gen-src/android/hardware/camera2/params/SessionConfiguration.java, written by
+// Overlay of core/framework/gen-src/android/hardware/camera2/params/SessionConfiguration.java, written by
 // tools/compat/camera2-overlays.py from that generated stub (run it again rather than editing this file).
 // It differs in keeping its type, outputs, executor and callback, which the stub's constructors dropped.
 package android.hardware.camera2.params;

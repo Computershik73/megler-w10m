@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/webkit/MimeTypeMap.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/webkit/MimeTypeMap.java (tools/build-framework.sh).
 // It differs in one method, meglerInstallDefault, which named libcore.content.type.MimeMap: a class of Android 10's libcore
 // that the Android 9 one this port runs on does not have. Everything else is the original's, unchanged.
 package android.webkit;

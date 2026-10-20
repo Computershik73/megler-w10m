@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/gen-src/android/app/usage/StorageStatsManager.java (tools/build-framework.sh).
+// Overlay of core/framework/gen-src/android/app/usage/StorageStatsManager.java (tools/build-framework.sh).
 // It differs in getTotalBytes and getFreeBytes, which were generated signatures that answered 0. And in the queryStatsFor*
 // methods, which answered null: they answer a StorageStats with nothing counted (0 bytes of each kind), what the platform
 // gives an app that measured nothing. Firefox 152 times queryStatsForUid for its telemetry, Kotlin checks the result is not

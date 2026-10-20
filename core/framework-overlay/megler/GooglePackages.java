@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/megler/GooglePackages.java (tools/build-framework.sh).
+// Overlay of core/framework/src/megler/GooglePackages.java (tools/build-framework.sh).
 // It differs in one more package it answers for, the System WebView of the Android root, com.android.webview: installed,
 // with the version and the files its APK has (android.webkit.WebView.getCurrentWebViewPackage, which reads them from the
 // APK's manifest). The rest is the original's, the made-up com.google.android.webview included.

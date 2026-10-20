@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Writes the overlays of android.hardware.camera2's metadata classes and parameters (core/framework-overlay/android/hardware/
-camera2) from the original's generated stubs (Megler/src/java-framework/gen-src), which have every member's signature and no
+camera2) from the framework's generated stubs (core/framework/gen-src), which have every member's signature and no
 behaviour: a key field there is null, get() answers null, a session's StateCallback has no methods at all.
 
 What is made:
@@ -13,7 +13,7 @@ What is made:
   params.StreamConfigurationMap, OutputConfiguration, SessionConfiguration: what was given kept and said back.
 Every other member is the stub's, unchanged. Run again after the stubs change:
 
-    python tools/compat/camera2-overlays.py [path to Megler/src/java-framework, else $MEGLER_FRAMEWORK, else ../Megler's]
+    python tools/compat/camera2-overlays.py
 """
 import io
 import os
@@ -21,7 +21,7 @@ import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-FW = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("MEGLER_FRAMEWORK") or os.path.join(os.path.dirname(ROOT), "Megler", "src", "java-framework")
+FW = os.path.join(ROOT, "core", "framework")
 STUBS = os.path.join(FW, "gen-src", "android", "hardware", "camera2")
 OUT = os.path.join(ROOT, "core", "framework-overlay", "android", "hardware", "camera2")
 
@@ -38,7 +38,7 @@ def write(rel, text):
 
 
 def header(rel, why):
-    lines = ["// megler-w10m overlay of Megler/src/java-framework/gen-src/android/hardware/camera2/%s, written by" % rel,
+    lines = ["// Overlay of core/framework/gen-src/android/hardware/camera2/%s, written by" % rel,
              "// tools/compat/camera2-overlays.py from that generated stub (run it again rather than editing this file)."]
     lines += ["// " + w for w in why]
     return "\n".join(lines) + "\n"

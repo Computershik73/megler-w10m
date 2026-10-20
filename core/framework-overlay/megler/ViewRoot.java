@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/megler/ViewRoot.java (tools/build-framework.sh).
+// Overlay of core/framework/src/megler/ViewRoot.java (tools/build-framework.sh).
 // It differs in three calls of megler.Native.frameMark in doFrame, which tell the Java driver where a frame's measure and
 // layout begin, where its draw traversal begins, and where it ends with how much of the screen it drew (sRedrawn, a field
 // drawAll sets).

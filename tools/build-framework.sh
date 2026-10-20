@@ -5,11 +5,11 @@
 #
 #   tools/build-framework.sh [--force]
 #
-# The sources are the original Megler's, read where they are and never written
-# to (../Megler/src/java-framework: src, gen-src, and stubs to compile against),
-# with this repository's overlay on top (core/framework-overlay): a file there
-# replaces the file of the same path under src or gen-src, and a path that is
-# in neither is added. Each overlay file says at its top why it differs.
+# The sources are the framework's own (core/framework: src, gen-src, and stubs
+# to compile against; core/framework/NOTICE says where it came from), with the
+# overlay on top (core/framework-overlay): a file there replaces the file of the
+# same path under src or gen-src, and a path that is in neither is added. Each
+# overlay file says at its top why it differs.
 #
 # A second kind of overlay file adds to a class without replacing its file:
 # X.java.members holds members -- methods, fields -- that are put into the
@@ -27,10 +27,8 @@
 # glue classes, which the WebView's APK carries, and the original's helpers of
 # a WebView over WKWebView, which the overlay's android.webkit does not use.
 #
-# javac, then d8, as the original's build.sh does it with the tools of its
-# author's machine; here with what this PC has. The original's first step,
-# gen/gles20.py, is left out: it rewrites files inside the other repository,
-# and what it writes is already there.
+# javac, then d8, with what this PC has. The generated files of gen-src are
+# kept as they are; nothing regenerates them here.
 #
 #   out: build/framework/megler-framework.dex   (tools/dvm-android-root.sh puts
 #        it in the Android root as framework/megler-framework.dex)
@@ -38,13 +36,12 @@
 # Nothing is rebuilt when the DEX file is newer than every source, unless
 # --force is given. Nothing is downloaded.
 #
-#   MEGLER_FRAMEWORK    the original's java-framework folder (../Megler/src/java-framework)
 #   MEGLER_JDK          a JDK's folder (C:\Program Files\Java\jdk1.8.0_202)
 #   MEGLER_ANDROID_SDK  an Android SDK with build-tools 29.0.3 and
 #                          platforms/android-29 (the user's Documents folder)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-FW="${MEGLER_FRAMEWORK:-$(dirname "$ROOT")/Megler/src/java-framework}"
+FW="$ROOT/core/framework"
 JDK="${MEGLER_JDK:-/c/Program Files/Java/jdk1.8.0_202}"
 SDK="${MEGLER_ANDROID_SDK:-$USERPROFILE/Documents}"
 D8="$SDK/build-tools/29.0.3/lib/d8.jar"
@@ -54,7 +51,6 @@ OUT="$ROOT/build/framework"
 DEX="$OUT/megler-framework.dex"
 FORCE=0
 [ "${1:-}" = --force ] && FORCE=1
-[ -d "$FW/src" ] || { echo "no $FW/src: the original's Java framework is not there (MEGLER_FRAMEWORK)" >&2; exit 1; }
 [ -x "$JDK/bin/javac" ] || [ -f "$JDK/bin/javac.exe" ] || { echo "no javac in $JDK (MEGLER_JDK)" >&2; exit 1; }
 [ -f "$D8" ] && [ -f "$LIB" ] || { echo "no build-tools/29.0.3/lib/d8.jar or platforms/android-29/android.jar in $SDK (MEGLER_ANDROID_SDK)" >&2; exit 1; }
 

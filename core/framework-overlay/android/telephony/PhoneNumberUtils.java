@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/gen-src/android/telephony/PhoneNumberUtils.java (tools/build-framework.sh).
+// Overlay of core/framework/gen-src/android/telephony/PhoneNumberUtils.java (tools/build-framework.sh).
 // It differs in answering: the original is the generated stub, whose every method said false, null or 0, so isNonSeparator('7')
 // was false and an app that feeds a phone number's digits to its own formatter through it fed none (urent's mask then mapped
 // one character of text onto none and threw out of Compose's offset mapping). Here, as Android's: the classes of characters,

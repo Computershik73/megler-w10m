@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/graphics/drawable/GradientDrawable.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/graphics/drawable/GradientDrawable.java (tools/build-framework.sh).
 // It differs in two statements of draw(): a shape with neither a solid colour nor a gradient is filled all the same when it
 // has a tint or a colour filter, as Android fills it.
 //

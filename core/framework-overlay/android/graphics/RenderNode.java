@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/graphics/RenderNode.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/graphics/RenderNode.java (tools/build-framework.sh).
 // It differs in what a node is: a display list kept by the core and the properties it is drawn with, as on Android, where
 // the original drew the node's content into a bitmap of its size when it was recorded and drew that bitmap where the node
 // was. Compose makes a node for every graphics layer, dozens, many as large as the screen or larger, and each cost a

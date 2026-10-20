@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/gen-src/android/hardware/camera2/CameraManager.java (tools/build-framework.sh).
+// Overlay of core/framework/gen-src/android/hardware/camera2/CameraManager.java (tools/build-framework.sh).
 // It differs in giving the phone's cameras: their ids, their characteristics and opening them (camera2/impl/MeglerCameras and
 // MeglerCameraDevice, over megler.CameraNative), where the generated stub answered null. A camera's id is its index ("0").
 //

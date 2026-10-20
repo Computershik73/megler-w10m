@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/app/Activity.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/app/Activity.java (tools/build-framework.sh).
 // It differs in two methods. initWindowDecorActionBar makes the window's decor before it asks whether the window has an action bar.
 //
 // Why. Whether a window has an action bar is the theme's to say (windowActionBar, windowNoTitle), and the window reads its

@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/graphics/BaseRecordingCanvas.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/graphics/BaseRecordingCanvas.java (tools/build-framework.sh).
 // It differs in what it is over: the core's recording canvas (megler.Gfx.cvRecord), which writes down what it is given, in
 // place of a bitmap (android/graphics/RenderNode.java says why). With no bitmap it says its size itself, the size it was
 // begun with, as Android's does. Everything else is the original's.

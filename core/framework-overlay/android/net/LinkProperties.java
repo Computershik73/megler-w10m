@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/net/LinkProperties.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/net/LinkProperties.java (tools/build-framework.sh).
 // It differs in its name servers: the original's getDnsServers was an empty list, and a resolver of an app's own that asks
 // Android where to send its queries (c-ares does, through ConnectivityManager.getLinkProperties(getActiveNetwork())) then
 // had none, sent them to 127.0.0.1 and timed out: urent's 2GIS map loaded nothing ("Couldn't update regions: Timeout was

@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/gen-src/android/hardware/camera2/CameraCharacteristics.java, written by
+// Overlay of core/framework/gen-src/android/hardware/camera2/CameraCharacteristics.java, written by
 // tools/compat/camera2-overlays.py from that generated stub (run it again rather than editing this file).
 // It differs in having keys and values: a camera's characteristics as the phone's camera has them (CameraManager, the
 // overlay's, fills them), which CameraX reads before it opens a camera.

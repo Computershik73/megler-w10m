@@ -1,4 +1,4 @@
-// megler-w10m overlay: android.net.wifi.WifiManager, the generated stub (Megler/src/java-framework/gen-src) with the Wi-Fi on.
+// Overlay: android.net.wifi.WifiManager, the generated stub (core/framework/gen-src) with the Wi-Fi on.
 //
 // Why. The stub answered every question from an empty map: isWifiEnabled() false, getWifiState() 0 (WIFI_STATE_DISABLING),
 // getConnectionInfo() and getDhcpInfo() null -- while ConnectivityManager says the phone is on Wi-Fi and connected. An app

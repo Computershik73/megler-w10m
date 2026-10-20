@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/gen-src/android/graphics/RenderEffect.java (tools/build-framework.sh), in place
+// Overlay of core/framework/gen-src/android/graphics/RenderEffect.java (tools/build-framework.sh), in place
 // of the generated stub, whose effects were all empty ones.
 //
 // What it is: an effect that knows the blur it amounts to. Only blur is drawn: a view with such an effect is drawn into a

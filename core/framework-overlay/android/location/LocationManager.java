@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/gen-src/android/location/LocationManager.java (tools/build-framework.sh).
+// Overlay of core/framework/gen-src/android/location/LocationManager.java (tools/build-framework.sh).
 // It differs in finding the phone: the original is the generated stub, which had no provider, said every one was disabled,
 // knew no location and never called a listener -- an app that checks isProviderEnabled("gps") asked the user to switch the
 // GPS on (Urent, the scooter rental), and one that asks for updates waited for ever. Here the providers gps, network,

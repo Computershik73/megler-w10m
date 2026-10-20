@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/widget/ListPopupWindow.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/widget/ListPopupWindow.java (tools/build-framework.sh).
 // It differs in one statement of show(): the height of a popup that wraps its content is what its rows need and, around
 // them, what the list and the popup's background keep clear.
 //

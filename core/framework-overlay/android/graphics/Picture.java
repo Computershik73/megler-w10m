@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/graphics/Picture.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/graphics/Picture.java (tools/build-framework.sh).
 // It differs in what a picture is: a display list the core records (megler.Gfx.cvRecord) and draws again where the picture is
 // drawn, as Android's is, in place of a bitmap of its size (android/graphics/RenderNode.java says why). What was the
 // original's beyond that, its size and requiresHardwareAcceleration, is kept; and as Android has them:

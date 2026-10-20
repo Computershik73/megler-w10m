@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/provider/Settings.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/provider/Settings.java (tools/build-framework.sh).
 // It differs in meglerGet: a setting not in the table asked for is looked for where Android keeps it now -- one of System's
 // in Secure and then Global, one of Secure's in Global -- as Android's System.getString does for MOVED_TO_SECURE and
 // MOVED_TO_GLOBAL, and Secure's for its MOVED_TO_GLOBAL (with a line in the log there; the value all the same). The

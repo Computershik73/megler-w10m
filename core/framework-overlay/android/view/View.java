@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/view/View.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/view/View.java (tools/build-framework.sh).
 // It differs in what an invalidation tells the window, and in a child the window's partial drawing does not reach.
 //  - invalidate(), invalidate(Rect), invalidate(l, t, r, b), invalidateDrawable and invalidateParent pass a rectangle up to
 //    the window (meglerDirty): this view's box, the rectangle asked for (in content coordinates, as Android's), the box with

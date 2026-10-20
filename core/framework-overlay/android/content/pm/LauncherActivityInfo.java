@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/gen-src/android/content/pm/LauncherActivityInfo.java (tools/build-framework.sh).
+// Overlay of core/framework/gen-src/android/content/pm/LauncherActivityInfo.java (tools/build-framework.sh).
 // It differs in having something to describe: a constructor of Android's kind (the package's own, for LauncherApps) with the
 // activity, and the getters answering from it -- label, icon, component, application, user, install time -- where they were
 // generated signatures that answered nothing. LauncherApps' overlay says why: it is what a launcher lists the apps by.

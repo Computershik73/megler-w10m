@@ -5,8 +5,8 @@ GLES20, GLES30, GLES31 and GLES32 as the framework declares them, each a call of
 
     python tools/gles-natives.py [--check]
 
-Two lists are matched. The Java declarations are the framework's own (the original's src/android/opengl/GLES*.java,
-MEGLER_FRAMEWORK, or the overlay's copy where there is one). The C prototypes are Khronos' headers as the NDK ships
+Two lists are matched. The Java declarations are the framework's own (core/framework/src/android/opengl/GLES*.java,
+or the overlay's copy where there is one). The C prototypes are Khronos' headers as the NDK ships
 them (MEGLER_NDK: sysroot/usr/include/GLES, GLES2, GLES3), which say what each parameter is in C: a value, or memory.
 A Java method's parameters are then laid onto the C function's in order, the way Android's own generator does:
 
@@ -49,13 +49,7 @@ def msys_path(p):
 
 
 def framework_dir():
-    fw = msys_path(os.environ.get('MEGLER_FRAMEWORK', ''))
-    if not fw:
-        fw = os.path.join(os.path.dirname(ROOT), 'Megler', 'src', 'java-framework')
-    # (A worktree of this repository lies deeper than the checkout the sibling repository is beside.)
-    if not os.path.isdir(os.path.join(fw, 'src')):
-        sys.exit('no %s/src: the original\'s Java framework is not there (MEGLER_FRAMEWORK)' % fw)
-    return fw
+    return os.path.join(ROOT, 'core', 'framework')
 
 
 def ndk_include():

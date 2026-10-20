@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/megler/InputMethods.java (tools/build-framework.sh).
+// Overlay of core/framework/src/megler/InputMethods.java (tools/build-framework.sh).
 // It differs in what deliverPending writes in the log. What it does with the keyboard's text is the original's, moved
 // unchanged into apply().
 //

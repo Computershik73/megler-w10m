@@ -1,4 +1,4 @@
-// megler-w10m overlay: android.media.MediaMetadata, in place of the generated stub (Megler/src/java-framework/gen-src).
+// Overlay: android.media.MediaMetadata, in place of the generated stub (core/framework/gen-src).
 //
 // Why. The stub held nothing: its getters answered null and 0, writeToParcel wrote nothing, and CREATOR was null.
 // AndroidX's (and the support library's) MediaMetadataCompat makes the platform's object by writing itself into a

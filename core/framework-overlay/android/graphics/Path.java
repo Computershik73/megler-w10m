@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/graphics/Path.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/graphics/Path.java (tools/build-framework.sh).
 // It differs in the inverse fill types: toggleInverseFillType did nothing, and meglerFill, what Canvas hands megler.Gfx with
 // the path, said only winding or even-odd, so a path set to INVERSE_WINDING or INVERSE_EVEN_ODD was drawn and clipped
 // by as if it were not inverse. Now toggleInverseFillType turns WINDING into INVERSE_WINDING and back, EVEN_ODD into

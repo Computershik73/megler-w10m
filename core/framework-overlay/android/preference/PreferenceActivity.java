@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/preference/PreferenceActivity.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/preference/PreferenceActivity.java (tools/build-framework.sh).
 // It differs in two things: the activity's content, set in onCreate as Android sets it; and preference headers, which are
 // read, listed and opened here, where the original showed the first header's fragment and nothing else.
 //

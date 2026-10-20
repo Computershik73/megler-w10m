@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/gen-src/android/hardware/camera2/CaptureResult.java, written by
+// Overlay of core/framework/gen-src/android/hardware/camera2/CaptureResult.java, written by
 // tools/compat/camera2-overlays.py from that generated stub (run it again rather than editing this file).
 // It differs in having keys and values: a picture's result as the camera (camera2/impl/MeglerCameraDevice) fills it, the
 // request's values and the picture's own (its timestamp, the state of focus and exposure).

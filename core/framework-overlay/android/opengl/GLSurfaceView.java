@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/opengl/GLSurfaceView.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/opengl/GLSurfaceView.java (tools/build-framework.sh).
 // The renderer runs on a GL thread of the layer's own, as in the original (megler.Native.startGL), but that thread is
 // core/src/drivers/hk_java_gl.c here, and what it does each turn this class decides in meglerFrame: the queued events,
 // then end, no surface, paused, draw, or nothing to draw. What differs from the original, which drew on one render thread

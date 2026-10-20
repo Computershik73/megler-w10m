@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/widget/ProgressBar.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/widget/ProgressBar.java (tools/build-framework.sh).
 // It differs in what getIndeterminateDrawable gives when the app set no indeterminate drawable: a drawable (Spinner below)
 // that draws the original's own spinner, coloured by a colour filter or tint set on it; the original gave null. onMeasure
 // and onDraw do with it what they did with none, and setIndeterminateDrawable(null) puts it back.

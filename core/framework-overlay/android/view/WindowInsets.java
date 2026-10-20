@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/view/WindowInsets.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/view/WindowInsets.java (tools/build-framework.sh).
 // It differs in getFrame() (Android 16): the size of the window the insets are relative to, where the original's generated
 // stub returned null. The insets carry it (mFrame) through copies, consumeSystemWindowInsets, replaceSystemWindowInsets
 // and the Builder (setFrame, which the stub ignored), and megler.ViewRoot (overlaid) gives it to the insets it makes, through

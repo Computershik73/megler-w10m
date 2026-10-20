@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/gen-src/android/security/NetworkSecurityPolicy.java (tools/build-framework.sh).
+// Overlay of core/framework/gen-src/android/security/NetworkSecurityPolicy.java (tools/build-framework.sh).
 // The original's is a generated signature: cleartext traffic was never permitted, to any host. This one answers as Android
 // does, from the app's manifest and its network security configuration:
 //  - with android:networkSecurityConfig, that XML resource decides: its <base-config cleartextTrafficPermitted>, and for a

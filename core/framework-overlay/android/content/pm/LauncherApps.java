@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/gen-src/android/content/pm/LauncherApps.java (tools/build-framework.sh).
+// Overlay of core/framework/gen-src/android/content/pm/LauncherApps.java (tools/build-framework.sh).
 // It differs in the members a launcher uses to list and start the apps it shows: the constructors keep their Context (the
 // one without arguments, which megler.ContextImpl picks when it makes the service, takes the application's), and
 // getActivityList, resolveActivity, isPackageEnabled, isActivityEnabled, getApplicationInfo and startMainActivity answer from

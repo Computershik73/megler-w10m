@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/content/res/AssetManager.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/content/res/AssetManager.java (tools/build-framework.sh).
 // It differs in shared libraries: addAssetPathAsSharedLibrary, addAssetPath, getAssignedPackageIdentifiers, getApkPaths
 // and findCookieForPath answer, where the original's were signatures answering 0 or null; and open, openFd, openNonAsset,
 // openNonAssetFd and list look in such a library's APK too, after the app's own.

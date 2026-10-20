@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/megler/AppRunner.java (tools/build-framework.sh). It differs in one thing:
+// Overlay of core/framework/src/megler/AppRunner.java (tools/build-framework.sh). It differs in one thing:
 // startActivity with FLAG_ACTIVITY_CLEAR_TOP for an activity already in the stack does what Android does. The activities
 // above it go; then, when its launch mode is standard and the intent has no FLAG_ACTIVITY_SINGLE_TOP, it is finished too
 // and started again with the new intent, and otherwise the intent comes to it through onNewIntent. The original kept the

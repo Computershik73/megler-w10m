@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/gen-src/android/appwidget/AppWidgetHostView.java (tools/build-framework.sh).
+// Overlay of core/framework/gen-src/android/appwidget/AppWidgetHostView.java (tools/build-framework.sh).
 // It differs in five generated signatures that answered nothing and now do what Android's do: getDefaultPaddingForWidget,
 // the two constructors that passed no Context to FrameLayout, generateLayoutParams(Context, AttributeSet) and dispatchDraw.
 //

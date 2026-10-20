@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/os/ParcelFileDescriptor.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/os/ParcelFileDescriptor.java (tools/build-framework.sh).
 // It differs in what dup and the descriptors it is given own, which is now Android's:
 //  - dup(FileDescriptor), dup() and fromFd(int) make a descriptor of their own (Os.dup), and the result owns it: close()
 //    closes that copy, and the original stays as it was. The original's wrapped the same descriptor and owned nothing.

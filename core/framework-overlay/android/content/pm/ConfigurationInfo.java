@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/content/pm/ConfigurationInfo.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/content/pm/ConfigurationInfo.java (tools/build-framework.sh).
 // It differs in one statement: the OpenGL ES version the device offers (ActivityManager.getDeviceConfigurationInfo) is the
 // one this process can make a context of (megler.EGLNative.glesVersion: 3.0 where ANGLE's display has it, 2.0 at Direct3D's
 // feature level 9_3), not 3.2, which the original says for its ANGLE on iOS. An app that believes 3.2 asks for 3.1's

@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/gen-src/android/location/Location.java (tools/build-framework.sh).
+// Overlay of core/framework/gen-src/android/location/Location.java (tools/build-framework.sh).
 // It differs in being a location: the original is the generated stub, whose copy constructor, set(), has*(), distances and
 // parcel did nothing, so a fix handed to an app (megler/LocationService.java) lost all but what a getter could read back. Here,
 // as Android's: each field with whether it is there, copied, compared, parcelled; distanceBetween, distanceTo and bearingTo

@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/gen-src/android/hardware/camera2/params/StreamConfigurationMap.java, written by
+// Overlay of core/framework/gen-src/android/hardware/camera2/params/StreamConfigurationMap.java, written by
 // tools/compat/camera2-overlays.py from that generated stub (run it again rather than editing this file).
 // It differs in saying the camera's sizes (meglerOf), for YUV_420_888, PRIVATE, JPEG and NV21 alike, where the
 // stub said null, which CameraX takes for a camera it cannot use.

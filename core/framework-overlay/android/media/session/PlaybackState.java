@@ -1,4 +1,4 @@
-// megler-w10m overlay: android.media.session.PlaybackState, in place of the generated stub (Megler/src/java-framework/gen-src).
+// Overlay: android.media.session.PlaybackState, in place of the generated stub (core/framework/gen-src).
 //
 // Why. The stub kept almost nothing: setState and addCustomAction were dropped, so the state, the position and the speed
 // read back as 0; CREATOR was null; and CustomAction was an empty abstract class without its Builder. AndroidX's

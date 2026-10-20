@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/widget/TextView.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/widget/TextView.java (tools/build-framework.sh).
 // It differs in the cursor's and the selection handles' drawables (API 29): getTextCursorDrawable gives what the style
 // or setTextCursorDrawable set, else a stand-in made once, 2 dp wide in the text's colour; getTextSelectHandle, Left and
 // Right give what was set, else a stand-in 22 dp square in the text's colour; their setters keep what they are given

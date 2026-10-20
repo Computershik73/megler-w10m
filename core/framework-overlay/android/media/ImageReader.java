@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/gen-src/android/media/ImageReader.java (tools/build-framework.sh), in place of
+// Overlay of core/framework/gen-src/android/media/ImageReader.java (tools/build-framework.sh), in place of
 // the generated stub, which had no images: getSurface() was null and acquireLatestImage() null.
 //
 // Why. CameraX analyses a camera's pictures through an ImageReader (ImageAnalysis, YUV_420_888): urent's QR scanner hands

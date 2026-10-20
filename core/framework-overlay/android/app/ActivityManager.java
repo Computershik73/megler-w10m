@@ -1,4 +1,4 @@
-// megler-w10m overlay of Megler/src/java-framework/src/android/app/ActivityManager.java (tools/build-framework.sh).
+// Overlay of core/framework/src/android/app/ActivityManager.java (tools/build-framework.sh).
 // It differs in RecentTaskInfo, which AppTask.getTaskInfo() returns: it has TaskInfo's public fields (taskId, isRunning,
 // numActivities, baseIntent, baseActivity, topActivity, origActivity), which it has from TaskInfo on Android 10 and later,
 // and getTaskInfo() fills them from the app's activities as they are now (megler.AppRunner: the first started is the task's
