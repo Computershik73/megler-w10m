@@ -15,7 +15,8 @@ public class Path {
     private boolean any;
 
     public Path() {}
-    public Path(Path src) { set(src); }
+    /** A copy of src; an empty path for null, as Android makes. */
+    public Path(Path src) { if (src != null) set(src); }
 
     private void put(int op, float... v) {
         if (n + 1 + v.length > ops.length) ops = java.util.Arrays.copyOf(ops, Math.max(ops.length * 2, n + 1 + v.length + 16));

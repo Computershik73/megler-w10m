@@ -343,6 +343,7 @@ public class Main extends Activity {
         phoneApps();
         installs();
         bitmapBytes();
+        adaptiveIcon();
         sound();
         mediaCodec();
         network();
@@ -2050,6 +2051,29 @@ public class Main extends Activity {
             return alpha.getByteCount() == 4 && alpha.getRowBytes() == 2 && (a.get(0) & 255) == 0x80 && (a.get(3) & 255) == 0x80 && a.position() == 4
                     && rgb.getByteCount() == 2 && (r.get(0) & 255) == 0x00 && (r.get(1) & 255) == 0xF8
                     && full.getByteCount() == 16 && Math.abs((f.get(0) & 255) - 0x80) <= 1 && (f.get(3) & 255) == 0x80 && f.position() == 16;
+        });
+    }
+
+    /**
+     * An AdaptiveIconDrawable as a launcher makes one to learn the icon's shape (Launcher3's GraphicsUtils.getShapePath):
+     * its mask is there, in its bounds; its layers are half as large again as the icon, centred; drawn, its middle is the
+     * background's colour.
+     */
+    private void adaptiveIcon() {
+        step("adaptive-icon", () -> {
+            android.graphics.drawable.AdaptiveIconDrawable d = new android.graphics.drawable.AdaptiveIconDrawable(
+                    new android.graphics.drawable.ColorDrawable(0xFF0000FF), new android.graphics.drawable.ColorDrawable(0));
+            d.setBounds(0, 0, 100, 100);
+            android.graphics.Path mask = new android.graphics.Path(d.getIconMask());
+            android.graphics.RectF box = new android.graphics.RectF();
+            mask.computeBounds(box, true);
+            android.graphics.Rect layer = d.getBackground().getBounds();
+            android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(100, 100, android.graphics.Bitmap.Config.ARGB_8888);
+            d.draw(new android.graphics.Canvas(b));
+            int middle = b.getPixel(50, 50);
+            detail = "mask " + box + " layer " + layer + " middle " + Integer.toHexString(middle) + " inset " + android.graphics.drawable.AdaptiveIconDrawable.getExtraInsetFraction();
+            return !mask.isEmpty() && box.width() > 90 && box.width() <= 101 && layer.left == -25 && layer.right == 125 && middle == 0xFF0000FF
+                    && android.graphics.drawable.AdaptiveIconDrawable.getExtraInsetFraction() == 0.25f;
         });
     }
 
