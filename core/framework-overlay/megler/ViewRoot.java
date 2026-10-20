@@ -342,6 +342,9 @@ public final class ViewRoot implements ViewParent {
         if (v.getAlpha() != 1f) b.append(" a=").append(v.getAlpha());
         if (v.getLayerType() != View.LAYER_TYPE_NONE) b.append(" layer=").append(v.getLayerType());
         if (v.getId() != View.NO_ID) b.append(" #").append(Integer.toHexString(v.getId()));
+        if (v.getPaddingLeft() != 0 || v.getPaddingTop() != 0 || v.getPaddingRight() != 0 || v.getPaddingBottom() != 0)
+            b.append(" pad=").append(v.getPaddingLeft()).append(',').append(v.getPaddingTop()).append(',').append(v.getPaddingRight()).append(',').append(v.getPaddingBottom());
+        if (v.getTranslationY() != 0f) b.append(" ty=").append(v.getTranslationY());
         if (v instanceof android.widget.TextView) {
             CharSequence tx = ((android.widget.TextView) v).getText();
             StringBuilder e = new StringBuilder();
@@ -425,7 +428,8 @@ public final class ViewRoot implements ViewParent {
         } finally { mInLayout = false; }
         mObserver.dispatchOnGlobalLayout();
         updatePan();
-        if (sDump == null) sDump = System.getenv("TL_VIEW_DUMP") != null;
+        /* (On the phone, the flag trace-views: a file of that name in the data folder's flags.) */
+        if (sDump == null) sDump = System.getenv("TL_VIEW_DUMP") != null || Native.flag("trace-views");
         if (sDump) {
             long now = android.os.SystemClock.uptimeMillis();
             if (now - mLastDump > 3000) { mLastDump = now; dump(mView, 0); }

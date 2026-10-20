@@ -291,7 +291,12 @@ the six addresses it ran at and waited for most, and `LocalState\profile.txt`
 has every address with its count, which `tools/profile-names.py` names by
 function with the build's maps and an app library's exported symbols: where a
 game that is slow with the graphics processor idle spends its time; Windows
-only; at most 1000 lines; `bionic/hk_bionic.c`). Without any flag, on Windows, a
+only; at most 1000 lines; `bionic/hk_bionic.c`); and `trace-views` (a Java app's
+view tree as its window is laid out, at most every three seconds, and every four
+seconds by a timer: each view's class, place and size, padding, translation, id,
+text and layout parameters, indented by depth; what keeps content off a bar, or
+twice off it, shows as padding; `megler/ViewRoot.java`, the flag read through
+`megler.Native.flag`). Without any flag, on Windows, a
 watchdog looks every two seconds at who holds the log's lock and the guest
 threads' lock: one held by the same thread for ten seconds is an app that stands
 still, whose core lines have stopped while the shell's go on (urent did, on the

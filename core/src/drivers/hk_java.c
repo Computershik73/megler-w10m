@@ -385,6 +385,8 @@ N(Native_screenWidth) { c->ret.i = J.config->width; }
 N(Native_screenHeight) { c->ret.i = J.config->height; }
 N(Native_density) { c->ret.f = (float)(J.config->density_dpi > 0 ? J.config->density_dpi : 160) / 160.0f; }
 N(Native_uptimeNanos) { c->ret.j = (i64)hk_time_monotonic_ns(); }
+/* flag(name): a switch for trying something on the phone (hk_flag): a file of that name in the data folder's flags. */
+N(Native_flag) { c->ret.z = hk_flag(text_of(c->args[0].l)); }
 static void Native_frameMark(hk_jcall *c);
 static void Native_presentRect(hk_jcall *c);
 static void Native_checkPartial(hk_jcall *c);
@@ -627,6 +629,7 @@ static const hk_jhle k_native[] = {
     { "megler/Native", "frameMark", NULL, Native_frameMark },
     { "megler/Native", "presentRect", NULL, Native_presentRect },
     { "megler/Native", "checkPartial", NULL, Native_checkPartial },
+    { "megler/Native", "flag", NULL, Native_flag },
     { NULL, NULL, NULL, NULL },
 };
 

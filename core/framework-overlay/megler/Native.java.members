@@ -35,3 +35,5 @@
      * first frame and whenever it changes; the shell hides and shows the bars, and the insets that follow come through insets().
      */
     public static native void systemBars(int bars);
+    /** A switch for trying something on the phone (core: hk_flag): on when a file of that name is in the data folder's flags. */
+    public static native boolean flag(String name);
